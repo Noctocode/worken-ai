@@ -1,0 +1,22 @@
+{
+  "name": "worken-ai",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "dev:web": "turbo dev --filter=web",
+    "dev:api": "turbo dev --filter=api",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "db:start": "docker compose up -d",
+    "db:stop": "docker compose down",
+    "db:generate": "pnpm --filter @worken/database generate",
+    "db:migrate": "pnpm --filter @worken/database migrate",
+    "db:push": "pnpm --filter @worken/database push",
+    "db:studio": "pnpm --filter @worken/database studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0"
+  },
+  "packageManager": "pnpm@9.15.0"
+}
