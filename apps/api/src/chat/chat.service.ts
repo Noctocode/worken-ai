@@ -32,16 +32,30 @@ export class ChatService {
     messages: ChatMessage[],
     model: string = 'moonshotai/kimi-k2.5',
     enableReasoning: boolean = true,
+    context?: string,
   ): Promise<ChatResponse> {
+    const systemMessages: { role: 'system'; content: string }[] = [];
+    if (context) {
+      systemMessages.push({
+        role: 'system',
+        content:
+          'Use the following project context to inform your answers. Reference this information when relevant.\n\n' +
+          context,
+      });
+    }
+
     const completion = await this.client.chat.completions.create({
       model,
-      messages: messages.map((msg) => ({
-        role: msg.role,
-        content: msg.content,
-        ...(msg.reasoning_details
-          ? { reasoning_details: msg.reasoning_details }
-          : {}),
-      })),
+      messages: [
+        ...systemMessages,
+        ...messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          ...(msg.reasoning_details
+            ? { reasoning_details: msg.reasoning_details }
+            : {}),
+        })),
+      ],
       ...(enableReasoning && { reasoning: { enabled: true } }),
     });
 

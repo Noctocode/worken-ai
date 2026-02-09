@@ -4,6 +4,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { DatabaseModule } from './database/database.module';
+import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 
 @Module({
@@ -11,6 +12,7 @@ import { ProjectsModule } from './projects/projects.module';
     ConfigModule.forRoot({ envFilePath: '../../.env' }),
     DatabaseModule,
     ChatModule,
+    DocumentsModule,
     ProjectsModule,
   ],
   controllers: [AppController],

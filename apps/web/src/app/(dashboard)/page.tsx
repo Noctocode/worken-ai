@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import {
   PlusCircle,
@@ -14,6 +14,7 @@ import {
   TrendingUp,
   Calendar,
   Loader2,
+  FileText,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -30,7 +31,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
+import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { fetchProjects, type Project } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 
@@ -46,48 +54,76 @@ function formatTimeAgo(dateStr: string) {
 }
 
 function ProjectCard({ project }: { project: Project }) {
+  const [docDialogOpen, setDocDialogOpen] = useState(false);
+
   return (
-    <Link href={`/projects/${project.id}`} className="block">
-      <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-        <CardHeader className="pb-1 pt-3">
-          <div className="mb-2 flex items-start justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
-              <Sparkles className="h-4 w-4" />
+    <>
+      <Link href={`/projects/${project.id}`} className="block">
+        <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
+          <CardHeader className="pb-1 pt-3">
+            <div className="mb-2 flex items-start justify-between">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <MoreHorizontal className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                >
+                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Add Context
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-              onClick={(e) => e.preventDefault()}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </div>
-          <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-            {project.name}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pb-2">
-          <CardDescription className="line-clamp-2 text-xs text-slate-500">
-            {project.description || "No description"}
-          </CardDescription>
-        </CardContent>
-        <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-          <div className="flex w-full items-center justify-between">
-            <Badge
-              variant="secondary"
-              className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-            >
-              <Sparkles className="h-3 w-3" />
-              {MODEL_LABELS[project.model] || project.model}
-            </Badge>
-            <span className="text-xs font-medium text-slate-400">
-              {formatTimeAgo(project.createdAt)}
-            </span>
-          </div>
-        </CardFooter>
-      </Card>
-    </Link>
+            <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
+              {project.name}
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pb-2">
+            <CardDescription className="line-clamp-2 text-xs text-slate-500">
+              {project.description || "No description"}
+            </CardDescription>
+          </CardContent>
+          <CardFooter className="mt-auto border-t border-slate-100 pt-3">
+            <div className="flex w-full items-center justify-between">
+              <Badge
+                variant="secondary"
+                className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
+              >
+                <Sparkles className="h-3 w-3" />
+                {MODEL_LABELS[project.model] || project.model}
+              </Badge>
+              <span className="text-xs font-medium text-slate-400">
+                {formatTimeAgo(project.createdAt)}
+              </span>
+            </div>
+          </CardFooter>
+        </Card>
+      </Link>
+      <AddDocumentDialog
+        projectId={project.id}
+        open={docDialogOpen}
+        onOpenChange={setDocDialogOpen}
+      />
+    </>
   );
 }
 

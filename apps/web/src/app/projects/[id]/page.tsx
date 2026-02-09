@@ -98,6 +98,7 @@ export default function ProjectChatPage() {
           messages: apiMessages,
           model: project.model,
           enableReasoning: true,
+          projectId,
         }),
       });
 

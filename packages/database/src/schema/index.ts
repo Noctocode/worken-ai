@@ -14,7 +14,7 @@ export const documents = pgTable("documents", {
   id: uuid("id").primaryKey().defaultRandom(),
   projectId: uuid("project_id").references(() => projects.id).notNull(),
   content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 1536 }),
+  embedding: vector("embedding", { dimensions: 384 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("documents_embedding_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
