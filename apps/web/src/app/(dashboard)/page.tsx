@@ -4,24 +4,21 @@ import React from "react";
 import Link from "next/link";
 import {
   PlusCircle,
-  BarChart2,
   ChevronRight,
   Filter,
   MoreHorizontal,
-  Zap,
   Sparkles,
-  PenTool,
-  Database,
   ArrowRight,
   Clock,
   DollarSign,
   TrendingUp,
   Calendar,
+  Loader2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,8 +30,77 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
+import { fetchProjects, type Project } from "@/lib/api";
+import { MODEL_LABELS } from "@/lib/models";
+
+function formatTimeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function ProjectCard({ project }: { project: Project }) {
+  return (
+    <Link href={`/projects/${project.id}`} className="block">
+      <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
+        <CardHeader className="pb-1 pt-3">
+          <div className="mb-2 flex items-start justify-between">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
+              <Sparkles className="h-4 w-4" />
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
+              onClick={(e) => e.preventDefault()}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+          <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
+            {project.name}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pb-2">
+          <CardDescription className="line-clamp-2 text-xs text-slate-500">
+            {project.description || "No description"}
+          </CardDescription>
+        </CardContent>
+        <CardFooter className="mt-auto border-t border-slate-100 pt-3">
+          <div className="flex w-full items-center justify-between">
+            <Badge
+              variant="secondary"
+              className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
+            >
+              <Sparkles className="h-3 w-3" />
+              {MODEL_LABELS[project.model] || project.model}
+            </Badge>
+            <span className="text-xs font-medium text-slate-400">
+              {formatTimeAgo(project.createdAt)}
+            </span>
+          </div>
+        </CardFooter>
+      </Card>
+    </Link>
+  );
+}
 
 export default function WorkenDashboard() {
+  const {
+    data: projects,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["projects"],
+    queryFn: fetchProjects,
+  });
+
   return (
     <div className="space-y-8">
       {/* Page Title & Mobile Search */}
@@ -94,256 +160,49 @@ export default function WorkenDashboard() {
             <Filter className="h-4 w-4" />
             Filter
           </Button>
-          <Button size="sm" className="gap-2 sm:hidden">
-            <PlusCircle className="h-4 w-4" />
-            New
-          </Button>
+          <CreateProjectDialog>
+            <Button size="sm" className="gap-2 sm:hidden">
+              <PlusCircle className="h-4 w-4" />
+              New
+            </Button>
+          </CreateProjectDialog>
         </div>
       </div>
 
       {/* Projects Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {/* Card 1 */}
-        <Link href="/projects/q3-financial-analysis" className="block">
-          <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-            <CardHeader className="pb-1 pt-3">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
-                  <BarChart2 className="h-4 w-4" />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
-              <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-                Q3 Financial Analysis
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <CardDescription className="line-clamp-2 text-xs text-slate-500">
-                Analyzing revenue streams against Q2 projections using updated
-                context data.
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-              <div className="flex w-full items-center justify-between">
-                <Badge
-                  variant="secondary"
-                  className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-                >
-                  <Zap className="h-3 w-3" />
-                  GPT-4 Turbo
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">2h ago</span>
-              </div>
-            </CardFooter>
-            {/* Avatars Overlay */}
-            <div className="absolute bottom-4 right-14 flex -space-x-2">
-              <Avatar className="h-5 w-5 border border-white">
-                <AvatarFallback className="bg-emerald-100 text-[9px] text-emerald-700">
-                  AK
-                </AvatarFallback>
-              </Avatar>
-              <Avatar className="h-5 w-5 border border-white">
-                <AvatarFallback className="bg-amber-100 text-[9px] text-amber-700">
-                  M
-                </AvatarFallback>
-              </Avatar>
-            </div>
-          </Card>
-        </Link>
+        {isLoading && (
+          <div className="col-span-full flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          </div>
+        )}
 
-        {/* Card 2 */}
-        <Link href="/projects/auth-service-refactor" className="block">
-          <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-            <CardHeader className="pb-1 pt-3">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-600">
-                  <Database className="h-4 w-4" />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
-              <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-                Auth Service Refactor
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <CardDescription className="line-clamp-2 text-xs text-slate-500">
-                Migrating legacy authentication flows to OAuth 2.0 standards with
-                strict guardrails.
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-              <div className="flex w-full items-center justify-between">
-                <Badge
-                  variant="secondary"
-                  className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  Claude 3.5
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">5h ago</span>
-              </div>
-            </CardFooter>
-          </Card>
-        </Link>
+        {error && (
+          <div className="col-span-full text-center py-12 text-sm text-red-500">
+            Failed to load projects. Is the API running?
+          </div>
+        )}
 
-        {/* Card 3 */}
-        <Link href="/projects/launch-campaign-copy" className="block">
-          <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-            <CardHeader className="pb-1 pt-3">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-pink-100 bg-pink-50 text-pink-600">
-                  <PenTool className="h-4 w-4" />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
-              <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-                Launch Campaign Copy
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <CardDescription className="line-clamp-2 text-xs text-slate-500">
-                Generating variations for social media posts targeting Series A
-                founders.
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-              <div className="flex w-full items-center justify-between">
-                <Badge
-                  variant="secondary"
-                  className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-                >
-                  <Zap className="h-3 w-3" />
-                  Llama 3
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">1d ago</span>
-              </div>
-            </CardFooter>
-            <div className="absolute bottom-4 right-4">
-              <Avatar className="h-5 w-5 border border-white">
-                <AvatarFallback className="bg-slate-100 text-[9px] text-slate-600">
-                  JD
-                </AvatarFallback>
-              </Avatar>
-            </div>
-          </Card>
-        </Link>
-
-        {/* Card 4 (Paused) */}
-        <Link href="/projects/customer-dataset-cleaning" className="block">
-          <Card className="group relative flex flex-col border-slate-200 opacity-80 transition-all duration-300 hover:border-blue-300 hover:opacity-100 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-            <CardHeader className="pb-1 pt-3">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-100 bg-orange-50 text-orange-600">
-                  <Database className="h-4 w-4" />
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full bg-amber-400"></span>
-                  <span className="text-xs font-medium text-slate-400">
-                    Paused
-                  </span>
-                </div>
-              </div>
-              <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-                Customer Dataset Cleaning
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <CardDescription className="line-clamp-2 text-xs text-slate-500">
-                Removing duplicates and normalizing address fields for the CRM
-                migration.
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-              <div className="flex w-full items-center justify-between">
-                <Badge
-                  variant="secondary"
-                  className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-                >
-                  <Zap className="h-3 w-3" />
-                  GPT-3.5
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">3d ago</span>
-              </div>
-            </CardFooter>
-          </Card>
-        </Link>
-
-        {/* Card 5 - DeepSeek Chimera */}
-        <Link href="/projects/deepseek-chimera-chat" className="block">
-          <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-            <CardHeader className="pb-1 pt-3">
-              <div className="mb-2 flex items-start justify-between">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-600">
-                  <Sparkles className="h-4 w-4" />
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                  onClick={(e) => e.preventDefault()}
-                >
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </div>
-              <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-                DeepSeek Chimera Chat
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <CardDescription className="line-clamp-2 text-xs text-slate-500">
-                General-purpose chat powered by DeepSeek R1T2 Chimera reasoning model.
-              </CardDescription>
-            </CardContent>
-            <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-              <div className="flex w-full items-center justify-between">
-                <Badge
-                  variant="secondary"
-                  className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-                >
-                  <Sparkles className="h-3 w-3" />
-                  DeepSeek R1T2 Chimera
-                </Badge>
-                <span className="text-xs font-medium text-slate-400">Just now</span>
-              </div>
-            </CardFooter>
-          </Card>
-        </Link>
+        {projects?.map((project) => (
+          <ProjectCard key={project.id} project={project} />
+        ))}
 
         {/* New Project Card */}
-        <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
-          <div className="flex flex-1 flex-col items-center justify-center p-4">
-            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
-              <PlusCircle className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
+        <CreateProjectDialog>
+          <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
+            <div className="flex flex-1 flex-col items-center justify-center p-4">
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
+                <PlusCircle className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
+              </div>
+              <h3 className="text-sm font-semibold text-slate-700">
+                Create New Project
+              </h3>
+              <p className="mt-1 max-w-[180px] text-xs text-slate-400">
+                Start a new thread, compare models, or analyze documents.
+              </p>
             </div>
-            <h3 className="text-sm font-semibold text-slate-700">
-              Create New Project
-            </h3>
-            <p className="mt-1 max-w-[180px] text-xs text-slate-400">
-              Start a new thread, compare models, or analyze documents.
-            </p>
-          </div>
-        </Card>
+          </Card>
+        </CreateProjectDialog>
       </div>
 
       {/* Comparisons Section */}

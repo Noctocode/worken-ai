@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { CreateProjectDialog } from "@/components/create-project-dialog";
 
 export const SidebarContent = () => (
   <div className="flex h-full flex-col">
@@ -32,13 +33,15 @@ export const SidebarContent = () => (
 
     {/* Primary Actions */}
     <div className="p-4 pb-2">
-      <Button
-        className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
-        size="lg"
-      >
-        <PlusCircle className="h-4 w-4" />
-        New Project
-      </Button>
+      <CreateProjectDialog>
+        <Button
+          className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
+          size="lg"
+        >
+          <PlusCircle className="h-4 w-4" />
+          New Project
+        </Button>
+      </CreateProjectDialog>
     </div>
 
     {/* Navigation Links */}

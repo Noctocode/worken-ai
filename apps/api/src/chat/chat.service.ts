@@ -38,7 +38,9 @@ export class ChatService {
       messages: messages.map((msg) => ({
         role: msg.role,
         content: msg.content,
-        ...(msg.reasoning_details ? { reasoning_details: msg.reasoning_details } : {}),
+        ...(msg.reasoning_details
+          ? { reasoning_details: msg.reasoning_details }
+          : {}),
       })),
       ...(enableReasoning && { reasoning: { enabled: true } }),
     });
@@ -51,7 +53,9 @@ export class ChatService {
 
     return {
       content: response.content || '',
-      ...(response.reasoning_details ? { reasoning_details: response.reasoning_details } : {}),
+      ...(response.reasoning_details
+        ? { reasoning_details: response.reasoning_details }
+        : {}),
     };
   }
 }

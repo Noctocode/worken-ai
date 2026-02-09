@@ -16,49 +16,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-
-const projectData: Record<
-  string,
-  { title: string; model: string; modelId: string; modelIcon: "sparkles" | "zap" }
-> = {
-  "q3-financial-analysis": {
-    title: "Q3 Financial Analysis",
-    model: "Kimi K2.5",
-    modelId: "moonshotai/kimi-k2.5",
-    modelIcon: "sparkles",
-  },
-  "auth-service-refactor": {
-    title: "Auth Service Refactor",
-    model: "Claude 3.5",
-    modelId: "anthropic/claude-3.5-sonnet",
-    modelIcon: "sparkles",
-  },
-  "launch-campaign-copy": {
-    title: "Launch Campaign Copy",
-    model: "GPT-5.2",
-    modelId: "openai/gpt-5.2",
-    modelIcon: "zap",
-  },
-  "customer-dataset-cleaning": {
-    title: "Customer Dataset Cleaning",
-    model: "Kimi K2.5",
-    modelId: "moonshotai/kimi-k2.5",
-    modelIcon: "sparkles",
-  },
-  "deepseek-chimera-chat": {
-    title: "DeepSeek Chimera Chat",
-    model: "DeepSeek R1T2 Chimera",
-    modelId: "tngtech/deepseek-r1t2-chimera:free",
-    modelIcon: "sparkles",
-  },
-};
+import { useQuery } from "@tanstack/react-query";
+import { fetchProject } from "@/lib/api";
 
 interface Message {
   id: number;
   role: "user" | "ai";
   content: string;
   timestamp: string;
-  reasoning_details?: unknown;
+  reasoning_details?: string;
 }
 
 function getTimestamp() {
@@ -71,15 +37,15 @@ function getTimestamp() {
 export default function ProjectChatPage() {
   const params = useParams();
   const projectId = params.id as string;
-  const project = projectData[projectId] ?? {
-    title: projectId
-      .split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" "),
-    model: "Kimi K2.5",
-    modelId: "moonshotai/kimi-k2.5",
-    modelIcon: "sparkles" as const,
-  };
+
+  const {
+    data: project,
+    isLoading: isLoadingProject,
+    error,
+  } = useQuery({
+    queryKey: ["project", projectId],
+    queryFn: () => fetchProject(projectId),
+  });
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -91,16 +57,16 @@ export default function ProjectChatPage() {
     },
   ]);
   const [message, setMessage] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [messages, isSending]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isLoading) return;
+    if (!message.trim() || isSending || !project) return;
 
     const userMessage: Message = {
       id: Date.now(),
@@ -112,7 +78,7 @@ export default function ProjectChatPage() {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
     setMessage("");
-    setIsLoading(true);
+    setIsSending(true);
 
     try {
       const apiMessages = updatedMessages
@@ -120,7 +86,9 @@ export default function ProjectChatPage() {
         .map((m) => ({
           role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
           content: m.content,
-          ...(m.reasoning_details && { reasoning_details: m.reasoning_details }),
+          ...(m.reasoning_details && {
+            reasoning_details: m.reasoning_details,
+          }),
         }));
 
       const res = await fetch("http://localhost:3001/chat", {
@@ -128,7 +96,7 @@ export default function ProjectChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: apiMessages,
-          model: project.modelId,
+          model: project.model,
           enableReasoning: true,
         }),
       });
@@ -161,7 +129,7 @@ export default function ProjectChatPage() {
         },
       ]);
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
     }
   };
 
@@ -171,6 +139,29 @@ export default function ProjectChatPage() {
       handleSubmit(e);
     }
   };
+
+  if (isLoadingProject) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-white">
+        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      </div>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <div className="flex min-h-0 flex-1 items-center justify-center bg-white">
+        <div className="text-center">
+          <p className="text-sm text-slate-600">Failed to load project</p>
+          <Link href="/">
+            <Button variant="link" className="mt-2">
+              Go back
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-white">
@@ -188,7 +179,7 @@ export default function ProjectChatPage() {
           </Link>
           <div className="h-4 w-px bg-slate-200" />
           <h1 className="text-sm font-semibold text-slate-900">
-            {project.title}
+            {project.name}
           </h1>
         </div>
         <Badge
@@ -246,12 +237,10 @@ export default function ProjectChatPage() {
                           .map((segment, j) =>
                             segment.startsWith("**") &&
                             segment.endsWith("**") ? (
-                              <strong key={j}>
-                                {segment.slice(2, -2)}
-                              </strong>
+                              <strong key={j}>{segment.slice(2, -2)}</strong>
                             ) : (
                               <span key={j}>{segment}</span>
-                            )
+                            ),
                           )}
                         {i < msg.content.split("\n").length - 1 && <br />}
                       </React.Fragment>
@@ -269,7 +258,7 @@ export default function ProjectChatPage() {
             ))}
 
             {/* Typing indicator */}
-            {isLoading && (
+            {isSending && (
               <div className="flex gap-3">
                 <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
                   <AvatarFallback className="bg-slate-100 text-slate-600">
@@ -302,7 +291,7 @@ export default function ProjectChatPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Type your message..."
                 rows={1}
-                disabled={isLoading}
+                disabled={isSending}
                 className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
                 style={{ minHeight: "44px", maxHeight: "120px" }}
                 onInput={(e) => {
@@ -317,7 +306,7 @@ export default function ProjectChatPage() {
               type="submit"
               size="icon"
               className="h-11 w-11 shrink-0 rounded-xl bg-slate-900 hover:bg-slate-800"
-              disabled={!message.trim() || isLoading}
+              disabled={!message.trim() || isSending}
             >
               <Send className="h-4 w-4" />
             </Button>
