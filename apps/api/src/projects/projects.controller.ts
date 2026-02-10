@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Request } from '@nestjs/common';
 import { ProjectsService } from './projects.service.js';
 import type { CreateProjectDto } from './projects.service.js';
 
@@ -7,17 +7,17 @@ export class ProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  findAll() {
-    return this.projectsService.findAll();
+  findAll(@Request() req) {
+    return this.projectsService.findAll(req.user.id);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.projectsService.findOne(id);
+  findOne(@Param('id') id: string, @Request() req) {
+    return this.projectsService.findOne(id, req.user.id);
   }
 
   @Post()
-  create(@Body() dto: CreateProjectDto) {
-    return this.projectsService.create(dto);
+  create(@Body() dto: CreateProjectDto, @Request() req) {
+    return this.projectsService.create(dto, req.user.id);
   }
 }

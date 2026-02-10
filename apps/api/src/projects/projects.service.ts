@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { projects } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 
@@ -13,28 +13,33 @@ export interface CreateProjectDto {
 export class ProjectsService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 
-  async findAll() {
-    return this.db.select().from(projects).orderBy(desc(projects.createdAt));
+  async findAll(userId: string) {
+    return this.db
+      .select()
+      .from(projects)
+      .where(eq(projects.userId, userId))
+      .orderBy(desc(projects.createdAt));
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const [project] = await this.db
       .select()
       .from(projects)
-      .where(eq(projects.id, id));
+      .where(and(eq(projects.id, id), eq(projects.userId, userId)));
     if (!project) {
       throw new NotFoundException(`Project ${id} not found`);
     }
     return project;
   }
 
-  async create(dto: CreateProjectDto) {
+  async create(dto: CreateProjectDto, userId: string) {
     const [project] = await this.db
       .insert(projects)
       .values({
         name: dto.name,
         description: dto.description,
         model: dto.model,
+        userId,
       })
       .returning();
     return project;

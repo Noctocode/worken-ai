@@ -91,16 +91,20 @@ export default function ProjectChatPage() {
           }),
         }));
 
-      const res = await fetch("http://localhost:3001/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: apiMessages,
-          model: project.model,
-          enableReasoning: true,
-          projectId,
-        }),
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            messages: apiMessages,
+            model: project.model,
+            enableReasoning: true,
+            projectId,
+          }),
+        },
+      );
 
       if (!res.ok) throw new Error("API request failed");
 
