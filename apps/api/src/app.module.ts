@@ -11,6 +11,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { TeamsModule } from './teams/teams.module';
+import { ConversationsModule } from './conversations/conversations.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TeamsModule } from './teams/teams.module';
     RedisModule,
     AuthModule,
     ChatModule,
+    ConversationsModule,
     DocumentsModule,
     ProjectsModule,
     TeamsModule,

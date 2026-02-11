@@ -207,6 +207,95 @@ export async function removeTeamMember(
   if (!res.ok) throw new Error("Failed to remove member");
 }
 
+// Conversations
+
+export interface ConversationParticipant {
+  id: string | null;
+  name: string | null;
+  picture: string | null;
+}
+
+export interface ConversationListItem {
+  id: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  participants: ConversationParticipant[];
+}
+
+export interface ConversationMessage {
+  id: string;
+  role: string;
+  content: string;
+  metadata: unknown;
+  createdAt: string;
+  userId: string | null;
+  userName: string | null;
+  userPicture: string | null;
+}
+
+export interface ConversationWithMessages {
+  id: string;
+  projectId: string;
+  userId: string;
+  title: string | null;
+  createdAt: string;
+  updatedAt: string;
+  messages: ConversationMessage[];
+}
+
+export async function fetchConversations(
+  projectId: string,
+): Promise<ConversationListItem[]> {
+  const res = await apiFetch(`/projects/${projectId}/conversations`);
+  if (!res.ok) throw new Error("Failed to fetch conversations");
+  return res.json();
+}
+
+export async function fetchConversation(
+  id: string,
+): Promise<ConversationWithMessages> {
+  const res = await apiFetch(`/conversations/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch conversation");
+  return res.json();
+}
+
+export async function createConversation(
+  projectId: string,
+): Promise<{ id: string }> {
+  const res = await apiFetch(`/projects/${projectId}/conversations`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to create conversation");
+  return res.json();
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const res = await apiFetch(`/conversations/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete conversation");
+}
+
+export async function sendChatMessage(
+  conversationId: string,
+  content: string,
+  model?: string,
+  projectId?: string,
+): Promise<{ role: string; content: string; reasoning_details?: unknown }> {
+  const res = await apiFetch("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversationId,
+      content,
+      model,
+      enableReasoning: true,
+      projectId,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to send message");
+  return res.json();
+}
+
 // Invitations
 
 export interface InviteDetails {

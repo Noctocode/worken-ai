@@ -14,8 +14,10 @@ export default function AppLayout({
         <Sidebar />
         <main className="flex min-w-0 flex-1 flex-col">
           <Appbar />
-          <div className="flex min-h-0 flex-1 flex-col overflow-auto px-6 py-8">
-            {children}
+          <div className="min-h-0 flex-1 overflow-auto">
+            <div className="mx-auto flex min-h-full max-w-7xl flex-col px-4 py-8 sm:px-8">
+              {children}
+            </div>
           </div>
         </main>
       </div>

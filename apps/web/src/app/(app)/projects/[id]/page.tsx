@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
@@ -14,17 +14,28 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { useQuery } from "@tanstack/react-query";
-import { fetchProject } from "@/lib/api";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchProject,
+  fetchConversation,
+  createConversation,
+  sendChatMessage,
+  type ConversationMessage,
+} from "@/lib/api";
+import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
+import { useAuth } from "@/components/providers";
 
-interface Message {
-  id: number;
-  role: "user" | "ai";
+interface LocalMessage {
+  id: string;
+  role: "user" | "assistant";
   content: string;
   timestamp: string;
-  reasoning_details?: string;
+  reasoning_details?: unknown;
+  userId?: string | null;
+  userName?: string | null;
+  userPicture?: string | null;
 }
 
 function getTimestamp() {
@@ -34,9 +45,21 @@ function getTimestamp() {
   });
 }
 
+function getInitials(name: string | null | undefined) {
+  if (!name) return "?";
+  return name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
 export default function ProjectChatPage() {
   const params = useParams();
   const projectId = params.id as string;
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
 
   const {
     data: project,
@@ -47,87 +70,121 @@ export default function ProjectChatPage() {
     queryFn: () => fetchProject(projectId),
   });
 
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 1,
-      role: "ai",
-      content:
-        "Hello! I'm your AI assistant. How can I help you with this project today?",
-      timestamp: getTimestamp(),
-    },
-  ]);
+  const [activeConversationId, setActiveConversationId] = useState<
+    string | null
+  >(null);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Fetch conversation messages when activeConversationId changes
+  const { data: conversationData, isLoading: isLoadingConversation } = useQuery(
+    {
+      queryKey: ["conversation", activeConversationId],
+      queryFn: () => fetchConversation(activeConversationId!),
+      enabled: !!activeConversationId,
+    },
+  );
+
+  // Sync fetched messages to local state
+  useEffect(() => {
+    if (conversationData?.messages) {
+      setMessages(
+        conversationData.messages.map((m: ConversationMessage) => ({
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+          reasoning_details:
+            m.metadata &&
+            typeof m.metadata === "object" &&
+            "reasoning_details" in (m.metadata as Record<string, unknown>)
+              ? (m.metadata as Record<string, unknown>).reasoning_details
+              : undefined,
+          userId: m.userId,
+          userName: m.userName,
+          userPicture: m.userPicture,
+        })),
+      );
+    }
+  }, [conversationData]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
+  const handleNewChat = useCallback(() => {
+    setActiveConversationId(null);
+    setMessages([]);
+  }, []);
+
+  const handleSelectConversation = useCallback((id: string) => {
+    setActiveConversationId(id);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isSending || !project) return;
 
-    const userMessage: Message = {
-      id: Date.now(),
-      role: "user",
-      content: message.trim(),
-      timestamp: getTimestamp(),
-    };
-
-    const updatedMessages = [...messages, userMessage];
-    setMessages(updatedMessages);
+    const content = message.trim();
     setMessage("");
     setIsSending(true);
 
-    try {
-      const apiMessages = updatedMessages
-        .filter((m) => m.role === "user" || m.role === "ai")
-        .map((m) => ({
-          role: m.role === "ai" ? ("assistant" as const) : ("user" as const),
-          content: m.content,
-          ...(m.reasoning_details && {
-            reasoning_details: m.reasoning_details,
-          }),
-        }));
+    // Optimistic user message
+    const optimisticMsg: LocalMessage = {
+      id: `temp-${Date.now()}`,
+      role: "user",
+      content,
+      timestamp: getTimestamp(),
+      userId: user?.id,
+      userName: user?.name,
+      userPicture: user?.picture,
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
 
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/chat`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            messages: apiMessages,
-            model: project.model,
-            enableReasoning: true,
-            projectId,
-          }),
-        },
+    try {
+      // Create conversation if this is a new chat
+      let convId = activeConversationId;
+      if (!convId) {
+        const newConvo = await createConversation(projectId);
+        convId = newConvo.id;
+        setActiveConversationId(convId);
+      }
+
+      // Send message (API persists both user + assistant messages)
+      const response = await sendChatMessage(
+        convId,
+        content,
+        project.model,
+        projectId,
       );
 
-      if (!res.ok) throw new Error("API request failed");
-
-      const data = await res.json();
-
+      // Append assistant response
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now() + 1,
-          role: "ai",
-          content: data.content,
+          id: `resp-${Date.now()}`,
+          role: "assistant",
+          content: response.content,
           timestamp: getTimestamp(),
-          ...(data.reasoning_details && {
-            reasoning_details: data.reasoning_details,
-          }),
+          reasoning_details: response.reasoning_details,
         },
       ]);
+
+      // Refresh sidebar
+      queryClient.invalidateQueries({
+        queryKey: ["conversations", projectId],
+      });
     } catch {
       setMessages((prev) => [
         ...prev,
         {
-          id: Date.now() + 1,
-          role: "ai",
+          id: `err-${Date.now()}`,
+          role: "assistant",
           content:
             "Sorry, I encountered an error. Please make sure the API server is running and try again.",
           timestamp: getTimestamp(),
@@ -145,201 +202,251 @@ export default function ProjectChatPage() {
     }
   };
 
+  const sidebarProps = {
+    projectId,
+    activeConversationId,
+    onSelectConversation: handleSelectConversation,
+    onNewChat: handleNewChat,
+  };
+
   if (isLoadingProject) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-white">
-        <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+      <div className="flex min-h-0 flex-1">
+        <ChatHistorySidebar {...sidebarProps} />
+        <div className="flex min-w-0 flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+        </div>
       </div>
     );
   }
 
   if (error || !project) {
     return (
-      <div className="flex min-h-0 flex-1 items-center justify-center bg-white">
-        <div className="text-center">
-          <p className="text-sm text-slate-600">Failed to load project</p>
-          <Link href="/">
-            <Button variant="link" className="mt-2">
-              Go back
-            </Button>
-          </Link>
+      <div className="flex min-h-0 flex-1">
+        <ChatHistorySidebar {...sidebarProps} />
+        <div className="flex min-w-0 flex-1 items-center justify-center">
+          <div className="text-center">
+            <p className="text-sm text-slate-600">Failed to load project</p>
+            <Link href="/">
+              <Button variant="link" className="mt-2">
+                Go back
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-white">
-      {/* Project Header */}
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200 px-4 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-slate-500 hover:text-slate-900"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="h-4 w-px bg-slate-200" />
-          <h1 className="text-sm font-semibold text-slate-900">
-            {project.name}
-          </h1>
-        </div>
-        <Badge
-          variant="secondary"
-          className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-        >
-          <Sparkles className="h-3 w-3" />
-          {project.model}
-        </Badge>
-      </div>
-
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
-          <div className="space-y-6">
-            {messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={`flex gap-3 ${
-                  msg.role === "user" ? "flex-row-reverse" : "flex-row"
-                }`}
+    <div className="flex min-h-0 flex-1">
+      <ChatHistorySidebar {...sidebarProps} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        {/* Project Header */}
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/60 px-4 backdrop-blur-md sm:px-6">
+          <div className="flex items-center gap-3">
+            <Link href="/">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-slate-500 hover:text-slate-900"
               >
-                {/* Avatar */}
-                {msg.role === "ai" ? (
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <div className="h-4 w-px bg-slate-200" />
+            <h1 className="text-sm font-semibold text-slate-900">
+              {project.name}
+            </h1>
+          </div>
+          <Badge
+            variant="secondary"
+            className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
+          >
+            <Sparkles className="h-3 w-3" />
+            {project.model}
+          </Badge>
+        </div>
+
+        {/* Messages Area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+            <div className="space-y-6">
+              {/* Empty state */}
+              {messages.length === 0 && !isLoadingConversation && (
+                <div className="flex flex-col items-center justify-center py-20 text-center">
+                  <Bot className="h-12 w-12 text-slate-300" />
+                  <h3 className="mt-4 text-sm font-medium text-slate-900">
+                    Start a conversation
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Send a message to begin chatting with your AI assistant.
+                  </p>
+                </div>
+              )}
+
+              {isLoadingConversation && (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              )}
+
+              {messages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-3 ${
+                    msg.role === "user" ? "flex-row-reverse" : "flex-row"
+                  }`}
+                >
+                  {/* Avatar */}
+                  {msg.role === "assistant" ? (
+                    <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
+                      <AvatarFallback className="bg-slate-100 text-slate-600">
+                        <Bot className="h-4 w-4" />
+                      </AvatarFallback>
+                    </Avatar>
+                  ) : (
+                    <Avatar className="h-8 w-8 shrink-0 border border-blue-100">
+                      {msg.userPicture ? (
+                        <AvatarImage
+                          src={msg.userPicture}
+                          alt={msg.userName || ""}
+                        />
+                      ) : null}
+                      <AvatarFallback className="bg-linear-to-tr from-blue-100 to-blue-50 text-xs font-medium text-blue-700">
+                        {getInitials(msg.userName || user?.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                  )}
+
+                  {/* Message Bubble */}
+                  <div
+                    className={`max-w-[85%] sm:max-w-[75%] ${
+                      msg.role === "user" ? "items-end" : "items-start"
+                    }`}
+                  >
+                    {/* Show sender name for team conversations */}
+                    {msg.role === "user" &&
+                      project.teamId &&
+                      msg.userName &&
+                      msg.userId !== user?.id && (
+                        <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                          {msg.userName}
+                        </span>
+                      )}
+                    <div
+                      className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                        msg.role === "assistant"
+                          ? "rounded-tl-sm border border-slate-200 bg-white text-slate-700 shadow-sm"
+                          : "rounded-tr-sm bg-slate-900 text-white"
+                      }`}
+                    >
+                      {msg.content.split("\n").map((line, i) => (
+                        <React.Fragment key={i}>
+                          {line
+                            .split(/(\*\*.*?\*\*)/)
+                            .map((segment, j) =>
+                              segment.startsWith("**") &&
+                              segment.endsWith("**") ? (
+                                <strong key={j}>{segment.slice(2, -2)}</strong>
+                              ) : (
+                                <span key={j}>{segment}</span>
+                              ),
+                            )}
+                          {i < msg.content.split("\n").length - 1 && <br />}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    <span
+                      className={`mt-1 block text-[11px] text-slate-400 ${
+                        msg.role === "user" ? "text-right" : "text-left"
+                      }`}
+                    >
+                      {msg.timestamp}
+                    </span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Typing indicator */}
+              {isSending && (
+                <div className="flex gap-3">
                   <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
                     <AvatarFallback className="bg-slate-100 text-slate-600">
                       <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                ) : (
-                  <Avatar className="h-8 w-8 shrink-0 border border-blue-100">
-                    <AvatarFallback className="bg-gradient-to-tr from-blue-100 to-blue-50 text-xs font-medium text-blue-700">
-                      JD
-                    </AvatarFallback>
-                  </Avatar>
-                )}
-
-                {/* Message Bubble */}
-                <div
-                  className={`max-w-[85%] sm:max-w-[75%] ${
-                    msg.role === "user" ? "items-end" : "items-start"
-                  }`}
-                >
-                  <div
-                    className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                      msg.role === "ai"
-                        ? "rounded-tl-sm border border-slate-200 bg-white text-slate-700"
-                        : "rounded-tr-sm bg-slate-900 text-white"
-                    }`}
-                  >
-                    {msg.content.split("\n").map((line, i) => (
-                      <React.Fragment key={i}>
-                        {line
-                          .split(/(\*\*.*?\*\*)/)
-                          .map((segment, j) =>
-                            segment.startsWith("**") &&
-                            segment.endsWith("**") ? (
-                              <strong key={j}>{segment.slice(2, -2)}</strong>
-                            ) : (
-                              <span key={j}>{segment}</span>
-                            ),
-                          )}
-                        {i < msg.content.split("\n").length - 1 && <br />}
-                      </React.Fragment>
-                    ))}
+                  <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-sm">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Thinking...
                   </div>
-                  <span
-                    className={`mt-1 block text-[11px] text-slate-400 ${
-                      msg.role === "user" ? "text-right" : "text-left"
-                    }`}
-                  >
-                    {msg.timestamp}
-                  </span>
                 </div>
-              </div>
-            ))}
+              )}
 
-            {/* Typing indicator */}
-            {isSending && (
-              <div className="flex gap-3">
-                <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
-                  <AvatarFallback className="bg-slate-100 text-slate-600">
-                    <Bot className="h-4 w-4" />
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Thinking...
-                </div>
-              </div>
-            )}
-
-            <div ref={messagesEndRef} />
+              <div ref={messagesEndRef} />
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Input Area */}
-      <div className="shrink-0 border-t border-slate-200 bg-white">
-        <form
-          onSubmit={handleSubmit}
-          className="mx-auto max-w-3xl px-4 py-3 sm:px-6"
-        >
-          <div className="flex items-end gap-2">
-            <div className="relative flex-1">
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
-                rows={1}
-                disabled={isSending}
-                className="w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
-                style={{ minHeight: "44px", maxHeight: "120px" }}
-                onInput={(e) => {
-                  const target = e.target as HTMLTextAreaElement;
-                  target.style.height = "auto";
-                  target.style.height =
-                    Math.min(target.scrollHeight, 120) + "px";
-                }}
-              />
-            </div>
-            <Button
-              type="submit"
-              size="icon"
-              className="h-11 w-11 shrink-0 rounded-xl bg-slate-900 hover:bg-slate-800"
-              disabled={!message.trim() || isSending}
-            >
-              <Send className="h-4 w-4" />
-            </Button>
-          </div>
-          <div className="mt-2 flex items-center justify-between">
-            <div className="flex items-center gap-1">
+        {/* Input Area */}
+        <div className="shrink-0 border-t border-slate-200/60 bg-white/60 backdrop-blur-md">
+          <form
+            onSubmit={handleSubmit}
+            className="mx-auto max-w-3xl px-4 py-3 sm:px-6"
+          >
+            <div className="flex items-end gap-2">
+              <div className="relative flex-1">
+                <textarea
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Type your message..."
+                  rows={1}
+                  disabled={isSending}
+                  className="w-full resize-none rounded-xl border border-slate-200 bg-white/80 px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
+                  style={{ minHeight: "44px", maxHeight: "120px" }}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = "auto";
+                    target.style.height =
+                      Math.min(target.scrollHeight, 120) + "px";
+                  }}
+                />
+              </div>
               <Button
-                type="button"
-                variant="ghost"
+                type="submit"
                 size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                className="h-11 w-11 shrink-0 rounded-xl bg-slate-900 hover:bg-slate-800"
+                disabled={!message.trim() || isSending}
               >
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-slate-400 hover:text-slate-600"
-              >
-                <ImageIcon className="h-4 w-4" />
+                <Send className="h-4 w-4" />
               </Button>
             </div>
-            <span className="text-[11px] text-slate-400">
-              Shift + Enter for new line
-            </span>
-          </div>
-        </form>
+            <div className="mt-2 flex items-center justify-between">
+              <div className="flex items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                >
+                  <ImageIcon className="h-4 w-4" />
+                </Button>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                Shift + Enter for new line
+              </span>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   );
