@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Infinity,
   PlusCircle,
@@ -31,32 +33,48 @@ function getInitials(name: string | null | undefined): string {
 
 export const SidebarContent = () => {
   const { user } = useAuth();
+  const pathname = usePathname();
+
+  const activeClass =
+    "bg-blue-50 text-blue-600 hover:bg-blue-50 hover:text-blue-700";
+  const inactiveClass = "text-slate-500 hover:text-slate-900";
 
   return (
     <div className="flex h-full flex-col">
       {/* Logo Area */}
       <div className="flex h-[4.5rem] items-center border-b px-6">
-        <div className="flex cursor-pointer items-center gap-2.5 group">
+        <Link href="/" className="flex cursor-pointer items-center gap-2.5 group">
           <div className="flex items-center justify-center text-blue-600">
             <Infinity className="h-7 w-7" />
           </div>
           <span className="text-lg font-semibold tracking-tight text-slate-900 transition-colors group-hover:text-blue-600">
             WorkenAI
           </span>
-        </div>
+        </Link>
       </div>
 
       {/* Primary Actions */}
       <div className="p-4 pb-2">
-        <CreateProjectDialog>
+        {user?.canCreateProject ? (
+          <CreateProjectDialog>
+            <Button
+              className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
+              size="lg"
+            >
+              <PlusCircle className="h-4 w-4" />
+              New Project
+            </Button>
+          </CreateProjectDialog>
+        ) : (
           <Button
-            className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
+            className="w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed"
             size="lg"
+            disabled
           >
             <PlusCircle className="h-4 w-4" />
             New Project
           </Button>
-        </CreateProjectDialog>
+        )}
       </div>
 
       {/* Navigation Links */}
@@ -66,13 +84,15 @@ export const SidebarContent = () => {
             <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
               Workspace
             </div>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 bg-blue-50 text-blue-600 hover:bg-blue-50 hover:text-blue-700"
-            >
-              <FolderOpen className="h-5 w-5" />
-              Ongoing Projects
-            </Button>
+            <Link href="/">
+              <Button
+                variant="ghost"
+                className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+              >
+                <FolderOpen className="h-5 w-5" />
+                Ongoing Projects
+              </Button>
+            </Link>
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
@@ -80,13 +100,15 @@ export const SidebarContent = () => {
               <Layers className="h-5 w-5" />
               Compare Models
             </Button>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
-            >
-              <Users className="h-5 w-5" />
-              Team Management
-            </Button>
+            <Link href="/teams">
+              <Button
+                variant="ghost"
+                className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              >
+                <Users className="h-5 w-5" />
+                Team Management
+              </Button>
+            </Link>
           </div>
 
           <div className="space-y-1">

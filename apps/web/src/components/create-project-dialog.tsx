@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createProject } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { createProject, fetchTeams } from "@/lib/api";
 import { MODELS } from "@/lib/models";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,8 +34,15 @@ export function CreateProjectDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [model, setModel] = useState("");
+  const [teamId, setTeamId] = useState<string>("personal");
 
   const queryClient = useQueryClient();
+
+  const { data: teams } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+    enabled: open,
+  });
 
   const mutation = useMutation({
     mutationFn: createProject,
@@ -44,6 +51,7 @@ export function CreateProjectDialog({
       setName("");
       setDescription("");
       setModel("");
+      setTeamId("personal");
       setOpen(false);
     },
   });
@@ -55,6 +63,7 @@ export function CreateProjectDialog({
       name: name.trim(),
       description: description.trim() || undefined,
       model,
+      teamId: teamId === "personal" ? undefined : teamId,
     });
   };
 
@@ -104,6 +113,24 @@ export function CreateProjectDialog({
               </SelectContent>
             </Select>
           </div>
+          {teams && teams.length > 0 && (
+            <div className="space-y-2">
+              <Label>Workspace</Label>
+              <Select value={teamId} onValueChange={setTeamId}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="personal">Personal</SelectItem>
+                  {teams.map((team) => (
+                    <SelectItem key={team.id} value={team.id}>
+                      {team.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <DialogFooter>
             <Button
               type="submit"

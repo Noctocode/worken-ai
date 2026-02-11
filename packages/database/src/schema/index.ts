@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid, vector, index } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, uuid, vector, index, boolean } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -6,13 +6,34 @@ export const users = pgTable("users", {
   name: text("name"),
   picture: text("picture"),
   googleId: text("google_id").notNull().unique(),
+  isPaid: boolean("is_paid").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const teams = pgTable("teams", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  ownerId: uuid("owner_id").references(() => users.id).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const teamMembers = pgTable("team_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }).notNull(),
+  userId: uuid("user_id").references(() => users.id),
+  email: text("email").notNull(),
+  role: text("role").notNull(), // 'basic' | 'advanced'
+  status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
+  invitationToken: text("invitation_token"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id").references(() => users.id).notNull(),
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
   model: text("model").notNull(),

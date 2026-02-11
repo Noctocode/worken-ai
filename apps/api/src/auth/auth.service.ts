@@ -1,18 +1,13 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { eq } from 'drizzle-orm';
-import { users } from '@worken/database/schema';
+import { and, eq } from 'drizzle-orm';
+import { users, teamMembers } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { REDIS } from '../redis/redis.module.js';
+import { TeamsService } from '../teams/teams.service.js';
 import type Redis from 'ioredis';
-
-interface GoogleProfile {
-  googleId: string;
-  email: string;
-  name: string;
-  picture?: string;
-}
+import type { GoogleProfile } from './types.js';
 
 @Injectable()
 export class AuthService {
@@ -21,6 +16,7 @@ export class AuthService {
     @Inject(REDIS) private readonly redis: Redis,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly teamsService: TeamsService,
   ) {}
 
   async validateOrCreateUser(profile: GoogleProfile) {
@@ -55,9 +51,9 @@ export class AuthService {
     return user;
   }
 
-  async generateTokens(userId: string, email: string) {
+  async generateTokens(userId: string, email: string, isPaid: boolean) {
     const accessToken = this.jwt.sign(
-      { sub: userId, email },
+      { sub: userId, email, isPaid },
       {
         secret: this.config.getOrThrow('JWT_SECRET'),
         expiresIn: '15m',
@@ -106,7 +102,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.generateTokens(user.id, user.email);
+    return this.generateTokens(user.id, user.email, user.isPaid);
   }
 
   async logout(userId: string) {
@@ -121,11 +117,27 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+
+    const canCreateProject =
+      user.isPaid ||
+      (await this.teamsService.userHasAdvancedRoleInAnyTeam(userId));
+
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       picture: user.picture,
+      isPaid: user.isPaid,
+      canCreateProject,
     };
+  }
+
+  async processTeamInvitations(userId: string, email: string) {
+    await this.db
+      .update(teamMembers)
+      .set({ userId, status: 'accepted', invitationToken: null })
+      .where(
+        and(eq(teamMembers.email, email), eq(teamMembers.status, 'pending')),
+      );
   }
 }

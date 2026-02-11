@@ -9,6 +9,8 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
 import { Public } from './public.decorator.js';
+import { CurrentUser } from './current-user.decorator.js';
+import type { AuthenticatedUser, GoogleProfile } from './types.js';
 import type { Request as Req, Response as Res } from 'express';
 
 const COOKIE_OPTIONS = {
@@ -32,9 +34,17 @@ export class AuthController {
   @Public()
   @Get('google/callback')
   @UseGuards(AuthGuard('google'))
-  async googleCallback(@Request() req, @Response() res: Res) {
+  async googleCallback(
+    @Request() req: Req & { user: GoogleProfile },
+    @Response() res: Res,
+  ) {
     const user = await this.authService.validateOrCreateUser(req.user);
-    const tokens = await this.authService.generateTokens(user.id, user.email);
+    await this.authService.processTeamInvitations(user.id, user.email);
+    const tokens = await this.authService.generateTokens(
+      user.id,
+      user.email,
+      user.isPaid,
+    );
 
     res.cookie('access_token', tokens.accessToken, {
       ...COOKIE_OPTIONS,
@@ -46,13 +56,22 @@ export class AuthController {
     });
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(frontendUrl);
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const returnTo = cookies?.invite_return_to;
+    res.clearCookie('invite_return_to', { path: '/' });
+
+    if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/')) {
+      res.redirect(`${frontendUrl}${returnTo}`);
+    } else {
+      res.redirect(frontendUrl);
+    }
   }
 
   @Public()
   @Post('refresh')
   async refresh(@Request() req: Req, @Response() res: Res) {
-    const refreshToken = req.cookies?.refresh_token;
+    const cookies = req.cookies as Record<string, string> | undefined;
+    const refreshToken = cookies?.refresh_token;
     if (!refreshToken) {
       res.status(401).json({ message: 'No refresh token' });
       return;
@@ -73,8 +92,8 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(@Request() req, @Response() res: Res) {
-    await this.authService.logout(req.user.id);
+  async logout(@CurrentUser() user: AuthenticatedUser, @Response() res: Res) {
+    await this.authService.logout(user.id);
 
     res.clearCookie('access_token', COOKIE_OPTIONS);
     res.clearCookie('refresh_token', COOKIE_OPTIONS);
@@ -83,7 +102,7 @@ export class AuthController {
   }
 
   @Get('me')
-  async me(@Request() req) {
-    return this.authService.getUser(req.user.id);
+  async me(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getUser(user.id);
   }
 }

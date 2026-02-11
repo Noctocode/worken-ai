@@ -10,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
+import { TeamsModule } from './teams/teams.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { RedisModule } from './redis/redis.module';
     ChatModule,
     DocumentsModule,
     ProjectsModule,
+    TeamsModule,
   ],
   controllers: [AppController],
   providers: [

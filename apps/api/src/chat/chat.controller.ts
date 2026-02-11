@@ -53,7 +53,9 @@ export class ChatController {
     return {
       role: 'assistant',
       content: response.content,
-      ...(response.reasoning_details ? { reasoning_details: response.reasoning_details } : {}),
+      ...(response.reasoning_details
+        ? { reasoning_details: response.reasoning_details }
+        : {}),
     };
   }
 }

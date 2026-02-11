@@ -15,6 +15,8 @@ import {
   Calendar,
   Loader2,
   FileText,
+  FolderOpen,
+  Users,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -39,6 +41,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
+import { useAuth } from "@/components/providers";
 import { fetchProjects, type Project } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 
@@ -65,33 +68,41 @@ function ProjectCard({ project }: { project: Project }) {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
                 <Sparkles className="h-4 w-4" />
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
+              <div className="flex items-center gap-1.5">
+                {project.teamId && (
+                  <Badge variant="secondary" className="gap-1 text-xs border-purple-200 bg-purple-50 text-purple-700">
+                    <Users className="h-3 w-3" />
+                    Team
+                  </Badge>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                      }}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    align="end"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
                     }}
                   >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="end"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                  }}
-                >
-                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Add Context
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                    <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Add Context
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
             <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
               {project.name}
@@ -128,14 +139,19 @@ function ProjectCard({ project }: { project: Project }) {
 }
 
 export default function WorkenDashboard() {
+  const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"all" | "personal" | "team">("all");
+
   const {
     data: projects,
     isLoading,
     error,
   } = useQuery({
-    queryKey: ["projects"],
-    queryFn: fetchProjects,
+    queryKey: ["projects", activeTab],
+    queryFn: () => fetchProjects(activeTab),
   });
+
+  const canCreateProject = user?.canCreateProject;
 
   return (
     <div className="space-y-8">
@@ -159,7 +175,7 @@ export default function WorkenDashboard() {
 
       {/* Filters & Controls */}
       <div className="flex flex-col justify-between gap-4 border-b border-slate-200/60 pb-2 sm:flex-row sm:items-center">
-        <Tabs defaultValue="all" className="w-auto">
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-auto">
           <TabsList className="bg-slate-100 p-1">
             <TabsTrigger value="all" className="px-4 text-xs font-medium">
               All Projects
@@ -196,12 +212,14 @@ export default function WorkenDashboard() {
             <Filter className="h-4 w-4" />
             Filter
           </Button>
-          <CreateProjectDialog>
-            <Button size="sm" className="gap-2 sm:hidden">
-              <PlusCircle className="h-4 w-4" />
-              New
-            </Button>
-          </CreateProjectDialog>
+          {canCreateProject && (
+            <CreateProjectDialog>
+              <Button size="sm" className="gap-2 sm:hidden">
+                <PlusCircle className="h-4 w-4" />
+                New
+              </Button>
+            </CreateProjectDialog>
+          )}
         </div>
       </div>
 
@@ -223,22 +241,38 @@ export default function WorkenDashboard() {
           <ProjectCard key={project.id} project={project} />
         ))}
 
-        {/* New Project Card */}
-        <CreateProjectDialog>
-          <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
-            <div className="flex flex-1 flex-col items-center justify-center p-4">
-              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
-                <PlusCircle className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
-              </div>
-              <h3 className="text-sm font-semibold text-slate-700">
-                Create New Project
-              </h3>
-              <p className="mt-1 max-w-[180px] text-xs text-slate-400">
-                Start a new thread, compare models, or analyze documents.
-              </p>
+        {!isLoading && !error && projects?.length === 0 && !canCreateProject && (
+          <div className="col-span-full flex flex-col items-center justify-center py-16">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+              <FolderOpen className="h-6 w-6 text-slate-300" />
             </div>
-          </Card>
-        </CreateProjectDialog>
+            <h3 className="mt-4 text-sm font-semibold text-slate-700">
+              No projects yet
+            </h3>
+            <p className="mt-1 max-w-[260px] text-center text-xs text-slate-400">
+              You don&apos;t have any projects to show. Ask your team owner to create one or upgrade to a paid plan.
+            </p>
+          </div>
+        )}
+
+        {/* New Project Card */}
+        {canCreateProject && (
+          <CreateProjectDialog>
+            <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
+              <div className="flex flex-1 flex-col items-center justify-center p-4">
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
+                  <PlusCircle className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-700">
+                  Create New Project
+                </h3>
+                <p className="mt-1 max-w-[180px] text-xs text-slate-400">
+                  Start a new thread, compare models, or analyze documents.
+                </p>
+              </div>
+            </Card>
+          </CreateProjectDialog>
+        )}
       </div>
 
       {/* Comparisons Section */}
