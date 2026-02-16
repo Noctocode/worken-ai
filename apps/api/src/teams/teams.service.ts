@@ -7,7 +7,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, or, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { teams, teamMembers, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
@@ -49,10 +49,7 @@ export class TeamsService {
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.userId, userId),
-          eq(teamMembers.status, 'accepted'),
-        ),
+        and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
       );
 
     const memberTeamIds = memberRows
@@ -105,7 +102,12 @@ export class TeamsService {
     return { ...team, members };
   }
 
-  async inviteMember(teamId: string, email: string, role: string, userId: string) {
+  async inviteMember(
+    teamId: string,
+    email: string,
+    role: string,
+    userId: string,
+  ) {
     // Verify caller is owner
     const [team] = await this.db
       .select()
@@ -127,15 +129,12 @@ export class TeamsService {
     const [existing] = await this.db
       .select()
       .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.email, email),
-        ),
-      );
+      .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.email, email)));
 
     if (existing) {
-      throw new ConflictException('This email has already been invited to this team');
+      throw new ConflictException(
+        'This email has already been invited to this team',
+      );
     }
 
     // Look up inviter name
@@ -168,7 +167,12 @@ export class TeamsService {
     return member;
   }
 
-  async updateMemberRole(teamId: string, memberId: string, role: string, userId: string) {
+  async updateMemberRole(
+    teamId: string,
+    memberId: string,
+    role: string,
+    userId: string,
+  ) {
     const [team] = await this.db
       .select()
       .from(teams)
@@ -178,7 +182,9 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update member roles');
+      throw new ForbiddenException(
+        'Only the team owner can update member roles',
+      );
     }
 
     if (role !== 'basic' && role !== 'advanced') {
@@ -188,12 +194,7 @@ export class TeamsService {
     const [updated] = await this.db
       .update(teamMembers)
       .set({ role })
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      )
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)))
       .returning();
 
     if (!updated) {
@@ -220,12 +221,7 @@ export class TeamsService {
     const [member] = await this.db
       .select()
       .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      );
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
     if (!member) {
       throw new NotFoundException('Member not found');
@@ -237,17 +233,15 @@ export class TeamsService {
 
     await this.db
       .delete(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      );
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
     return { success: true };
   }
 
-  async getUserTeamRole(teamId: string, userId: string): Promise<'owner' | 'basic' | 'advanced' | null> {
+  async getUserTeamRole(
+    teamId: string,
+    userId: string,
+  ): Promise<'owner' | 'basic' | 'advanced' | null> {
     const [team] = await this.db
       .select()
       .from(teams)
@@ -283,10 +277,7 @@ export class TeamsService {
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.userId, userId),
-          eq(teamMembers.status, 'accepted'),
-        ),
+        and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
       );
 
     const ids = new Set([
@@ -368,7 +359,9 @@ export class TeamsService {
     }
 
     if (member.email.toLowerCase() !== userEmail.toLowerCase()) {
-      throw new ForbiddenException('This invitation was sent to a different email address');
+      throw new ForbiddenException(
+        'This invitation was sent to a different email address',
+      );
     }
 
     const [updated] = await this.db

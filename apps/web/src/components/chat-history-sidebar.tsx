@@ -6,11 +6,7 @@ import { Plus, MessageSquare, Loader2, Trash2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  fetchConversations,
-  deleteConversation,
-  type ConversationListItem,
-} from "@/lib/api";
+import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface ChatHistorySidebarProps {
@@ -70,7 +66,7 @@ export function ChatHistorySidebar({
   };
 
   return (
-    <div className="hidden w-72 shrink-0 flex-col border-r border-slate-200/60 lg:flex">
+    <div className="hidden w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/60 lg:flex">
       <div className="flex h-14 shrink-0 items-center justify-between px-4">
         <h2 className="text-sm font-semibold text-slate-900">Chat History</h2>
         <Button
@@ -92,21 +88,33 @@ export function ChatHistorySidebar({
           {!isLoading && (!conversations || conversations.length === 0) && (
             <div className="px-3 py-8 text-center">
               <MessageSquare className="mx-auto h-8 w-8 text-slate-300" />
-              <p className="mt-2 text-xs text-slate-400">No conversations yet</p>
+              <p className="mt-2 text-xs text-slate-400">
+                No conversations yet
+              </p>
             </div>
           )}
           {conversations?.map((convo) => (
-            <button
+            <div
               key={convo.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelectConversation(convo.id)}
-              className={`group flex w-full items-start gap-3 rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-100/60 ${
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelectConversation(convo.id);
+                }
+              }}
+              className={`group flex w-full cursor-pointer items-start gap-3 overflow-hidden rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-100/60 ${
                 activeConversationId === convo.id ? "bg-blue-50/50" : ""
               }`}
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-sm font-medium text-slate-900">
-                    {convo.title || "New conversation"}
+                  <span className="min-w-0 truncate text-sm font-medium text-slate-900">
+                    {(convo.title || "New conversation").length > 28
+                      ? (convo.title || "New conversation").slice(0, 28) + "..."
+                      : convo.title || "New conversation"}
                   </span>
                   <span className="shrink-0 text-[11px] text-slate-400">
                     {getRelativeTime(convo.updatedAt)}
@@ -137,13 +145,13 @@ export function ChatHistorySidebar({
                   {/* Delete button */}
                   <button
                     onClick={(e) => handleDelete(e, convo.id)}
-                    className="hidden text-slate-400 hover:text-red-500 group-hover:block"
+                    className="shrink-0 text-slate-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       </ScrollArea>
