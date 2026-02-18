@@ -122,6 +122,32 @@ export async function fetchDocuments(projectId: string): Promise<Document[]> {
   return res.json();
 }
 
+export interface DocumentGroup {
+  groupId: string;
+  title: string;
+  createdAt: string;
+  chunkCount: number;
+}
+
+export async function fetchDocumentGroups(
+  projectId: string,
+): Promise<DocumentGroup[]> {
+  const res = await apiFetch(`/projects/${projectId}/documents/groups`);
+  if (!res.ok) throw new Error("Failed to fetch document groups");
+  return res.json();
+}
+
+export async function deleteDocumentGroup(
+  projectId: string,
+  groupId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    `/projects/${projectId}/documents/groups/${groupId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete document group");
+}
+
 // Teams
 
 export interface Team {

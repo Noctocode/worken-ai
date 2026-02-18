@@ -1,17 +1,29 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { cosineDistance, desc, eq, sql } from 'drizzle-orm';
+import { ConfigService } from '@nestjs/config';
+import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
 import { documents } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import {
   pipeline,
   type FeatureExtractionPipeline,
 } from '@huggingface/transformers';
+import OpenAI from 'openai';
+import { randomUUID } from 'crypto';
 
 @Injectable()
 export class DocumentsService {
   private embedder: FeatureExtractionPipeline | null = null;
+  private openai: OpenAI;
 
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private configService: ConfigService,
+  ) {
+    this.openai = new OpenAI({
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+    });
+  }
 
   private async getEmbedder(): Promise<FeatureExtractionPipeline> {
     if (!this.embedder) {
@@ -65,14 +77,42 @@ export class DocumentsService {
     return results;
   }
 
+  private async generateTitle(text: string): Promise<string> {
+    const snippet = text.slice(0, 500);
+    try {
+      const response = await this.openai.chat.completions.create({
+        model: 'arcee-ai/trinity-large-preview:free',
+        messages: [
+          {
+            role: 'user',
+            content: `Summarize what this text is about in 2-5 words. Reply with only the title, no quotes or punctuation.\n\n${snippet}`,
+          },
+        ],
+        max_completion_tokens: 20,
+      });
+      return (
+        response.choices[0]?.message?.content?.trim() || 'Untitled Document'
+      );
+    } catch {
+      return 'Untitled Document';
+    }
+  }
+
   async create(projectId: string, content: string) {
     const chunks = this.chunkText(content);
     if (chunks.length === 0) return [];
 
-    const embeddings = await this.embed(chunks);
+    const [embeddings, title] = await Promise.all([
+      this.embed(chunks),
+      this.generateTitle(content),
+    ]);
+
+    const groupId = randomUUID();
 
     const rows = chunks.map((chunk, i) => ({
       projectId,
+      groupId,
+      title,
       content: chunk,
       embedding: embeddings[i],
     }));
@@ -90,6 +130,29 @@ export class DocumentsService {
       .from(documents)
       .where(eq(documents.projectId, projectId))
       .orderBy(desc(documents.createdAt));
+  }
+
+  async findGroupsByProject(projectId: string) {
+    return this.db
+      .select({
+        groupId: documents.groupId,
+        title: documents.title,
+        createdAt: min(documents.createdAt),
+        chunkCount: count(),
+      })
+      .from(documents)
+      .where(eq(documents.projectId, projectId))
+      .groupBy(documents.groupId, documents.title)
+      .orderBy(desc(min(documents.createdAt)));
+  }
+
+  async removeByGroup(projectId: string, groupId: string) {
+    return this.db
+      .delete(documents)
+      .where(
+        and(eq(documents.groupId, groupId), eq(documents.projectId, projectId)),
+      )
+      .returning();
   }
 
   async searchRelevant(projectId: string, query: string, limit = 5) {

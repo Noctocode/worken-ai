@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, uuid, vector, index, boolean, jsonb } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  timestamp,
+  uuid,
+  vector,
+  index,
+  boolean,
+  jsonb,
+} from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -14,14 +23,18 @@ export const users = pgTable("users", {
 export const teams = pgTable("teams", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
-  ownerId: uuid("owner_id").references(() => users.id).notNull(),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const teamMembers = pgTable("team_members", {
   id: uuid("id").primaryKey().defaultRandom(),
-  teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }).notNull(),
+  teamId: uuid("team_id")
+    .references(() => teams.id, { onDelete: "cascade" })
+    .notNull(),
   userId: uuid("user_id").references(() => users.id),
   email: text("email").notNull(),
   role: text("role").notNull(), // 'basic' | 'advanced'
@@ -32,7 +45,9 @@ export const teamMembers = pgTable("team_members", {
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   description: text("description"),
@@ -42,20 +57,35 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const documents = pgTable("documents", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id").references(() => projects.id).notNull(),
-  content: text("content").notNull(),
-  embedding: vector("embedding", { dimensions: 384 }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  index("documents_embedding_idx").using("hnsw", table.embedding.op("vector_cosine_ops")),
-]);
+export const documents = pgTable(
+  "documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .references(() => projects.id)
+      .notNull(),
+    groupId: uuid("group_id").notNull(),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    embedding: vector("embedding", { dimensions: 384 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("documents_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops"),
+    ),
+  ],
+);
 
 export const conversations = pgTable("conversations", {
   id: uuid("id").primaryKey().defaultRandom(),
-  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }).notNull(),
-  userId: uuid("user_id").references(() => users.id).notNull(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
   title: text("title"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -63,7 +93,9 @@ export const conversations = pgTable("conversations", {
 
 export const messages = pgTable("messages", {
   id: uuid("id").primaryKey().defaultRandom(),
-  conversationId: uuid("conversation_id").references(() => conversations.id, { onDelete: "cascade" }).notNull(),
+  conversationId: uuid("conversation_id")
+    .references(() => conversations.id, { onDelete: "cascade" })
+    .notNull(),
   userId: uuid("user_id").references(() => users.id),
   role: text("role").notNull(), // 'user' | 'assistant'
   content: text("content").notNull(),
