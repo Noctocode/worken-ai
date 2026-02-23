@@ -70,9 +70,12 @@ function ProjectCard({ project }: { project: Project }) {
               </div>
               <div className="flex items-center gap-1.5">
                 {project.teamId && (
-                  <Badge variant="secondary" className="gap-1 text-xs border-purple-200 bg-purple-50 text-purple-700">
+                  <Badge
+                    variant="secondary"
+                    className="gap-1 text-xs border-purple-200 bg-purple-50 text-purple-700"
+                  >
                     <Users className="h-3 w-3" />
-                    Team
+                    {project.teamName ?? "Team"}
                   </Badge>
                 )}
                 <DropdownMenu>
@@ -140,7 +143,9 @@ function ProjectCard({ project }: { project: Project }) {
 
 export default function WorkenDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"all" | "personal" | "team">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "personal" | "team">(
+    "all",
+  );
 
   const {
     data: projects,
@@ -175,7 +180,11 @@ export default function WorkenDashboard() {
 
       {/* Filters & Controls */}
       <div className="flex flex-col justify-between gap-4 border-b border-slate-200/60 pb-2 sm:flex-row sm:items-center">
-        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as typeof activeTab)} className="w-auto">
+        <Tabs
+          value={activeTab}
+          onValueChange={(v) => setActiveTab(v as typeof activeTab)}
+          className="w-auto"
+        >
           <TabsList className="bg-slate-100 p-1">
             <TabsTrigger value="all" className="px-4 text-xs font-medium">
               All Projects
@@ -241,19 +250,23 @@ export default function WorkenDashboard() {
           <ProjectCard key={project.id} project={project} />
         ))}
 
-        {!isLoading && !error && projects?.length === 0 && !canCreateProject && (
-          <div className="col-span-full flex flex-col items-center justify-center py-16">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-              <FolderOpen className="h-6 w-6 text-slate-300" />
+        {!isLoading &&
+          !error &&
+          projects?.length === 0 &&
+          !canCreateProject && (
+            <div className="col-span-full flex flex-col items-center justify-center py-16">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+                <FolderOpen className="h-6 w-6 text-slate-300" />
+              </div>
+              <h3 className="mt-4 text-sm font-semibold text-slate-700">
+                No projects yet
+              </h3>
+              <p className="mt-1 max-w-[260px] text-center text-xs text-slate-400">
+                You don&apos;t have any projects to show. Ask your team owner to
+                create one or upgrade to a paid plan.
+              </p>
             </div>
-            <h3 className="mt-4 text-sm font-semibold text-slate-700">
-              No projects yet
-            </h3>
-            <p className="mt-1 max-w-[260px] text-center text-xs text-slate-400">
-              You don&apos;t have any projects to show. Ask your team owner to create one or upgrade to a paid plan.
-            </p>
-          </div>
-        )}
+          )}
 
         {/* New Project Card */}
         {canCreateProject && (

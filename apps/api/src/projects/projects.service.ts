@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, inArray, or } from 'drizzle-orm';
-import { projects } from '@worken/database/schema';
+import { projects, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
 
@@ -23,22 +23,36 @@ export class ProjectsService {
     private readonly teamsService: TeamsService,
   ) {}
 
+  private selectWithTeamName() {
+    return this.db
+      .select({
+        id: projects.id,
+        name: projects.name,
+        description: projects.description,
+        model: projects.model,
+        status: projects.status,
+        teamId: projects.teamId,
+        teamName: teams.name,
+        userId: projects.userId,
+        createdAt: projects.createdAt,
+        updatedAt: projects.updatedAt,
+      })
+      .from(projects)
+      .leftJoin(teams, eq(projects.teamId, teams.id));
+  }
+
   async findAll(userId: string, filter: 'all' | 'personal' | 'team' = 'all') {
     const teamIds = await this.teamsService.getUserTeamIds(userId);
 
     if (filter === 'personal') {
-      return this.db
-        .select()
-        .from(projects)
+      return this.selectWithTeamName()
         .where(and(eq(projects.userId, userId), isNull(projects.teamId)))
         .orderBy(desc(projects.createdAt));
     }
 
     if (filter === 'team') {
       if (teamIds.length === 0) return [];
-      return this.db
-        .select()
-        .from(projects)
+      return this.selectWithTeamName()
         .where(inArray(projects.teamId, teamIds))
         .orderBy(desc(projects.createdAt));
     }
@@ -51,9 +65,7 @@ export class ProjectsService {
       conditions.push(inArray(projects.teamId, teamIds));
     }
 
-    return this.db
-      .select()
-      .from(projects)
+    return this.selectWithTeamName()
       .where(or(...conditions))
       .orderBy(desc(projects.createdAt));
   }

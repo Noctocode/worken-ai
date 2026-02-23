@@ -58,6 +58,7 @@ export interface Project {
   model: string;
   status: string;
   teamId: string | null;
+  teamName: string | null;
   createdAt: string;
   updatedAt: string;
 }
