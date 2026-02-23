@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
 import { documents } from '@worken/database/schema';
@@ -174,5 +174,57 @@ export class DocumentsService {
 
   async remove(id: string) {
     return this.db.delete(documents).where(eq(documents.id, id)).returning();
+  }
+
+  private async parseFile(buffer: Buffer, mimetype: string): Promise<string> {
+    if (mimetype === 'application/pdf') {
+      const { PDFParse } = await import('pdf-parse');
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      return result.text;
+    }
+
+    if (
+      mimetype ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ) {
+      console.log('Parsing DOCX file...');
+      const mammoth = await import('mammoth');
+      const result = await mammoth.extractRawText({ buffer });
+      console.log(result);
+      return result.value;
+    }
+
+    throw new BadRequestException(
+      'Unsupported file type. Only PDF and DOCX are allowed.',
+    );
+  }
+
+  async createFromFile(
+    projectId: string,
+    buffer: Buffer,
+    mimetype: string,
+    filename: string,
+  ) {
+    const text = await this.parseFile(buffer, mimetype);
+    const chunks = this.chunkText(text);
+    if (chunks.length === 0) {
+      throw new BadRequestException(
+        'No text could be extracted from this file. It may contain only images or unsupported content.',
+      );
+    }
+    const embeddings = await this.embed(chunks);
+    const title = filename.replace(/\.[^.]+$/, '');
+    const groupId = randomUUID();
+
+    const rows = chunks.map((chunk, i) => ({
+      projectId,
+      groupId,
+      title,
+      content: chunk,
+      embedding: embeddings[i],
+    }));
+
+    return this.db.insert(documents).values(rows).returning();
   }
 }

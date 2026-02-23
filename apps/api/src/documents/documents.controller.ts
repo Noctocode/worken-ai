@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { DocumentsService } from './documents.service.js';
 
 @Controller()
@@ -11,6 +22,20 @@ export class DocumentsController {
     @Body() body: { content: string },
   ) {
     return this.documentsService.create(projectId, body.content);
+  }
+
+  @Post('projects/:projectId/documents/upload')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async upload(
+    @Param('projectId') projectId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.documentsService.createFromFile(
+      projectId,
+      file.buffer,
+      file.mimetype,
+      file.originalname,
+    );
   }
 
   @Get('projects/:projectId/documents')

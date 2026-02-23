@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post } from '@nestjs/common';
+import { Controller, Delete, Get, Param, Post } from '@nestjs/common';
 import { ConversationsService } from './conversations.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -28,8 +28,8 @@ export class ConversationsController {
     return this.conversationsService.create(projectId, user.id);
   }
 
-  // @Delete('conversations/:id')
-  // remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-  //   return this.conversationsService.remove(id, user.id);
-  // }
+  @Delete('conversations/:id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.conversationsService.remove(id, user.id);
+  }
 }

@@ -148,6 +148,23 @@ export async function deleteDocumentGroup(
   if (!res.ok) throw new Error("Failed to delete document group");
 }
 
+export async function uploadDocumentFile(
+  projectId: string,
+  file: File,
+): Promise<Document[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(`/projects/${projectId}/documents/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to upload document file");
+  }
+  return res.json();
+}
+
 // Teams
 
 export interface Team {

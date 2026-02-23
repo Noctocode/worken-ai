@@ -221,16 +221,13 @@ export class ConversationsService {
     return msg;
   }
 
-  // async remove(conversationId: string, userId: string) {
-  //   const conversation = await this.verifyConversationAccess(
-  //     conversationId,
-  //     userId,
-  //   );
+  async remove(conversationId: string, userId: string) {
+    await this.verifyConversationAccess(conversationId, userId);
 
-  //   await this.db
-  //     .delete(conversations)
-  //     .where(eq(conversations.id, conversationId));
+    await this.db
+      .delete(conversations)
+      .where(eq(conversations.id, conversationId));
 
-  //   return { deleted: true };
-  // }
+    return { deleted: true };
+  }
 }
