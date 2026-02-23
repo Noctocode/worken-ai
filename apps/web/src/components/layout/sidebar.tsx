@@ -1,24 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
-  Infinity,
-  PlusCircle,
-  FolderOpen,
-  Layers,
-  Users,
   BarChart2,
-  ShieldCheck,
+  FolderOpen,
+  Infinity,
+  Layers,
   Library,
   LogOut,
+  PlusCircle,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
-import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { useAuth } from "@/components/providers";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { logout } from "@/lib/api";
 
 function getInitials(name: string | null | undefined): string {
@@ -43,7 +43,10 @@ export const SidebarContent = () => {
     <div className="flex h-full flex-col">
       {/* Logo Area */}
       <div className="flex h-[4.5rem] items-center border-b px-6">
-        <Link href="/" className="flex cursor-pointer items-center gap-2.5 group">
+        <Link
+          href="/"
+          className="flex cursor-pointer items-center gap-2.5 group"
+        >
           <div className="flex items-center justify-center text-blue-600">
             <Infinity className="h-7 w-7" />
           </div>
@@ -93,13 +96,15 @@ export const SidebarContent = () => {
                 Ongoing Projects
               </Button>
             </Link>
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
-            >
-              <Layers className="h-5 w-5" />
-              Compare Models
-            </Button>
+            <Link href="/compare-models">
+              <Button
+                variant="ghost"
+                className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              >
+                <Layers className="h-5 w-5" />
+                Compare Models
+              </Button>
+            </Link>
             <Link href="/teams">
               <Button
                 variant="ghost"
@@ -144,7 +149,9 @@ export const SidebarContent = () => {
       <div className="mt-auto border-t p-4">
         <div className="group flex items-center gap-3 rounded-lg p-2">
           <Avatar className="h-9 w-9 border border-blue-100 bg-blue-50">
-            {user?.picture && <AvatarImage src={user.picture} alt={user.name ?? ""} />}
+            {user?.picture && (
+              <AvatarImage src={user.picture} alt={user.name ?? ""} />
+            )}
             <AvatarFallback className="bg-gradient-to-tr from-blue-100 to-blue-50 text-xs font-medium text-blue-700">
               {getInitials(user?.name)}
             </AvatarFallback>

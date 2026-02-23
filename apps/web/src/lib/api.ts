@@ -71,7 +71,7 @@ export interface CreateProjectInput {
 }
 
 export async function fetchProjects(
-  filter: "all" | "personal" | "team" = "all",
+  filter: "all" | "personal" | "team" = "all"
 ): Promise<Project[]> {
   const res = await apiFetch(`/projects?filter=${filter}`);
   if (!res.ok) throw new Error("Failed to fetch projects");
@@ -85,7 +85,7 @@ export async function fetchProject(id: string): Promise<Project> {
 }
 
 export async function createProject(
-  input: CreateProjectInput,
+  input: CreateProjectInput
 ): Promise<Project> {
   const res = await apiFetch("/projects", {
     method: "POST",
@@ -106,7 +106,7 @@ export interface Document {
 
 export async function createDocument(
   projectId: string,
-  content: string,
+  content: string
 ): Promise<Document[]> {
   const res = await apiFetch(`/projects/${projectId}/documents`, {
     method: "POST",
@@ -131,7 +131,7 @@ export interface DocumentGroup {
 }
 
 export async function fetchDocumentGroups(
-  projectId: string,
+  projectId: string
 ): Promise<DocumentGroup[]> {
   const res = await apiFetch(`/projects/${projectId}/documents/groups`);
   if (!res.ok) throw new Error("Failed to fetch document groups");
@@ -140,11 +140,11 @@ export async function fetchDocumentGroups(
 
 export async function deleteDocumentGroup(
   projectId: string,
-  groupId: string,
+  groupId: string
 ): Promise<void> {
   const res = await apiFetch(
     `/projects/${projectId}/documents/groups/${groupId}`,
-    { method: "DELETE" },
+    { method: "DELETE" }
   );
   if (!res.ok) throw new Error("Failed to delete document group");
 }
@@ -216,7 +216,7 @@ export async function createTeam(name: string): Promise<Team> {
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "basic" | "advanced",
+  role: "basic" | "advanced"
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
@@ -230,7 +230,7 @@ export async function inviteTeamMember(
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "basic" | "advanced",
+  role: "basic" | "advanced"
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",
@@ -243,7 +243,7 @@ export async function updateMemberRole(
 
 export async function removeTeamMember(
   teamId: string,
-  memberId: string,
+  memberId: string
 ): Promise<void> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "DELETE",
@@ -289,7 +289,7 @@ export interface ConversationWithMessages {
 }
 
 export async function fetchConversations(
-  projectId: string,
+  projectId: string
 ): Promise<ConversationListItem[]> {
   const res = await apiFetch(`/projects/${projectId}/conversations`);
   if (!res.ok) throw new Error("Failed to fetch conversations");
@@ -297,7 +297,7 @@ export async function fetchConversations(
 }
 
 export async function fetchConversation(
-  id: string,
+  id: string
 ): Promise<ConversationWithMessages> {
   const res = await apiFetch(`/conversations/${id}`);
   if (!res.ok) throw new Error("Failed to fetch conversation");
@@ -305,7 +305,7 @@ export async function fetchConversation(
 }
 
 export async function createConversation(
-  projectId: string,
+  projectId: string
 ): Promise<{ id: string }> {
   const res = await apiFetch(`/projects/${projectId}/conversations`, {
     method: "POST",
@@ -323,7 +323,7 @@ export async function sendChatMessage(
   conversationId: string,
   content: string,
   model?: string,
-  projectId?: string,
+  projectId?: string
 ): Promise<{ role: string; content: string; reasoning_details?: unknown }> {
   const res = await apiFetch("/chat", {
     method: "POST",
@@ -350,7 +350,7 @@ export interface InviteDetails {
 }
 
 export async function fetchInviteDetails(
-  token: string,
+  token: string
 ): Promise<InviteDetails> {
   const res = await fetch(`${BASE_URL}/teams/invite/${token}`);
   if (!res.ok) {
@@ -368,4 +368,42 @@ export async function acceptInvite(token: string): Promise<void> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || "Failed to accept invite");
   }
+}
+
+// INSERT_YOUR_CODE
+
+// Interface for model comparison (for /compare-models API)
+export interface ModelComparisonEntry {
+  name: string;
+  score: number;
+  advantages: string[];
+  disadvantages: string[];
+  summary: string;
+}
+
+export interface ModelResponse {
+  model: string;
+  response: {
+    content: string;
+    reasoning_details?: unknown;
+  };
+}
+
+export interface CompareModelsApiResult {
+  comparison: ModelComparisonEntry[];
+  responses: ModelResponse[];
+}
+
+export async function sendQuestionToCompareModels(
+  models: string[],
+  question: string,
+  expectedOutput: string
+): Promise<CompareModelsApiResult> {
+  const res = await apiFetch(`/compare-models`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ models, question, expectedOutput }),
+  });
+  if (!res.ok) throw new Error("Failed to create conversation");
+  return res.json();
 }

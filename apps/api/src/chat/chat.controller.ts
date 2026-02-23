@@ -1,9 +1,9 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { ChatService } from './chat.service.js';
-import { DocumentsService } from '../documents/documents.service.js';
-import { ConversationsService } from '../conversations/conversations.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { ConversationsService } from '../conversations/conversations.service.js';
+import { DocumentsService } from '../documents/documents.service.js';
+import { ChatService } from './chat.service.js';
 
 interface ChatRequestBody {
   conversationId: string;

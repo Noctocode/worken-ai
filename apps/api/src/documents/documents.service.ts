@@ -1,14 +1,14 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
-import { documents } from '@worken/database/schema';
-import { DATABASE, type Database } from '../database/database.module.js';
 import {
   pipeline,
   type FeatureExtractionPipeline,
 } from '@huggingface/transformers';
-import OpenAI from 'openai';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { documents } from '@worken/database/schema';
 import { randomUUID } from 'crypto';
+import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
+import OpenAI from 'openai';
+import { DATABASE, type Database } from '../database/database.module.js';
 
 @Injectable()
 export class DocumentsService {

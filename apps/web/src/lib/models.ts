@@ -1,11 +1,15 @@
 export const MODELS = [
   {
-    id: "tngtech/deepseek-r1t2-chimera:free",
-    label: "DeepSeek R1T2 Chimera",
+    id: "stepfun/step-3.5-flash:free",
+    label: "Step-3.5 Flash",
   },
   {
     id: "arcee-ai/trinity-large-preview:free",
     label: "Trinity Large Preview",
+  },
+  {
+    id: "liquid/lfm-2.5-1.2b-thinking:free",
+    label: "LFM 2.5 1.2B Thinking",
   },
 ] as const;
 
