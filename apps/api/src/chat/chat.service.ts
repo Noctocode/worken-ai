@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 
 interface ChatMessage {
@@ -15,15 +14,13 @@ interface ChatResponse {
 
 @Injectable()
 export class ChatService {
-  private client: OpenAI;
-
-  constructor(private configService: ConfigService) {
-    this.client = new OpenAI({
+  private makeClient(apiKey?: string): OpenAI {
+    return new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
       defaultHeaders: {
-        'HTTP-Referer': this.configService.get<string>('SITE_URL') || '',
-        'X-Title': this.configService.get<string>('SITE_NAME') || 'WorkenAI',
+        'HTTP-Referer': process.env['SITE_URL'] || '',
+        'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
       },
     });
   }
@@ -33,6 +30,7 @@ export class ChatService {
     model: string = 'moonshotai/kimi-k2.5',
     enableReasoning: boolean = true,
     context?: string,
+    apiKey?: string,
   ): Promise<ChatResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
@@ -44,7 +42,7 @@ export class ChatService {
       });
     }
 
-    const completion = await this.client.chat.completions.create({
+    const completion = await this.makeClient(apiKey).chat.completions.create({
       model,
       messages: [
         ...systemMessages,
