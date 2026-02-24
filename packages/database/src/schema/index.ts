@@ -7,6 +7,7 @@ import {
   index,
   boolean,
   jsonb,
+  integer,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -16,6 +17,8 @@ export const users = pgTable("users", {
   picture: text("picture"),
   googleId: text("google_id").notNull().unique(),
   isPaid: boolean("is_paid").notNull().default(false),
+  openrouterKeyId: text("openrouter_key_id"),
+  openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -26,6 +29,9 @@ export const teams = pgTable("teams", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
+  openrouterKeyId: text("openrouter_key_id"),
+  openrouterKeyEncrypted: text("openrouter_key_encrypted"),
+  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
