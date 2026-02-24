@@ -4,9 +4,10 @@ import { ChatService } from './chat.service.js';
 import { ChatController } from './chat.controller.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
+import { OpenRouterModule } from '../openrouter/openrouter.module.js';
 
 @Module({
-  imports: [ConfigModule, DocumentsModule, ConversationsModule],
+  imports: [ConfigModule, DocumentsModule, ConversationsModule, OpenRouterModule],
   controllers: [ChatController],
   providers: [ChatService],
 })

@@ -51,6 +51,15 @@ export class TeamsController {
     return this.teamsService.create(body.name, user.id, user.email);
   }
 
+  @Patch(':id/budget')
+  updateBudget(
+    @Param('id') id: string,
+    @Body() body: { budgetUsd: number },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.updateBudget(id, user.id, body.budgetUsd);
+  }
+
   @Post(':id/members')
   inviteMember(
     @Param('id') id: string,

@@ -3,6 +3,7 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { ChatService } from './chat.service.js';
 
 interface ChatRequestBody {
@@ -19,6 +20,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly documentsService: DocumentsService,
     private readonly conversationsService: ConversationsService,
+    private readonly keyResolverService: KeyResolverService,
   ) {}
 
   @Post()
@@ -37,6 +39,12 @@ export class ChatController {
     // 2. Load full conversation history
     const conversation = await this.conversationsService.findOne(
       body.conversationId,
+      user.id,
+    );
+
+    // Resolve per-team or per-user API key
+    const apiKey = await this.keyResolverService.resolveForProject(
+      conversation.projectId,
       user.id,
     );
 
@@ -66,6 +74,7 @@ export class ChatController {
       body.model,
       body.enableReasoning,
       context,
+      apiKey,
     );
 
     // 6. Persist assistant response

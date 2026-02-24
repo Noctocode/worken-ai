@@ -1,5 +1,4 @@
 import { Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
 
@@ -10,17 +9,19 @@ interface QuestionResponse {
   totalCost?: number;
 }
 
+interface OpenRouterUsage {
+  cost?: number;
+}
+
 @Injectable()
 export class CompareModelsService {
-  private client: OpenAI;
-
-  constructor(private configService: ConfigService) {
-    this.client = new OpenAI({
+  private makeClient(apiKey?: string): OpenAI {
+    return new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
       defaultHeaders: {
-        'HTTP-Referer': this.configService.get<string>('SITE_URL') || '',
-        'X-Title': this.configService.get<string>('SITE_NAME') || 'WorkenAI',
+        'HTTP-Referer': process.env['SITE_URL'] || '',
+        'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
       },
     });
   }
@@ -30,6 +31,7 @@ export class CompareModelsService {
     model: string,
     enableReasoning: boolean = true,
     context?: string,
+    apiKey?: string,
   ): Promise<QuestionResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
@@ -41,7 +43,7 @@ export class CompareModelsService {
       });
     }
 
-    const completion = await this.client.chat.completions.create({
+    const completion = await this.makeClient(apiKey).chat.completions.create({
       model,
       messages: [...systemMessages, { role: 'user', content: question }],
       ...(enableReasoning && { reasoning: { enabled: true } }),
@@ -59,7 +61,7 @@ export class CompareModelsService {
         ? { reasoning_details: response.reasoning_details }
         : {}),
       totalTokens: completion.usage?.total_tokens,
-      totalCost: (completion.usage as any)?.cost ?? 0,
+      totalCost: (completion.usage as OpenRouterUsage | undefined)?.cost ?? 0,
     };
   }
 
@@ -71,8 +73,8 @@ export class CompareModelsService {
     expectedOutput: string,
     model: string,
     enableReasoning: boolean = true,
+    apiKey?: string,
   ): Promise<QuestionResponse> {
-    // const generator = await pipeline('text-generation');
     const systemMessages: { role: 'system'; content: string }[] = [];
 
     const prompt = `You are an expert AI evaluator with extensive experience benchmarking LLMs. Your job is to strictly compare the provided model answers against the EXPECTED OUTPUT below. Assess accuracy (factual correctness, completeness), closeness to expected output (semantic match, structure, detail level), and overall quality.
@@ -111,10 +113,6 @@ export class CompareModelsService {
 
         Ensure: No typos, all fields present, arrays have at least 1 unique short items. Depending on the score better the score more advantages, lower the score more disadvantages. (<10 words each), valid JSON only.`;
 
-    // console.log('Prompting the nodejs model...');
-    // const output = await generator(prompt);
-    // console.log('Output:', output);
-
     systemMessages.push({
       role: 'system',
       content: prompt,
@@ -125,7 +123,7 @@ export class CompareModelsService {
       { role: 'user', content: JSON.stringify(answers) },
     ] as ChatCompletionMessageParam[];
 
-    const completion = await this.client.chat.completions.create({
+    const completion = await this.makeClient(apiKey).chat.completions.create({
       model,
       messages,
       ...(enableReasoning && { reasoning: { enabled: true } }),

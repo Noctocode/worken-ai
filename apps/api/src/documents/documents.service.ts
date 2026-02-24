@@ -3,7 +3,6 @@ import {
   type FeatureExtractionPipeline,
 } from '@huggingface/transformers';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { documents } from '@worken/database/schema';
 import { randomUUID } from 'crypto';
 import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
@@ -13,15 +12,13 @@ import { DATABASE, type Database } from '../database/database.module.js';
 @Injectable()
 export class DocumentsService {
   private embedder: FeatureExtractionPipeline | null = null;
-  private openai: OpenAI;
 
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    private configService: ConfigService,
-  ) {
-    this.openai = new OpenAI({
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
+
+  private makeClient(apiKey?: string): OpenAI {
+    return new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: this.configService.get<string>('OPENROUTER_API_KEY'),
+      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
     });
   }
 
@@ -77,10 +74,10 @@ export class DocumentsService {
     return results;
   }
 
-  private async generateTitle(text: string): Promise<string> {
+  private async generateTitle(text: string, apiKey?: string): Promise<string> {
     const snippet = text.slice(0, 500);
     try {
-      const response = await this.openai.chat.completions.create({
+      const response = await this.makeClient(apiKey).chat.completions.create({
         model: 'arcee-ai/trinity-large-preview:free',
         messages: [
           {
@@ -98,13 +95,13 @@ export class DocumentsService {
     }
   }
 
-  async create(projectId: string, content: string) {
+  async create(projectId: string, content: string, apiKey?: string) {
     const chunks = this.chunkText(content);
     if (chunks.length === 0) return [];
 
     const [embeddings, title] = await Promise.all([
       this.embed(chunks),
-      this.generateTitle(content),
+      this.generateTitle(content, apiKey),
     ]);
 
     const groupId = randomUUID();
@@ -155,6 +152,8 @@ export class DocumentsService {
       .returning();
   }
 
+  // standard vector similarity search for RAG. 1.0 = identical
+  // todo: drop irrelevant chunks (minimum similartiy treshold)
   async searchRelevant(projectId: string, query: string, limit = 5) {
     const [queryEmbedding] = await this.embed([query]);
 

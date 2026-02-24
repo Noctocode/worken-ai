@@ -1,22 +1,26 @@
 import {
+  BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
-  ConflictException,
-  BadRequestException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { teams, teamMembers, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { EncryptionService } from '../openrouter/encryption.service.js';
+import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
 @Injectable()
 export class TeamsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly mailService: MailService,
+    private readonly provisioningService: OpenRouterProvisioningService,
+    private readonly encryptionService: EncryptionService,
   ) {}
 
   async create(name: string, userId: string, email: string) {
@@ -34,7 +38,63 @@ export class TeamsService {
       status: 'accepted',
     });
 
+    // Provision OpenRouter key for this team (non-blocking)
+    try {
+      const { key, hash } = await this.provisioningService.createKey(
+        `team-${team.id}`,
+        10, // price limit of 10$ hardcoded for now
+      );
+      const encrypted = this.encryptionService.encrypt(key);
+      await this.db
+        .update(teams)
+        .set({
+          openrouterKeyId: hash,
+          openrouterKeyEncrypted: encrypted,
+          monthlyBudgetCents: 1000,
+        })
+        .where(eq(teams.id, team.id));
+    } catch (err) {
+      console.error('Failed to provision team OpenRouter key:', err);
+    }
+
     return team;
+  }
+
+  async updateBudget(
+    teamId: string,
+    userId: string,
+    budgetUsd: number,
+  ): Promise<{ monthlyBudgetCents: number }> {
+    if (typeof budgetUsd !== 'number' || budgetUsd <= 0) {
+      throw new BadRequestException('budgetUsd must be a positive number');
+    }
+
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can update the budget');
+    }
+    if (!team.openrouterKeyId) {
+      throw new BadRequestException(
+        'This team does not have a provisioned OpenRouter key',
+      );
+    }
+
+    await this.provisioningService.updateKey(team.openrouterKeyId, budgetUsd);
+
+    const budgetCents = Math.round(budgetUsd * 100);
+    await this.db
+      .update(teams)
+      .set({ monthlyBudgetCents: budgetCents })
+      .where(eq(teams.id, teamId));
+
+    return { monthlyBudgetCents: budgetCents };
   }
 
   async findAllForUser(userId: string) {
