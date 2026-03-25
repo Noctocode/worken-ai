@@ -1,13 +1,13 @@
 "use client";
 
-import { Infinity } from "lucide-react";
+import Image from "next/image";
+import { User, Mail, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -23,23 +23,65 @@ export default function LoginPage() {
         backgroundRepeat: "no-repeat",
       }}
     >
-      <Card className="w-full max-w-sm text-center">
-        <CardHeader>
-          <div className="flex items-center justify-center gap-2.5">
-            <div className="flex items-center justify-center text-blue-600">
-              <Infinity className="h-10 w-10" />
-            </div>
-            <span className="text-2xl font-semibold tracking-tight text-slate-900">
-              WorkenAI
-            </span>
+      <Card className="w-full max-w-[500px] text-center border-2 border-blue-400 border-dashed py-10 px-8">
+        <CardHeader className="space-y-4 pb-6">
+          <div className="flex items-center justify-center">
+            <Image
+              src="/logo-full.png"
+              alt="WorkenAI"
+              width={128}
+              height={17}
+              priority
+            />
           </div>
-          <CardDescription>
-            Sign in to access your workspace
-          </CardDescription>
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">
+              Welcome to WorkenAI
+            </h1>
+            <p className="text-sm text-slate-500 mt-2">
+              Please enter your email to sign in or choose another option
+            </p>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Full Name"
+              className="pl-10 h-12 rounded-lg border-slate-200"
+            />
+          </div>
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              type="email"
+              placeholder="Email Address"
+              className="pl-10 h-12 rounded-lg border-slate-200"
+            />
+          </div>
           <Button
-            className="w-full gap-3 bg-slate-900 hover:bg-slate-800"
+            className="w-full h-12 gap-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-base font-medium"
+            size="lg"
+          >
+            <LogIn className="h-4 w-4" />
+            Continue
+          </Button>
+
+          <div className="relative my-4">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-3 text-slate-400">
+                or continue with
+              </span>
+            </div>
+          </div>
+
+          <Button
+            variant="outline"
+            className="w-full h-12 gap-3 rounded-lg border-slate-200 text-slate-700 hover:bg-slate-50"
             size="lg"
             onClick={() => {
               window.location.href = `${API_URL}/auth/google`;
@@ -63,8 +105,16 @@ export default function LoginPage() {
                 fill="#EA4335"
               />
             </svg>
-            Sign in with Google
+            Google
           </Button>
+
+          <p className="text-sm text-slate-500 mt-6">
+            Already using WorkenAI?{" "}
+            <a href="/login" className="text-sky-500 hover:underline font-medium">
+              Sign in
+            </a>{" "}
+            to existing workspace
+          </p>
         </CardContent>
       </Card>
     </div>
