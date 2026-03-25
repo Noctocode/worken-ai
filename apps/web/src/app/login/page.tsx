@@ -24,7 +24,7 @@ export default function LoginPage() {
       }}
     >
       <Card className="w-full max-w-[500px] text-center border-2 border-blue-400 border-dashed py-10 px-8">
-        <CardHeader className="space-y-4 pb-6">
+        <CardHeader className="space-y-4 pb-2">
           <div className="flex items-center justify-center">
             <Image
               src="/logo-full.png"
@@ -35,10 +35,10 @@ export default function LoginPage() {
             />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">
+            <h1 className="text-[32px] font-bold text-slate-900">
               Welcome to WorkenAI
             </h1>
-            <p className="text-sm text-slate-500 mt-2">
+            <p className="text-[18px] leading-[130%] text-[#4E5969] mt-2">
               Please enter your email to sign in or choose another option
             </p>
           </div>
