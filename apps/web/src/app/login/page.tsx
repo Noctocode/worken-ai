@@ -39,19 +39,11 @@ export default function LoginPage() {
               Welcome to WorkenAI
             </h1>
             <p className="text-[18px] leading-[130%] text-[#4E5969] mt-2">
-              Please enter your email to sign in or choose another option
+              Please enter your email and password to sign in or choose another option
             </p>
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
-            <Input
-              type="text"
-              placeholder="Full Name"
-              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-text-3"
-            />
-          </div>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
             <Input
@@ -107,14 +99,6 @@ export default function LoginPage() {
             </svg>
             Google
           </Button>
-
-          <p className="text-sm text-slate-500 mt-6">
-            Already using WorkenAI?{" "}
-            <a href="/login" className="text-sky-500 hover:underline font-medium">
-              Sign in
-            </a>{" "}
-            to existing workspace
-          </p>
         </CardContent>
       </Card>
     </div>
