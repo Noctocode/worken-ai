@@ -45,19 +45,19 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#86909C]" />
             <Input
               type="text"
               placeholder="Full Name"
-              className="pl-10 h-12 rounded-lg border-slate-200"
+              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-[#86909C]"
             />
           </div>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#86909C]" />
             <Input
               type="email"
               placeholder="Email Address"
-              className="pl-10 h-12 rounded-lg border-slate-200"
+              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-[#86909C]"
             />
           </div>
           <Button
@@ -72,8 +72,8 @@ export default function LoginPage() {
             <div className="absolute inset-0 flex items-center">
               <span className="w-full border-t border-slate-200" />
             </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-3 text-slate-400">
+            <div className="relative flex justify-center text-[14px] normal-case">
+              <span className="bg-white px-3 text-[#4E5969] font-normal">
                 or continue with
               </span>
             </div>
