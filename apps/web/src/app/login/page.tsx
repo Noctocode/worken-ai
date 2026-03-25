@@ -14,7 +14,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function LoginPage() {
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
+    <div
+      className="flex h-screen w-full items-center justify-center"
+      style={{
+        backgroundImage: "url('/login-bg.png')",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
       <Card className="w-full max-w-sm text-center">
         <CardHeader>
           <div className="flex items-center justify-center gap-2.5">
