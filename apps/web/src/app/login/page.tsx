@@ -45,23 +45,23 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#86909C]" />
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
             <Input
               type="text"
               placeholder="Full Name"
-              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-[#86909C]"
+              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-text-3"
             />
           </div>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[#86909C]" />
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
             <Input
               type="email"
               placeholder="Email Address"
-              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-[#86909C]"
+              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-text-3"
             />
           </div>
           <Button
-            className="w-full h-12 gap-2 bg-sky-500 hover:bg-sky-600 text-white rounded-lg text-base font-medium"
+            className="w-full h-12 gap-2 bg-primary-6 hover:bg-primary-6/90 text-white rounded-lg text-base font-medium"
             size="lg"
           >
             <LogIn className="h-4 w-4" />
