@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { User, Mail, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -49,6 +49,14 @@ export default function LoginPage() {
             <Input
               type="email"
               placeholder="Email Address"
+              className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-text-3"
+            />
+          </div>
+          <div className="relative">
+            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
+            <Input
+              type="password"
+              placeholder="Password"
               className="pl-10 h-12 rounded-lg border-slate-200 text-[16px] font-normal placeholder:text-text-3"
             />
           </div>
