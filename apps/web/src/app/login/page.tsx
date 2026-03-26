@@ -1,13 +1,13 @@
 "use client";
 
-import { Infinity } from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle,
+ // CardTitle,
 } from "@/components/ui/card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -17,13 +17,14 @@ export default function LoginPage() {
     <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
       <Card className="w-full max-w-sm text-center">
         <CardHeader>
-          <div className="flex items-center justify-center gap-2.5">
-            <div className="flex items-center justify-center text-blue-600">
-              <Infinity className="h-10 w-10" />
-            </div>
-            <span className="text-2xl font-semibold tracking-tight text-slate-900">
-              WorkenAI
-            </span>
+          <div className="flex items-center justify-center">
+            <Image
+              src="/full-logo.png"
+              alt="WorkenAI"
+              width={128}
+              height={17}
+              priority
+            />
           </div>
           <CardDescription>
             Sign in to access your workspace
