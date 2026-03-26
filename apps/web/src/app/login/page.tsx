@@ -36,7 +36,7 @@ export default function LoginPage() {
             option
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
             <Input
@@ -45,7 +45,7 @@ export default function LoginPage() {
               className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
             />
           </div>
-          <div className="relative">
+          <div className="relative mt-4">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
             <Input
               type="password"
@@ -54,12 +54,17 @@ export default function LoginPage() {
             />
           </div>
           <Button
-            className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md"
+            className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
             size="lg"
           >
             <LogIn className="h-4 w-4" />
             Continue
           </Button>
+          <div className="flex items-center gap-2 my-6">
+            <div className="flex-1 h-0 border-t border-divider" />
+            <span className="text-sm text-text-2">or continue with</span>
+            <div className="flex-1 h-0 border-t border-divider" />
+          </div>
           <Button
             variant="outline"
             className="w-full gap-2 h-14 text-base font-normal rounded-md border-border-3"
@@ -68,7 +73,11 @@ export default function LoginPage() {
               window.location.href = `${API_URL}/auth/google`;
             }}
           >
-            <svg className="h-4 w-4 text-text-1" viewBox="0 0 24 24" fill="currentColor">
+            <svg
+              className="h-4 w-4 text-text-1"
+              viewBox="0 0 24 24"
+              fill="currentColor"
+            >
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />

@@ -56,6 +56,7 @@
   --color-danger-6: var(--danger-6);
   --color-bg-1: var(--bg-1);
   --color-border-3: var(--border-3);
+  --color-divider: var(--divider);
 }
 
 :root {
@@ -103,6 +104,7 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-3: #C9CDD4;
+  --divider: rgba(92, 92, 92, 0.2);
 }
 
 .dark {
@@ -149,6 +151,7 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-3: #C9CDD4;
+  --divider: rgba(92, 92, 92, 0.2);
 }
 
 @layer base {
