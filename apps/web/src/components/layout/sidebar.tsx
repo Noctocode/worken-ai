@@ -231,7 +231,7 @@ export const Sidebar = () => {
 
   return (
     <aside
-      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-[#F7F8FA]" : "w-72 border-r border-slate-200 bg-white"}`}
+      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 border-r border-slate-200 bg-white"}`}
     >
       <SidebarContent />
     </aside>
