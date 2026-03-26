@@ -108,7 +108,7 @@ export const SidebarContent = () => {
       </div>
 
       {/* Primary Actions */}
-      <div className={`${collapsed ? "flex justify-center p-3" : "flex justify-center p-3"}`}>
+      <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
         {user?.canCreateProject ? (
           <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
         ) : collapsed ? (
@@ -202,31 +202,31 @@ export const SidebarContent = () => {
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1">
-            <Link href="/" className="w-full flex justify-center">
+          <div className="flex flex-col items-center gap-1 px-6">
+            <Link href="/" className="w-full">
               <Button
                 variant="ghost"
-                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
                 title="Ongoing Projects"
               >
                 <FolderOpen className="h-5 w-5 shrink-0" />
                 <span>Ongoing Projects</span>
               </Button>
             </Link>
-            <Link href="/compare-models" className="w-full flex justify-center">
+            <Link href="/compare-models" className="w-full">
               <Button
                 variant="ghost"
-                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
                 title="Compare Models"
               >
                 <Layers className="h-5 w-5 shrink-0" />
                 <span>Compare Models</span>
               </Button>
             </Link>
-            <Link href="/teams" className="w-full flex justify-center">
+            <Link href="/teams" className="w-full">
               <Button
                 variant="ghost"
-                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
                 title="Team Management"
               >
                 <Users className="h-5 w-5 shrink-0" />
@@ -235,12 +235,12 @@ export const SidebarContent = () => {
             </Link>
 
             {/* Divider */}
-            <div className="my-2 w-full max-w-[calc(100%-24px)] border-t border-border-2" />
+            <div className="my-2 w-full border-t border-border-2" />
 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Chat"
             >
               <MessageSquare className="h-5 w-5 shrink-0" />
@@ -248,12 +248,12 @@ export const SidebarContent = () => {
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-full max-w-[calc(100%-24px)] border-t border-border-2" />
+            <div className="my-2 w-full border-t border-border-2" />
 
             {/* Intelligence */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
@@ -261,7 +261,7 @@ export const SidebarContent = () => {
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
@@ -269,7 +269,7 @@ export const SidebarContent = () => {
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
@@ -280,7 +280,7 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "flex flex-col items-center gap-3 px-3 py-4"}`}>
+      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "flex flex-col items-center gap-3 px-6 py-4"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
           <button
@@ -291,7 +291,7 @@ export const SidebarContent = () => {
           </button>
         ) : (
           <button
-            className="flex h-[40px] w-full max-w-[calc(100%-24px)] items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
+            className="flex h-[40px] w-full items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
             title="Toggle dark mode"
           >
             <Moon className="h-5 w-5 shrink-0" />
@@ -299,7 +299,7 @@ export const SidebarContent = () => {
           </button>
         )}
         <div
-          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full max-w-[calc(100%-24px)] gap-3 p-2"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3 p-2"}`}
         >
           <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
