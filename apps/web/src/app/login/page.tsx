@@ -26,7 +26,7 @@ export default function LoginPage() {
             />
           </div>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Please enter your email to sign in or choose another option
+            Please enter your email and password to sign in or choose another option
           </CardDescription>
         </CardHeader>
         <CardContent>
