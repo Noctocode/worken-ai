@@ -7,7 +7,6 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
- // CardTitle,
 } from "@/components/ui/card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -26,8 +25,8 @@ export default function LoginPage() {
               priority
             />
           </div>
-          <CardDescription>
-            Sign in to access your workspace
+          <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
+            Please enter your email to sign in or choose another option
           </CardDescription>
         </CardHeader>
         <CardContent>
