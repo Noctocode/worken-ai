@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function LoginPage() {
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
+    <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
         <CardHeader>
           <div className="flex items-center justify-center">
@@ -73,11 +74,7 @@ export default function LoginPage() {
               window.location.href = `${API_URL}/auth/google`;
             }}
           >
-            <svg
-              className="h-4 w-4 text-text-1"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-            >
+            <svg className="h-4 w-4 text-text-1" viewBox="0 0 24 24" fill="currentColor">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
               <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
@@ -86,11 +83,9 @@ export default function LoginPage() {
             Google
           </Button>
           <p className="text-sm text-text-2 mt-6">
-            Don&apos;t have an account?{" "}
-            <a href="/register" className="text-primary-6 hover:text-primary-7 font-medium">
-              Sign up
-            </a>{" "}
-            to create a workspace
+            {"Don't have an account? "}
+            <Link href="/register" className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
+            {" to create a workspace"}
           </p>
         </CardContent>
       </Card>
