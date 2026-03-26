@@ -7,7 +7,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
-  CardTitle
+  CardTitle,
 } from "@/components/ui/card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -15,7 +15,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 export default function LoginPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
-      <Card className="w-full max-w-[500px] mx-4 text-center">
+      <Card className="w-full max-w-[500px] mx-4 text-center p-8">
         <CardHeader>
           <div className="flex items-center justify-center">
             <Image
