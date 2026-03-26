@@ -290,7 +290,7 @@ export const SidebarContent = () => {
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "gap-3 p-2"}`}
         >
-          <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-primary-1 bg-primary-1"}`}>
+          <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
             <AvatarFallback className={collapsed ? "text-xs font-medium text-text-1" : "bg-primary-1 text-xs font-medium text-primary-6"}>
               {getInitials(user?.name)}

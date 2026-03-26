@@ -55,6 +55,7 @@
   --color-danger-6: var(--danger-6);
   --color-bg-1: var(--bg-1);
   --color-border-2: var(--border-2);
+  --color-black-400: var(--black-400);
 }
 
 :root {
@@ -101,6 +102,7 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-2: #E5E6EB;
+  --black-400: #9BA0AB;
 }
 
 .dark {
@@ -146,6 +148,7 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-2: #E5E6EB;
+  --black-400: #9BA0AB;
 }
 
 @layer base {
