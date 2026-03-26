@@ -71,11 +71,10 @@ export const SidebarContent = () => {
     <div className="flex h-full flex-col">
       {/* Logo Area */}
       <div className="relative flex h-[4.5rem] items-center">
-        <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
-          <Link
-            href="/"
-            className="flex cursor-pointer items-center group"
-          >
+        <div
+          className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}
+        >
+          <Link href="/" className="flex cursor-pointer items-center group">
             {collapsed ? (
               <Image
                 src="/main-logo.png"
@@ -295,8 +294,10 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto p-4 ${collapsed ? "flex flex-col items-center gap-3" : ""}`}>
-  {/* Dark mode toggle */}
+      <div
+        className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "px-3 py-4"}`}
+      >
+        {/* Dark mode toggle */}
         {collapsed ? (
           <button
             className="flex h-[40px] w-[40px] items-center justify-center text-text-3 transition-colors hover:text-text-1"
@@ -316,9 +317,20 @@ export const SidebarContent = () => {
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "gap-3 p-2"}`}
         >
-          <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
-            <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
-            <AvatarFallback className={collapsed ? "text-xs font-medium text-text-1" : "bg-primary-1 text-xs font-medium text-primary-6"}>
+          <Avatar
+            className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
+          >
+            <AvatarImage
+              src={user?.picture || "/default-avatar.png"}
+              alt={user?.name ?? ""}
+            />
+            <AvatarFallback
+              className={
+                collapsed
+                  ? "text-xs font-medium text-text-1"
+                  : "bg-primary-1 text-xs font-medium text-primary-6"
+              }
+            >
               {getInitials(user?.name)}
             </AvatarFallback>
           </Avatar>
