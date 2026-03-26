@@ -2,8 +2,8 @@
 
 import {
   BarChart2,
-  ChevronLeft,
-  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
   FolderOpen,
   Layers,
   Library,
@@ -100,9 +100,9 @@ export const SidebarContent = () => {
           className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
         >
           {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5" />
+            <ChevronsRight className="h-3.5 w-3.5" />
           ) : (
-            <ChevronLeft className="h-3.5 w-3.5" />
+            <ChevronsLeft className="h-3.5 w-3.5" />
           )}
         </button>
       </div>
