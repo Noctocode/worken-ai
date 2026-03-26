@@ -50,6 +50,7 @@
   --color-text-1: var(--text-1);
   --color-text-2: var(--text-2);
   --color-text-3: var(--text-3);
+  --color-text-white: var(--text-white);
   --color-warning-6: var(--warning-6);
   --color-success-7: var(--success-7);
   --color-danger-6: var(--danger-6);
@@ -96,6 +97,7 @@
   --text-1: #1D2129;
   --text-2: #4E5969;
   --text-3: #86909C;
+  --text-white: #FFFFFF;
   --warning-6: #FF7D00;
   --success-7: #009A29;
   --danger-6: #F53F3F;
@@ -141,6 +143,7 @@
   --text-1: #1D2129;
   --text-2: #4E5969;
   --text-3: #86909C;
+  --text-white: #FFFFFF;
   --warning-6: #FF7D00;
   --success-7: #009A29;
   --danger-6: #F53F3F;
