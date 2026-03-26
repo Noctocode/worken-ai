@@ -14,7 +14,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 export default function LoginPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
-      <Card className="w-full max-w-sm text-center">
+      <Card className="w-full max-w-[500px] mx-4 text-center">
         <CardHeader>
           <div className="flex items-center justify-center">
             <Image
@@ -26,7 +26,8 @@ export default function LoginPage() {
             />
           </div>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Please enter your email and password to sign in or choose another option
+            Please enter your email and password to sign in or choose another
+            option
           </CardDescription>
         </CardHeader>
         <CardContent>
