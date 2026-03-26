@@ -50,7 +50,7 @@ export const SidebarContent = () => {
 
   const newProjectButton = collapsed ? (
     <Button
-      className="h-[40px] w-[40px] bg-primary-6 p-0 hover:bg-primary-7 text-white"
+      className="h-[48px] w-[40px] bg-primary-6 p-0 hover:bg-primary-7 text-white"
       title="New Project"
     >
       <Plus className="h-4 w-4 shrink-0" />
