@@ -57,7 +57,7 @@ export const SidebarContent = () => {
   return (
     <div className="flex h-full flex-col">
       {/* Logo Area */}
-      <div className="relative flex h-[4.5rem] items-center border-b">
+      <div className={`relative flex h-[4.5rem] items-center ${collapsed ? "" : "border-b"}`}>
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
           <Link
             href="/"
@@ -189,7 +189,7 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className="mt-auto border-t p-4">
+      <div className={`mt-auto p-4 ${collapsed ? "" : "border-t"}`}>
         <div
           className={`group flex items-center rounded-lg p-2 ${collapsed ? "justify-center" : "gap-3"}`}
         >
@@ -231,7 +231,7 @@ export const Sidebar = () => {
 
   return (
     <aside
-      className={`relative hidden shrink-0 border-r border-slate-200 bg-white md:block transition-all duration-300 ${collapsed ? "w-[88px]" : "w-72"}`}
+      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-[#F7F8FA]" : "w-72 border-r border-slate-200 bg-white"}`}
     >
       <SidebarContent />
     </aside>
