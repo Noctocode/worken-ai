@@ -291,7 +291,7 @@ export const SidebarContent = () => {
           </button>
         ) : (
           <button
-            className="flex h-[40px] w-full items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
+            className="flex h-[40px] w-full items-center gap-3 rounded-lg py-2 text-text-3 transition-colors hover:text-text-1"
             title="Toggle dark mode"
           >
             <Moon className="h-5 w-5 shrink-0" />
@@ -299,7 +299,7 @@ export const SidebarContent = () => {
           </button>
         )}
         <div
-          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3 p-2"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3 py-2"}`}
         >
           <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
