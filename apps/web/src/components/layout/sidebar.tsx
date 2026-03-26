@@ -44,7 +44,7 @@ export const SidebarContent = () => {
 
   const activeClass = collapsed
     ? "text-primary-6 hover:text-primary-7"
-    : "bg-primary-1 text-primary-6 hover:bg-primary-1 hover:text-primary-7";
+    : "bg-white text-primary-6 hover:bg-white hover:text-primary-7";
   const inactiveClass = collapsed
     ? "text-text-3 hover:text-text-1"
     : "text-text-3 hover:text-text-1";
@@ -70,7 +70,7 @@ export const SidebarContent = () => {
   return (
     <div className="flex h-full flex-col">
       {/* Logo Area */}
-      <div className={`relative flex h-[4.5rem] items-center ${collapsed ? "" : "border-b border-border-2"}`}>
+      <div className="relative flex h-[4.5rem] items-center">
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
           <Link
             href="/"
@@ -206,7 +206,7 @@ export const SidebarContent = () => {
             </Button>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-6">
             <div className="space-y-1">
               <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
                 Workspace
@@ -243,6 +243,24 @@ export const SidebarContent = () => {
               </Link>
             </div>
 
+            {/* Divider */}
+            <div className="mx-3 border-t border-border-2" />
+
+            {/* Chat */}
+            <div className="space-y-1">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
+                title="Chat"
+              >
+                <MessageSquare className="h-5 w-5 shrink-0" />
+                <span>AI Chat</span>
+              </Button>
+            </div>
+
+            {/* Divider */}
+            <div className="mx-3 border-t border-border-2" />
+
             <div className="space-y-1">
               <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
                 Intelligence
@@ -277,14 +295,22 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto p-4 ${collapsed ? "flex flex-col items-center gap-3" : "border-t border-border-2"}`}>
-        {/* Dark mode toggle – collapsed only */}
-        {collapsed && (
+      <div className={`mt-auto p-4 ${collapsed ? "flex flex-col items-center gap-3" : ""}`}>
+  {/* Dark mode toggle */}
+        {collapsed ? (
           <button
             className="flex h-[40px] w-[40px] items-center justify-center text-text-3 transition-colors hover:text-text-1"
             title="Toggle dark mode"
           >
             <Moon className="h-5 w-5" />
+          </button>
+        ) : (
+          <button
+            className="mb-3 flex w-full items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
+            title="Toggle dark mode"
+          >
+            <Moon className="h-5 w-5 shrink-0" />
+            <span className="text-sm">Light / Dark</span>
           </button>
         )}
         <div
@@ -308,7 +334,7 @@ export const SidebarContent = () => {
               </div>
               <button
                 onClick={() => logout()}
-                className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
+                className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
                 title="Sign out"
               >
                 <LogOut className="h-4 w-4" />
@@ -326,7 +352,7 @@ export const Sidebar = () => {
 
   return (
     <aside
-      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 border-r border-border-2 bg-white"}`}
+      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 bg-bg-1 border-r border-border-2"}`}
     >
       <SidebarContent />
     </aside>
