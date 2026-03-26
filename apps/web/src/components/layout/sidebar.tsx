@@ -43,7 +43,7 @@ export const SidebarContent = () => {
 
   const activeClass = collapsed
     ? "text-primary-6 hover:text-primary-7"
-    : "bg-white text-primary-6 hover:bg-white hover:text-primary-7";
+    : "text-primary-6 hover:text-primary-7";
   const inactiveClass = collapsed
     ? "text-text-3 hover:text-text-1"
     : "text-text-3 hover:text-text-1";
