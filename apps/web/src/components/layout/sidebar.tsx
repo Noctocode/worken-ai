@@ -8,6 +8,7 @@ import {
   Layers,
   Library,
   LogOut,
+  Plus,
   PlusCircle,
   ShieldCheck,
   Users,
@@ -41,16 +42,25 @@ export const SidebarContent = () => {
 
   const activeClass =
     "bg-blue-50 text-blue-600 hover:bg-blue-50 hover:text-blue-700";
-  const inactiveClass = "text-slate-500 hover:text-slate-900";
+  const inactiveClass = collapsed
+    ? "text-text-3 hover:text-slate-900"
+    : "text-slate-500 hover:text-slate-900";
 
-  const newProjectButton = (
+  const newProjectButton = collapsed ? (
     <Button
-      className={`w-full gap-2 bg-slate-900 hover:bg-slate-800 ${collapsed ? "px-0" : ""}`}
+      className="h-[40px] w-[40px] bg-primary-6 p-0 hover:bg-primary-7 text-white"
+      title="New Project"
+    >
+      <Plus className="h-4 w-4 shrink-0" />
+    </Button>
+  ) : (
+    <Button
+      className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
       size="lg"
       title="New Project"
     >
       <PlusCircle className="h-4 w-4 shrink-0" />
-      {!collapsed && <span>New Project</span>}
+      <span>New Project</span>
     </Button>
   );
 
@@ -97,26 +107,34 @@ export const SidebarContent = () => {
       </div>
 
       {/* Primary Actions */}
-      <div className={`p-4 pb-2 ${collapsed ? "px-2" : ""}`}>
+      <div className={`${collapsed ? "flex justify-center p-3" : "p-4 pb-2"}`}>
         {user?.canCreateProject ? (
           <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
+        ) : collapsed ? (
+          <Button
+            className="h-[40px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
+            disabled
+            title="New Project"
+          >
+            <Plus className="h-4 w-4 shrink-0" />
+          </Button>
         ) : (
           <Button
-            className={`w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed ${collapsed ? "px-0" : ""}`}
+            className="w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed"
             size="lg"
             disabled
             title="New Project"
           >
             <PlusCircle className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>New Project</span>}
+            <span>New Project</span>
           </Button>
         )}
       </div>
 
       {/* Navigation Links */}
-      <ScrollArea className={`flex-1 py-4 ${collapsed ? "px-2" : "px-3"}`}>
-        <div className="space-y-8">
-          <div className="space-y-1">
+      <ScrollArea className={`flex-1 py-4 ${collapsed ? "px-0" : "px-3"}`}>
+        <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-8"}>
+          <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-1"}>
             {!collapsed && (
               <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
                 Workspace
@@ -125,7 +143,7 @@ export const SidebarContent = () => {
             <Link href="/">
               <Button
                 variant="ghost"
-                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname === "/" ? activeClass : inactiveClass}`}
+                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname === "/" ? activeClass : inactiveClass}`}
                 title="Ongoing Projects"
               >
                 <FolderOpen className="h-5 w-5 shrink-0" />
@@ -135,7 +153,7 @@ export const SidebarContent = () => {
             <Link href="/compare-models">
               <Button
                 variant="ghost"
-                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
                 title="Compare Models"
               >
                 <Layers className="h-5 w-5 shrink-0" />
@@ -145,7 +163,7 @@ export const SidebarContent = () => {
             <Link href="/teams">
               <Button
                 variant="ghost"
-                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
                 title="Team Management"
               >
                 <Users className="h-5 w-5 shrink-0" />
@@ -154,7 +172,7 @@ export const SidebarContent = () => {
             </Link>
           </div>
 
-          <div className="space-y-1">
+          <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-1"}>
             {!collapsed && (
               <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
                 Intelligence
@@ -162,7 +180,7 @@ export const SidebarContent = () => {
             )}
             <Button
               variant="ghost"
-              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
@@ -170,7 +188,7 @@ export const SidebarContent = () => {
             </Button>
             <Button
               variant="ghost"
-              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
@@ -178,7 +196,7 @@ export const SidebarContent = () => {
             </Button>
             <Button
               variant="ghost"
-              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
@@ -189,7 +207,7 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto p-4 ${collapsed ? "" : "border-t"}`}>
+      <div className={`mt-auto p-4 ${collapsed ? "flex justify-center" : "border-t"}`}>
         <div
           className={`group flex items-center rounded-lg p-2 ${collapsed ? "justify-center" : "gap-3"}`}
         >
