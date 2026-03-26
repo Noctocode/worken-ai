@@ -2,8 +2,9 @@
 
 import {
   BarChart2,
+  ChevronLeft,
+  ChevronRight,
   FolderOpen,
-  Infinity,
   Layers,
   Library,
   LogOut,
@@ -11,6 +12,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -19,6 +21,7 @@ import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
 
 function getInitials(name: string | null | undefined): string {
@@ -34,121 +37,168 @@ function getInitials(name: string | null | undefined): string {
 export const SidebarContent = () => {
   const { user } = useAuth();
   const pathname = usePathname();
+  const { collapsed, toggle } = useSidebar();
 
   const activeClass =
     "bg-blue-50 text-blue-600 hover:bg-blue-50 hover:text-blue-700";
   const inactiveClass = "text-slate-500 hover:text-slate-900";
 
+  const newProjectButton = (
+    <Button
+      className={`w-full gap-2 bg-slate-900 hover:bg-slate-800 ${collapsed ? "px-0" : ""}`}
+      size="lg"
+      title="New Project"
+    >
+      <PlusCircle className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>New Project</span>}
+    </Button>
+  );
+
   return (
     <div className="flex h-full flex-col">
       {/* Logo Area */}
-      <div className="flex h-[4.5rem] items-center border-b px-6">
+      <div className="flex h-[4.5rem] items-center border-b px-3">
         <Link
           href="/"
-          className="flex cursor-pointer items-center gap-2.5 group"
+          className={`flex cursor-pointer items-center group ${collapsed ? "justify-center w-full" : "gap-2.5 px-3"}`}
         >
-          <div className="flex items-center justify-center text-blue-600">
-            <Infinity className="h-7 w-7" />
-          </div>
-          <span className="text-lg font-semibold tracking-tight text-slate-900 transition-colors group-hover:text-blue-600">
-            WorkenAI
-          </span>
+          {collapsed ? (
+            <Image
+              src="/main-logo.png"
+              alt="WorkenAI"
+              width={32}
+              height={32}
+              className="shrink-0"
+            />
+          ) : (
+            <Image
+              src="/full-logo.png"
+              alt="WorkenAI"
+              width={140}
+              height={32}
+              className="shrink-0"
+            />
+          )}
         </Link>
       </div>
 
       {/* Primary Actions */}
-      <div className="p-4 pb-2">
+      <div className={`p-4 pb-2 ${collapsed ? "px-2" : ""}`}>
         {user?.canCreateProject ? (
-          <CreateProjectDialog>
-            <Button
-              className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
-              size="lg"
-            >
-              <PlusCircle className="h-4 w-4" />
-              New Project
-            </Button>
-          </CreateProjectDialog>
+          <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
         ) : (
           <Button
-            className="w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed"
+            className={`w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed ${collapsed ? "px-0" : ""}`}
             size="lg"
             disabled
+            title="New Project"
           >
-            <PlusCircle className="h-4 w-4" />
-            New Project
+            <PlusCircle className="h-4 w-4 shrink-0" />
+            {!collapsed && <span>New Project</span>}
           </Button>
         )}
       </div>
 
       {/* Navigation Links */}
-      <ScrollArea className="flex-1 px-3 py-4">
+      <ScrollArea className={`flex-1 py-4 ${collapsed ? "px-2" : "px-3"}`}>
         <div className="space-y-8">
           <div className="space-y-1">
-            <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
-              Workspace
-            </div>
+            {!collapsed && (
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+                Workspace
+              </div>
+            )}
             <Link href="/">
               <Button
                 variant="ghost"
-                className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname === "/" ? activeClass : inactiveClass}`}
+                title="Ongoing Projects"
               >
-                <FolderOpen className="h-5 w-5" />
-                Ongoing Projects
+                <FolderOpen className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>Ongoing Projects</span>}
               </Button>
             </Link>
             <Link href="/compare-models">
               <Button
                 variant="ghost"
-                className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                title="Compare Models"
               >
-                <Layers className="h-5 w-5" />
-                Compare Models
+                <Layers className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>Compare Models</span>}
               </Button>
             </Link>
             <Link href="/teams">
               <Button
                 variant="ghost"
-                className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                className={`w-full gap-3 ${collapsed ? "justify-center px-0" : "justify-start"} ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                title="Team Management"
               >
-                <Users className="h-5 w-5" />
-                Team Management
+                <Users className="h-5 w-5 shrink-0" />
+                {!collapsed && <span>Team Management</span>}
               </Button>
             </Link>
           </div>
 
           <div className="space-y-1">
-            <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
-              Intelligence
-            </div>
+            {!collapsed && (
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+                Intelligence
+              </div>
+            )}
             <Button
               variant="ghost"
-              className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              title="Observability"
             >
-              <BarChart2 className="h-5 w-5" />
-              Observability
+              <BarChart2 className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Observability</span>}
             </Button>
             <Button
               variant="ghost"
-              className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5" />
-              Guardrails
+              <ShieldCheck className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Guardrails</span>}
             </Button>
             <Button
               variant="ghost"
-              className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+              className={`w-full gap-3 text-slate-500 hover:text-slate-900 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+              title="Prompt Library"
             >
-              <Library className="h-5 w-5" />
-              Prompt Library
+              <Library className="h-5 w-5 shrink-0" />
+              {!collapsed && <span>Prompt Library</span>}
             </Button>
           </div>
         </div>
       </ScrollArea>
 
+      {/* Collapse Toggle */}
+      <div className={`px-3 pb-2 ${collapsed ? "px-2" : ""}`}>
+        <Button
+          variant="ghost"
+          onClick={toggle}
+          className={`w-full gap-3 text-slate-400 hover:text-slate-600 ${collapsed ? "justify-center px-0" : "justify-start"}`}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? (
+            <ChevronRight className="h-5 w-5 shrink-0" />
+          ) : (
+            <>
+              <ChevronLeft className="h-5 w-5 shrink-0" />
+              <span>Collapse</span>
+            </>
+          )}
+        </Button>
+      </div>
+
       {/* User Profile */}
       <div className="mt-auto border-t p-4">
-        <div className="group flex items-center gap-3 rounded-lg p-2">
-          <Avatar className="h-9 w-9 border border-blue-100 bg-blue-50">
+        <div
+          className={`group flex items-center rounded-lg p-2 ${collapsed ? "justify-center" : "gap-3"}`}
+        >
+          <Avatar className="h-9 w-9 shrink-0 border border-blue-100 bg-blue-50">
             {user?.picture && (
               <AvatarImage src={user.picture} alt={user.name ?? ""} />
             )}
@@ -156,29 +206,39 @@ export const SidebarContent = () => {
               {getInitials(user?.name)}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 overflow-hidden">
-            <p className="truncate text-sm font-medium text-slate-900">
-              {user?.name ?? "Loading..."}
-            </p>
-            <p className="truncate text-xs text-slate-500">
-              {user?.email ?? ""}
-            </p>
-          </div>
-          <button
-            onClick={() => logout()}
-            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
-            title="Sign out"
-          >
-            <LogOut className="h-4 w-4" />
-          </button>
+          {!collapsed && (
+            <>
+              <div className="flex-1 overflow-hidden">
+                <p className="truncate text-sm font-medium text-slate-900">
+                  {user?.name ?? "Loading..."}
+                </p>
+                <p className="truncate text-xs text-slate-500">
+                  {user?.email ?? ""}
+                </p>
+              </div>
+              <button
+                onClick={() => logout()}
+                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                title="Sign out"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export const Sidebar = () => (
-  <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white md:block">
-    <SidebarContent />
-  </aside>
-);
+export const Sidebar = () => {
+  const { collapsed } = useSidebar();
+
+  return (
+    <aside
+      className={`hidden shrink-0 border-r border-slate-200 bg-white md:block transition-all duration-300 ${collapsed ? "w-[4.5rem]" : "w-72"}`}
+    >
+      <SidebarContent />
+    </aside>
+  );
+};
