@@ -58,28 +58,41 @@ export const SidebarContent = () => {
     <div className="flex h-full flex-col">
       {/* Logo Area */}
       <div className="flex h-[4.5rem] items-center border-b px-3">
-        <Link
-          href="/"
-          className={`flex cursor-pointer items-center group ${collapsed ? "justify-center w-full" : "gap-2.5 px-3"}`}
-        >
-          {collapsed ? (
-            <Image
-              src="/main-logo.png"
-              alt="WorkenAI"
-              width={32}
-              height={32}
-              className="shrink-0"
-            />
-          ) : (
-            <Image
-              src="/full-logo.png"
-              alt="WorkenAI"
-              width={140}
-              height={32}
-              className="shrink-0"
-            />
-          )}
-        </Link>
+        <div className={`flex items-center ${collapsed ? "justify-center w-full" : "justify-between w-full"}`}>
+          <Link
+            href="/"
+            className={`flex cursor-pointer items-center group ${collapsed ? "" : "gap-2.5 px-3"}`}
+          >
+            {collapsed ? (
+              <Image
+                src="/main-logo.png"
+                alt="WorkenAI"
+                width={32}
+                height={32}
+                className="shrink-0"
+              />
+            ) : (
+              <Image
+                src="/full-logo.png"
+                alt="WorkenAI"
+                width={140}
+                height={32}
+                className="shrink-0"
+              />
+            )}
+          </Link>
+          <button
+            onClick={toggle}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-[#E5E6EB] bg-white text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+          >
+            {collapsed ? (
+              <ChevronRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronLeft className="h-3.5 w-3.5" />
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Primary Actions */}
@@ -173,25 +186,6 @@ export const SidebarContent = () => {
           </div>
         </div>
       </ScrollArea>
-
-      {/* Collapse Toggle */}
-      <div className={`px-3 pb-2 ${collapsed ? "px-2" : ""}`}>
-        <Button
-          variant="ghost"
-          onClick={toggle}
-          className={`w-full gap-3 text-slate-400 hover:text-slate-600 ${collapsed ? "justify-center px-0" : "justify-start"}`}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="h-5 w-5 shrink-0" />
-          ) : (
-            <>
-              <ChevronLeft className="h-5 w-5 shrink-0" />
-              <span>Collapse</span>
-            </>
-          )}
-        </Button>
-      </div>
 
       {/* User Profile */}
       <div className="mt-auto border-t p-4">
