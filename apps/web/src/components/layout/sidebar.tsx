@@ -8,6 +8,7 @@ import {
   Layers,
   Library,
   LogOut,
+  MessageSquare,
   Plus,
   PlusCircle,
   ShieldCheck,
@@ -133,77 +134,144 @@ export const SidebarContent = () => {
 
       {/* Navigation Links */}
       <ScrollArea className={`flex-1 py-4 ${collapsed ? "px-0" : "px-3"}`}>
-        <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-8"}>
-          <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-1"}>
-            {!collapsed && (
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
-                Workspace
-              </div>
-            )}
+        {collapsed ? (
+          <div className="flex flex-col items-center gap-1">
+            {/* Workspace icons */}
             <Link href="/">
               <Button
                 variant="ghost"
-                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname === "/" ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeClass : inactiveClass}`}
                 title="Ongoing Projects"
               >
                 <FolderOpen className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>Ongoing Projects</span>}
               </Button>
             </Link>
             <Link href="/compare-models">
               <Button
                 variant="ghost"
-                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
                 title="Compare Models"
               >
                 <Layers className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>Compare Models</span>}
               </Button>
             </Link>
             <Link href="/teams">
               <Button
                 variant="ghost"
-                className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
                 title="Team Management"
               >
                 <Users className="h-5 w-5 shrink-0" />
-                {!collapsed && <span>Team Management</span>}
               </Button>
             </Link>
-          </div>
 
-          <div className={collapsed ? "flex flex-col items-center gap-1" : "space-y-1"}>
-            {!collapsed && (
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
-                Intelligence
-              </div>
-            )}
+            {/* Divider */}
+            <div className="my-2 w-[40px] border-t border-[#E5E6EB]" />
+
+            {/* Chat */}
             <Button
               variant="ghost"
-              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
+              title="Chat"
+            >
+              <MessageSquare className="h-5 w-5 shrink-0" />
+            </Button>
+
+            {/* Divider */}
+            <div className="my-2 w-[40px] border-t border-[#E5E6EB]" />
+
+            {/* Intelligence icons */}
+            <Button
+              variant="ghost"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Observability</span>}
             </Button>
             <Button
               variant="ghost"
-              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Guardrails</span>}
             </Button>
             <Button
               variant="ghost"
-              className={`${collapsed ? "h-[40px] w-[40px] p-0 justify-center" : "w-full justify-start gap-3"} ${collapsed ? "text-text-3 hover:text-slate-900" : "text-slate-500 hover:text-slate-900"}`}
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
-              {!collapsed && <span>Prompt Library</span>}
             </Button>
           </div>
-        </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="space-y-1">
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+                Workspace
+              </div>
+              <Link href="/">
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+                  title="Ongoing Projects"
+                >
+                  <FolderOpen className="h-5 w-5 shrink-0" />
+                  <span>Ongoing Projects</span>
+                </Button>
+              </Link>
+              <Link href="/compare-models">
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                  title="Compare Models"
+                >
+                  <Layers className="h-5 w-5 shrink-0" />
+                  <span>Compare Models</span>
+                </Button>
+              </Link>
+              <Link href="/teams">
+                <Button
+                  variant="ghost"
+                  className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                  title="Team Management"
+                >
+                  <Users className="h-5 w-5 shrink-0" />
+                  <span>Team Management</span>
+                </Button>
+              </Link>
+            </div>
+
+            <div className="space-y-1">
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+                Intelligence
+              </div>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                title="Observability"
+              >
+                <BarChart2 className="h-5 w-5 shrink-0" />
+                <span>Observability</span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                title="Guardrails"
+              >
+                <ShieldCheck className="h-5 w-5 shrink-0" />
+                <span>Guardrails</span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                title="Prompt Library"
+              >
+                <Library className="h-5 w-5 shrink-0" />
+                <span>Prompt Library</span>
+              </Button>
+            </div>
+          </div>
+        )}
       </ScrollArea>
 
       {/* User Profile */}
