@@ -28,7 +28,7 @@ export const Appbar = () => {
             </Button>
           </SheetTrigger>
           <SheetContent side="left" className="p-0 w-72">
-            <SidebarContent />
+            <SidebarContent showToggle={false} />
           </SheetContent>
         </Sheet>
 
