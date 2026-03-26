@@ -108,7 +108,7 @@ export const SidebarContent = () => {
       </div>
 
       {/* Primary Actions */}
-      <div className={`${collapsed ? "flex justify-center p-3" : "p-4 pb-2"}`}>
+      <div className={`${collapsed ? "flex justify-center p-3" : "flex justify-center p-3"}`}>
         {user?.canCreateProject ? (
           <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
         ) : collapsed ? (
@@ -132,10 +132,9 @@ export const SidebarContent = () => {
       </div>
 
       {/* Navigation Links */}
-      <ScrollArea className={`flex-1 py-4 ${collapsed ? "px-0" : "px-3"}`}>
+      <ScrollArea className="flex-1 py-4 px-0">
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
-            {/* Workspace icons */}
             <Link href="/">
               <Button
                 variant="ghost"
@@ -203,96 +202,85 @@ export const SidebarContent = () => {
             </Button>
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="space-y-1">
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
-                Workspace
-              </div>
-              <Link href="/">
-                <Button
-                  variant="ghost"
-                  className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
-                  title="Ongoing Projects"
-                >
-                  <FolderOpen className="h-5 w-5 shrink-0" />
-                  <span>Ongoing Projects</span>
-                </Button>
-              </Link>
-              <Link href="/compare-models">
-                <Button
-                  variant="ghost"
-                  className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
-                  title="Compare Models"
-                >
-                  <Layers className="h-5 w-5 shrink-0" />
-                  <span>Compare Models</span>
-                </Button>
-              </Link>
-              <Link href="/teams">
-                <Button
-                  variant="ghost"
-                  className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
-                  title="Team Management"
-                >
-                  <Users className="h-5 w-5 shrink-0" />
-                  <span>Team Management</span>
-                </Button>
-              </Link>
-            </div>
+          <div className="flex flex-col items-center gap-1">
+            <Link href="/" className="w-full flex justify-center">
+              <Button
+                variant="ghost"
+                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+                title="Ongoing Projects"
+              >
+                <FolderOpen className="h-5 w-5 shrink-0" />
+                <span>Ongoing Projects</span>
+              </Button>
+            </Link>
+            <Link href="/compare-models" className="w-full flex justify-center">
+              <Button
+                variant="ghost"
+                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+                title="Compare Models"
+              >
+                <Layers className="h-5 w-5 shrink-0" />
+                <span>Compare Models</span>
+              </Button>
+            </Link>
+            <Link href="/teams" className="w-full flex justify-center">
+              <Button
+                variant="ghost"
+                className={`h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+                title="Team Management"
+              >
+                <Users className="h-5 w-5 shrink-0" />
+                <span>Team Management</span>
+              </Button>
+            </Link>
 
             {/* Divider */}
-            <div className="mx-3 border-t border-border-2" />
+            <div className="my-2 w-full max-w-[calc(100%-24px)] border-t border-border-2" />
 
             {/* Chat */}
-            <div className="space-y-1">
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
-                title="Chat"
-              >
-                <MessageSquare className="h-5 w-5 shrink-0" />
-                <span>AI Chat</span>
-              </Button>
-            </div>
+            <Button
+              variant="ghost"
+              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              title="Chat"
+            >
+              <MessageSquare className="h-5 w-5 shrink-0" />
+              <span>AI Chat</span>
+            </Button>
 
             {/* Divider */}
-            <div className="mx-3 border-t border-border-2" />
+            <div className="my-2 w-full max-w-[calc(100%-24px)] border-t border-border-2" />
 
-            <div className="space-y-1">
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
-                Intelligence
-              </div>
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
-                title="Observability"
-              >
-                <BarChart2 className="h-5 w-5 shrink-0" />
-                <span>Observability</span>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
-                title="Guardrails"
-              >
-                <ShieldCheck className="h-5 w-5 shrink-0" />
-                <span>Guardrails</span>
-              </Button>
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
-                title="Prompt Library"
-              >
-                <Library className="h-5 w-5 shrink-0" />
-                <span>Prompt Library</span>
-              </Button>
-            </div>
+            {/* Intelligence */}
+            <Button
+              variant="ghost"
+              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              title="Observability"
+            >
+              <BarChart2 className="h-5 w-5 shrink-0" />
+              <span>Observability</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              title="Guardrails"
+            >
+              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <span>Guardrails</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className="h-[40px] w-full max-w-[calc(100%-24px)] justify-start gap-3 text-text-3 hover:text-text-1"
+              title="Prompt Library"
+            >
+              <Library className="h-5 w-5 shrink-0" />
+              <span>Prompt Library</span>
+            </Button>
           </div>
         )}
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "px-3 py-4"}`}>
+      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "flex flex-col items-center gap-3 px-3 py-4"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
           <button
@@ -303,7 +291,7 @@ export const SidebarContent = () => {
           </button>
         ) : (
           <button
-            className="mb-3 flex w-full items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
+            className="flex h-[40px] w-full max-w-[calc(100%-24px)] items-center gap-3 rounded-lg px-2 py-2 text-text-3 transition-colors hover:text-text-1"
             title="Toggle dark mode"
           >
             <Moon className="h-5 w-5 shrink-0" />
@@ -311,7 +299,7 @@ export const SidebarContent = () => {
           </button>
         )}
         <div
-          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "gap-3 p-2"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full max-w-[calc(100%-24px)] gap-3 p-2"}`}
         >
           <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
@@ -349,7 +337,7 @@ export const Sidebar = () => {
 
   return (
     <aside
-      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 bg-bg-1 border-r border-border-2"}`}
+      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 bg-bg-1"}`}
     >
       <SidebarContent />
     </aside>
