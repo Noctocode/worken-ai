@@ -9,6 +9,7 @@ import {
   Library,
   LogOut,
   MessageSquare,
+  Moon,
   Plus,
   PlusCircle,
   ShieldCheck,
@@ -114,7 +115,7 @@ export const SidebarContent = () => {
           <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
         ) : collapsed ? (
           <Button
-            className="h-[40px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
+            className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
             disabled
             title="New Project"
           >
@@ -276,15 +277,22 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto p-4 ${collapsed ? "flex justify-center" : "border-t border-border-2"}`}>
+      <div className={`mt-auto p-4 ${collapsed ? "flex flex-col items-center gap-3" : "border-t border-border-2"}`}>
+        {/* Dark mode toggle – collapsed only */}
+        {collapsed && (
+          <button
+            className="flex h-[40px] w-[40px] items-center justify-center text-text-3 transition-colors hover:text-text-1"
+            title="Toggle dark mode"
+          >
+            <Moon className="h-5 w-5" />
+          </button>
+        )}
         <div
-          className={`group flex items-center rounded-lg p-2 ${collapsed ? "justify-center" : "gap-3"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "gap-3 p-2"}`}
         >
-          <Avatar className="h-9 w-9 shrink-0 border border-primary-1 bg-primary-1">
-            {user?.picture && (
-              <AvatarImage src={user.picture} alt={user.name ?? ""} />
-            )}
-            <AvatarFallback className="bg-primary-1 text-xs font-medium text-primary-6">
+          <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-primary-1 bg-primary-1"}`}>
+            <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
+            <AvatarFallback className={collapsed ? "text-xs font-medium text-text-1" : "bg-primary-1 text-xs font-medium text-primary-6"}>
               {getInitials(user?.name)}
             </AvatarFallback>
           </Avatar>
