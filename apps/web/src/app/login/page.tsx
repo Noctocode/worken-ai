@@ -85,6 +85,13 @@ export default function LoginPage() {
             </svg>
             Google
           </Button>
+          <p className="text-sm text-text-2 mt-6">
+            Don&apos;t have an account?{" "}
+            <a href="/register" className="text-primary-6 hover:text-primary-7 font-medium">
+              Sign up
+            </a>{" "}
+            to create a workspace
+          </p>
         </CardContent>
       </Card>
     </div>
