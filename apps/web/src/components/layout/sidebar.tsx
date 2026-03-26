@@ -41,11 +41,12 @@ export const SidebarContent = () => {
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
 
-  const activeClass =
-    "bg-blue-50 text-blue-600 hover:bg-blue-50 hover:text-blue-700";
+  const activeClass = collapsed
+    ? "text-primary-6 hover:text-primary-7"
+    : "bg-primary-1 text-primary-6 hover:bg-primary-1 hover:text-primary-7";
   const inactiveClass = collapsed
-    ? "text-text-3 hover:text-slate-900"
-    : "text-slate-500 hover:text-slate-900";
+    ? "text-text-3 hover:text-text-1"
+    : "text-text-3 hover:text-text-1";
 
   const newProjectButton = collapsed ? (
     <Button
@@ -56,7 +57,7 @@ export const SidebarContent = () => {
     </Button>
   ) : (
     <Button
-      className="w-full gap-2 bg-slate-900 hover:bg-slate-800"
+      className="w-full gap-2 bg-primary-6 hover:bg-primary-7"
       size="lg"
       title="New Project"
     >
@@ -68,7 +69,7 @@ export const SidebarContent = () => {
   return (
     <div className="flex h-full flex-col">
       {/* Logo Area */}
-      <div className={`relative flex h-[4.5rem] items-center ${collapsed ? "" : "border-b"}`}>
+      <div className={`relative flex h-[4.5rem] items-center ${collapsed ? "" : "border-b border-border-2"}`}>
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
           <Link
             href="/"
@@ -97,7 +98,7 @@ export const SidebarContent = () => {
         <button
           onClick={toggle}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-[#E5E6EB] bg-white text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-600"
+          className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
         >
           {collapsed ? (
             <ChevronRight className="h-3.5 w-3.5" />
@@ -121,7 +122,7 @@ export const SidebarContent = () => {
           </Button>
         ) : (
           <Button
-            className="w-full gap-2 bg-slate-900 hover:bg-slate-800 opacity-50 cursor-not-allowed"
+            className="w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
             size="lg"
             disabled
             title="New Project"
@@ -166,38 +167,38 @@ export const SidebarContent = () => {
             </Link>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-[#E5E6EB]" />
+            <div className="my-2 w-[40px] border-t border-border-2" />
 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
               title="Chat"
             >
               <MessageSquare className="h-5 w-5 shrink-0" />
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-[#E5E6EB]" />
+            <div className="my-2 w-[40px] border-t border-border-2" />
 
             {/* Intelligence icons */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-slate-900"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
@@ -206,7 +207,7 @@ export const SidebarContent = () => {
         ) : (
           <div className="space-y-8">
             <div className="space-y-1">
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
                 Workspace
               </div>
               <Link href="/">
@@ -242,12 +243,12 @@ export const SidebarContent = () => {
             </div>
 
             <div className="space-y-1">
-              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-slate-400">
+              <div className="mb-2 px-3 text-xs font-medium uppercase tracking-wider text-text-3">
                 Intelligence
               </div>
               <Button
                 variant="ghost"
-                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
                 title="Observability"
               >
                 <BarChart2 className="h-5 w-5 shrink-0" />
@@ -255,7 +256,7 @@ export const SidebarContent = () => {
               </Button>
               <Button
                 variant="ghost"
-                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
                 title="Guardrails"
               >
                 <ShieldCheck className="h-5 w-5 shrink-0" />
@@ -263,7 +264,7 @@ export const SidebarContent = () => {
               </Button>
               <Button
                 variant="ghost"
-                className="w-full justify-start gap-3 text-slate-500 hover:text-slate-900"
+                className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
                 title="Prompt Library"
               >
                 <Library className="h-5 w-5 shrink-0" />
@@ -275,31 +276,31 @@ export const SidebarContent = () => {
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto p-4 ${collapsed ? "flex justify-center" : "border-t"}`}>
+      <div className={`mt-auto p-4 ${collapsed ? "flex justify-center" : "border-t border-border-2"}`}>
         <div
           className={`group flex items-center rounded-lg p-2 ${collapsed ? "justify-center" : "gap-3"}`}
         >
-          <Avatar className="h-9 w-9 shrink-0 border border-blue-100 bg-blue-50">
+          <Avatar className="h-9 w-9 shrink-0 border border-primary-1 bg-primary-1">
             {user?.picture && (
               <AvatarImage src={user.picture} alt={user.name ?? ""} />
             )}
-            <AvatarFallback className="bg-gradient-to-tr from-blue-100 to-blue-50 text-xs font-medium text-blue-700">
+            <AvatarFallback className="bg-primary-1 text-xs font-medium text-primary-6">
               {getInitials(user?.name)}
             </AvatarFallback>
           </Avatar>
           {!collapsed && (
             <>
               <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm font-medium text-slate-900">
+                <p className="truncate text-sm font-medium text-text-1">
                   {user?.name ?? "Loading..."}
                 </p>
-                <p className="truncate text-xs text-slate-500">
+                <p className="truncate text-xs text-text-3">
                   {user?.email ?? ""}
                 </p>
               </div>
               <button
                 onClick={() => logout()}
-                className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
                 title="Sign out"
               >
                 <LogOut className="h-4 w-4" />
@@ -317,7 +318,7 @@ export const Sidebar = () => {
 
   return (
     <aside
-      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 border-r border-slate-200 bg-white"}`}
+      className={`relative hidden shrink-0 md:block transition-all duration-300 ${collapsed ? "w-[88px] bg-bg-1" : "w-72 border-r border-border-2 bg-white"}`}
     >
       <SidebarContent />
     </aside>
