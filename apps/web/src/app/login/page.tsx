@@ -7,6 +7,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  CardTitle
 } from "@/components/ui/card";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -25,6 +26,9 @@ export default function LoginPage() {
               priority
             />
           </div>
+          <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
+            Welcome to WorkenAI
+          </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
             Please enter your email and password to sign in or choose another
             option
