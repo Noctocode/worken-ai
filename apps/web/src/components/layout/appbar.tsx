@@ -14,7 +14,7 @@ export const Appbar = () => {
   const breadcrumbs = useBreadcrumbs();
 
   return (
-    <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between border-b border-slate-200/80 bg-white/85 px-6 backdrop-blur-md">
+    <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between bg-bg-1 px-6">
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
