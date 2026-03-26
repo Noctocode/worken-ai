@@ -36,7 +36,7 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2);
 }
 
-export const SidebarContent = () => {
+export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) => {
   const { user } = useAuth();
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
@@ -94,17 +94,19 @@ export const SidebarContent = () => {
           </Link>
         </div>
         {/* Toggle button – positioned on the edge of the sidebar */}
-        <button
-          onClick={toggle}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
-        >
-          {collapsed ? (
-            <ChevronsRight className="h-3.5 w-3.5" />
-          ) : (
-            <ChevronsLeft className="h-3.5 w-3.5" />
-          )}
-        </button>
+        {showToggle && (
+          <button
+            onClick={toggle}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
+          >
+            {collapsed ? (
+              <ChevronsRight className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Primary Actions */}
