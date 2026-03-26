@@ -5,14 +5,15 @@ export function middleware(request: NextRequest) {
   const accessToken = request.cookies.get("access_token");
   const refreshToken = request.cookies.get("refresh_token");
   const isLoginPage = request.nextUrl.pathname === "/login";
+  const isRegisterPage = request.nextUrl.pathname === "/register";
 
-  // If user has any auth token and tries to visit /login, redirect to home
-  if (isLoginPage && (accessToken || refreshToken)) {
+  // If user has any auth token and tries to visit /login or /register, redirect to home
+  if ((isLoginPage || isRegisterPage) && (accessToken || refreshToken)) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
-  // If no tokens at all, redirect to login
-  if (!isLoginPage && !accessToken && !refreshToken) {
+  // If no tokens at all, redirect to login (except login and register pages)
+  if (!isLoginPage && !isRegisterPage && !accessToken && !refreshToken) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
