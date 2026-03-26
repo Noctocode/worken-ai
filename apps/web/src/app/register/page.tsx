@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Mail, Lock, LogIn } from "lucide-react";
+import { Mail, Lock, LogIn, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -15,7 +15,7 @@ import {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export default function LoginPage() {
+export default function RegisterPage() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
@@ -30,15 +30,22 @@ export default function LoginPage() {
             />
           </div>
           <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-            Welcome to WorkenAI
+            Create an Account
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Please enter your email and password to sign in or choose another
-            option
+            Enter your details to create a new workspace
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="relative">
+            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+            <Input
+              type="text"
+              placeholder="Full Name"
+              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+            />
+          </div>
+          <div className="relative mt-4">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
             <Input
               type="email"
@@ -83,9 +90,9 @@ export default function LoginPage() {
             Google
           </Button>
           <p className="text-sm text-text-2 mt-6">
-            {"Don't have an account? "}
-            <Link href="/register" className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
-            {" to create a workspace"}
+            {"Already have an account? "}
+            <Link href="/login" className="text-primary-6 hover:text-primary-7 font-medium">Sign in</Link>
+            {" to your workspace"}
           </p>
         </CardContent>
       </Card>
