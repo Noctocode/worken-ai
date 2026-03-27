@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
+import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
 import { fetchTeams, fetchOrgUsers, removeOrgUser, type Team, type OrgUser } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
@@ -411,6 +412,12 @@ export default function TeamsPage() {
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
           />
+          <AddModelDialog>
+            <Button variant="plusAction">
+              <Plus className="h-4 w-4 text-black-900" />
+              Add New Model
+            </Button>
+          </AddModelDialog>
         </div>
 
         <div className="overflow-x-auto bg-white rounded-lg">
