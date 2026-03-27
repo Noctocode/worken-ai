@@ -22,6 +22,7 @@ import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
+import { BillingTab } from "@/components/management/billing-tab";
 
 export default function TeamsPage() {
   const { user } = useAuth();
@@ -231,7 +232,7 @@ export default function TeamsPage() {
         <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="billing">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <BillingTab />
       </PageTabsContent>
       <PageTabsContent value="integration">
         <IntegrationTab />
