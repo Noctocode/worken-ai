@@ -87,11 +87,20 @@ function TeamRow({ team, isOwner }: { team: Team; isOwner: boolean }) {
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 
-const ROLE_LABELS: Record<string, string> = {
-  basic: "Basic",
-  advanced: "Advanced",
-  admin: "Admin",
-};
+function SpentBar({ spent, budget }: { spent: number; budget: number }) {
+  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const exceeded = spent > budget;
+  return (
+    <div className="flex items-center gap-2">
+      <div className="h-1.5 w-20 rounded-full bg-slate-100 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${exceeded ? "bg-red-500" : "bg-primary-5"}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
 function UserRow({ user }: { user: OrgUser }) {
   const queryClient = useQueryClient();
@@ -103,8 +112,15 @@ function UserRow({ user }: { user: OrgUser }) {
     },
   });
 
+  const budget = user.monthlyBudget ?? 0;
+  const spent = user.spent ?? 0;
+  const remaining = budget - spent;
+  const projected = user.projected ?? 0;
+  const willExceed = projected > budget;
+
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+      {/* Name */}
       <td className="px-4 align-middle text-base font-normal text-black">
         <div className="flex items-center gap-2">
           {user.picture ? (
@@ -122,27 +138,52 @@ function UserRow({ user }: { user: OrgUser }) {
           <span>{user.name ?? "—"}</span>
         </div>
       </td>
+      {/* Email */}
       <td className="px-4 align-middle text-base font-normal text-black">
         {user.email}
       </td>
-      <td className="px-4 align-middle text-base font-normal text-black">
-        {ROLE_LABELS[user.role] ?? user.role}
-      </td>
+      {/* Teams */}
       <td className="px-4 align-middle">
-        <Badge
-          variant="secondary"
-          className={
-            user.status === "accepted"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px]"
-              : "border-slate-200 bg-slate-50 text-slate-500 text-[11px]"
-          }
-        >
-          {user.status === "accepted" ? "Active" : "Pending"}
-        </Badge>
+        <div className="flex flex-wrap gap-1">
+          {user.teams && user.teams.length > 0 ? (
+            user.teams.map((t) => (
+              <span
+                key={t}
+                className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600"
+              >
+                {t}
+              </span>
+            ))
+          ) : (
+            <span className="text-slate-400">—</span>
+          )}
+        </div>
       </td>
+      {/* Personal Monthly Budget */}
       <td className="px-4 align-middle text-base font-normal text-black">
-        {new Date(user.createdAt).toLocaleDateString()}
+        {budget > 0 ? `$${budget}` : "—"}
       </td>
+      {/* Spent / Remaining */}
+      <td className="px-4 align-middle">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-black">
+            ${spent} / ${remaining < 0 ? 0 : remaining}
+          </span>
+          <SpentBar spent={spent} budget={budget} />
+        </div>
+      </td>
+      {/* Projected */}
+      <td className="px-4 align-middle">
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-black">${projected}</span>
+          {willExceed && (
+            <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-500">
+              Will Exceed
+            </span>
+          )}
+        </div>
+      </td>
+      {/* Actions */}
       <td className="px-4 align-middle text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -393,25 +434,26 @@ export default function TeamsPage() {
           <table className="w-full">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">User</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Name</th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Email</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Role</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Status</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Joined</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Teams</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Personal Monthly Budget</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Spent/Remaining</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Projected</th>
                 <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
               </tr>
             </thead>
             <tbody>
               {usersLoading && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center align-middle">
+                  <td colSpan={7} className="py-12 text-center align-middle">
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
                   </td>
                 </tr>
               )}
               {usersError && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center align-middle text-sm text-red-500">
+                  <td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">
                     Failed to load users. Is the API running?
                   </td>
                 </tr>
@@ -421,7 +463,7 @@ export default function TeamsPage() {
               ))}
               {!usersLoading && !usersError && filteredUsers?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="py-12 text-center align-middle">
+                  <td colSpan={7} className="py-12 text-center align-middle">
                     <Users className="mx-auto h-10 w-10 text-slate-300" />
                     <p className="mt-3 text-sm text-slate-500">
                       {userSearch

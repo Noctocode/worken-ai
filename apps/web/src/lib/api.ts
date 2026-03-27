@@ -385,6 +385,10 @@ export interface OrgUser {
   picture: string | null;
   role: "basic" | "advanced" | "admin";
   status: "pending" | "accepted";
+  teams: string[];
+  monthlyBudget: number | null;
+  spent: number | null;
+  projected: number | null;
   createdAt: string;
 }
 
