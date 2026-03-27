@@ -14,7 +14,7 @@ import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchTeams, fetchOrgUsers } from "@/lib/api";
+import { fetchTeams, /* fetchOrgUsers, */ type OrgUser } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
 import { MODELS } from "@/lib/models";
 import { TeamRow } from "@/components/management/team-row";
@@ -24,6 +24,17 @@ import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
+
+// TODO: replace with real API when backend /users endpoint is ready
+const DEMO_USERS: OrgUser[] = [
+  { id: "1", name: "Bessie Cooper",     email: "willie.jennings@example.com",  picture: null, role: "admin",    status: "accepted", teams: ["Marketing", "Design"],            monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "2", name: "Darlene Robertson", email: "dolores.chambers@example.com", picture: null, role: "advanced", status: "accepted", teams: ["Growth Strategies"],             monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "3", name: "Floyd Miles",       email: "jessica.hanson@example.com",   picture: null, role: "basic",    status: "accepted", teams: ["Brand Development"],             monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "4", name: "Jerome Bell",       email: "willie.jennings@example.com",  picture: null, role: "basic",    status: "accepted", teams: ["User Experience"],               monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "5", name: "Kristin Watson",    email: "michelle.rivera@example.com",  picture: null, role: "basic",    status: "accepted", teams: ["Digital Marketing"],             monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "6", name: "Brooklyn Simmons",  email: "nathan.roberts@example.com",   picture: null, role: "basic",    status: "accepted", teams: ["Product Design"],                monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+  { id: "7", name: "Darrell Steward",   email: "michael.mitc@example.com",     picture: null, role: "basic",    status: "accepted", teams: ["Advertising", "Web Design"],     monthlyBudget: 300, spent: 129, projected: 537, createdAt: "2024-01-01" },
+];
 
 export default function TeamsPage() {
   const { user } = useAuth();
@@ -40,20 +51,24 @@ export default function TeamsPage() {
     queryFn: fetchTeams,
   });
 
-  const {
-    data: orgUsers,
-    isLoading: usersLoading,
-    error: usersError,
-  } = useQuery({
-    queryKey: ["org-users"],
-    queryFn: fetchOrgUsers,
-  });
+  // TODO: uncomment when backend /users endpoint is ready
+  // const {
+  //   data: orgUsers,
+  //   isLoading: usersLoading,
+  //   error: usersError,
+  // } = useQuery({
+  //   queryKey: ["org-users"],
+  //   queryFn: fetchOrgUsers,
+  // });
+  const orgUsers = DEMO_USERS;
+  const usersLoading = false;
+  const usersError = null;
 
   const filteredTeams = teams?.filter((t) =>
     t.name.toLowerCase().includes(teamSearch.toLowerCase()),
   );
 
-  const filteredUsers = orgUsers?.filter(
+  const filteredUsers = orgUsers.filter(
     (u) =>
       u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
       (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()),
@@ -164,10 +179,10 @@ export default function TeamsPage() {
               {usersError && (
                 <tr><td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">Failed to load users. Is the API running?</td></tr>
               )}
-              {filteredUsers?.map((u) => (
+              {filteredUsers.map((u) => (
                 <UserRow key={u.id} user={u} />
               ))}
-              {!usersLoading && !usersError && filteredUsers?.length === 0 && (
+              {!usersLoading && !usersError && filteredUsers.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
                     <Users className="mx-auto h-10 w-10 text-slate-300" />
