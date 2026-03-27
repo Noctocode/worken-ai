@@ -66,9 +66,6 @@ export default function TeamsPage() {
     <div className="space-y-8">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Team Management
-          </h1>
           <p className="mt-1 text-sm text-slate-500">
             Create and manage your teams.
           </p>
