@@ -26,7 +26,7 @@ function PageTabsList({
     <TabsPrimitive.List
       data-slot="page-tabs-list"
       className={cn(
-        "flex w-full border-b border-[#DEDFE3]",
+        "flex w-full border-b border-black-100",
         className
       )}
       {...props}
@@ -43,12 +43,15 @@ function PageTabsTrigger({
       data-slot="page-tabs-trigger"
       className={cn(
         "relative flex items-center justify-center px-4 h-[55px]",
-        "font-normal text-[18px] leading-none whitespace-nowrap transition-colors",
-        "text-[#5D636F]/60 hover:text-[#5D636F]",
+        "text-[18px] leading-none whitespace-nowrap transition-colors",
         "focus-visible:outline-none",
-        "data-[state=active]:text-[#5D636F]",
+        // inactive
+        "font-normal text-black-700 hover:text-black-700/60",
+        // active
+        "data-[state=active]:font-bold data-[state=active]:text-black-900",
+        // active indicator
         "after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[1px]",
-        "after:bg-[#5AC4FF] after:opacity-0 after:transition-opacity",
+        "after:bg-primary-5 after:opacity-0 after:transition-opacity",
         "data-[state=active]:after:opacity-100",
         className
       )}
