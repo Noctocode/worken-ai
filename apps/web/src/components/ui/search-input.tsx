@@ -1,0 +1,57 @@
+import * as React from "react"
+import { Search } from "lucide-react"
+import { cva, type VariantProps } from "class-variance-authority"
+
+import { cn } from "@/lib/utils"
+
+const searchInputVariants = cva(
+  "flex items-center gap-3 rounded-md border bg-transparent transition-[color,box-shadow] outline-none focus-within:border-ring focus-within:ring-ring/50 focus-within:ring-[3px]",
+  {
+    variants: {
+      size: {
+        default: "h-14 px-4",
+        sm: "h-10 px-3",
+        lg: "h-16 px-5",
+      },
+    },
+    defaultVariants: {
+      size: "default",
+    },
+  }
+)
+
+function SearchInput({
+  className,
+  size = "default",
+  iconClassName,
+  ...props
+}: Omit<React.ComponentProps<"input">, "size"> &
+  VariantProps<typeof searchInputVariants> & {
+    iconClassName?: string
+  }) {
+  return (
+    <div
+      data-slot="search-input"
+      className={cn(
+        searchInputVariants({ size }),
+        "border-black-600",
+        className
+      )}
+    >
+      <Search
+        className={cn(
+          "h-4.5 w-4.5 shrink-0 text-black-800",
+          iconClassName
+        )}
+      />
+      <input
+        type="text"
+        placeholder="Search"
+        className="h-full w-full min-w-0 bg-transparent text-[16px] font-normal text-black-800 placeholder:text-black-800 outline-none"
+        {...props}
+      />
+    </div>
+  )
+}
+
+export { SearchInput, searchInputVariants }

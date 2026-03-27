@@ -3,7 +3,6 @@
 import Link from "next/link";
 import {
   Plus,
-  Search,
   Users,
   Loader2,
   MoreVertical,
@@ -13,7 +12,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   PageTabs,
   PageTabsList,
@@ -29,6 +27,7 @@ import {
 import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { useAuth } from "@/components/providers";
 import { fetchTeams, type Team } from "@/lib/api";
+import { SearchInput } from "@/components/ui/search-input";
 
 function TeamRow({ team, isOwner }: { team: Team; isOwner: boolean }) {
   return (
@@ -107,13 +106,8 @@ export default function TeamsPage() {
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Teams
           </span>
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-black-800" />
-            <Input
-              placeholder="Search"
-              className="w-full h-14 pl-11 bg-transparent border-black-600 rounded text-[16px] font-normal text-black-800 placeholder:text-black-800"
-            />
-          </div>
+
+          <SearchInput className="flex-1" placeholder="Search" />
           {user?.isPaid && (
             <CreateTeamDialog>
               <Button variant="plusAction">
@@ -129,13 +123,27 @@ export default function TeamsPage() {
           <table className="w-full">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Description</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Monthly Budget</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Spent / Remaining</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Projected</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Members</th>
-                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Team
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Description
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Monthly Budget
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Spent / Remaining
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Projected
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Members
+                </th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -149,7 +157,10 @@ export default function TeamsPage() {
 
               {error && (
                 <tr>
-                  <td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">
+                  <td
+                    colSpan={7}
+                    className="py-12 text-center align-middle text-sm text-red-500"
+                  >
                     Failed to load teams. Is the API running?
                   </td>
                 </tr>
@@ -181,25 +192,39 @@ export default function TeamsPage() {
       </PageTabsContent>
 
       <PageTabsContent value="users">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="models">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="my-account">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="company">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="api">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="billing">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
       <PageTabsContent value="integration">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
       </PageTabsContent>
     </PageTabs>
   );
