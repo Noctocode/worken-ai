@@ -57,12 +57,14 @@
   --color-danger-6: var(--danger-6);
   --color-bg-1: var(--bg-1);
   --color-border-2: var(--border-2);
-  --color-black-100: var(--black-100);
-  --color-black-400: var(--black-400);
-  --color-black-700: var(--black-700);
-  --color-black-900: var(--black-900);
   --color-border-3: var(--border-3);
   --color-divider: var(--divider);
+  --color-black-100: var(--black-100);
+  --color-black-400: var(--black-400);
+  --color-black-600: var(--black-600);
+  --color-black-700: var(--black-700);
+  --color-black-800: var(--black-800);
+  --color-black-900: var(--black-900);
 }
 
 :root {
@@ -111,12 +113,14 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-2: #E5E6EB;
-  --black-100: #DEDFE3;
-  --black-400: #9BA0AB;
-  --black-700: #5D636F;
-  --black-900: #383B43;
   --border-3: #C9CDD4;
   --divider: rgba(92, 92, 92, 0.2);
+  --black-100: #DEDFE3;
+  --black-400: #9BA0AB;
+  --black-600: #737A85;
+  --black-700: #5D636F;
+  --black-800: #4A4F59;
+  --black-900: #383B43;
 }
 
 .dark {
@@ -164,12 +168,14 @@
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
   --border-2: #E5E6EB;
-  --black-100: #DEDFE3;
-  --black-400: #9BA0AB;
-  --black-700: #5D636F;
-  --black-900: #383B43;
   --border-3: #C9CDD4;
   --divider: rgba(92, 92, 92, 0.2);
+  --black-100: #DEDFE3;
+  --black-400: #9BA0AB;
+  --black-600: #737A85;
+  --black-700: #5D636F;
+  --black-800: #4A4F59;
+  --black-900: #383B43;
 }
 
 @layer base {

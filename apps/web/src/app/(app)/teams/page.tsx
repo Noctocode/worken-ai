@@ -103,21 +103,21 @@ export default function TeamsPage() {
 
       <PageTabsContent value="teams">
         {/* Toolbar row */}
-        <div className="flex items-center gap-4 border-b border-black-100 py-4">
+        <div className="flex items-center gap-4 py-4">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Teams
           </span>
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black-400" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black-800" />
             <Input
               placeholder="Search"
-              className="w-full h-14 pl-9 border-slate-200 bg-white text-[16px] font-normal text-black-800 placeholder:text-black-400"
+              className="w-full h-14 pl-9 bg-transparent border-black-600 rounded text-[16px] font-normal text-black-800 placeholder:text-black-800"
             />
           </div>
           {user?.isPaid && (
             <CreateTeamDialog>
               <Button className="h-12 px-4 gap-2 bg-primary-6 hover:bg-primary-7 text-[16px] font-normal text-white whitespace-nowrap">
-                <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4 text-black-900" />
                 Create Team
               </Button>
             </CreateTeamDialog>
