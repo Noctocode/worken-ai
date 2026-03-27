@@ -6,6 +6,7 @@ import { createTeam } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,8 @@ export function CreateTeamDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [monthlyBudget, setMonthlyBudget] = useState("");
 
   const queryClient = useQueryClient();
 
@@ -31,6 +34,8 @@ export function CreateTeamDialog({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setName("");
+      setDescription("");
+      setMonthlyBudget("");
       setOpen(false);
     },
   });
@@ -38,7 +43,11 @@ export function CreateTeamDialog({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    mutation.mutate(name.trim());
+    mutation.mutate({
+      name: name.trim(),
+      description: description.trim() || undefined,
+      monthlyBudget: monthlyBudget ? parseFloat(monthlyBudget) : undefined,
+    });
   };
 
   return (
@@ -60,6 +69,28 @@ export function CreateTeamDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="team-description">Description</Label>
+            <Textarea
+              id="team-description"
+              placeholder="What is this team for?"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="team-budget">Monthly Budget ($)</Label>
+            <Input
+              id="team-budget"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 300"
+              value={monthlyBudget}
+              onChange={(e) => setMonthlyBudget(e.target.value)}
             />
           </div>
           <DialogFooter>
