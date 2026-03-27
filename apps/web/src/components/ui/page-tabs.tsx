@@ -46,7 +46,7 @@ function PageTabsTrigger({
         "text-[18px] leading-none whitespace-nowrap transition-colors",
         "focus-visible:outline-none",
         // inactive
-        "font-normal text-black-700 hover:text-black-700/60",
+        "font-normal text-black-700 hover:text-black-700/75 cursor-pointer",
         // active
         "data-[state=active]:font-bold data-[state=active]:text-black-900",
         // active indicator
