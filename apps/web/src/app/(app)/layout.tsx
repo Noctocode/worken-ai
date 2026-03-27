@@ -12,7 +12,7 @@ export default function AppLayout({
   return (
     <AuthProvider>
       <SidebarProvider>
-        <div className="flex h-screen w-full overflow-hidden bg-slate-50/50 text-slate-600 selection:bg-blue-100 selection:text-blue-900">
+        <div className="flex h-screen w-full overflow-hidden bg-bg-1 text-slate-600 selection:bg-blue-100 selection:text-blue-900">
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <Appbar />

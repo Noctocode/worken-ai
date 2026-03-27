@@ -1,4 +1,3 @@
-// src/app/(app)/teams/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -18,8 +17,8 @@ import { fetchTeams, type Team } from "@/lib/api";
 
 function TeamRow({ team, isOwner }: { team: Team; isOwner: boolean }) {
   return (
-    <tr className="border-b border-slate-100 transition-colors hover:bg-slate-50/50">
-      <td className="py-4 px-4 text-sm text-slate-900">
+    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+      <td className="px-4 align-middle text-base font-normal text-black">
         <div className="flex items-center gap-2">
           {team.name}
           {isOwner && (
@@ -30,12 +29,12 @@ function TeamRow({ team, isOwner }: { team: Team; isOwner: boolean }) {
           )}
         </div>
       </td>
-      <td className="py-4 px-4 text-sm text-slate-500">—</td>
-      <td className="py-4 px-4 text-sm text-slate-500">—</td>
-      <td className="py-4 px-4 text-sm text-slate-500">—</td>
-      <td className="py-4 px-4 text-sm text-slate-500">—</td>
-      <td className="py-4 px-4 text-sm text-slate-500">—</td>
-      <td className="py-4 px-4 text-right">
+      <td className="px-4 align-middle text-base font-normal text-black">—</td>
+      <td className="px-4 align-middle text-base font-normal text-black">—</td>
+      <td className="px-4 align-middle text-base font-normal text-black">—</td>
+      <td className="px-4 align-middle text-base font-normal text-black">—</td>
+      <td className="px-4 align-middle text-base font-normal text-black">—</td>
+      <td className="px-4 align-middle text-right">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -87,23 +86,23 @@ export default function TeamsPage() {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="overflow-x-auto bg-white rounded-lg">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-slate-200">
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Team</th>
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Description</th>
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Monthly Budget</th>
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Spent / Remaining</th>
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Projected</th>
-              <th className="py-3 px-4 text-left text-[13px] font-normal text-[#5D636F]">Members</th>
-              <th className="py-3 px-4 text-right text-[13px] font-normal text-[#5D636F]">Actions</th>
+            <tr className="h-[33px] border-b border-bg-1">
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Description</th>
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Monthly Budget</th>
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Spent / Remaining</th>
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Projected</th>
+              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Members</th>
+              <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
             </tr>
           </thead>
           <tbody>
             {isLoading && (
               <tr>
-                <td colSpan={7} className="py-12 text-center">
+                <td colSpan={7} className="py-12 text-center align-middle">
                   <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
                 </td>
               </tr>
@@ -111,7 +110,7 @@ export default function TeamsPage() {
 
             {error && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-sm text-red-500">
+                <td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">
                   Failed to load teams. Is the API running?
                 </td>
               </tr>
@@ -127,7 +126,7 @@ export default function TeamsPage() {
 
             {!isLoading && !error && teams?.length === 0 && (
               <tr>
-                <td colSpan={7} className="py-12 text-center">
+                <td colSpan={7} className="py-12 text-center align-middle">
                   <Users className="mx-auto h-10 w-10 text-slate-300" />
                   <p className="mt-3 text-sm text-slate-500">
                     {user?.isPaid
