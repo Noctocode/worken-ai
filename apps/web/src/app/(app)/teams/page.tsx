@@ -33,6 +33,7 @@ import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
 import { fetchTeams, fetchOrgUsers, removeOrgUser, type Team, type OrgUser } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
+import { Switch } from "@/components/ui/switch";
 import { MODELS } from "@/lib/models";
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
@@ -172,29 +173,64 @@ function UserRow({ user }: { user: OrgUser }) {
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 function ModelRow({ model }: { model: (typeof MODELS)[number] }) {
-  const provider = model.id.split("/")[0] ?? "—";
+  const [active, setActive] = useState(true);
+
+  // For demo purposes fallbacks are the other models
+  const fallbacks = MODELS.filter((m) => m.id !== model.id);
 
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+      {/* Custom Name */}
       <td className="px-4 align-middle text-base font-normal text-black">
+        {model.label}
+      </td>
+      {/* Status */}
+      <td className="px-4 align-middle">
         <div className="flex items-center gap-2">
-          <Bot className="h-4 w-4 text-slate-400" />
-          {model.label}
+          <Switch checked={active} onCheckedChange={setActive} />
+          <span className="text-sm text-black-700">{active ? "Active" : "Inactive"}</span>
         </div>
       </td>
-      <td className="px-4 align-middle font-mono text-sm text-slate-500">
-        {model.id}
-      </td>
-      <td className="px-4 align-middle text-base font-normal text-black capitalize">
-        {provider}
-      </td>
+      {/* Model */}
       <td className="px-4 align-middle">
-        <Badge
-          variant="secondary"
-          className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[11px]"
-        >
-          Active
-        </Badge>
+        <div className="flex items-center gap-1.5">
+          <Bot className="h-4 w-4 text-slate-400" />
+          <span className="text-base font-normal text-black">{model.label}</span>
+        </div>
+      </td>
+      {/* Fallback models */}
+      <td className="px-4 align-middle">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {fallbacks.map((fb) => (
+            <span
+              key={fb.id}
+              className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700"
+            >
+              <Bot className="h-3 w-3 text-slate-400" />
+              {fb.label}
+            </span>
+          ))}
+        </div>
+      </td>
+      {/* Actions */}
+      <td className="px-4 align-middle text-right">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-slate-400 hover:text-slate-600"
+            >
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="gap-2">
+              <Eye className="h-4 w-4" />
+              Edit model
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </td>
     </tr>
   );
@@ -424,10 +460,11 @@ export default function TeamsPage() {
           <table className="w-full">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Model</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">ID</th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Provider</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Custom Name</th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Status</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Model</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Fallback models</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -436,7 +473,7 @@ export default function TeamsPage() {
               ))}
               {filteredModels.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="py-12 text-center align-middle">
+                  <td colSpan={5} className="py-12 text-center align-middle">
                     <Bot className="mx-auto h-10 w-10 text-slate-300" />
                     <p className="mt-3 text-sm text-slate-500">
                       No models match your search.
