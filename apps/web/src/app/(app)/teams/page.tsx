@@ -108,10 +108,10 @@ export default function TeamsPage() {
             Teams
           </span>
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-black-800" />
+            <Search className="absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-black-800" />
             <Input
               placeholder="Search"
-              className="w-full h-14 pl-9 bg-transparent border-black-600 rounded text-[16px] font-normal text-black-800 placeholder:text-black-800"
+              className="w-full h-14 pl-11 bg-transparent border-black-600 rounded text-[16px] font-normal text-black-800 placeholder:text-black-800"
             />
           </div>
           {user?.isPaid && (
