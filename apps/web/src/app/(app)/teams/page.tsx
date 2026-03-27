@@ -23,6 +23,7 @@ import { ModelRow } from "@/components/management/model-row";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
+import { ApiTab } from "@/components/management/api-tab";
 
 export default function TeamsPage() {
   const { user } = useAuth();
@@ -229,7 +230,7 @@ export default function TeamsPage() {
         <CompanyTab />
       </PageTabsContent>
       <PageTabsContent value="api">
-        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
+        <ApiTab />
       </PageTabsContent>
       <PageTabsContent value="billing">
         <BillingTab />
