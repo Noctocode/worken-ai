@@ -103,7 +103,7 @@ export default function TeamsPage() {
 
       <PageTabsContent value="teams">
         {/* Toolbar row */}
-        <div className="flex items-center gap-4 py-4">
+        <div className="flex items-center gap-6 py-5">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Teams
           </span>
@@ -116,8 +116,8 @@ export default function TeamsPage() {
           </div>
           {user?.isPaid && (
             <CreateTeamDialog>
-              <Button className="h-12 px-4 gap-2 bg-primary-6 hover:bg-primary-7 text-[16px] font-normal text-white whitespace-nowrap">
-              <Plus className="h-4 w-4 text-black-900" />
+              <Button variant="plusAction">
+                <Plus className="h-4 w-4 text-black-900" />
                 Create Team
               </Button>
             </CreateTeamDialog>
@@ -129,27 +129,13 @@ export default function TeamsPage() {
           <table className="w-full">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Team
-                </th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Description
-                </th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Monthly Budget
-                </th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Spent / Remaining
-                </th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Projected
-                </th>
-                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Members
-                </th>
-                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
-                  Actions
-                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Description</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Monthly Budget</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Spent / Remaining</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Projected</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Members</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -163,10 +149,7 @@ export default function TeamsPage() {
 
               {error && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="py-12 text-center align-middle text-sm text-red-500"
-                  >
+                  <td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">
                     Failed to load teams. Is the API running?
                   </td>
                 </tr>
@@ -198,39 +181,25 @@ export default function TeamsPage() {
       </PageTabsContent>
 
       <PageTabsContent value="users">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="models">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="my-account">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="company">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="api">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="billing">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
       <PageTabsContent value="integration">
-        <div className="py-16 text-center text-sm text-slate-400">
-          Coming soon.
-        </div>
+        <div className="py-16 text-center text-sm text-slate-400">Coming soon.</div>
       </PageTabsContent>
     </PageTabs>
   );
