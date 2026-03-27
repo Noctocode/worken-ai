@@ -376,6 +376,42 @@ export async function acceptInvite(token: string): Promise<void> {
 
 // INSERT_YOUR_CODE
 
+// Org Users
+
+export interface OrgUser {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+  role: "basic" | "advanced" | "admin";
+  status: "pending" | "accepted";
+  createdAt: string;
+}
+
+export async function fetchOrgUsers(): Promise<OrgUser[]> {
+  const res = await apiFetch("/users");
+  if (!res.ok) throw new Error("Failed to fetch users");
+  return res.json();
+}
+
+export async function inviteOrgUser(
+  email: string,
+  role: "basic" | "advanced" | "admin",
+): Promise<OrgUser> {
+  const res = await apiFetch("/users/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) throw new Error("Failed to invite user");
+  return res.json();
+}
+
+export async function removeOrgUser(userId: string): Promise<void> {
+  const res = await apiFetch(`/users/${userId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to remove user");
+}
+
 // Interface for model comparison (for /compare-models API)
 export interface ModelComparisonEntry {
   name: string;
