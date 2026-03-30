@@ -15,6 +15,7 @@ interface SettingsDialogProps {
   onApply?: () => void;
   title: string;
   description?: string;
+  headerIcon?: React.ReactNode;
   headerContent?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -25,6 +26,7 @@ export function SettingsDialog({
   onApply,
   title,
   description,
+  headerIcon,
   headerContent,
   children,
 }: SettingsDialogProps) {
@@ -39,6 +41,7 @@ export function SettingsDialog({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-bg-1">
           <div className="flex items-center gap-3">
+            {headerIcon}
             <span className="text-[20px] font-normal leading-[28px] text-text-1">{title}</span>
             {headerContent}
           </div>

@@ -81,11 +81,9 @@ function ProviderSettingsDialog({
       onClose={onClose}
       title={provider.name}
       description={`Configure ${provider.name} integration settings.`}
+      headerIcon={provider.icon}
       headerContent={
-        <div className="flex items-center gap-3">
-          {provider.icon}
-          <Switch checked={provider.enabled} onCheckedChange={onToggle} />
-        </div>
+        <Switch checked={provider.enabled} onCheckedChange={onToggle} />
       }
     >
       <div className="space-y-5">
