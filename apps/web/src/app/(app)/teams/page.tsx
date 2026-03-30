@@ -34,7 +34,7 @@ const DEMO_MEMBERS = [
 ];
 
 const DEMO_TEAMS: TeamDemo[] = [
-  { id: "1", name: "Marketing Team",  ownerId: "", createdAt: "", updatedAt: "", description: "Promotional activities", monthlyBudget: 300, spent: 129, projected: 537, members: DEMO_MEMBERS, extraMembers: 3 },
+  { id: "1", name: "Marketing Team",  ownerId: "", createdAt: "", updatedAt: "", description: "Promotional activities", monthlyBudget: 300, spent: 100029, projected: 537, members: DEMO_MEMBERS, extraMembers: 3 },
   { id: "2", name: "Design Team",     ownerId: "", createdAt: "", updatedAt: "", description: "Design issues",          monthlyBudget: 300, spent: 61,  projected: 300, members: DEMO_MEMBERS.slice(0, 2), extraMembers: 0 },
   { id: "3", name: "Legal department",ownerId: "", createdAt: "", updatedAt: "", description: "Policy discussion",      monthlyBudget: 300, spent: 350, projected: 537, members: DEMO_MEMBERS, extraMembers: 15 },
 ];

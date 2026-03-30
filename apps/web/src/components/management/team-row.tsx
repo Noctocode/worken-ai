@@ -25,7 +25,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const exceeded = spent > budget;
   return (
-    <div className="h-[7px] w-[44px] rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
+    <div className="h-[7px] w-[44px] shrink-0 rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
       <div
         className={`h-full rounded-full ${exceeded ? "bg-danger-5" : "bg-success-2"}`}
         style={{ width: `${pct}%` }}
@@ -149,8 +149,8 @@ export function TeamRow({
       {/* Spent / Remaining */}
       <td className="px-4 align-middle">
         {budget > 0 ? (
-          <div className="flex items-center gap-2">
-            <span className="w-[90px] text-sm text-black">
+          <div className="grid grid-cols-[90px_auto] items-center gap-2">
+            <span className="text-sm leading-tight text-black">
               ${spent} /{" "}
               {remaining < 0 ? (
                 <span className="text-danger-5">-${Math.abs(remaining)}</span>
