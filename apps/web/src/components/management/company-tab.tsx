@@ -95,7 +95,7 @@ export function CompanyTab() {
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-8">
+        <div className="grid grid-cols-3 gap-8 items-end">
           {/* Monthly Budget */}
           <div>
             <p className="text-[13px] font-medium text-black-700 mb-2">Monthly Budget</p>
@@ -113,7 +113,7 @@ export function CompanyTab() {
           {/* Spent / Remaining */}
           <div>
             <p className="text-[13px] font-medium text-black-700 mb-2">Spent / Remaining</p>
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex items-center gap-3 h-[38px]">
               <span className="text-sm text-black">
                 {formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
               </span>
@@ -132,7 +132,7 @@ export function CompanyTab() {
               <p className="text-[13px] font-medium text-black-700">Projected</p>
               <Info className="h-3.5 w-3.5 text-slate-400" />
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex items-center gap-2 h-[38px]">
               <span className="text-sm text-black">{formatCurrency(projected)}</span>
               <span
                 className={`rounded-sm px-2 py-0.5 text-[11px] font-medium ${
