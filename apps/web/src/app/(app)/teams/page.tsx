@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Users, Loader2, Bot } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { /* useQuery */ } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,16 +14,30 @@ import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchTeams, /* fetchOrgUsers, */ type OrgUser } from "@/lib/api";
+import { /* fetchTeams, */ /* fetchOrgUsers, */ type OrgUser } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
 import { MODELS } from "@/lib/models";
-import { TeamRow } from "@/components/management/team-row";
+import { TeamRow, type TeamDemo } from "@/components/management/team-row";
 import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
+
+// TODO: replace with real API when backend returns full team data
+const DEMO_MEMBERS = [
+  { picture: null, name: "Bessie Cooper" },
+  { picture: null, name: "Darlene Robertson" },
+  { picture: null, name: "Floyd Miles" },
+  { picture: null, name: "Jerome Bell" },
+];
+
+const DEMO_TEAMS: TeamDemo[] = [
+  { id: "1", name: "Marketing Team",  ownerId: "", createdAt: "", updatedAt: "", description: "Promotional activities", monthlyBudget: 300, spent: 129, projected: 537, members: DEMO_MEMBERS, extraMembers: 3 },
+  { id: "2", name: "Design Team",     ownerId: "", createdAt: "", updatedAt: "", description: "Design issues",          monthlyBudget: 300, spent: 61,  projected: 300, members: DEMO_MEMBERS.slice(0, 2), extraMembers: 0 },
+  { id: "3", name: "Legal department",ownerId: "", createdAt: "", updatedAt: "", description: "Policy discussion",      monthlyBudget: 300, spent: 350, projected: 537, members: DEMO_MEMBERS, extraMembers: 15 },
+];
 
 // TODO: replace with real API when backend /users endpoint is ready
 const DEMO_USERS: OrgUser[] = [
@@ -42,14 +56,18 @@ export default function TeamsPage() {
   const [userSearch, setUserSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
 
-  const {
-    data: teams,
-    isLoading: teamsLoading,
-    error: teamsError,
-  } = useQuery({
-    queryKey: ["teams"],
-    queryFn: fetchTeams,
-  });
+  // TODO: uncomment when backend returns full team data
+  // const {
+  //   data: teams,
+  //   isLoading: teamsLoading,
+  //   error: teamsError,
+  // } = useQuery({
+  //   queryKey: ["teams"],
+  //   queryFn: fetchTeams,
+  // });
+  const teams = DEMO_TEAMS;
+  const teamsLoading = false;
+  const teamsError = null;
 
   // TODO: uncomment when backend /users endpoint is ready
   // const {
@@ -64,7 +82,7 @@ export default function TeamsPage() {
   const usersLoading = false;
   const usersError = null;
 
-  const filteredTeams = teams?.filter((t) =>
+  const filteredTeams = teams.filter((t) =>
     t.name.toLowerCase().includes(teamSearch.toLowerCase()),
   );
 
@@ -127,10 +145,10 @@ export default function TeamsPage() {
               {teamsError && (
                 <tr><td colSpan={7} className="py-12 text-center align-middle text-sm text-red-500">Failed to load teams. Is the API running?</td></tr>
               )}
-              {filteredTeams?.map((team) => (
+              {filteredTeams.map((team) => (
                 <TeamRow key={team.id} team={team} isOwner={user?.id === team.ownerId} />
               ))}
-              {!teamsLoading && !teamsError && filteredTeams?.length === 0 && (
+              {!teamsLoading && !teamsError && filteredTeams.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
                     <Users className="mx-auto h-10 w-10 text-slate-300" />
