@@ -16,13 +16,11 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const exceeded = spent > budget;
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 rounded-full bg-slate-100 overflow-hidden">
-        <div
-          className={`h-full rounded-full ${exceeded ? "bg-red-500" : "bg-primary-5"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+    <div className="h-[7px] w-[44px] shrink-0 rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
+      <div
+        className={`h-full rounded-full ${exceeded ? "bg-danger-5" : "bg-success-2"}`}
+        style={{ width: `${pct}%` }}
+      />
     </div>
   );
 }
@@ -41,7 +39,7 @@ export function UserRow({ user }: { user: OrgUser }) {
   const spent = user.spent ?? 0;
   const remaining = budget - spent;
   const projected = user.projected ?? 0;
-  const willExceed = projected > budget;
+  const overBudget = projected > budget;
 
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
@@ -90,22 +88,35 @@ export function UserRow({ user }: { user: OrgUser }) {
       </td>
       {/* Spent / Remaining */}
       <td className="px-4 align-middle">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-black">
-            {formatCurrency(spent)} / {formatCurrency(remaining < 0 ? 0 : remaining)}
-          </span>
-          <SpentBar spent={spent} budget={budget} />
-        </div>
+        {budget > 0 ? (
+          <div className="grid grid-cols-[110px_auto] items-center gap-2">
+            <span className="text-sm leading-tight text-black">
+              {formatCurrency(spent)} /{" "}
+              {remaining < 0 ? (
+                <span className="text-danger-5">{formatCurrency(remaining)}</span>
+              ) : (
+                formatCurrency(remaining)
+              )}
+            </span>
+            <SpentBar spent={spent} budget={budget} />
+          </div>
+        ) : (
+          "—"
+        )}
       </td>
       {/* Projected */}
       <td className="px-4 align-middle">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-sm text-black">{formatCurrency(projected)}</span>
-          {willExceed && (
-            <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-500">
-              Will Exceed
+          {overBudget ? (
+            <span className="rounded-sm bg-orange-50 px-1.5 py-0.5 text-[11px] font-medium text-orange-600">
+              Over Budget
             </span>
-          )}
+          ) : budget > 0 ? (
+            <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600">
+              On track
+            </span>
+          ) : null}
         </div>
       </td>
       {/* Actions */}
