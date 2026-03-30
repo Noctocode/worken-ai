@@ -75,21 +75,19 @@ function ProviderSettingsDialog({
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{provider.name} Settings</DialogTitle>
         <DialogDescription className="sr-only">Configure {provider.name} integration settings.</DialogDescription>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-bg-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             {provider.icon}
             <span className="text-[16px] font-semibold text-black">{provider.name}</span>
-          </div>
-          <div className="flex items-center gap-3">
             <Switch checked={provider.enabled} onCheckedChange={onToggle} />
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
           </div>
+          <button onClick={onClose} className="shrink-0 text-success-7 hover:text-success-7/80">
+           <X size={24} strokeWidth={1.7} />
+          </button>
         </div>
 
         <div className="px-6 py-5 space-y-5">
