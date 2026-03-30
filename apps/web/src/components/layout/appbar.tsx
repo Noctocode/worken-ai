@@ -10,16 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
-import { WHITE_BG_ROUTES } from "@/lib/constants";
+import { getRouteConfig } from "@/lib/route-config";
 
 export const Appbar = () => {
   const breadcrumbs = useBreadcrumbs();
   const pathname = usePathname();
-  const isTeamsPage = pathname === "/teams";
-  const isWhiteBg = WHITE_BG_ROUTES.includes(pathname);
+  const config = getRouteConfig(pathname);
 
   return (
-    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${isWhiteBg ? "bg-bg-white" : "bg-bg-1"}`}>
+    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
@@ -37,8 +36,8 @@ export const Appbar = () => {
           </SheetContent>
         </Sheet>
 
-        {isTeamsPage ? (
-          <h1 className="text-lg font-semibold text-slate-900">Management</h1>
+        {config.title ? (
+          <h1 className="text-lg font-semibold text-slate-900">{config.title}</h1>
         ) : (
           <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
             {breadcrumbs.map((crumb, i) => {
@@ -72,8 +71,8 @@ export const Appbar = () => {
         )}
       </div>
 
-      {/* Right Header Controls — hidden on teams page */}
-      {!isTeamsPage && (
+      {/* Right Header Controls */}
+      {!config.hideSearch && (
         <div className="flex items-center gap-3">
           <div className="relative hidden group sm:block">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
@@ -89,14 +88,16 @@ export const Appbar = () => {
             </div>
           </div>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-          >
-            <Bell className="h-5 w-5" />
-            <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
-          </Button>
+          {!config.hideNotifications && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            >
+              <Bell className="h-5 w-5" />
+              <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
+            </Button>
+          )}
         </div>
       )}
     </header>

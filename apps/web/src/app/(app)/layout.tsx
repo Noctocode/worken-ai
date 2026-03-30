@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar, Appbar } from "@/components/layout";
 import { AuthProvider } from "@/components/providers";
 import { SidebarProvider } from "@/hooks/use-sidebar";
-import { WHITE_BG_ROUTES } from "@/lib/constants";
+import { getRouteConfig } from "@/lib/route-config";
 
 export default function AppLayout({
   children,
@@ -12,12 +12,12 @@ export default function AppLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const isWhiteBg = WHITE_BG_ROUTES.includes(pathname);
+  const { bg } = getRouteConfig(pathname);
 
   return (
     <AuthProvider>
       <SidebarProvider>
-        <div className={`flex h-screen w-full overflow-hidden text-slate-600 selection:bg-blue-100 selection:text-blue-900 ${isWhiteBg ? "bg-bg-white" : "bg-bg-1"}`}>
+        <div className={`flex h-screen w-full overflow-hidden text-slate-600 selection:bg-blue-100 selection:text-blue-900 ${bg}`}>
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <Appbar />
