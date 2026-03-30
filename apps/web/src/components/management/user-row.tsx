@@ -113,7 +113,7 @@ export function UserRow({ user }: { user: OrgUser }) {
               Over Budget
             </span>
           ) : budget > 0 ? (
-            <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600">
+            <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
               On track
             </span>
           ) : null}

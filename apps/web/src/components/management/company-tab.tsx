@@ -51,7 +51,7 @@ const DEMO_GUARDRAILS: CompanyGuardrail[] = [
 const SEVERITY_COLORS: Record<string, string> = {
   high: "text-red-500",
   medium: "text-amber-500",
-  low: "text-emerald-600",
+  low: "text-text-1",
 };
 
 export function CompanyTab() {
@@ -86,10 +86,10 @@ export function CompanyTab() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-success-7 hover:text-success-7/80">
               <Pencil className="h-4 w-4" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-success-7 hover:text-success-7/80">
               <Trash2 className="h-4 w-4" />
             </Button>
           </div>
@@ -136,7 +136,7 @@ export function CompanyTab() {
               <span className="text-sm text-black">{formatCurrency(projected)}</span>
               <span
                 className={`rounded-sm px-2 py-0.5 text-[11px] font-medium ${
-                  onTrack ? "bg-emerald-50 text-emerald-600" : "bg-bg-1 text-text-3"
+                  onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"
                 }`}
               >
                 {onTrack ? "On track" : "Over Budget"}
@@ -175,7 +175,7 @@ export function CompanyTab() {
                 <td className="px-4 align-middle">
                   <div className="flex flex-wrap gap-1">
                     {admin.teams.map((t) => (
-                      <span key={t} className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600">
+                      <span key={t} className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
                         {t}
                       </span>
                     ))}
@@ -184,7 +184,7 @@ export function CompanyTab() {
                 <td className="px-4 align-middle text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -234,7 +234,7 @@ export function CompanyTab() {
                 <td className="px-4 align-middle">
                   <div className="flex gap-1.5">
                     {g.types.map((t) => (
-                      <span key={t} className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600">
+                      <span key={t} className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
                         {t}
                       </span>
                     ))}
@@ -257,7 +257,7 @@ export function CompanyTab() {
                 <td className="px-4 align-middle text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>

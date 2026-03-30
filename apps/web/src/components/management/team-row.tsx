@@ -58,7 +58,7 @@ function ProjectedBadge({
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-sm text-black">{formatCurrency(projected)}</span>
-      <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600">
+      <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
         On track
       </span>
     </div>

@@ -53,6 +53,7 @@
   --color-text-3: var(--text-3);
   --color-text-white: var(--text-white);
   --color-warning-6: var(--warning-6);
+  --color-success-1: var(--success-1);
   --color-success-2: var(--success-2);
   --color-success-7: var(--success-7);
   --color-danger-5: var(--danger-5);
@@ -114,6 +115,7 @@
   --text-3: #86909C;
   --text-white: #FFFFFF;
   --warning-6: #FF7D00;
+  --success-1: #E8FFEA;
   --success-2: #AFF0B5;
   --success-7: #009A29;
   --danger-5: #F76560;
@@ -174,6 +176,7 @@
   --text-3: #86909C;
   --text-white: #FFFFFF;
   --warning-6: #FF7D00;
+  --success-1: #E8FFEA;
   --success-2: #AFF0B5;
   --success-7: #009A29;
   --danger-5: #F76560;

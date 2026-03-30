@@ -140,7 +140,7 @@ export function BillingTab() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-black">{formatCurrency(projected)}</span>
-                <span className="rounded-sm bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
+                <span className="rounded-sm bg-success-1 px-2 py-0.5 text-[11px] font-medium text-text-1">
                   On track
                 </span>
               </div>
