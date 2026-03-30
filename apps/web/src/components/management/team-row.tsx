@@ -25,9 +25,9 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const exceeded = spent > budget;
   return (
-    <div className="h-1.5 w-20 rounded-full bg-slate-100 overflow-hidden">
+    <div className="h-[7px] w-[44px] rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
       <div
-        className={`h-full rounded-full ${exceeded ? "bg-red-500" : "bg-primary-5"}`}
+        className={`h-full rounded-full ${exceeded ? "bg-danger-5" : "bg-success-2"}`}
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -113,7 +113,13 @@ export function TeamRow({ team, isOwner }: { team: TeamDemo; isOwner: boolean })
       <td className="px-4 align-middle">
         {budget > 0 ? (
           <div className="flex items-center gap-2">
-            <span className="text-sm text-black">${spent} / ${remaining < 0 ? `-${Math.abs(remaining)}` : remaining}</span>
+            <span className="text-sm text-black">
+              ${spent} / {remaining < 0 ? (
+                <span className="text-danger-5">-${Math.abs(remaining)}</span>
+              ) : (
+                `$${remaining}`
+              )}
+            </span>
             <SpentBar spent={spent} budget={budget} />
           </div>
         ) : "—"}
