@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Plus, CreditCard, MoreVertical, Pencil, Trash2, Info, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -121,7 +122,7 @@ export function BillingTab() {
               <p className="text-[12px] text-slate-500 mb-1">Spent / Remaining</p>
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-black">
-                  ${spent.toLocaleString()} / {budget.toLocaleString()}
+                  {formatCurrency(spent)} / {formatCurrency(budget)}
                 </span>
                 <SpentBar spent={spent} budget={spent + budget} />
                 <button className="flex items-center gap-1 rounded border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-100">
@@ -138,7 +139,7 @@ export function BillingTab() {
                 <Info className="h-3 w-3 text-slate-400" />
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-black">{projected.toLocaleString()}</span>
+                <span className="text-sm font-medium text-black">{formatCurrency(projected)}</span>
                 <span className="rounded-sm bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-600">
                   On track
                 </span>
@@ -200,7 +201,7 @@ export function BillingTab() {
                   <td className="px-6 align-middle text-right">
                     <div className="flex items-center justify-end gap-3">
                       <span className="text-[13px] text-black">
-                        ${entry.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        {formatCurrency(entry.amount)}
                       </span>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

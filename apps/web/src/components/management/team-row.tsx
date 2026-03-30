@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Team } from "@/lib/api";
+import { formatCurrency } from "@/lib/utils";
 
 export interface TeamDemo extends Team {
   description?: string;
@@ -49,7 +50,7 @@ function ProjectedBadge({
   if (onTrack)
     return (
       <div className="flex items-center gap-1.5">
-        <span className="text-sm text-black">${projected}</span>
+        <span className="text-sm text-black">{formatCurrency(projected)}</span>
         <span className="rounded-sm bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-600">
           On track
         </span>
@@ -58,7 +59,7 @@ function ProjectedBadge({
   if (willExceed)
     return (
       <div className="flex items-center gap-1.5">
-        <span className="text-sm text-black">${projected}</span>
+        <span className="text-sm text-black">{formatCurrency(projected)}</span>
         <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-500">
           Will Exceed
         </span>
@@ -66,7 +67,7 @@ function ProjectedBadge({
     );
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-sm text-black">${projected}</span>
+      <span className="text-sm text-black">{formatCurrency(projected)}</span>
       <span className="rounded-sm bg-orange-50 px-1.5 py-0.5 text-[11px] font-medium text-orange-600">
         Over Budget
       </span>
@@ -144,18 +145,18 @@ export function TeamRow({
       </td>
       {/* Monthly Budget */}
       <td className="px-4 align-middle text-sm text-black">
-        {budget > 0 ? `$${budget}` : "—"}
+        {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
       <td className="px-4 align-middle">
         {budget > 0 ? (
-          <div className="grid grid-cols-[90px_auto] items-center gap-2">
+          <div className="grid grid-cols-[110px_auto] items-center gap-2">
             <span className="text-sm leading-tight text-black">
-              ${spent} /{" "}
+              {formatCurrency(spent)} /{" "}
               {remaining < 0 ? (
-                <span className="text-danger-5">-${Math.abs(remaining)}</span>
+                <span className="text-danger-5">{formatCurrency(remaining)}</span>
               ) : (
-                `$${remaining}`
+                formatCurrency(remaining)
               )}
             </span>
             <SpentBar spent={spent} budget={budget} />

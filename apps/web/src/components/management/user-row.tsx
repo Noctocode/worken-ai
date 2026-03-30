@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { removeOrgUser, type OrgUser } from "@/lib/api";
+import { formatCurrency } from "@/lib/utils";
 
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
@@ -85,13 +86,13 @@ export function UserRow({ user }: { user: OrgUser }) {
       </td>
       {/* Personal Monthly Budget */}
       <td className="px-4 align-middle text-base font-normal text-black">
-        {budget > 0 ? `$${budget}` : "—"}
+        {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
       <td className="px-4 align-middle">
         <div className="flex items-center gap-2">
           <span className="text-sm text-black">
-            ${spent} / ${remaining < 0 ? 0 : remaining}
+            {formatCurrency(spent)} / {formatCurrency(remaining < 0 ? 0 : remaining)}
           </span>
           <SpentBar spent={spent} budget={budget} />
         </div>
@@ -99,7 +100,7 @@ export function UserRow({ user }: { user: OrgUser }) {
       {/* Projected */}
       <td className="px-4 align-middle">
         <div className="flex items-center gap-2">
-          <span className="text-sm text-black">${projected}</span>
+          <span className="text-sm text-black">{formatCurrency(projected)}</span>
           {willExceed && (
             <span className="rounded-sm bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-500">
               Will Exceed
