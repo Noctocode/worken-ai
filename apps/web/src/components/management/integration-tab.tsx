@@ -1,16 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Switch } from "@/components/ui/switch";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-} from "@/components/ui/dialog";
+import { SettingsDialog } from "@/components/settings-dialog";
 
 interface LLMProvider {
   id: string;
@@ -32,8 +27,15 @@ function GeminiIcon() {
           <stop offset="100%" stopColor="#A142F4" />
         </linearGradient>
       </defs>
-      <path d="M12 2C12 2 7 7 7 12C7 17 12 22 12 22C12 22 17 17 17 12C17 7 12 2 12 2Z" fill="url(#gemini-grad)" />
-      <path d="M2 12C2 12 7 7 12 7C17 7 22 12 22 12C22 12 17 17 12 17C7 17 2 12 2 12Z" fill="url(#gemini-grad)" opacity="0.6" />
+      <path
+        d="M12 2C12 2 7 7 7 12C7 17 12 22 12 22C12 22 17 17 17 12C17 7 12 2 12 2Z"
+        fill="url(#gemini-grad)"
+      />
+      <path
+        d="M2 12C2 12 7 7 12 7C17 7 22 12 22 12C22 12 17 17 12 17C7 17 2 12 2 12Z"
+        fill="url(#gemini-grad)"
+        opacity="0.6"
+      />
     </svg>
   );
 }
@@ -74,96 +76,114 @@ function ProviderSettingsDialog({
   const [apiKey, setApiKey] = useState("");
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden" showCloseButton={false}>
-        <DialogTitle className="sr-only">{provider.name} Settings</DialogTitle>
-        <DialogDescription className="sr-only">Configure {provider.name} integration settings.</DialogDescription>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-bg-1">
-          <div className="flex items-center gap-3">
-            {provider.icon}
-            <span className="text-[16px] font-semibold text-black">{provider.name}</span>
-            <Switch checked={provider.enabled} onCheckedChange={onToggle} />
-          </div>
-          <button onClick={onClose} className="shrink-0 text-success-7 hover:text-success-7/80">
-           <X size={24} strokeWidth={1.7} />
-          </button>
+    <SettingsDialog
+      open
+      onClose={onClose}
+      title={provider.name}
+      description={`Configure ${provider.name} integration settings.`}
+      headerContent={
+        <div className="flex items-center gap-3">
+          {provider.icon}
+          <Switch checked={provider.enabled} onCheckedChange={onToggle} />
         </div>
-
-        <div className="px-6 py-5 space-y-5">
-          {/* Stats row */}
-          <div className="flex items-start gap-8">
-            <div>
-              <p className="text-[12px] text-slate-500 mb-0.5">Success rate:</p>
-              <p className="text-[18px] font-semibold text-black">{provider.successRate}%</p>
-            </div>
-            <div>
-              <p className="text-[12px] text-slate-500 mb-0.5">API calls:</p>
-              <p className="text-[18px] font-semibold text-black">{provider.apiCalls.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className="text-[12px] text-slate-500 mb-0.5">Rate limit:</p>
-              <p className="text-[18px] font-semibold text-black">
-                {provider.rateLimit.toLocaleString()}
-                <span className="text-[12px] font-normal text-slate-500 ml-1">requests/day</span>
-              </p>
-            </div>
-          </div>
-
-          {/* WorkenAI API */}
+      }
+    >
+      <div className="space-y-5">
+        {/* Stats row */}
+        <div className="flex items-start gap-8">
           <div>
-            <p className="text-[13px] font-medium text-black mb-1.5">Use WORKENAI API</p>
-            <textarea
-              readOnly
-              className="w-full rounded-md border border-black-600 bg-slate-50 px-3 py-2 text-[12px] text-slate-500 resize-none outline-none"
-              rows={2}
-              defaultValue="additional costs on his WorkenAI subscription will be added"
+            <p className="text-[12px] text-slate-500 mb-0.5">Success rate:</p>
+            <p className="text-[18px] font-semibold text-black">{provider.successRate}%</p>
+          </div>
+          <div>
+            <p className="text-[12px] text-slate-500 mb-0.5">API calls:</p>
+            <p className="text-[18px] font-semibold text-black">{provider.apiCalls.toLocaleString()}</p>
+          </div>
+          <div>
+            <p className="text-[12px] text-slate-500 mb-0.5">Rate limit:</p>
+            <p className="text-[18px] font-semibold text-black">
+              {provider.rateLimit.toLocaleString()}
+              <span className="text-[12px] font-normal text-slate-500 ml-1">requests/day</span>
+            </p>
+          </div>
+        </div>
+
+        {/* WorkenAI API */}
+        <div>
+          <p className="text-[13px] font-medium text-black mb-1.5">Use WORKENAI API</p>
+          <textarea
+            readOnly
+            className="w-full rounded-md border border-black-600 bg-slate-50 px-3 py-2 text-[12px] text-slate-500 resize-none outline-none"
+            rows={2}
+            defaultValue="additional costs on his WorkenAI subscription will be added"
+          />
+        </div>
+
+        {/* Own API key */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useOwnKey}
+              onChange={(e) => setUseOwnKey(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 accent-primary-5"
             />
-          </div>
-
-          {/* Own API key */}
-          <div className="space-y-2">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={useOwnKey}
-                onChange={(e) => setUseOwnKey(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 accent-primary-5"
-              />
-              <span className="text-[13px] font-medium text-black">Use your own API KEY</span>
-            </label>
-            {useOwnKey && (
-              <input
-                type="text"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Enter your API key"
-                className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-black outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
-            )}
-            {!useOwnKey && (
-              <input
-                type="text"
-                readOnly
-                value="12er1te2r1sa3df1ó5a5s1fd5ad5as"
-                className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-slate-400 outline-none"
-              />
-            )}
-          </div>
-
-          {/* Fee note */}
-          <p className="text-[12px] text-slate-400">
-            API calls will incur a small Technology fee
-          </p>
+            <span className="text-[13px] font-medium text-black">Use your own API KEY</span>
+          </label>
+          {useOwnKey && (
+            <input
+              type="text"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="Enter your API key"
+              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-black outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            />
+          )}
+          {!useOwnKey && (
+            <input
+              type="text"
+              readOnly
+              value="12er1te2r1sa3df1ó5a5s1fd5ad5as"
+              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-slate-400 outline-none"
+            />
+          )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-bg-1">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={onClose}>Apply</Button>
+        <p className="text-[12px] text-slate-400">
+          API calls will incur a small Technology fee
+        </p>
+      </div>
+    </SettingsDialog>
+  );
+}
+
+function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
+  const [apiLink, setApiLink] = useState("");
+
+  return (
+    <SettingsDialog open onClose={onClose} title="Add Custom LLM">
+      <div className="space-y-4">
+        <div>
+          <p className="text-[13px] font-medium text-primary-5 mb-1.5">API Link</p>
+          <input
+            type="text"
+            value={apiLink}
+            onChange={(e) => setApiLink(e.target.value)}
+            placeholder="Put link here"
+            className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-black placeholder:text-slate-400 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
         </div>
-      </DialogContent>
-    </Dialog>
+        <button className="inline-flex items-center gap-2 rounded-md border border-black-600 px-4 py-2 text-[13px] font-medium text-black hover:bg-slate-50 transition-colors">
+          <svg viewBox="0 0 16 16" className="h-4 w-4 text-primary-5" fill="currentColor">
+            <rect x="1" y="1" width="6" height="6" rx="1" />
+            <rect x="9" y="1" width="6" height="6" rx="1" />
+            <rect x="1" y="9" width="6" height="6" rx="1" />
+            <rect x="9" y="9" width="6" height="6" rx="1" />
+          </svg>
+          Integration documentation
+        </button>
+      </div>
+    </SettingsDialog>
   );
 }
 
@@ -171,13 +191,14 @@ export function IntegrationTab() {
   const [search, setSearch] = useState("");
   const [providers, setProviders] = useState<LLMProvider[]>(INITIAL_PROVIDERS);
   const [selected, setSelected] = useState<LLMProvider | null>(null);
+  const [showAddDialog, setShowAddDialog] = useState(false);
 
   const toggle = (id: string) => {
     setProviders((prev) =>
       prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)),
     );
     if (selected?.id === id) {
-      setSelected((prev) => prev ? { ...prev, enabled: !prev.enabled } : null);
+      setSelected((prev) => (prev ? { ...prev, enabled: !prev.enabled } : null));
     }
   };
 
@@ -195,7 +216,7 @@ export function IntegrationTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Button variant="plusAction">
+        <Button variant="plusAction" onClick={() => setShowAddDialog(true)}>
           <Plus className="h-4 w-4 text-black-900" />
           Add Custom LLM
         </Button>
@@ -209,7 +230,6 @@ export function IntegrationTab() {
             className="flex flex-col rounded-lg border border-bg-1 bg-white p-4 cursor-pointer hover:border-slate-300 transition-colors"
             onClick={() => setSelected(provider)}
           >
-            {/* Header: icon + name + toggle */}
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 {provider.icon}
@@ -221,11 +241,7 @@ export function IntegrationTab() {
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
-
-            {/* Description */}
             <p className="text-[12px] text-slate-500 mb-4 flex-1">{provider.description}</p>
-
-            {/* Settings link */}
             <div className="flex justify-end">
               <span className="text-[13px] font-medium text-primary-5">Settings</span>
             </div>
@@ -239,13 +255,18 @@ export function IntegrationTab() {
         )}
       </div>
 
-      {/* Settings dialog */}
+      {/* Provider settings dialog */}
       {selected && (
         <ProviderSettingsDialog
           provider={providers.find((p) => p.id === selected.id) ?? selected}
           onClose={() => setSelected(null)}
           onToggle={() => toggle(selected.id)}
         />
+      )}
+
+      {/* Add custom LLM dialog */}
+      {showAddDialog && (
+        <AddCustomLLMDialog onClose={() => setShowAddDialog(false)} />
       )}
     </div>
   );
