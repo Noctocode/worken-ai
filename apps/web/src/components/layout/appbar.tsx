@@ -11,13 +11,16 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 
+const WHITE_BG_ROUTES = ["/teams"];
+
 export const Appbar = () => {
   const breadcrumbs = useBreadcrumbs();
   const pathname = usePathname();
   const isTeamsPage = pathname === "/teams";
+  const isWhiteBg = WHITE_BG_ROUTES.includes(pathname);
 
   return (
-    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${isTeamsPage ? "bg-bg-white" : "bg-bg-1"}`}>
+    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${isWhiteBg ? "bg-bg-white" : "bg-bg-1"}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
