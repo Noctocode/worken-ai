@@ -113,7 +113,7 @@ export default function TeamsPage() {
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
       <PageTabsContent value="teams">
-        <div className="flex items-center gap-6 py-5">
+        <div className="flex items-center gap-6 py-4">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">Teams</span>
           <SearchInput className="flex-1" placeholder="Search" value={teamSearch} onChange={(e) => setTeamSearch(e.target.value)} />
           {user?.isPaid && (
