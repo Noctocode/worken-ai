@@ -15,7 +15,6 @@ interface SettingsDialogProps {
   onApply?: () => void;
   title: string;
   description?: string;
-  /** Content rendered in the header row, between title and X button (e.g. Switch) */
   headerContent?: React.ReactNode;
   children: React.ReactNode;
 }
@@ -30,16 +29,8 @@ export function SettingsDialog({
   children,
 }: SettingsDialogProps) {
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-    >
-      <DialogContent
-        className="max-w-md p-0 gap-0 overflow-hidden"
-        showCloseButton={false}
-      >
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">
           {description ?? `${title} settings`}
@@ -48,15 +39,10 @@ export function SettingsDialog({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-bg-1">
           <div className="flex items-center gap-3">
-            <span className="text-[16px] font-semibold text-black">
-              {title}
-            </span>
+            <span className="text-[20px] font-normal leading-[28px] text-text-1">{title}</span>
             {headerContent}
           </div>
-          <button
-            onClick={onClose}
-            className="shrink-0 text-success-7 hover:text-success-7/80"
-          >
+          <button onClick={onClose} className="shrink-0 text-success-7 hover:text-success-7/80">
             <X size={20} strokeWidth={2} />
           </button>
         </div>
