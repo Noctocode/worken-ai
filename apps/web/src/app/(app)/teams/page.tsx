@@ -85,9 +85,9 @@ const DEMO_USERS: OrgUser[] = [
     role: "admin",
     status: "accepted",
     teams: ["Marketing", "Design"],
-    monthlyBudget: 300,
-    spent: 129,
-    projected: 537,
+    monthlyBudget: 300000,
+    spent: 129000,
+    projected: 537000,
     createdAt: "2024-01-01",
   },
   {
