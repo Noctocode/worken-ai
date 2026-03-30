@@ -220,13 +220,14 @@ export function IntegrationTab() {
         {filtered.map((provider) => (
           <div
             key={provider.id}
-            className="flex flex-col rounded-lg border border-bg-1 bg-white p-4 cursor-pointer hover:border-slate-300 transition-colors"
+            className="flex flex-col rounded-[4px] border border-border-3 bg-white p-5 h-[165px] min-w-[280px] cursor-pointer hover:border-border-4 transition-colors"
             onClick={() => setSelected(provider)}
           >
-            <div className="flex items-center justify-between mb-2">
+            {/* Header: icon + name + toggle */}
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 {provider.icon}
-                <span className="text-[14px] font-medium text-black">{provider.name}</span>
+                <span className="text-[16px] font-normal text-text-1">{provider.name}</span>
               </div>
               <Switch
                 checked={provider.enabled}
@@ -234,9 +235,13 @@ export function IntegrationTab() {
                 onClick={(e) => e.stopPropagation()}
               />
             </div>
-            <p className="text-[12px] text-slate-500 mb-4 flex-1">{provider.description}</p>
-            <div className="flex justify-end">
-              <span className="text-[13px] font-medium text-primary-5">Settings</span>
+
+            {/* Description */}
+            <p className="mt-3 text-[16px] font-normal text-text-2">{provider.description}</p>
+
+            {/* Settings link */}
+            <div className="mt-auto flex justify-end">
+              <span className="text-[14px] font-normal text-text-3">Settings</span>
             </div>
           </div>
         ))}
