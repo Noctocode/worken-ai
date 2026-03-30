@@ -56,6 +56,7 @@
   --color-success-7: var(--success-7);
   --color-danger-6: var(--danger-6);
   --color-bg-1: var(--bg-1);
+  --color-bg-white: var(--bg-white);
   --color-border-2: var(--border-2);
   --color-border-3: var(--border-3);
   --color-divider: var(--divider);
@@ -112,6 +113,7 @@
   --success-7: #009A29;
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
+  --bg-white: #FFFFFF;
   --border-2: #E5E6EB;
   --border-3: #C9CDD4;
   --divider: rgba(92, 92, 92, 0.2);
@@ -167,6 +169,7 @@
   --success-7: #009A29;
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
+  --bg-white: #FFFFFF;
   --border-2: #E5E6EB;
   --border-3: #C9CDD4;
   --divider: rgba(92, 92, 92, 0.2);

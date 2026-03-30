@@ -17,7 +17,7 @@ export const Appbar = () => {
   const isTeamsPage = pathname === "/teams";
 
   return (
-    <header className="sticky top-0 z-20 flex h-[4.5rem] items-center justify-between bg-bg-1 px-6">
+    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${isTeamsPage ? "bg-bg-white" : "bg-bg-1"}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>

@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { Sidebar, Appbar } from "@/components/layout";
 import { AuthProvider } from "@/components/providers";
 import { SidebarProvider } from "@/hooks/use-sidebar";
@@ -9,10 +10,13 @@ export default function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+  const isTeamsPage = pathname === "/teams";
+
   return (
     <AuthProvider>
       <SidebarProvider>
-        <div className="flex h-screen w-full overflow-hidden bg-bg-1 text-slate-600 selection:bg-blue-100 selection:text-blue-900">
+        <div className={`flex h-screen w-full overflow-hidden text-slate-600 selection:bg-blue-100 selection:text-blue-900 ${isTeamsPage ? "bg-bg-white" : "bg-bg-1"}`}>
           <Sidebar />
           <main className="flex min-w-0 flex-1 flex-col">
             <Appbar />
