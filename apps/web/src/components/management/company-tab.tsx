@@ -48,11 +48,14 @@ const DEMO_GUARDRAILS: CompanyGuardrail[] = [
 ];
 
 export function CompanyTab() {
-  const [monthlyBudget, setMonthlyBudget] = useState("30000.00");
+  const [monthlyBudget, setMonthlyBudget] = useState(30000);
+  const [budgetInput, setBudgetInput] = useState(
+    (30000).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  );
   const [guardrails, setGuardrails] = useState<CompanyGuardrail[]>(DEMO_GUARDRAILS);
 
   const spent = 6100;
-  const budget = parseFloat(monthlyBudget) || 0;
+  const budget = monthlyBudget;
   const remaining = budget - spent;
   const projected = 30000;
   const onTrack = projected <= budget;
@@ -95,9 +98,21 @@ export function CompanyTab() {
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
               <input
-                type="number"
-                value={monthlyBudget}
-                onChange={(e) => setMonthlyBudget(e.target.value)}
+                type="text"
+                value={budgetInput}
+                onChange={(e) => {
+                  const raw = e.target.value.replace(/\./g, "").replace(",", ".");
+                  const num = parseFloat(raw);
+                  if (!isNaN(num)) {
+                    setMonthlyBudget(num);
+                  }
+                  setBudgetInput(e.target.value);
+                }}
+                onBlur={() => {
+                  setBudgetInput(
+                    monthlyBudget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                  );
+                }}
                 className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-6 pr-3 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
               />
             </div>
