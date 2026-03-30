@@ -216,11 +216,11 @@ export function IntegrationTab() {
       </div>
 
       {/* Grid */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {filtered.map((provider) => (
           <div
             key={provider.id}
-            className="flex flex-col rounded-[4px] border border-border-3 bg-white p-5 h-[165px] min-w-[280px] cursor-pointer hover:border-border-4 transition-colors"
+            className="flex flex-col rounded-[4px] border border-border-3 bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
             onClick={() => setSelected(provider)}
           >
             {/* Header: icon + name + toggle */}
@@ -247,7 +247,7 @@ export function IntegrationTab() {
         ))}
 
         {filtered.length === 0 && (
-          <div className="col-span-4 py-12 text-center text-sm text-slate-400">
+          <div className="col-span-full py-12 text-center text-sm text-slate-400">
             No integrations match your search.
           </div>
         )}
