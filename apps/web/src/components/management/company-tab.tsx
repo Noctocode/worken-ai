@@ -148,7 +148,7 @@ export function CompanyTab() {
 
       {/* Admins */}
       <div className="bg-white rounded-lg overflow-hidden">
-        <div className="py-4 border-b border-bg-1">
+        <div className="py-4">
           <p className="text-[15px] font-semibold text-black">Admins</p>
         </div>
         <table className="w-full">
@@ -204,7 +204,7 @@ export function CompanyTab() {
 
       {/* Primary Guardrails */}
       <div className="bg-white rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between py-4 border-b border-bg-1">
+        <div className="flex items-center justify-between py-4">
           <p className="text-[15px] font-semibold text-black">Primary Guardrails</p>
           <Button variant="plusAction">
             <Plus className="h-4 w-4 text-black-900" />
