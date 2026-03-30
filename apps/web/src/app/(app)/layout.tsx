@@ -4,8 +4,7 @@ import { usePathname } from "next/navigation";
 import { Sidebar, Appbar } from "@/components/layout";
 import { AuthProvider } from "@/components/providers";
 import { SidebarProvider } from "@/hooks/use-sidebar";
-
-const WHITE_BG_ROUTES = ["/teams"];
+import { WHITE_BG_ROUTES } from "@/lib/constants";
 
 export default function AppLayout({
   children,

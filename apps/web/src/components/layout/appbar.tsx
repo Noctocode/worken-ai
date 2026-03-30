@@ -10,8 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
-
-const WHITE_BG_ROUTES = ["/teams"];
+import { WHITE_BG_ROUTES } from "@/lib/constants";
 
 export const Appbar = () => {
   const breadcrumbs = useBreadcrumbs();
