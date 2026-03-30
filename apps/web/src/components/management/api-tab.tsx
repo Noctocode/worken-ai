@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Copy, MoreVertical, Zap, Trash2, ExternalLink } from "lucide-react";
+import { Copy, MoreVertical, Link2, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -81,9 +81,9 @@ export function ApiTab() {
           <Button
             onClick={handleGenerate}
             disabled={!linkName.trim()}
-            className="shrink-0 gap-2"
+            className="shrink-0 gap-2 bg-[#1890FF] hover:bg-[#1890FF]/90 text-white"
           >
-            <Zap className="h-4 w-4" />
+            <Link2 className="h-4 w-4" />
             Generate Link
           </Button>
         </div>
