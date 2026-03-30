@@ -24,7 +24,7 @@ export function ModelRow({ model }: { model: (typeof MODELS)[number] }) {
       </td>
       {/* Status */}
       <td className="px-4 align-middle">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-[100px]">
           <Switch checked={active} onCheckedChange={setActive} />
           <span className="text-sm text-black-700">{active ? "Active" : "Inactive"}</span>
         </div>
