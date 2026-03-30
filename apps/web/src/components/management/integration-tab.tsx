@@ -124,7 +124,7 @@ function ProviderSettingsDialog({
               type="checkbox"
               checked={useOwnKey}
               onChange={(e) => setUseOwnKey(e.target.checked)}
-              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7"
+              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
             />
             <span className="text-[14px] font-normal leading-[20px] text-text-2">Use your own API KEY</span>
           </label>
