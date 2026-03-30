@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { formatCurrency } from "@/lib/utils";
 
 interface CompanyAdmin {
   id: string;
@@ -114,11 +115,11 @@ export function CompanyTab() {
             <p className="text-[13px] font-medium text-black-700 mb-2">Spent / Remaining</p>
             <div className="flex items-center gap-3 mt-2">
               <span className="text-sm text-black">
-                ${spent.toLocaleString()} / ${remaining > 0 ? remaining.toLocaleString() : 0}
+                {formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
               </span>
-              <div className="h-1.5 w-24 rounded-full bg-slate-100 overflow-hidden">
+              <div className="h-[7px] w-[44px] shrink-0 rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${remaining < 0 ? "bg-red-500" : "bg-primary-5"}`}
+                  className={`h-full rounded-full ${remaining < 0 ? "bg-danger-5" : "bg-success-2"}`}
                   style={{ width: `${pct}%` }}
                 />
               </div>
@@ -132,13 +133,13 @@ export function CompanyTab() {
               <Info className="h-3.5 w-3.5 text-slate-400" />
             </div>
             <div className="flex items-center gap-2 mt-2">
-              <span className="text-sm text-black">{projected.toLocaleString()}</span>
+              <span className="text-sm text-black">{formatCurrency(projected)}</span>
               <span
                 className={`rounded-sm px-2 py-0.5 text-[11px] font-medium ${
-                  onTrack ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-500"
+                  onTrack ? "bg-emerald-50 text-emerald-600" : "bg-bg-1 text-text-3"
                 }`}
               >
-                {onTrack ? "On track" : "Will Exceed"}
+                {onTrack ? "On track" : "Over Budget"}
               </span>
             </div>
           </div>
