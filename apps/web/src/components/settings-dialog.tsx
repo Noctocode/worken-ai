@@ -45,13 +45,13 @@ export function SettingsDialog({
             <span className="text-[20px] font-normal leading-[28px] text-text-1">{title}</span>
             {headerContent}
           </div>
-          <button onClick={onClose} className="shrink-0 text-success-7 hover:text-success-7/80">
+          <button onClick={onClose} className="shrink-0 cursor-pointer text-success-7 hover:text-success-7/80">
             <X size={20} strokeWidth={2} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="px-6 py-5">{children}</div>
+        <div className="px-6 pb-5 pt-3">{children}</div>
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4">

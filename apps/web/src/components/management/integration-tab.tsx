@@ -124,7 +124,7 @@ function ProviderSettingsDialog({
               type="checkbox"
               checked={useOwnKey}
               onChange={(e) => setUseOwnKey(e.target.checked)}
-              className="h-4 w-4 rounded-[4px] border border-border-4 accent-success-7"
+              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7"
             />
             <span className="text-[14px] font-normal leading-[20px] text-text-2">Use your own API KEY</span>
           </label>
@@ -134,7 +134,7 @@ function ProviderSettingsDialog({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter your API key"
-              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
             />
           )}
           {!useOwnKey && (
@@ -142,7 +142,7 @@ function ProviderSettingsDialog({
               type="text"
               readOnly
               value="12er1te2r1sa3df1ó5a5s1fd5ad5as"
-              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[16px] leading-[24px] text-text-1 outline-none"
+              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none"
             />
           )}
         </div>
@@ -168,7 +168,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
             value={apiLink}
             onChange={(e) => setApiLink(e.target.value)}
             placeholder="Put link here"
-            className="w-full rounded-md border border-border-3 bg-transparent px-3 py-2 text-[13px] text-black placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-black placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
         <button className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-slate-50 transition-colors">
