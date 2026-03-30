@@ -93,12 +93,12 @@ export function CompanyTab() {
           <div>
             <p className="text-[13px] font-medium text-black-700 mb-2">Monthly Budget</p>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
               <input
                 type="number"
                 value={monthlyBudget}
                 onChange={(e) => setMonthlyBudget(e.target.value)}
-                className="w-full rounded-md border border-black-600 bg-transparent pl-6 pr-3 py-2 text-sm text-black outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-6 pr-3 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
               />
             </div>
           </div>
@@ -106,7 +106,7 @@ export function CompanyTab() {
           {/* Spent / Remaining */}
           <div>
             <p className="text-[13px] font-medium text-black-700 mb-2">Spent / Remaining</p>
-            <div className="flex items-center gap-3 h-[38px]">
+            <div className="flex items-center gap-3 h-[56px]">
               <span className="text-sm text-black">
                 {formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
               </span>
@@ -125,7 +125,7 @@ export function CompanyTab() {
               <p className="text-[13px] font-medium text-black-700">Projected</p>
               <Info className="h-3.5 w-3.5 text-slate-400" />
             </div>
-            <div className="flex items-center gap-2 h-[38px]">
+            <div className="flex items-center gap-2 h-[56px]">
               <span className="text-sm text-black">{formatCurrency(projected)}</span>
               <span
                 className={`rounded-sm px-2 py-0.5 text-[11px] font-medium ${
