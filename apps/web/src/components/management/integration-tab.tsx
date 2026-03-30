@@ -90,29 +90,29 @@ function ProviderSettingsDialog({
         {/* Stats row */}
         <div className="flex items-start gap-8">
           <div>
-            <p className="text-[12px] text-slate-500 mb-0.5">Success rate:</p>
-            <p className="text-[18px] font-semibold text-black">{provider.successRate}%</p>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">Success rate:</p>
+            <p className="text-[18px] font-bold text-text-1">{provider.successRate}%</p>
           </div>
           <div>
-            <p className="text-[12px] text-slate-500 mb-0.5">API calls:</p>
-            <p className="text-[18px] font-semibold text-black">{provider.apiCalls.toLocaleString()}</p>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">API calls:</p>
+            <p className="text-[18px] font-bold text-text-1">{provider.apiCalls}</p>
           </div>
           <div>
-            <p className="text-[12px] text-slate-500 mb-0.5">Rate limit:</p>
-            <p className="text-[18px] font-semibold text-black">
-              {provider.rateLimit.toLocaleString()}
-              <span className="text-[12px] font-normal text-slate-500 ml-1">requests/day</span>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">Rate limit:</p>
+            <p className="text-[18px] font-bold text-text-1">
+              {provider.rateLimit}
+              <span className="text-[13px] font-normal text-text-3 ml-2">requests/day</span>
             </p>
           </div>
         </div>
 
         {/* WorkenAI API */}
         <div>
-          <p className="text-[13px] font-medium text-black mb-1.5">Use WORKENAI API</p>
+          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">Use WORKENAI API</p>
           <textarea
             readOnly
-            className="w-full rounded-md border border-black-600 bg-slate-50 px-3 py-2 text-[12px] text-slate-500 resize-none outline-none"
-            rows={2}
+            className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 resize-none outline-none"
+            rows={1}
             defaultValue="additional costs on his WorkenAI subscription will be added"
           />
         </div>
@@ -124,9 +124,9 @@ function ProviderSettingsDialog({
               type="checkbox"
               checked={useOwnKey}
               onChange={(e) => setUseOwnKey(e.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 accent-primary-5"
+              className="h-4 w-4 rounded-[4px] border border-border-4 accent-success-7"
             />
-            <span className="text-[13px] font-medium text-black">Use your own API KEY</span>
+            <span className="text-[14px] font-normal leading-[20px] text-text-2">Use your own API KEY</span>
           </label>
           {useOwnKey && (
             <input
@@ -134,7 +134,7 @@ function ProviderSettingsDialog({
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder="Enter your API key"
-              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-black outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
             />
           )}
           {!useOwnKey && (
@@ -142,12 +142,12 @@ function ProviderSettingsDialog({
               type="text"
               readOnly
               value="12er1te2r1sa3df1ó5a5s1fd5ad5as"
-              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-slate-400 outline-none"
+              className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[16px] leading-[24px] text-text-1 outline-none"
             />
           )}
         </div>
 
-        <p className="text-[12px] text-slate-400">
+        <p className="text-[16px] font-normal leading-[24px] text-text-1">
           API calls will incur a small Technology fee
         </p>
       </div>

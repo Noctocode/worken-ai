@@ -39,7 +39,7 @@ export function SettingsDialog({
         </DialogDescription>
 
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-bg-1">
+        <div className="flex items-center justify-between px-6 py-4">
           <div className="flex items-center gap-3">
             {headerIcon}
             <span className="text-[20px] font-normal leading-[28px] text-text-1">{title}</span>
@@ -54,7 +54,7 @@ export function SettingsDialog({
         <div className="px-6 py-5">{children}</div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-bg-1">
+        <div className="flex items-center justify-between px-6 py-4">
           <Button
             variant="outline"
             onClick={onClose}
