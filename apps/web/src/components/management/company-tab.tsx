@@ -7,7 +7,6 @@ import {
   UserX,
   Pencil,
   Trash2,
-  ShieldCheck,
   Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -47,12 +46,6 @@ const DEMO_GUARDRAILS: CompanyGuardrail[] = [
   { id: "2", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
   { id: "3", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
 ];
-
-const SEVERITY_COLORS: Record<string, string> = {
-  high: "text-red-500",
-  medium: "text-amber-500",
-  low: "text-text-1",
-};
 
 export function CompanyTab() {
   const [monthlyBudget, setMonthlyBudget] = useState("30000.00");
@@ -226,10 +219,7 @@ export function CompanyTab() {
             {guardrails.map((g) => (
               <tr key={g.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
                 <td className="px-6 align-middle">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-slate-400" />
                     <span className="text-base font-normal text-black">{g.name}</span>
-                  </div>
                 </td>
                 <td className="px-4 align-middle">
                   <div className="flex gap-1.5">
@@ -241,7 +231,7 @@ export function CompanyTab() {
                   </div>
                 </td>
                 <td className="px-4 align-middle">
-                  <span className={`text-sm font-medium ${SEVERITY_COLORS[g.severity]}`}>
+                  <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
                     {g.severity}
                   </span>
                 </td>
