@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import { BookOpen, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Switch } from "@/components/ui/switch";
@@ -164,22 +164,17 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
     <SettingsDialog open onClose={onClose} title="Add Custom LLM">
       <div className="space-y-4">
         <div>
-          <p className="text-[13px] font-medium text-primary-5 mb-1.5">API Link</p>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">API Link</p>
           <input
             type="text"
             value={apiLink}
             onChange={(e) => setApiLink(e.target.value)}
             placeholder="Put link here"
-            className="w-full rounded-md border border-black-600 bg-transparent px-3 py-2 text-[13px] text-black placeholder:text-slate-400 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            className="w-full rounded-md border border-border-3 bg-transparent px-3 py-2 text-[13px] text-black placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
-        <button className="inline-flex items-center gap-2 rounded-md border border-black-600 px-4 py-2 text-[13px] font-medium text-black hover:bg-slate-50 transition-colors">
-          <svg viewBox="0 0 16 16" className="h-4 w-4 text-primary-5" fill="currentColor">
-            <rect x="1" y="1" width="6" height="6" rx="1" />
-            <rect x="9" y="1" width="6" height="6" rx="1" />
-            <rect x="1" y="9" width="6" height="6" rx="1" />
-            <rect x="9" y="9" width="6" height="6" rx="1" />
-          </svg>
+        <button className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-slate-50 transition-colors">
+          <BookOpen className="h-4 w-4 text-success-7" />
           Integration documentation
         </button>
       </div>
