@@ -26,7 +26,7 @@ export function getRouteConfig(pathname: string): RouteConfig {
   // Check /teams/[id] pattern
   if (/^\/teams\/[^/]+$/.test(pathname)) {
     return {
-      bg: "bg-bg-white",
+      bg: "bg-bg-1",
       hideSearch: true,
       hideNotifications: true,
       appbarType: "teamDetail",
