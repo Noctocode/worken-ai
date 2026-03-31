@@ -88,7 +88,7 @@ export function AddModelDialog({
           <div className="space-y-4">
             {/* Selected model */}
             <div>
-              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
                 Selected model
               </p>
               <Select value={modelId} onValueChange={setModelId}>
@@ -108,7 +108,7 @@ export function AddModelDialog({
 
             {/* Custom name */}
             <div>
-              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
                 Custom name
               </p>
               <input
@@ -121,17 +121,17 @@ export function AddModelDialog({
 
             {/* Fallback models */}
             <div>
-              <p className="text-[16px] font-semibold leading-[24px] text-text-1">
+              <p className="text-[16px] font-semibold leading-[24px] text-text-1 mb-2">
                 Fallback models
               </p>
-              <p className="text-[14px] font-normal leading-[20px] text-text-2 mt-0.5 mb-3">
+              <p className="text-[14px] font-normal leading-[20px] text-text-2 mt-0.5 mb-4">
                 Choose fallback models to use if previous model timeouts (3s) or
                 returns error. The fallbacks will be applied in the order you
                 specify.
               </p>
 
               {/* Select fallback model */}
-              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+              <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
                 Select fallback model
               </p>
               <Select
@@ -139,7 +139,7 @@ export function AddModelDialog({
                 onValueChange={(v) => addFallback(v)}
                 disabled={availableFallbacks.length === 0}
               >
-                <SelectTrigger className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1">
+                <SelectTrigger className="w-full h-[46px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-[17px] pt-[9px] pb-[13px] text-[16px] leading-[24px] text-text-1 [&>svg]:text-text-2 [&>svg]:opacity-100">
                   <SelectValue placeholder="Search with model custom name" />
                 </SelectTrigger>
                 <SelectContent>
@@ -154,11 +154,11 @@ export function AddModelDialog({
 
               {/* Fallback list */}
               {fallbacks.length > 0 && (
-                <div className="mt-3 flex flex-col gap-2">
+                <div className="mt-3 flex flex-col gap-3">
                   {fallbacks.map((id, idx) => (
                     <div
                       key={id}
-                      className="flex h-[50px] items-center justify-between rounded bg-[#F2F3F5] px-[17px] py-[13px]"
+                      className="flex items-center justify-between rounded bg-[#F2F3F5] px-[17px] py-[10px]"
                     >
                       <div className="flex items-center gap-3">
                         <span className="text-[16px] font-normal leading-[24px] text-text-1">
