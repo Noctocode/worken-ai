@@ -22,7 +22,7 @@ export default function AppLayout({
           <main className="flex min-w-0 flex-1 flex-col">
             <Appbar />
             <div className="min-h-0 flex-1 overflow-auto">
-              <div className="flex min-h-full flex-col px-6 py-6">
+              <div className="flex min-h-full flex-col px-6 pb-6">
                 {children}
               </div>
             </div>
