@@ -8,7 +8,7 @@ interface RouteConfig {
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
   "/teams": {
-    bg: "bg-bg-white",
+    bg: "bg-bg-1",
     title: "Management",
     hideSearch: true,
     hideNotifications: true,
