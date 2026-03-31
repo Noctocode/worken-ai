@@ -30,6 +30,20 @@ function ModelIcon({ id }: { id: string }) {
   );
 }
 
+const svgClass = "[&_svg]:text-text-2 [&_svg]:opacity-100 !items-center";
+
+const inputClass =
+  "w-full rounded border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1";
+
+const modelSelectClass =
+  `${inputClass} !h-auto ${svgClass}`;
+
+const fallbackSelectClass =
+  `w-full !h-[46px] rounded border border-border-3 bg-transparent px-[17px] py-[11px] text-[16px] leading-[24px] text-text-1 ${svgClass}`;
+
+const selectItemClass =
+  "px-[17px] py-[10px] text-[16px] leading-[24px] text-text-1 cursor-pointer";
+
 export function AddModelDialog({
   children,
 }: {
@@ -92,12 +106,12 @@ export function AddModelDialog({
                 Selected model
               </p>
               <Select value={modelId} onValueChange={setModelId}>
-                <SelectTrigger className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1">
+                <SelectTrigger className={modelSelectClass}>
                   <SelectValue placeholder="Select a model" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="p-0">
                   {MODELS.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
+                    <SelectItem key={m.id} value={m.id} className={selectItemClass}>
                       <ModelIcon id={m.id} />
                       {m.label}
                     </SelectItem>
@@ -115,7 +129,7 @@ export function AddModelDialog({
                 type="text"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                className={`${inputClass} outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
               />
             </div>
 
@@ -139,12 +153,12 @@ export function AddModelDialog({
                 onValueChange={(v) => addFallback(v)}
                 disabled={availableFallbacks.length === 0}
               >
-                <SelectTrigger className="w-full h-[46px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-[17px] pt-[9px] pb-[13px] text-[16px] leading-[24px] text-text-1 [&>svg]:text-text-2 [&>svg]:opacity-100">
+                <SelectTrigger className={fallbackSelectClass}>
                   <SelectValue placeholder="Search with model custom name" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="p-0">
                   {availableFallbacks.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
+                    <SelectItem key={m.id} value={m.id} className={selectItemClass}>
                       <ModelIcon id={m.id} />
                       {m.label}
                     </SelectItem>
