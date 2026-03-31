@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { MoreVertical } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+import { GripVertical, MoreVertical } from "lucide-react";
 import { SettingsDialog } from "@/components/settings-dialog";
 import {
   Select,
@@ -30,16 +30,96 @@ function ModelIcon({ id }: { id: string }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Pointer-based reorder hook (works inside Radix portals / dialogs) */
+/* ------------------------------------------------------------------ */
+function usePointerReorder(
+  items: string[],
+  setItems: React.Dispatch<React.SetStateAction<string[]>>,
+) {
+  const dragIdx = useRef<number | null>(null);
+  const rowRects = useRef<DOMRect[]>([]);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const [overIdx, setOverIdx] = useState<number | null>(null);
+
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent, idx: number) => {
+      e.preventDefault();
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+      dragIdx.current = idx;
+      setActiveIdx(idx);
+
+      // Snapshot row positions
+      if (listRef.current) {
+        const rows = listRef.current.querySelectorAll("[data-fallback-row]");
+        rowRects.current = Array.from(rows).map((r) =>
+          r.getBoundingClientRect(),
+        );
+      }
+    },
+    [],
+  );
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (dragIdx.current === null) return;
+
+      const y = e.clientY;
+      let closest = dragIdx.current;
+      let minDist = Infinity;
+
+      for (let i = 0; i < rowRects.current.length; i++) {
+        const rect = rowRects.current[i];
+        const mid = rect.top + rect.height / 2;
+        const dist = Math.abs(y - mid);
+        if (dist < minDist) {
+          minDist = dist;
+          closest = i;
+        }
+      }
+
+      setOverIdx(closest);
+    },
+    [],
+  );
+
+  const onPointerUp = useCallback(
+    () => {
+      const from = dragIdx.current;
+      const to = overIdx;
+
+      if (from !== null && to !== null && from !== to) {
+        setItems((prev) => {
+          const next = [...prev];
+          const [moved] = next.splice(from, 1);
+          next.splice(to, 0, moved);
+          return next;
+        });
+      }
+
+      dragIdx.current = null;
+      rowRects.current = [];
+      setActiveIdx(null);
+      setOverIdx(null);
+    },
+    [overIdx, setItems],
+  );
+
+  return { listRef, activeIdx, overIdx, onPointerDown, onPointerMove, onPointerUp };
+}
+
+/* ------------------------------------------------------------------ */
+
 const svgClass = "[&_svg]:text-text-2 [&_svg]:opacity-100 !items-center";
 
 const inputClass =
   "w-full rounded border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1";
 
-const modelSelectClass =
-  `${inputClass} !h-auto ${svgClass}`;
+const modelSelectClass = `${inputClass} !h-auto ${svgClass}`;
 
-const fallbackSelectClass =
-  `w-full !h-[46px] rounded border border-border-3 bg-transparent px-[17px] py-[11px] text-[16px] leading-[24px] text-text-1 ${svgClass}`;
+const fallbackSelectClass = `w-full !h-[46px] rounded border border-border-3 bg-transparent px-[17px] py-[11px] text-[16px] leading-[24px] text-text-1 ${svgClass}`;
 
 const selectItemClass =
   "px-[17px] py-[10px] text-[16px] leading-[24px] text-text-1 cursor-pointer";
@@ -54,6 +134,15 @@ export function AddModelDialog({
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
+
+  const {
+    listRef,
+    activeIdx,
+    overIdx,
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+  } = usePointerReorder(fallbacks, setFallbacks);
 
   const addFallback = (id: string) => {
     if (!id || fallbacks.includes(id) || id === modelId) return;
@@ -84,6 +173,19 @@ export function AddModelDialog({
   const handleClose = () => {
     setOpen(false);
   };
+
+  /** Visual preview of reordered list while dragging */
+  const getDisplayOrder = (): string[] => {
+    if (activeIdx === null || overIdx === null || activeIdx === overIdx) {
+      return fallbacks;
+    }
+    const next = [...fallbacks];
+    const [moved] = next.splice(activeIdx, 1);
+    next.splice(overIdx, 0, moved);
+    return next;
+  };
+
+  const displayFallbacks = getDisplayOrder();
 
   return (
     <>
@@ -166,32 +268,56 @@ export function AddModelDialog({
                 </SelectContent>
               </Select>
 
-              {/* Fallback list */}
+              {/* Fallback list — pointer-based reorder */}
               {fallbacks.length > 0 && (
-                <div className="mt-3 flex flex-col gap-3">
-                  {fallbacks.map((id, idx) => (
-                    <div
-                      key={id}
-                      className="flex items-center justify-between rounded bg-[#F2F3F5] px-[17px] py-[10px]"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-[16px] font-normal leading-[24px] text-text-1">
-                          {idx + 1}
-                        </span>
-                        <ModelIcon id={id} />
-                        <span className="text-[16px] font-normal leading-[24px] text-text-1">
-                          {getLabelById(id)}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFallback(id)}
-                        className="cursor-pointer text-success-7 hover:text-success-7/80"
+                <div
+                  ref={listRef}
+                  className="mt-3 flex flex-col gap-3 select-none"
+                  onPointerMove={onPointerMove}
+                  onPointerUp={onPointerUp}
+                >
+                  {displayFallbacks.map((id, idx) => {
+                    const isDragging =
+                      activeIdx !== null && fallbacks[activeIdx] === id;
+
+                    return (
+                      <div
+                        key={id}
+                        data-fallback-row
+                        className={`flex items-center justify-between rounded bg-[#F2F3F5] px-[17px] py-[10px] transition-shadow ${
+                          isDragging
+                            ? "shadow-md ring-2 ring-primary-6/30"
+                            : ""
+                        }`}
                       >
-                        <MoreVertical className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center gap-3">
+                          <GripVertical
+                            className="h-4 w-4 shrink-0 cursor-grab text-text-2 touch-none active:cursor-grabbing"
+                            onPointerDown={(e) =>
+                              onPointerDown(
+                                e as unknown as React.PointerEvent,
+                                fallbacks.indexOf(id),
+                              )
+                            }
+                          />
+                          <span className="text-[16px] font-normal leading-[24px] text-text-1">
+                            {idx + 1}
+                          </span>
+                          <ModelIcon id={id} />
+                          <span className="text-[16px] font-normal leading-[24px] text-text-1">
+                            {getLabelById(id)}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFallback(id)}
+                          className="cursor-pointer text-success-7 hover:text-success-7/80"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
