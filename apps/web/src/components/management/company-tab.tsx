@@ -71,8 +71,8 @@ export function CompanyTab() {
     <div className="py-6 space-y-6">
       {/* Company card */}
       <div className="bg-white rounded-lg px-4 sm:px-6 py-5">
-        <div className="flex items-start justify-between mb-6">
-          <div className="flex items-center gap-4">
+        <div className="flex items-start justify-between gap-2 mb-6 overflow-hidden">
+          <div className="flex items-center gap-4 min-w-0">
             <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500 text-xl font-bold">
               C
             </div>
@@ -81,7 +81,7 @@ export function CompanyTab() {
               <p className="text-[13px] text-slate-500 truncate">nevaeh.simmons@example.com</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-success-7 hover:text-success-7/80">
               <Pencil className="h-4 w-4" />
             </Button>
