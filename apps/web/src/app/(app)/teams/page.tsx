@@ -233,7 +233,7 @@ export default function TeamsPage() {
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
       <PageTabsContent value="teams">
-        <div className="flex items-center gap-6 py-4">
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-6">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Teams
           </span>
@@ -245,7 +245,7 @@ export default function TeamsPage() {
           />
           {user?.isPaid && (
             <CreateTeamDialog>
-              <Button variant="plusAction">
+              <Button variant="plusAction" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 text-black-900" />
                 Create Team
               </Button>
@@ -253,7 +253,7 @@ export default function TeamsPage() {
           )}
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
-          <table className="w-full">
+          <table className="w-full min-w-[800px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
@@ -325,7 +325,7 @@ export default function TeamsPage() {
 
       {/* ── Users ────────────────────────────────────────────────────────────── */}
       <PageTabsContent value="users">
-        <div className="flex items-center gap-6 py-5">
+        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Users
           </span>
@@ -337,7 +337,7 @@ export default function TeamsPage() {
           />
           {user?.isPaid && (
             <InviteUserDialog>
-              <Button variant="plusAction">
+              <Button variant="plusAction" className="w-full sm:w-auto">
                 <Plus className="h-4 w-4 text-black-900" />
                 Invite User
               </Button>
@@ -345,7 +345,7 @@ export default function TeamsPage() {
           )}
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
-          <table className="w-full">
+          <table className="w-full min-w-[850px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
@@ -411,7 +411,7 @@ export default function TeamsPage() {
 
       {/* ── Models ───────────────────────────────────────────────────────────── */}
       <PageTabsContent value="models">
-        <div className="flex items-center gap-6 py-5">
+        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
           <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
             Models
           </span>
@@ -422,14 +422,14 @@ export default function TeamsPage() {
             onChange={(e) => setModelSearch(e.target.value)}
           />
           <AddModelDialog>
-            <Button variant="plusAction">
+            <Button variant="plusAction" className="w-full sm:w-auto">
               <Plus className="h-4 w-4 text-black-900" />
               Add New Model
             </Button>
           </AddModelDialog>
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
-          <table className="w-full">
+          <table className="w-full min-w-[700px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">

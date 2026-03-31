@@ -23,14 +23,16 @@ function PageTabsList({
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
-    <TabsPrimitive.List
-      data-slot="page-tabs-list"
-      className={cn(
-        "flex w-full border-b border-black-100",
-        className
-      )}
-      {...props}
-    />
+    <div className="overflow-x-auto -mx-6 px-6 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+      <TabsPrimitive.List
+        data-slot="page-tabs-list"
+        className={cn(
+          "flex w-max min-w-full border-b border-black-100",
+          className
+        )}
+        {...props}
+      />
+    </div>
   )
 }
 

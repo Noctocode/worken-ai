@@ -9,9 +9,9 @@ const searchInputVariants = cva(
   {
     variants: {
       size: {
-        default: "h-[42px] px-4",
-        sm: "h-10 px-3",
-        lg: "h-16 px-5",
+        default: "h-[42px] min-h-[42px] px-4",
+        sm: "h-10 min-h-10 px-3",
+        lg: "h-16 min-h-16 px-5",
       },
     },
     defaultVariants: {

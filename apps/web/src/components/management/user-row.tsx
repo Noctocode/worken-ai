@@ -45,17 +45,17 @@ export function UserRow({ user }: { user: OrgUser }) {
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
       {/* Name */}
-      <td className="px-4 align-middle text-base font-normal text-black">
+      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         <div className="flex items-center gap-2">
           {user.picture ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={user.picture}
               alt={user.name ?? user.email}
-              className="h-7 w-7 rounded-full object-cover"
+              className="h-7 w-7 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">
               {(user.name ?? user.email).charAt(0).toUpperCase()}
             </div>
           )}
@@ -63,7 +63,7 @@ export function UserRow({ user }: { user: OrgUser }) {
         </div>
       </td>
       {/* Email */}
-      <td className="px-4 align-middle text-base font-normal text-black">
+      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         {user.email}
       </td>
       {/* Teams */}
@@ -73,7 +73,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             user.teams.map((t) => (
               <span
                 key={t}
-                className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600"
+                className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600 whitespace-nowrap"
               >
                 {t}
               </span>
@@ -84,11 +84,11 @@ export function UserRow({ user }: { user: OrgUser }) {
         </div>
       </td>
       {/* Personal Monthly Budget */}
-      <td className="px-4 align-middle text-base font-normal text-black">
+      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
-      <td className="px-4 align-middle">
+      <td className="px-4 align-middle whitespace-nowrap">
         {budget > 0 ? (
           <div className="grid grid-cols-[110px_auto] items-center gap-2">
             <span className="text-sm leading-tight text-black">
@@ -106,15 +106,15 @@ export function UserRow({ user }: { user: OrgUser }) {
         )}
       </td>
       {/* Projected */}
-      <td className="px-4 align-middle">
+      <td className="px-4 align-middle whitespace-nowrap">
         <div className="flex items-center gap-1.5">
           <span className="text-sm text-black">{formatCurrency(projected)}</span>
           {overBudget ? (
-            <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3">
+            <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
               Over Budget
             </span>
           ) : budget > 0 ? (
-            <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
+            <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
               On track
             </span>
           ) : null}

@@ -50,7 +50,7 @@ function ProjectedBadge({
     return (
       <div className="flex items-center gap-1.5">
         <span className="text-sm text-black">{formatCurrency(projected)}</span>
-        <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3">
+        <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
           Over Budget
         </span>
       </div>
@@ -58,7 +58,7 @@ function ProjectedBadge({
   return (
     <div className="flex items-center gap-1.5">
       <span className="text-sm text-black">{formatCurrency(projected)}</span>
-      <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
+      <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
         On track
       </span>
     </div>
@@ -115,7 +115,7 @@ export function TeamRow({
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
       {/* Team name */}
-      <td className="px-4 align-middle text-base font-normal text-black">
+      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         <div className="flex items-center gap-2">
           {team.name}
           {isOwner && (
@@ -130,15 +130,15 @@ export function TeamRow({
         </div>
       </td>
       {/* Description */}
-      <td className="px-4 align-middle text-sm text-slate-500">
+      <td className="px-4 align-middle text-sm text-slate-500 whitespace-nowrap">
         {team.description ?? "—"}
       </td>
       {/* Monthly Budget */}
-      <td className="px-4 align-middle text-sm text-black">
+      <td className="px-4 align-middle text-sm text-black whitespace-nowrap">
         {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
-      <td className="px-4 align-middle">
+      <td className="px-4 align-middle whitespace-nowrap">
         {budget > 0 ? (
           <div className="grid grid-cols-[110px_auto] items-center gap-2">
             <span className="text-sm leading-tight text-black">
@@ -156,7 +156,7 @@ export function TeamRow({
         )}
       </td>
       {/* Projected */}
-      <td className="px-4 align-middle">
+      <td className="px-4 align-middle whitespace-nowrap">
         {team.projected != null && budget > 0 ? (
           <ProjectedBadge projected={team.projected} budget={budget} />
         ) : (
