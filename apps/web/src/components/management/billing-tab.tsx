@@ -155,18 +155,18 @@ const TOKEN_USAGE = [1100000, 1350000, 1550000, 2050000];
 
 function CurrentPlanCard() {
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-6">
-      <div className="mb-5 flex items-center justify-between">
+    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-[16px] font-bold text-text-heading leading-[24px]">Current Plan</h3>
           <p className="text-[12px] text-text-4 leading-[18px]">Team/Organization Plan - 25 users</p>
         </div>
-        <span className="rounded-[4px] bg-success-3 px-3 py-1.5 text-[13px] font-medium text-success-8">
+        <span className="w-fit rounded-[4px] bg-success-3 px-3 py-1.5 text-[13px] font-medium text-success-8">
           Active
         </span>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-bg-1 bg-bg-2 px-4 py-3">
           <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">Monthly Cost</p>
           <p className="text-[22px] font-bold text-text-heading leading-tight">$3,166</p>
@@ -218,7 +218,7 @@ function PlanCard({
 
       <div className="mb-3 flex items-center gap-3">
         <PlanIcon type={plan.iconType} active={selected} />
-        <div>
+        <div className="min-w-0">
           <p className="text-[14px] font-bold text-text-heading leading-[20px]">{plan.name}</p>
           <p className="text-[12px] text-text-4 leading-[18px]">{plan.description}</p>
         </div>
@@ -257,17 +257,17 @@ function TokenUsageChart() {
   const areaPoints = `0,1000 ${svgPoints} 1000,1000`;
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-6">
+    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Token Usage & Cost Trends</h3>
 
       <div className="flex">
         <div className="flex flex-col justify-between pr-2 pb-6" style={{ height: chartH }}>
           {yLabels.map((v) => (
-            <span key={v} className="text-[11px] text-text-4 leading-none text-right min-w-[55px]">{v}</span>
+            <span key={v} className="text-[10px] sm:text-[11px] text-text-4 leading-none text-right min-w-[40px] sm:min-w-[55px]">{v}</span>
           ))}
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col">
           <div className="relative border-l border-b border-border-5" style={{ height: chartH }}>
             {[0, 1, 2, 3, 4].map((i) => (
               <div
@@ -324,7 +324,7 @@ function CostByTeamChart() {
   const barValues = [185, 124, 89, 62];
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-6">
+    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Cost by Team</h3>
 
       <div className="flex">
@@ -334,7 +334,7 @@ function CostByTeamChart() {
           ))}
         </div>
 
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 min-w-0 flex flex-col">
           <div className="relative h-[180px] border-l border-b border-border-5">
             {[0, 1, 2, 3, 4].map((i) => (
               <div
@@ -386,7 +386,7 @@ function BudgetControls() {
   const [budgetCap, setBudgetCap] = useState("10000");
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-6">
+    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Budget Controls</h3>
 
       <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">Monthly Budget Cap</p>
@@ -437,35 +437,37 @@ function BudgetControls() {
 function InvoiceHistoryTable() {
   return (
     <div className="rounded-lg border border-bg-1 bg-white overflow-hidden">
-      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-6 pt-5 pb-3">Invoice History</h3>
+      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-4 sm:px-6 pt-5 pb-3">Invoice History</h3>
 
-      <table className="w-full">
-        <thead>
-          <tr className="h-[40px] border-y border-bg-1">
-            <th className="px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Invoice ID</th>
-            <th className="px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Date</th>
-            <th className="px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Amount</th>
-            <th className="px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {INVOICES.map((inv) => (
-            <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
-              <td className="px-6 font-mono text-[13px] font-medium text-text-heading leading-[19.5px]">{inv.invoiceId}</td>
-              <td className="px-6">
-                <div className="flex items-center gap-2">
-                  <Calendar className="h-3.5 w-3.5 text-text-5" />
-                  <span className="text-[13px] text-text-4">{inv.date}</span>
-                </div>
-              </td>
-              <td className="px-6 text-right text-[13px] font-semibold text-text-heading">{inv.amount}</td>
-              <td className="px-6 text-right">
-                <span className="inline-block rounded-full bg-success-3 px-3 py-0.5 text-[12px] font-medium text-success-8">{inv.status}</span>
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[500px]">
+          <thead>
+            <tr className="h-[40px] border-y border-bg-1">
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Invoice ID</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Date</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Amount</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Status</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {INVOICES.map((inv) => (
+              <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
+                <td className="px-4 sm:px-6 font-mono text-[13px] font-medium text-text-heading leading-[19.5px]">{inv.invoiceId}</td>
+                <td className="px-4 sm:px-6">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 text-text-5 shrink-0" />
+                    <span className="text-[13px] text-text-4">{inv.date}</span>
+                  </div>
+                </td>
+                <td className="px-4 sm:px-6 text-right text-[13px] font-semibold text-text-heading">{inv.amount}</td>
+                <td className="px-4 sm:px-6 text-right">
+                  <span className="inline-block rounded-full bg-success-3 px-3 py-0.5 text-[12px] font-medium text-success-8">{inv.status}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -481,7 +483,7 @@ export function BillingTab() {
 
       <div>
         <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-3">Available Plans</h3>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {PLANS.map((plan) => (
             <PlanCard
               key={plan.id}
@@ -495,7 +497,7 @@ export function BillingTab() {
 
       <TokenUsageChart />
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <CostByTeamChart />
         <BudgetControls />
       </div>
