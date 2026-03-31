@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, AlertTriangle, Lightbulb } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { Check, AlertTriangle, Lightbulb, Calendar } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -14,33 +13,33 @@ interface Plan {
   id: string;
   name: string;
   description: string;
-  price?: string;
+  innerCard?: { label: string; value: string };
   features: PlanFeature[];
   icon: React.ReactNode;
 }
 
 interface InvoiceEntry {
   id: string;
-  invoiceNo: string;
-  plan: string;
+  invoiceId: string;
   date: string;
-  amount: number;
+  amount: string;
   status: "Paid" | "Unpaid" | "Overdue";
 }
 
-interface TeamCost {
+interface TeamCostEntry {
   name: string;
-  amount: number;
+  users: number;
+  amount: string;
 }
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
-function StarIcon() {
+function UserSeatIcon() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-6">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0F52BA] p-2.5">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
         <path
-          d="M10 2l2.09 4.26L17 7.27l-3.5 3.41.83 4.82L10 13.4l-4.33 2.1.83-4.82L3 7.27l4.91-1.01L10 2z"
+          d="M10 10a3 3 0 100-6 3 3 0 000 6zM4 16c0-2.21 2.69-4 6-4s6 1.79 6 4v1H4v-1z"
           fill="white"
         />
       </svg>
@@ -48,25 +47,24 @@ function StarIcon() {
   );
 }
 
-function TeamIcon() {
+function TeamOrgIcon() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F0F5FF]">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-[1.25px] border-[#0F52BA] bg-[#F8FAFC] p-2.5">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path
-          d="M7 10a3 3 0 100-6 3 3 0 000 6zm6 0a3 3 0 100-6 3 3 0 000 6zM3 16c0-2.21 1.79-4 4-4h6c2.21 0 4 1.79 4 4v1H3v-1z"
-          fill="#3370FF"
-        />
+        <circle cx="10" cy="10" r="7" stroke="#0F52BA" strokeWidth="1.5" fill="none" />
+        <circle cx="10" cy="8" r="2.5" stroke="#0F52BA" strokeWidth="1.5" fill="none" />
+        <path d="M5.5 16c0-2.49 2.01-4.5 4.5-4.5s4.5 2.01 4.5 4.5" stroke="#0F52BA" strokeWidth="1.5" fill="none" />
       </svg>
     </div>
   );
 }
 
-function TokenIcon() {
+function PerTenderIcon() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#FFF7E6]">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#F8FAFC] p-2.5">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="7" stroke="#FF7D00" strokeWidth="2" fill="none" />
-        <path d="M10 6v8M7 10h6" stroke="#FF7D00" strokeWidth="2" strokeLinecap="round" />
+        <rect x="3" y="4" width="14" height="12" rx="2" stroke="#64748B" strokeWidth="1.5" fill="none" />
+        <path d="M7 8h6M7 11h4" stroke="#64748B" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     </div>
   );
@@ -74,10 +72,10 @@ function TokenIcon() {
 
 function BYOKIcon() {
   return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#F0FFF0]">
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#F8FAFC] p-2.5">
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="4" y="8" width="12" height="8" rx="2" stroke="#009A29" strokeWidth="2" fill="none" />
-        <path d="M7 8V5a3 3 0 016 0v3" stroke="#009A29" strokeWidth="2" strokeLinecap="round" />
+        <rect x="4" y="8" width="12" height="8" rx="2" stroke="#059669" strokeWidth="1.5" fill="none" />
+        <path d="M7 8V5a3 3 0 016 0v3" stroke="#059669" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     </div>
   );
@@ -87,123 +85,122 @@ function BYOKIcon() {
 
 const PLANS: Plan[] = [
   {
-    id: "star-start",
-    name: "Star Start Plan",
-    description: "The best starting point for small teams and individuals who need essential AI features.",
-    price: "$4,999 / $79/th user",
+    id: "user-seat",
+    name: "User Seat Plan",
+    description: "Per-user monthly subscription with unlimited tenders",
+    innerCard: { label: "Number of Users", value: "25 users × $149/user" },
     features: [
-      { text: "All Worken features" },
-      { text: "2 models / 500 000 tokens" },
-      { text: "Email & file support" },
-      { text: "Up to 10 users" },
+      { text: "Unlimited tender analysis" },
+      { text: "Full platform access per user" },
+      { text: "Email & chat support" },
+      { text: "7-day data retention" },
     ],
-    icon: <StarIcon />,
+    icon: <UserSeatIcon />,
   },
   {
-    id: "team-enterprise",
-    name: "Team/Enterprise Plan",
-    description: "Best for growing teams that need advanced tools, models and dedicated support.",
-    price: "Custom pricing",
+    id: "team-org",
+    name: "Team/Organization Plan",
+    description: "Volume discounts for enterprise teams",
     features: [
-      { text: "Everything in Star Start" },
-      { text: "Custom infrastructure setup" },
+      { text: "Everything in User Seat" },
+      { text: "Volume discounts (10+ users)" },
+      { text: "Priority support & onboarding" },
+      { text: "Custom data retention" },
+      { text: "Advanced security features" },
       { text: "SSO & SAML integration" },
-      { text: "Dedicated success manager" },
     ],
-    icon: <TeamIcon />,
+    icon: <TeamOrgIcon />,
   },
   {
-    id: "per-token",
-    name: "Per-Token Plan",
-    description: "Pay only for what you use with flexible token-based pricing.",
+    id: "per-tender",
+    name: "Per-Tender Plan",
+    description: "Pay only for tenders you analyze",
     features: [
-      { text: "Great for basic training" },
-      { text: "Pay-per-use model" },
-      { text: "Volume-based pricing" },
-      { text: "Flexible usage limits" },
+      { text: "Credit-based pricing" },
+      { text: "No monthly commitment" },
+      { text: "Rollover unused credits" },
+      { text: "Volume pricing available" },
     ],
-    icon: <TokenIcon />,
+    icon: <PerTenderIcon />,
   },
   {
     id: "byok",
     name: "BYOK (Bring Your Own Key)",
-    description: "Use your own API keys for maximum control and cost management.",
+    description: "Use your own LLM API keys",
     features: [
-      { text: "Percentage on API key" },
-      { text: "Full model access" },
-      { text: "Use your existing infrastructure" },
-      { text: "Granular API configuration" },
+      { text: "You manage LLM costs" },
+      { text: "Platform orchestration fee only" },
+      { text: "Full data control" },
+      { text: "Any supported LLM provider" },
+      { text: "Enterprise SLA available" },
     ],
     icon: <BYOKIcon />,
   },
 ];
 
 const INVOICES: InvoiceEntry[] = [
-  { id: "1", invoiceNo: "#00 - 0010101", plan: "Pro", date: "Jun 1, 2025", amount: 14495, status: "Paid" },
-  { id: "2", invoiceNo: "#00 - 0010102", plan: "Pro", date: "May 1, 2025", amount: 24935, status: "Paid" },
-  { id: "3", invoiceNo: "#00 - 0010103", plan: "Pro", date: "Apr 1, 2025", amount: 6200, status: "Paid" },
-  { id: "4", invoiceNo: "#00 - 0010104", plan: "Pro", date: "Mar 1, 2025", amount: 13400, status: "Paid" },
-  { id: "5", invoiceNo: "#00 - 0010105", plan: "Pro", date: "Feb 1, 2025", amount: 3000, status: "Paid" },
+  { id: "1", invoiceId: "INV-2024-86", date: "Jun 1, 2024", amount: "$4,400", status: "Paid" },
+  { id: "2", invoiceId: "INV-2024-85", date: "May 1, 2024", amount: "$4,800", status: "Paid" },
+  { id: "3", invoiceId: "INV-2024-84", date: "Apr 1, 2024", amount: "$4,200", status: "Paid" },
+  { id: "4", invoiceId: "INV-2024-83", date: "Mar 1, 2024", amount: "$3,600", status: "Paid" },
+  { id: "5", invoiceId: "INV-2024-82", date: "Feb 1, 2024", amount: "$3,000", status: "Paid" },
 ];
 
-const TEAM_COSTS: TeamCost[] = [
-  { name: "Development", amount: 14000 },
-  { name: "Design", amount: 6100 },
-  { name: "Legal", amount: 3200 },
-  { name: "HR", amount: 1400 },
+const TEAM_COSTS: TeamCostEntry[] = [
+  { name: "Procurement", users: 12, amount: "$1,850" },
+  { name: "Legal", users: 8, amount: "$1,240" },
+  { name: "Finance", users: 6, amount: "$890" },
+  { name: "Operations", users: 4, amount: "$620" },
 ];
 
-// Usage data for the line chart
-const USAGE_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"];
-const TOKEN_USAGE = [20000, 28000, 32000, 55000, 72000, 95000, 110000, 105000, 118000, 135000, 148000];
-const COST_DATA = [8000, 12000, 15000, 25000, 35000, 48000, 55000, 52000, 58000, 65000, 72000];
+// Usage data for the line chart — 4 months
+const USAGE_MONTHS = ["Jan", "Feb", "Mar", "Apr"];
+const TOKEN_USAGE = [1100000, 1350000, 1550000, 2050000];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CurrentPlanCard() {
   return (
     <div className="rounded-lg border border-bg-1 bg-white p-6">
-      <div className="mb-4 flex items-center justify-between">
+      {/* Header */}
+      <div className="mb-5 flex items-center justify-between">
         <div>
-          <h3 className="text-[15px] font-semibold text-text-1">Current Plan</h3>
-          <p className="text-[12px] text-text-3">worken/Organization Plan - #Teams</p>
+          <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px]">Current Plan</h3>
+          <p className="text-[12px] text-[#64748B] leading-[18px]">Team/Organization Plan - 25 users</p>
         </div>
-        <button className="rounded-md bg-primary-6 px-5 py-1.5 text-[13px] font-medium text-white hover:bg-primary-7 transition-colors">
-          Edit
-        </button>
+        <span className="rounded-[4px] bg-[#DCFCE7] px-3 py-1.5 text-[13px] font-medium text-[#059669]">
+          Active
+        </span>
       </div>
 
+      {/* Stat cards */}
       <div className="grid grid-cols-4 gap-4">
-        {/* Monthly Spend */}
-        <div className="rounded-lg bg-bg-1 px-4 py-3">
-          <p className="text-[11px] text-text-3 mb-1">Monthly spend</p>
-          <p className="text-[20px] font-bold text-text-1">$3,166</p>
-          <p className="text-[11px] text-text-3">This month so far</p>
+        {/* Monthly Cost */}
+        <div className="rounded-lg border border-bg-1 bg-[#F8FAFC] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#64748B] mb-1">Monthly Cost</p>
+          <p className="text-[22px] font-bold text-[#1E293B] leading-tight">$3,166</p>
+          <p className="text-[11px] text-[#059669] mt-0.5">15% volume discount</p>
         </div>
 
-        {/* Tokens Used */}
-        <div className="rounded-lg bg-bg-1 px-4 py-3">
-          <p className="text-[11px] text-text-3 mb-1">Tokens used this month</p>
-          <p className="text-[20px] font-bold text-text-1">2.2M</p>
-          <p className="text-[11px] text-text-3">out of 5M limit</p>
+        {/* Tokens Used (MTD) */}
+        <div className="rounded-lg border border-bg-1 bg-[#F8FAFC] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#64748B] mb-1">Tokens Used (MTD)</p>
+          <p className="text-[22px] font-bold text-[#1E293B] leading-tight">2.2M</p>
+          <p className="text-[11px] text-[#64748B] mt-0.5">~$4,400 LLM cost</p>
         </div>
 
         {/* Billing Cycle */}
-        <div className="rounded-lg bg-bg-1 px-4 py-3">
-          <p className="text-[11px] text-text-3 mb-1">Billing cycle</p>
-          <p className="text-[20px] font-bold text-text-1">Monthly</p>
-          <p className="text-[11px] text-text-3">Next: Jul 1, 2025</p>
+        <div className="rounded-lg border border-bg-1 bg-[#F8FAFC] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#64748B] mb-1">Billing Cycle</p>
+          <p className="text-[22px] font-bold text-[#1E293B] leading-tight">Monthly</p>
+          <p className="text-[11px] text-[#64748B] mt-0.5">Renews Jun 15, 2024</p>
         </div>
 
         {/* Budget Status */}
-        <div className="rounded-lg bg-bg-1 px-4 py-3">
-          <p className="text-[11px] text-text-3 mb-1">Budget status</p>
-          <div className="flex items-center gap-2">
-            <span className="rounded bg-success-1 px-2 py-0.5 text-[13px] font-semibold text-success-7">
-              Under Budget
-            </span>
-          </div>
-          <p className="text-[11px] text-text-3 mt-1">42% of monthly limit</p>
+        <div className="rounded-lg border border-bg-1 bg-[#F8FAFC] px-4 py-3">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-[#64748B] mb-1">Budget Status</p>
+          <p className="text-[16px] font-bold text-[#059669] leading-[24px]">Under Budget</p>
+          <p className="text-[11px] text-[#64748B] mt-0.5">44% of cap used</p>
         </div>
       </div>
     </div>
@@ -224,35 +221,40 @@ function PlanCard({
       onClick={onSelect}
       className={`relative flex flex-col rounded-lg border p-5 text-left transition-all ${
         selected
-          ? "border-primary-6 bg-white ring-1 ring-primary-6"
-          : "border-bg-3 bg-white hover:border-border-3"
+          ? "border-[#0F52BA] bg-white ring-1 ring-[#0F52BA]"
+          : "border-bg-3 bg-white hover:border-[#CBD5E1]"
       }`}
     >
       {/* Selected check */}
       {selected && (
-        <div className="absolute right-4 top-4 flex h-5 w-5 items-center justify-center rounded-full bg-primary-6">
-          <Check className="h-3 w-3 text-white" />
+        <div className="absolute right-4 top-4">
+          <Check className="h-5 w-5 text-[#0F52BA]" />
         </div>
       )}
 
-      {/* Icon + Name */}
+      {/* Icon + Name + Description */}
       <div className="mb-3 flex items-center gap-3">
         {plan.icon}
-        <p className="text-[14px] font-semibold text-text-1">{plan.name}</p>
+        <div>
+          <p className="text-[14px] font-bold text-[#1E293B] leading-[20px]">{plan.name}</p>
+          <p className="text-[12px] text-[#64748B] leading-[18px]">{plan.description}</p>
+        </div>
       </div>
 
-      <p className="mb-3 text-[12px] text-text-3 leading-relaxed">{plan.description}</p>
-
-      {plan.price && (
-        <p className="mb-3 text-[12px] font-medium text-text-2">{plan.price}</p>
+      {/* Inner card (for User Seat Plan) */}
+      {plan.innerCard && (
+        <div className="mb-4 w-full rounded-lg border-t border-[#E5E6EB] bg-[#F8FAFC] px-4 py-3">
+          <p className="text-[12px] font-medium text-[#1E293B] leading-[18px]">{plan.innerCard.label}</p>
+          <p className="text-[12px] text-[#64748B] leading-[18px] mt-1">{plan.innerCard.value}</p>
+        </div>
       )}
 
       {/* Features */}
       <div className="space-y-1.5">
         {plan.features.map((f) => (
           <div key={f.text} className="flex items-center gap-2">
-            <Check className="h-3.5 w-3.5 text-primary-6 shrink-0" />
-            <span className="text-[12px] text-text-2">{f.text}</span>
+            <Check className="h-3.5 w-3.5 text-[#059669] shrink-0" />
+            <span className="text-[12px] text-[#64748B] leading-[18px]">{f.text}</span>
           </div>
         ))}
       </div>
@@ -261,171 +263,214 @@ function PlanCard({
 }
 
 function TokenUsageChart() {
-  const chartHeight = 200;
-  const chartWidth = 700;
-  const paddingLeft = 60;
-  const paddingRight = 20;
-  const paddingBottom = 30;
-  const paddingTop = 10;
-  const plotWidth = chartWidth - paddingLeft - paddingRight;
-  const plotHeight = chartHeight - paddingBottom - paddingTop;
+  const yMax = 2400000;
+  const yLabels = [2400000, 1800000, 1200000, 600000, 0];
+  const chartH = 220; // px height for the plot area
 
-  const yMax = 150000;
-  const yLabels = [0, 50000, 100000, 150000];
+  // Calculate line points as percentages
+  const points = TOKEN_USAGE.map((val, i) => ({
+    x: (i / (USAGE_MONTHS.length - 1)) * 100,
+    y: (1 - val / yMax) * 100,
+  }));
 
-  const tokenPoints = TOKEN_USAGE.map((val, i) => {
-    const x = paddingLeft + (i / (USAGE_MONTHS.length - 1)) * plotWidth;
-    const y = paddingTop + plotHeight - (val / yMax) * plotHeight;
-    return `${x},${y}`;
-  }).join(" ");
-
-  const costPoints = COST_DATA.map((val, i) => {
-    const x = paddingLeft + (i / (USAGE_MONTHS.length - 1)) * plotWidth;
-    const y = paddingTop + plotHeight - (val / yMax) * plotHeight;
-    return `${x},${y}`;
-  }).join(" ");
-
-  // Area fill for tokens
-  const firstX = paddingLeft;
-  const lastX = paddingLeft + plotWidth;
-  const baseY = paddingTop + plotHeight;
-  const tokenAreaPoints = `${firstX},${baseY} ${tokenPoints} ${lastX},${baseY}`;
+  // SVG polyline points (using 0-1000 coordinate space for precision)
+  const svgPoints = points.map((p) => `${p.x * 10},${p.y * 10}`).join(" ");
+  const areaPoints = `0,1000 ${svgPoints} 1000,1000`;
 
   return (
     <div className="rounded-lg border border-bg-1 bg-white p-6">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold text-text-1">Token Usage & Cost Trends</h3>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5">
-            <div className="h-2 w-2 rounded-full bg-primary-6" />
-            <span className="text-[11px] text-text-3">Tokens</span>
+      <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px] mb-4">Token Usage & Cost Trends</h3>
+
+      <div className="flex">
+        {/* Y axis labels */}
+        <div className="flex flex-col justify-between pr-2 pb-6" style={{ height: chartH }}>
+          {yLabels.map((v) => (
+            <span key={v} className="text-[11px] text-[#64748B] leading-none text-right min-w-[55px]">{v}</span>
+          ))}
+        </div>
+
+        {/* Chart area */}
+        <div className="flex-1 flex flex-col">
+          <div className="relative border-l border-b border-[#CBD5E1]" style={{ height: chartH }}>
+            {/* Horizontal grid lines */}
+            {[0, 1, 2, 3, 4].map((i) => (
+              <div
+                key={i}
+                className="absolute left-0 right-0 border-t border-dashed border-[#E5E7EB]"
+                style={{ top: `${(i / 4) * 100}%` }}
+              />
+            ))}
+
+            {/* Vertical grid lines */}
+            {USAGE_MONTHS.map((_, i) => (
+              <div
+                key={i}
+                className="absolute top-0 bottom-0 border-l border-dashed border-[#E5E7EB]"
+                style={{ left: `${(i / (USAGE_MONTHS.length - 1)) * 100}%` }}
+              />
+            ))}
+
+            {/* Line + area SVG overlay */}
+            <svg
+              viewBox="0 0 1000 1000"
+              preserveAspectRatio="none"
+              className="absolute inset-0 w-full h-full overflow-visible"
+            >
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#0F52BA" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="#0F52BA" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <polygon points={areaPoints} fill="url(#areaGrad)" />
+              <polyline
+                points={svgPoints}
+                fill="none"
+                stroke="#0F52BA"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            </svg>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-2 w-2 rounded-full bg-success-7" />
-            <span className="text-[11px] text-text-3">Cost ($)</span>
+
+          {/* X axis labels */}
+          <div className="flex justify-between pt-2">
+            {USAGE_MONTHS.map((month) => (
+              <span key={month} className="text-[11px] text-[#64748B]">{month}</span>
+            ))}
           </div>
         </div>
       </div>
-
-      <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-        {/* Grid lines */}
-        {yLabels.map((label) => {
-          const y = paddingTop + plotHeight - (label / yMax) * plotHeight;
-          return (
-            <g key={label}>
-              <line x1={paddingLeft} y1={y} x2={chartWidth - paddingRight} y2={y} stroke="#F2F3F5" strokeWidth="1" />
-              <text x={paddingLeft - 8} y={y + 4} textAnchor="end" fill="#86909C" fontSize="10">
-                {label === 0 ? "0" : `${label / 1000}k`}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* X axis labels */}
-        {USAGE_MONTHS.map((month, i) => {
-          const x = paddingLeft + (i / (USAGE_MONTHS.length - 1)) * plotWidth;
-          return (
-            <text key={month} x={x} y={chartHeight - 5} textAnchor="middle" fill="#86909C" fontSize="10">
-              {month}
-            </text>
-          );
-        })}
-
-        {/* Token area fill */}
-        <polygon points={tokenAreaPoints} fill="#EBF8FF" opacity="0.5" />
-
-        {/* Token line */}
-        <polyline points={tokenPoints} fill="none" stroke="#178ACA" strokeWidth="2" strokeLinejoin="round" />
-
-        {/* Cost line (dashed) */}
-        <polyline points={costPoints} fill="none" stroke="#009A29" strokeWidth="2" strokeDasharray="4 3" strokeLinejoin="round" />
-      </svg>
     </div>
   );
 }
 
 function CostByTeamChart() {
-  const maxAmount = Math.max(...TEAM_COSTS.map((t) => t.amount));
-  const barMaxHeight = 140;
+  const yMax = 200;
+  const yLabels = [200, 150, 100, 50, 0];
+  const barValues = [185, 124, 89, 62];
 
   return (
     <div className="rounded-lg border border-bg-1 bg-white p-6">
-      <h3 className="text-[15px] font-semibold text-text-1 mb-4">Cost by Team</h3>
+      <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px] mb-4">Cost by Team</h3>
 
-      <div className="flex items-end gap-6 h-[160px] px-2">
-        {TEAM_COSTS.map((team) => {
-          const height = (team.amount / maxAmount) * barMaxHeight;
-          return (
-            <div key={team.name} className="flex flex-1 flex-col items-center gap-1.5">
-              <span className="text-[11px] text-text-3">{formatCurrency(team.amount)}</span>
+      {/* Chart */}
+      <div className="flex">
+        {/* Y axis labels */}
+        <div className="flex flex-col justify-between pr-2 pb-6 h-[180px]">
+          {yLabels.map((v) => (
+            <span key={v} className="text-[10px] text-[#64748B] leading-none text-right min-w-[20px]">{v}</span>
+          ))}
+        </div>
+
+        {/* Chart area */}
+        <div className="flex-1 flex flex-col">
+          {/* Bars area with grid */}
+          <div className="relative h-[180px] border-l border-b border-[#CBD5E1]">
+            {/* Horizontal grid lines */}
+            {[0, 1, 2, 3, 4].map((i) => (
               <div
-                className="w-full max-w-[48px] rounded-t bg-primary-6"
-                style={{ height: `${height}px` }}
+                key={i}
+                className="absolute left-0 right-0 border-t border-dashed border-[#E5E7EB]"
+                style={{ top: `${(i / 4) * 100}%` }}
               />
-              <span className="text-[11px] text-text-3">{team.name}</span>
+            ))}
+
+            {/* Bars */}
+            <div className="absolute inset-0 flex items-end justify-around px-2 gap-3">
+              {TEAM_COSTS.map((team, i) => {
+                const pct = (barValues[i] / yMax) * 100;
+                return (
+                  <div
+                    key={team.name}
+                    className="flex-1 max-w-[100px] bg-[#0F52BA] rounded-t-sm"
+                    style={{ height: `${pct}%` }}
+                  />
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+
+          {/* X axis labels */}
+          <div className="flex justify-around px-2 gap-3 pt-1.5">
+            {TEAM_COSTS.map((team) => (
+              <span key={team.name} className="flex-1 max-w-[100px] text-[10px] text-[#64748B] text-center leading-tight">
+                {team.name}
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* Team breakdown table */}
-      <div className="mt-5 space-y-2">
+      {/* Breakdown table */}
+      <div className="mt-4 space-y-1.5">
         {TEAM_COSTS.map((team) => (
-          <div key={team.name} className="flex items-center justify-between text-[12px]">
-            <span className="text-text-2">{team.name}</span>
-            <span className="font-medium text-text-1">{formatCurrency(team.amount)}</span>
+          <div key={team.name} className="flex items-center justify-between text-[11px] leading-[16px]">
+            <span className="text-[#64748B]">{team.name}</span>
+            <div className="flex items-center gap-4">
+              <span className="text-[#64748B]">{team.users} users</span>
+              <span className="font-semibold text-[#1E293B]">{team.amount}</span>
+            </div>
           </div>
         ))}
-        <div className="border-t border-bg-1 pt-2 flex items-center justify-between text-[12px]">
-          <span className="font-semibold text-text-1">Total</span>
-          <span className="font-semibold text-text-1">
-            {formatCurrency(TEAM_COSTS.reduce((s, t) => s + t.amount, 0))}
-          </span>
-        </div>
       </div>
     </div>
   );
 }
 
 function BudgetControls() {
-  const budgetUsed = 76;
+  const [budgetCap, setBudgetCap] = useState("10000");
 
   return (
     <div className="rounded-lg border border-bg-1 bg-white p-6">
-      <h3 className="text-[15px] font-semibold text-text-1 mb-4">Budget Controls</h3>
+      <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px] mb-4">Budget Controls</h3>
 
-      {/* Budget bar */}
-      <div className="mb-5">
-        <p className="text-[12px] text-text-3 mb-2">Monthly Budget Cap</p>
-        <div className="h-2 w-full rounded-full bg-bg-1 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-primary-6"
-            style={{ width: `${budgetUsed}%` }}
-          />
-        </div>
-        <p className="mt-1 text-[11px] text-text-3">{budgetUsed}% of budget used</p>
+      {/* Monthly Budget Cap */}
+      <p className="text-[13px] font-bold text-[#1E293B] leading-[18px] mb-2">Monthly Budget Cap</p>
+
+      {/* Input field */}
+      <div className="flex items-center rounded-lg border border-[#E5E7EB] bg-white px-3 py-2.5 mb-2">
+        <span className="text-[13px] text-[#64748B] mr-2">$</span>
+        <input
+          type="text"
+          value={budgetCap}
+          onChange={(e) => setBudgetCap(e.target.value)}
+          className="flex-1 bg-transparent text-[13px] text-[#1E293B] outline-none"
+        />
+      </div>
+
+      {/* Current usage */}
+      <p className="text-[12px] text-[#64748B] leading-[18px] mb-2">
+        Current usage: $4,400 / $10,000
+      </p>
+
+      {/* Progress bar */}
+      <div className="h-2.5 w-full rounded-full bg-[#E5E7EB] overflow-hidden mb-5">
+        <div className="h-full rounded-full bg-[#0F52BA]" style={{ width: "44%" }} />
       </div>
 
       {/* Alerts */}
       <div className="space-y-3">
-        {/* Overage Warning */}
-        <div className="flex items-start gap-3 rounded-lg border border-[#FFF0E0] bg-[#FFFBF5] p-3">
-          <AlertTriangle className="h-4 w-4 text-warning-6 shrink-0 mt-0.5" />
+        {/* Overage Warnings */}
+        <div className="flex items-start gap-3 rounded-lg border border-[#FEF3C7] bg-[#FFFBEB] p-3">
+          <AlertTriangle className="h-4 w-4 text-[#F59E0B] shrink-0 mt-0.5" />
           <div>
-            <p className="text-[12px] font-medium text-text-1">Overage Warning</p>
-            <p className="text-[11px] text-text-3 leading-relaxed">
-              You&apos;re approaching your monthly budget limit. Consider upgrading your plan.
+            <p className="text-[13px] font-bold text-[#1E293B] leading-[18px]">Overage Warnings</p>
+            <p className="text-[12px] text-[#64748B] leading-[18px]">
+              Alert when approaching 80% of budget cap
             </p>
           </div>
         </div>
 
         {/* Optimization Suggestion */}
-        <div className="flex items-start gap-3 rounded-lg border border-[#D9F0D9] bg-success-1 p-3">
-          <Lightbulb className="h-4 w-4 text-success-7 shrink-0 mt-0.5" />
+        <div className="flex items-start gap-3 rounded-lg border border-[#D1FAE5] bg-[#ECFDF5] p-3">
+          <Lightbulb className="h-4 w-4 text-[#059669] shrink-0 mt-0.5" />
           <div>
-            <p className="text-[12px] font-medium text-text-1">Optimization Suggestion</p>
-            <p className="text-[11px] text-text-3 leading-relaxed">
-              AI analysis suggests that switching to GPT-4o-mini for batch tasks could reduce costs by 15%.
+            <p className="text-[13px] font-bold text-[#059669] leading-[18px]">Optimization Suggestion</p>
+            <p className="text-[12px] text-[#64748B] leading-[18px]">
+              Switching to BYOK could save approximately $2,200/month based on your usage patterns
             </p>
           </div>
         </div>
@@ -434,34 +479,33 @@ function BudgetControls() {
   );
 }
 
-function InvoiceHistoryTable({ invoices }: { invoices: InvoiceEntry[] }) {
+function InvoiceHistoryTable() {
   return (
     <div className="rounded-lg border border-bg-1 bg-white overflow-hidden">
-      <h3 className="text-[15px] font-semibold text-text-1 px-6 pt-5 pb-3">Invoice History</h3>
+      <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px] px-6 pt-5 pb-3">Invoice History</h3>
 
       <table className="w-full">
         <thead>
-          <tr className="h-[36px] border-b border-bg-1 bg-bg-1">
-            <th className="px-6 text-left text-[12px] font-medium text-text-3 uppercase tracking-wide">Invoice No.</th>
-            <th className="px-6 text-left text-[12px] font-medium text-text-3 uppercase tracking-wide">Plan</th>
-            <th className="px-6 text-left text-[12px] font-medium text-text-3 uppercase tracking-wide">Date</th>
-            <th className="px-6 text-right text-[12px] font-medium text-text-3 uppercase tracking-wide">Amount</th>
-            <th className="px-6 text-right text-[12px] font-medium text-text-3 uppercase tracking-wide">Status</th>
+          <tr className="h-[40px] border-y border-bg-1">
+            <th className="px-6 text-left text-[12px] font-medium text-[#059669] uppercase tracking-wide">Invoice ID</th>
+            <th className="px-6 text-left text-[12px] font-medium text-[#059669] uppercase tracking-wide">Date</th>
+            <th className="px-6 text-right text-[12px] font-medium text-[#059669] uppercase tracking-wide">Amount</th>
+            <th className="px-6 text-right text-[12px] font-medium text-[#059669] uppercase tracking-wide">Status</th>
           </tr>
         </thead>
         <tbody>
-          {invoices.map((inv) => (
-            <tr key={inv.id} className="h-12 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
-              <td className="px-6 text-[13px] text-text-2">{inv.invoiceNo}</td>
-              <td className="px-6 text-[13px] text-text-2">{inv.plan}</td>
-              <td className="px-6 text-[13px] text-text-2">{inv.date}</td>
-              <td className="px-6 text-right text-[13px] font-medium text-text-1">
-                {formatCurrency(inv.amount)}
+          {INVOICES.map((inv) => (
+            <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
+              <td className="px-6 font-mono text-[13px] font-medium text-[#1E293B] leading-[19.5px]">{inv.invoiceId}</td>
+              <td className="px-6">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-3.5 w-3.5 text-[#94A3B8]" />
+                  <span className="text-[13px] text-[#64748B]">{inv.date}</span>
+                </div>
               </td>
+              <td className="px-6 text-right text-[13px] font-semibold text-[#1E293B]">{inv.amount}</td>
               <td className="px-6 text-right">
-                <span className="inline-block rounded px-2 py-0.5 text-[11px] font-medium bg-success-1 text-success-7">
-                  {inv.status}
-                </span>
+                <span className="inline-block rounded-full bg-[#DCFCE7] px-3 py-0.5 text-[12px] font-medium text-[#059669]">{inv.status}</span>
               </td>
             </tr>
           ))}
@@ -474,7 +518,7 @@ function InvoiceHistoryTable({ invoices }: { invoices: InvoiceEntry[] }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function BillingTab() {
-  const [selectedPlan, setSelectedPlan] = useState("star-start");
+  const [selectedPlan, setSelectedPlan] = useState("user-seat");
 
   return (
     <div className="py-6 space-y-6">
@@ -483,7 +527,7 @@ export function BillingTab() {
 
       {/* ── Available Plans ───────────────────────────────────────────────────── */}
       <div>
-        <h3 className="text-[15px] font-semibold text-text-1 mb-3">Available Plans</h3>
+        <h3 className="text-[16px] font-bold text-[#1E293B] leading-[24px] mb-3">Available Plans</h3>
         <div className="grid grid-cols-2 gap-4">
           {PLANS.map((plan) => (
             <PlanCard
@@ -506,7 +550,7 @@ export function BillingTab() {
       </div>
 
       {/* ── Invoice History ───────────────────────────────────────────────────── */}
-      <InvoiceHistoryTable invoices={INVOICES} />
+      <InvoiceHistoryTable />
     </div>
   );
 }
