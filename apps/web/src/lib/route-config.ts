@@ -3,6 +3,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
+  appbarType?: "default" | "teamDetail";
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
@@ -28,6 +29,7 @@ export function getRouteConfig(pathname: string): RouteConfig {
       bg: "bg-bg-white",
       hideSearch: true,
       hideNotifications: true,
+      appbarType: "teamDetail",
     };
   }
 

@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, ChevronRight, Search, Bell } from "lucide-react";
+import {
+  Menu,
+  ChevronRight,
+  Search,
+  Bell,
+  ArrowLeft,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,6 +25,64 @@ export const Appbar = () => {
   const pathname = usePathname();
   const config = getRouteConfig(pathname);
 
+  /* ── Team detail appbar ──────────────────────────────────────────────── */
+  if (config.appbarType === "teamDetail") {
+    // Last breadcrumb holds the team name (or "Loading...")
+    const teamName = breadcrumbs[breadcrumbs.length - 1]?.label ?? "";
+
+    return (
+      <header
+        className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
+      >
+        <div className="flex items-center gap-2">
+          {/* Mobile Menu Trigger */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-72">
+              <SidebarContent showToggle={false} />
+            </SheetContent>
+          </Sheet>
+
+          <Link href="/teams">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-black-700 hover:text-black-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <h1 className="text-[18px] font-semibold text-text-1">{teamName}</h1>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-black-600 hover:text-black-900"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-danger-5 hover:text-danger-6"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </header>
+    );
+  }
+
+  /* ── Default appbar ──────────────────────────────────────────────────── */
   return (
     <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
