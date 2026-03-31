@@ -225,9 +225,9 @@ function PlanCard({
       </div>
 
       {plan.innerCard && (
-        <div className="mb-4 w-full rounded-lg border-t border-border-2 bg-bg-2 px-4 py-3">
-          <p className="text-[12px] font-medium text-text-heading leading-[18px]">{plan.innerCard.label}</p>
-          <p className="text-[12px] text-text-4 leading-[18px] mt-1">{plan.innerCard.value}</p>
+        <div className="mb-4 w-full rounded-lg border border-border-2 bg-bg-2 px-4 pt-4 pb-5">
+          <p className="text-[12px] font-semibold text-text-heading leading-[18px]">{plan.innerCard.label}</p>
+          <p className="text-[13px] text-text-4 leading-[19.5px] mt-4">{plan.innerCard.value}</p>
         </div>
       )}
 
