@@ -81,7 +81,7 @@ export function ApiTab() {
           <Button
             onClick={handleGenerate}
             disabled={!linkName.trim()}
-            className="shrink-0 gap-2 bg-[#1890FF] hover:bg-[#1890FF]/90 text-white"
+            className="shrink-0 gap-2 bg-primary-6 hover:bg-primary-6/90 text-white"
           >
             <Link2 className="h-4 w-4" />
             Generate Link
