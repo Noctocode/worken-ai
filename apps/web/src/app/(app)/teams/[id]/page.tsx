@@ -197,7 +197,7 @@ export default function TeamDetailPage({
       {/* ── Description + Budget card ──────────────────────────────── */}
       <div className="rounded-lg bg-white">
         {/* Description row */}
-        <div className="flex items-center gap-4 px-6 pt-5 pb-8">
+        <div className="flex items-center gap-4 px-4 sm:px-6 pt-5 pb-8">
           <div className="flex h-[80px] w-[80px] shrink-0 items-center justify-center rounded-full overflow-hidden">
             <svg viewBox="0 0 80 80" className="h-full w-full">
               <defs>
@@ -213,14 +213,14 @@ export default function TeamDetailPage({
               <polygon points="20,20 45,15 35,40" fill="#ef4444" opacity="0.6" />
             </svg>
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-[18px] font-bold text-text-1">Description</p>
             <p className="text-[16px] text-text-1">{team.description}</p>
           </div>
         </div>
 
         {/* Budget row */}
-        <div className="grid grid-cols-3 gap-8 items-end px-6 pb-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 lg:items-end px-4 sm:px-6 pb-5">
           {/* Monthly Budget */}
           <div>
             <p className="text-[18px] font-bold text-text-1 mb-2">Monthly Budget</p>
@@ -283,41 +283,184 @@ export default function TeamDetailPage({
         </Button>
       </div>
       <div className="rounded-lg bg-white overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="h-[33px] border-b border-bg-1">
-              <th className="px-6 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Description</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700" />
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Members</th>
-              <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {subteams.map((sub) => {
-              const subOverBudget = sub.projected > sub.monthlyBudget;
-              return (
-                <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
-                  <td className="px-6 align-middle text-base font-normal text-black">{sub.name}</td>
-                  <td className="px-4 align-middle text-[16px] text-text-1">{sub.description}</td>
-                  <td className="px-4 align-middle text-sm text-black">
-                    {formatCurrency(sub.monthlyBudget)}
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[750px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 sm:px-6 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Description</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700" />
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Members</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {subteams.map((sub) => {
+                const subOverBudget = sub.projected > sub.monthlyBudget;
+                return (
+                  <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+                    <td className="px-4 sm:px-6 align-middle text-base font-normal text-black whitespace-nowrap">{sub.name}</td>
+                    <td className="px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{sub.description}</td>
+                    <td className="px-4 align-middle text-sm text-black whitespace-nowrap">
+                      {formatCurrency(sub.monthlyBudget)}
+                    </td>
+                    <td className="px-4 align-middle">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm text-black whitespace-nowrap">
+                          {formatCurrency(sub.spent)} / {formatCurrency(sub.remaining)}
+                        </span>
+                        <SpentBar spent={sub.spent} budget={sub.monthlyBudget} />
+                        <span className="text-sm text-black whitespace-nowrap">{formatCurrency(sub.projected)}</span>
+                        <span
+                          className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${
+                            subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"
+                          }`}
+                        >
+                          {subOverBudget ? "Will Exceed" : "On track"}
+                        </span>
+                        <MemberAvatars members={sub.members} />
+                      </div>
+                    </td>
+                    <td className="px-4 align-middle text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem className="gap-2">
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                            <Trash2 className="h-4 w-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Users ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[18px] font-bold text-text-1">Users</p>
+        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+          <Plus className="h-4 w-4 text-black-900" />
+          Invite Users
+        </Button>
+      </div>
+      <div className="rounded-lg bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[540px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 sm:px-6 text-left align-middle text-[13px] font-normal text-black-700">Name</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Email</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Role</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map((u) => (
+                <tr key={u.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+                  <td className="px-4 sm:px-6 align-middle">
+                    <div className="flex items-center gap-3">
+                      <UserAvatar name={u.name} picture={u.picture} size={24} />
+                      <span className="text-base font-normal text-text-1 whitespace-nowrap">{u.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
+                    {u.email}
                   </td>
                   <td className="px-4 align-middle">
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-black">
-                        {formatCurrency(sub.spent)} / {formatCurrency(sub.remaining)}
-                      </span>
-                      <SpentBar spent={sub.spent} budget={sub.monthlyBudget} />
-                      <span className="text-sm text-black">{formatCurrency(sub.projected)}</span>
-                      <span
-                        className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${
-                          subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"
-                        }`}
-                      >
-                        {subOverBudget ? "Will Exceed" : "On track"}
-                      </span>
-                      <MemberAvatars members={sub.members} />
+                    <Select defaultValue={u.role}>
+                      <SelectTrigger className="h-8 w-[110px] border-border-2 text-sm text-text-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Editor">Editor</SelectItem>
+                        <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-4 align-middle text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                          <UserX className="h-4 w-4" />
+                          Remove user
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Guardrails ────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[18px] font-bold text-text-1">Guardrails</p>
+        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+          <Plus className="h-4 w-4 text-black-900" />
+          Add Guardrail
+        </Button>
+      </div>
+      <div className="rounded-lg bg-white overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[700px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 sm:px-6 text-left align-middle text-[13px] font-normal text-black-700">Name</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Type</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Severity</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Triggers</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Status</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {guardrails.map((g) => (
+                <tr key={g.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+                  <td className="px-4 sm:px-6 align-middle">
+                    <span className="text-base font-normal text-black whitespace-nowrap">{g.name}</span>
+                  </td>
+                  <td className="px-4 align-middle">
+                    <div className="flex gap-1.5">
+                      {g.types.map((t) => (
+                        <span key={t} className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3 whitespace-nowrap">
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-4 align-middle">
+                    <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
+                      {g.severity}
+                    </span>
+                  </td>
+                  <td className="px-4 align-middle text-base font-normal text-black">
+                    {g.triggers.toLocaleString("en-US")}
+                  </td>
+                  <td className="px-4 align-middle">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={g.active} onCheckedChange={() => toggleGuardrail(g.id)} />
+                      <span className="text-sm text-black-700 whitespace-nowrap">{g.active ? "Active" : "Inactive"}</span>
                     </div>
                   </td>
                   <td className="px-4 align-middle text-right">
@@ -340,147 +483,10 @@ export default function TeamDetailPage({
                     </DropdownMenu>
                   </td>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── Users ─────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[18px] font-bold text-text-1">Users</p>
-        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
-          <Plus className="h-4 w-4 text-black-900" />
-          Invite Users
-        </Button>
-      </div>
-      <div className="rounded-lg bg-white overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="h-[33px] border-b border-bg-1">
-              <th className="px-6 text-left align-middle text-[13px] font-normal text-black-700">Name</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Email</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Role</th>
-              <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
-                <td className="px-6 align-middle">
-                  <div className="flex items-center gap-3">
-                    <UserAvatar name={u.name} picture={u.picture} size={24} />
-                    <span className="text-base font-normal text-text-1">{u.name}</span>
-                  </div>
-                </td>
-                <td className="px-4 align-middle text-base font-normal text-text-1">
-                  {u.email}
-                </td>
-                <td className="px-4 align-middle">
-                  <Select defaultValue={u.role}>
-                    <SelectTrigger className="h-8 w-[110px] border-border-2 text-sm text-text-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Editor">Editor</SelectItem>
-                      <SelectItem value="Admin">Admin</SelectItem>
-                      <SelectItem value="Viewer">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="px-4 align-middle text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
-                        <UserX className="h-4 w-4" />
-                        Remove user
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ── Guardrails ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-[18px] font-bold text-text-1">Guardrails</p>
-        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
-          <Plus className="h-4 w-4 text-black-900" />
-          Add Guardrail
-        </Button>
-      </div>
-      <div className="rounded-lg bg-white overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="h-[33px] border-b border-bg-1">
-              <th className="px-6 text-left align-middle text-[13px] font-normal text-black-700">Name</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Type</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Severity</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Triggers</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Status</th>
-              <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {guardrails.map((g) => (
-              <tr key={g.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
-                <td className="px-6 align-middle">
-                  <span className="text-base font-normal text-black">{g.name}</span>
-                </td>
-                <td className="px-4 align-middle">
-                  <div className="flex gap-1.5">
-                    {g.types.map((t) => (
-                      <span key={t} className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
-                        {t}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="px-4 align-middle">
-                  <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[12px] text-text-3">
-                    {g.severity}
-                  </span>
-                </td>
-                <td className="px-4 align-middle text-base font-normal text-black">
-                  {g.triggers.toLocaleString("en-US")}
-                </td>
-                <td className="px-4 align-middle">
-                  <div className="flex items-center gap-2">
-                    <Switch checked={g.active} onCheckedChange={() => toggleGuardrail(g.id)} />
-                    <span className="text-sm text-black-700">{g.active ? "Active" : "Inactive"}</span>
-                  </div>
-                </td>
-                <td className="px-4 align-middle text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="gap-2">
-                        <Pencil className="h-4 w-4" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

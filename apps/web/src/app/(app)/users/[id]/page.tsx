@@ -196,22 +196,22 @@ export default function UserDetailPage({
       {/* ── User info + Budget card ──────────────────────────────── */}
       <div className="rounded-lg bg-white">
         {/* User info row */}
-        <div className="flex items-center justify-between px-6 pt-5 pb-8">
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between px-4 sm:px-6 pt-5 pb-8">
+          <div className="flex items-center gap-4 min-w-0">
             <UserAvatar name={user.name} picture={user.picture} size={56} />
-            <div>
-              <p className="text-[18px] font-bold text-text-1">{user.name}</p>
-              <p className="text-[14px] text-text-2">{user.email}</p>
+            <div className="min-w-0">
+              <p className="text-[18px] font-bold text-text-1 truncate">{user.name}</p>
+              <p className="text-[14px] text-text-2 truncate">{user.email}</p>
             </div>
           </div>
-          <Button variant="outline" className="h-10 gap-2 border-border-2 text-[14px] text-text-1">
+          <Button variant="outline" className="h-10 gap-2 border-border-2 text-[14px] text-text-1 shrink-0 w-fit">
             <LayoutList className="h-4 w-4" />
             Activity Log
           </Button>
         </div>
 
         {/* Budget row */}
-        <div className="grid grid-cols-3 gap-8 items-end px-6 pb-5">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8 lg:items-end px-4 sm:px-6 pb-5">
           {/* Monthly Budget */}
           <div>
             <p className="text-[18px] font-bold text-text-1 mb-2">Monthly Budget</p>
@@ -270,49 +270,51 @@ export default function UserDetailPage({
         <p className="text-[18px] font-bold text-text-1">Teams</p>
       </div>
       <div className="rounded-lg bg-white overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="h-[33px] border-b border-bg-1">
-              <th className="px-6 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
-              <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Role</th>
-              <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {user.teams.map((t) => (
-              <tr key={t.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
-                <td className="px-6 align-middle text-base font-normal text-text-1">{t.name}</td>
-                <td className="px-4 align-middle">
-                  <Select defaultValue={t.role}>
-                    <SelectTrigger className="h-8 w-[110px] border-border-2 text-sm text-text-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Editor">Editor</SelectItem>
-                      <SelectItem value="Admin">Admin</SelectItem>
-                      <SelectItem value="Viewer">Viewer</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </td>
-                <td className="px-4 align-middle text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
-                        <Trash2 className="h-4 w-4" />
-                        Remove from team
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[400px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 sm:px-6 text-left align-middle text-[13px] font-normal text-black-700">Team</th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">Role</th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {user.teams.map((t) => (
+                <tr key={t.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+                  <td className="px-4 sm:px-6 align-middle text-base font-normal text-text-1 whitespace-nowrap">{t.name}</td>
+                  <td className="px-4 align-middle">
+                    <Select defaultValue={t.role}>
+                      <SelectTrigger className="h-8 w-[110px] border-border-2 text-sm text-text-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Editor">Editor</SelectItem>
+                        <SelectItem value="Admin">Admin</SelectItem>
+                        <SelectItem value="Viewer">Viewer</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </td>
+                  <td className="px-4 align-middle text-right">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                          <Trash2 className="h-4 w-4" />
+                          Remove from team
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
