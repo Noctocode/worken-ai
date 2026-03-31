@@ -19,5 +19,17 @@ const DEFAULT_CONFIG: RouteConfig = {
 };
 
 export function getRouteConfig(pathname: string): RouteConfig {
-  return ROUTE_CONFIGS[pathname] ?? DEFAULT_CONFIG;
+  // Check exact match first
+  if (ROUTE_CONFIGS[pathname]) return ROUTE_CONFIGS[pathname];
+
+  // Check /teams/[id] pattern
+  if (/^\/teams\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-white",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
+  return DEFAULT_CONFIG;
 }
