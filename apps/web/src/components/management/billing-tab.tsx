@@ -204,7 +204,7 @@ function PlanCard({
   return (
     <button
       onClick={onSelect}
-      className={`relative flex flex-col rounded-lg border p-5 text-left transition-all ${
+      className={`relative flex flex-col rounded-lg border p-5 text-left transition-all cursor-pointer ${
         selected
           ? "border-primary-8 bg-white ring-1 ring-primary-8"
           : "border-bg-3 bg-white hover:border-border-5"
