@@ -3,6 +3,7 @@
 import { use, useState } from "react";
 import {
   Pencil,
+  Plus,
   Trash2,
   MoreVertical,
   UserX,
@@ -197,7 +198,7 @@ export default function TeamDetailPage({
       <div className="rounded-lg bg-white">
         {/* Description row */}
         <div className="flex items-center gap-4 px-6 pt-5 pb-4">
-          <div className="flex h-[80px] w-[80px] shrink-0 items-center justify-center rounded-lg overflow-hidden">
+          <div className="flex h-[80px] w-[80px] shrink-0 items-center justify-center rounded-full overflow-hidden">
             <svg viewBox="0 0 80 80" className="h-full w-full">
               <defs>
                 <linearGradient id="teamGrad" x1="0" y1="0" x2="1" y2="1">
@@ -213,8 +214,8 @@ export default function TeamDetailPage({
             </svg>
           </div>
           <div>
-            <p className="text-[15px] font-semibold text-text-1">Description</p>
-            <p className="text-[14px] text-text-3">{team.description}</p>
+            <p className="text-[18px] font-bold text-text-1">Description</p>
+            <p className="text-[16px] text-text-1">{team.description}</p>
           </div>
         </div>
 
@@ -222,7 +223,7 @@ export default function TeamDetailPage({
         <div className="grid grid-cols-3 gap-8 items-end px-6 pb-5">
           {/* Monthly Budget */}
           <div>
-            <p className="text-[13px] font-medium text-black-700 mb-2">Monthly Budget</p>
+            <p className="text-[18px] font-bold text-text-1 mb-2">Monthly Budget</p>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
               <input
@@ -244,7 +245,7 @@ export default function TeamDetailPage({
 
           {/* Spent / Remaining */}
           <div>
-            <p className="text-[13px] font-medium text-black-700 mb-2">Spent / Remaining</p>
+            <p className="text-[18px] font-bold text-text-1 mb-2">Spent / Remaining</p>
             <div className="flex items-center gap-3 h-[56px]">
               <span className="text-sm text-black">
                 {formatCurrency(team.spent)} / {formatCurrency(team.remaining)}
@@ -256,7 +257,7 @@ export default function TeamDetailPage({
           {/* Projected */}
           <div>
             <div className="flex items-center gap-1 mb-2">
-              <p className="text-[13px] font-medium text-black-700">Projected</p>
+              <p className="text-[18px] font-bold text-text-1">Projected</p>
               <Info className="h-3.5 w-3.5 text-slate-400" />
             </div>
             <div className="flex items-center gap-2 h-[56px]">
@@ -276,8 +277,9 @@ export default function TeamDetailPage({
       {/* ── Subteams ──────────────────────────────────────────────── */}
       <div className="rounded-lg bg-white overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[15px] font-semibold text-text-1">Subteams</p>
+          <p className="text-[18px] font-bold text-text-1">Subteams</p>
           <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+            <Plus className="h-4 w-4 text-black-900" />
             Add Subteam
           </Button>
         </div>
@@ -297,7 +299,7 @@ export default function TeamDetailPage({
               return (
                 <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
                   <td className="px-6 align-middle text-base font-normal text-black">{sub.name}</td>
-                  <td className="px-4 align-middle text-sm text-slate-500">{sub.description}</td>
+                  <td className="px-4 align-middle text-[16px] text-text-1">{sub.description}</td>
                   <td className="px-4 align-middle text-sm text-black">
                     {formatCurrency(sub.monthlyBudget)}
                   </td>
@@ -347,8 +349,9 @@ export default function TeamDetailPage({
       {/* ── Users ─────────────────────────────────────────────────── */}
       <div className="rounded-lg bg-white overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[15px] font-semibold text-text-1">Users</p>
+          <p className="text-[18px] font-bold text-text-1">Users</p>
           <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+            <Plus className="h-4 w-4 text-black-900" />
             Invite Users
           </Button>
         </div>
@@ -409,8 +412,9 @@ export default function TeamDetailPage({
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="rounded-lg bg-white overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[15px] font-semibold text-text-1">Guardrails</p>
+          <p className="text-[18px] font-bold text-text-1">Guardrails</p>
           <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+            <Plus className="h-4 w-4 text-black-900" />
             Add Guardrail
           </Button>
         </div>
