@@ -1,6 +1,7 @@
 "use client";
 
-import { MoreVertical, UserX } from "lucide-react";
+import { MoreVertical, UserX, Eye } from "lucide-react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -132,6 +133,12 @@ export function UserRow({ user }: { user: OrgUser }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem asChild className="gap-2">
+              <Link href={`/users/${user.id}`}>
+                <Eye className="h-4 w-4" />
+                View user
+              </Link>
+            </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2 text-red-600 focus:text-red-600"
               disabled={removeMutation.isPending}

@@ -3,7 +3,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail";
+  appbarType?: "default" | "teamDetail" | "userDetail";
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
@@ -30,6 +30,16 @@ export function getRouteConfig(pathname: string): RouteConfig {
       hideSearch: true,
       hideNotifications: true,
       appbarType: "teamDetail",
+    };
+  }
+
+  // Check /users/[id] pattern
+  if (/^\/users\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "userDetail",
     };
   }
 

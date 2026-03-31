@@ -21,6 +21,10 @@ export function useBreadcrumbs(): BreadcrumbSegment[] {
   const isProjectDetail = segments[0] === "projects" && segments.length === 2;
   const projectId = isProjectDetail ? segments[1] : undefined;
 
+  // /users/[id]
+  const isUserDetail = segments[0] === "users" && segments.length === 2;
+  const userId = isUserDetail ? segments[1] : undefined;
+
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => fetchProject(projectId!),
@@ -44,6 +48,17 @@ export function useBreadcrumbs(): BreadcrumbSegment[] {
     ? (team?.name ?? DEMO_TEAM_NAMES[teamId] ?? "Team")
     : undefined;
 
+  // TODO: replace with real API when backend returns full user data
+  const DEMO_USER_NAMES: Record<string, string> = {
+    "1": "Bessie Cooper",
+    "2": "Kathryn Murphy",
+    "3": "Robert Fox",
+    "4": "Dianne Russell",
+    "5": "Jacob Jones",
+  };
+
+  const userName = userId ? (DEMO_USER_NAMES[userId] ?? "User") : undefined;
+
   const crumbs: BreadcrumbSegment[] = [{ label: "Workspace", href: "/" }];
 
   if (segments[0] === "teams") {
@@ -53,6 +68,9 @@ export function useBreadcrumbs(): BreadcrumbSegment[] {
     } else {
       crumbs.push({ label: "Teams" });
     }
+  } else if (isUserDetail) {
+    crumbs.push({ label: "Users", href: "/teams" });
+    crumbs.push({ label: userName ?? "User" });
   } else if (isProjectDetail) {
     crumbs.push({ label: "Projects", href: "/" });
     crumbs.push({ label: project?.name ?? "Loading..." });
