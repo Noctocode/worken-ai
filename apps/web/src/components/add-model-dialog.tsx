@@ -1,8 +1,15 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { GripVertical, MoreVertical } from "lucide-react";
+import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { SettingsDialog } from "@/components/settings-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -51,7 +58,6 @@ function usePointerReorder(
       dragIdx.current = idx;
       setActiveIdx(idx);
 
-      // Snapshot row positions
       if (listRef.current) {
         const rows = listRef.current.querySelectorAll("[data-fallback-row]");
         rowRects.current = Array.from(rows).map((r) =>
@@ -152,6 +158,24 @@ export function AddModelDialog({
 
   const removeFallback = (id: string) => {
     setFallbacks((prev) => prev.filter((f) => f !== id));
+  };
+
+  const moveUp = (idx: number) => {
+    if (idx <= 0) return;
+    setFallbacks((prev) => {
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  };
+
+  const moveDown = (idx: number) => {
+    if (idx >= fallbacks.length - 1) return;
+    setFallbacks((prev) => {
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
   };
 
   const availableFallbacks = MODELS.filter(
@@ -277,6 +301,7 @@ export function AddModelDialog({
                   onPointerUp={onPointerUp}
                 >
                   {displayFallbacks.map((id, idx) => {
+                    const realIdx = fallbacks.indexOf(id);
                     const isDragging =
                       activeIdx !== null && fallbacks[activeIdx] === id;
 
@@ -296,7 +321,7 @@ export function AddModelDialog({
                             onPointerDown={(e) =>
                               onPointerDown(
                                 e as unknown as React.PointerEvent,
-                                fallbacks.indexOf(id),
+                                realIdx,
                               )
                             }
                           />
@@ -308,13 +333,43 @@ export function AddModelDialog({
                             {getLabelById(id)}
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeFallback(id)}
-                          className="cursor-pointer text-success-7 hover:text-success-7/80"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </button>
+
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7 cursor-pointer text-success-7 hover:text-success-7/80"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              className="gap-2"
+                              onClick={() => removeFallback(id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Remove
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              disabled={realIdx <= 0}
+                              onClick={() => moveUp(realIdx)}
+                            >
+                              <ArrowUp className="h-4 w-4" />
+                              Move up
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2"
+                              disabled={realIdx >= fallbacks.length - 1}
+                              onClick={() => moveDown(realIdx)}
+                            >
+                              <ArrowDown className="h-4 w-4" />
+                              Move down
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     );
                   })}
