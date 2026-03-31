@@ -66,14 +66,14 @@ export const Appbar = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-black-600 hover:text-black-900"
+            className="h-8 w-8 text-success-7 hover:text-success-7/80"
           >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-danger-5 hover:text-danger-6"
+            className="h-8 w-8 text-success-7 hover:text-success-7/80"
           >
             <Trash2 className="h-4 w-4" />
           </Button>

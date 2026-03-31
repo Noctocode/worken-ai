@@ -197,7 +197,7 @@ export default function TeamDetailPage({
       {/* ── Description + Budget card ──────────────────────────────── */}
       <div className="rounded-lg bg-white">
         {/* Description row */}
-        <div className="flex items-center gap-4 px-6 pt-5 pb-4">
+        <div className="flex items-center gap-4 px-6 pt-5 pb-8">
           <div className="flex h-[80px] w-[80px] shrink-0 items-center justify-center rounded-full overflow-hidden">
             <svg viewBox="0 0 80 80" className="h-full w-full">
               <defs>
@@ -275,14 +275,14 @@ export default function TeamDetailPage({
       </div>
 
       {/* ── Subteams ──────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[18px] font-bold text-text-1">Subteams</p>
+        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+          <Plus className="h-4 w-4 text-black-900" />
+          Add Subteam
+        </Button>
+      </div>
       <div className="rounded-lg bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[18px] font-bold text-text-1">Subteams</p>
-          <Button variant="plusAction" className="h-10 px-6 text-[14px]">
-            <Plus className="h-4 w-4 text-black-900" />
-            Add Subteam
-          </Button>
-        </div>
         <table className="w-full">
           <thead>
             <tr className="h-[33px] border-b border-bg-1">
@@ -323,7 +323,7 @@ export default function TeamDetailPage({
                   <td className="px-4 align-middle text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -347,14 +347,14 @@ export default function TeamDetailPage({
       </div>
 
       {/* ── Users ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[18px] font-bold text-text-1">Users</p>
+        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+          <Plus className="h-4 w-4 text-black-900" />
+          Invite Users
+        </Button>
+      </div>
       <div className="rounded-lg bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[18px] font-bold text-text-1">Users</p>
-          <Button variant="plusAction" className="h-10 px-6 text-[14px]">
-            <Plus className="h-4 w-4 text-black-900" />
-            Invite Users
-          </Button>
-        </div>
         <table className="w-full">
           <thead>
             <tr className="h-[33px] border-b border-bg-1">
@@ -391,7 +391,7 @@ export default function TeamDetailPage({
                 <td className="px-4 align-middle text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -410,14 +410,14 @@ export default function TeamDetailPage({
       </div>
 
       {/* ── Guardrails ────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-[18px] font-bold text-text-1">Guardrails</p>
+        <Button variant="plusAction" className="h-10 px-6 text-[14px]">
+          <Plus className="h-4 w-4 text-black-900" />
+          Add Guardrail
+        </Button>
+      </div>
       <div className="rounded-lg bg-white overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4">
-          <p className="text-[18px] font-bold text-text-1">Guardrails</p>
-          <Button variant="plusAction" className="h-10 px-6 text-[14px]">
-            <Plus className="h-4 w-4 text-black-900" />
-            Add Guardrail
-          </Button>
-        </div>
         <table className="w-full">
           <thead>
             <tr className="h-[33px] border-b border-bg-1">
@@ -461,7 +461,7 @@ export default function TeamDetailPage({
                 <td className="px-4 align-middle text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-success-7 hover:text-success-7/80">
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
