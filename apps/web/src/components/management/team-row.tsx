@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { MoreVertical, Eye, Crown } from "lucide-react";
+import { MoreVertical, Eye, Pencil, Crown } from "lucide-react";
+import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -120,6 +121,14 @@ export function TeamRow({
                 View team
               </Link>
             </DropdownMenuItem>
+            {isOwner && (
+              <CreateTeamDialog team={team}>
+                <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                  <Pencil className="h-4 w-4" />
+                  Edit team
+                </DropdownMenuItem>
+              </CreateTeamDialog>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </td>

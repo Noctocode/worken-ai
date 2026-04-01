@@ -56,6 +56,15 @@ export class TeamsController {
     );
   }
 
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() body: { name?: string; description?: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.update(id, user.id, body);
+  }
+
   @Patch(':id/budget')
   updateBudget(
     @Param('id') id: string,

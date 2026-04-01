@@ -65,6 +65,41 @@ export class TeamsService {
     return team;
   }
 
+  async update(
+    teamId: string,
+    userId: string,
+    data: { name?: string; description?: string },
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can update the team');
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.description !== undefined)
+      updates.description = data.description || null;
+
+    if (Object.keys(updates).length === 0) {
+      return team;
+    }
+
+    const [updated] = await this.db
+      .update(teams)
+      .set(updates)
+      .where(eq(teams.id, teamId))
+      .returning();
+
+    return updated;
+  }
+
   async updateBudget(
     teamId: string,
     userId: string,

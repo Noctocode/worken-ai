@@ -210,6 +210,19 @@ export async function fetchTeam(id: string): Promise<TeamWithMembers> {
   return res.json();
 }
 
+export async function updateTeam(
+  id: string,
+  data: { name?: string; description?: string },
+): Promise<Team> {
+  const res = await apiFetch(`/teams/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update team");
+  return res.json();
+}
+
 export async function createTeam(data: {
   name: string;
   description?: string;
