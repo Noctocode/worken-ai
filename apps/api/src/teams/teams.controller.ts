@@ -45,14 +45,19 @@ export class TeamsController {
   @Post()
   @UseGuards(PaidGuard)
   create(
-    @Body() body: { name: string; description?: string },
+    @Body()
+    body: { name: string; description?: string; monthlyBudget?: number },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    const budgetCents = body.monthlyBudget
+      ? Math.round(body.monthlyBudget * 100)
+      : undefined;
     return this.teamsService.create(
       body.name,
       user.id,
       user.email,
       body.description,
+      budgetCents,
     );
   }
 

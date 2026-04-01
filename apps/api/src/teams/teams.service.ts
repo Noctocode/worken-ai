@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { teams, teamMembers, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
@@ -28,10 +28,17 @@ export class TeamsService {
     userId: string,
     email: string,
     description?: string,
+    monthlyBudgetCents?: number,
   ) {
+    const budgetCents = monthlyBudgetCents ?? 1000;
     const [team] = await this.db
       .insert(teams)
-      .values({ name, description: description ?? null, ownerId: userId })
+      .values({
+        name,
+        description: description ?? null,
+        ownerId: userId,
+        monthlyBudgetCents: budgetCents,
+      })
       .returning();
 
     // Auto-add owner as accepted advanced member
@@ -44,10 +51,11 @@ export class TeamsService {
     });
 
     // Provision OpenRouter key for this team (non-blocking)
+    const budgetUsd = budgetCents / 100;
     try {
       const { key, hash } = await this.provisioningService.createKey(
         `team-${team.id}`,
-        10, // price limit of 10$ hardcoded for now
+        budgetUsd,
       );
       const encrypted = this.encryptionService.encrypt(key);
       await this.db
@@ -55,7 +63,6 @@ export class TeamsService {
         .set({
           openrouterKeyId: hash,
           openrouterKeyEncrypted: encrypted,
-          monthlyBudgetCents: 1000,
         })
         .where(eq(teams.id, team.id));
     } catch (err) {
@@ -173,14 +180,14 @@ export class TeamsService {
     const memberCounts = await this.db
       .select({
         teamId: teamMembers.teamId,
-        memberCount: count(teamMembers.id),
+        memberCount: sql<number>`cast(count(${teamMembers.id}) as int)`,
       })
       .from(teamMembers)
       .where(inArray(teamMembers.teamId, allTeamIds))
       .groupBy(teamMembers.teamId);
 
     const countMap = new Map(
-      memberCounts.map((r) => [r.teamId, Number(r.memberCount)]),
+      memberCounts.map((r) => [r.teamId, r.memberCount]),
     );
 
     // Get first 4 accepted members with user info per team
