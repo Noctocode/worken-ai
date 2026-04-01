@@ -82,10 +82,10 @@ export function CompanyTab() {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-text-2 hover:text-text-1">
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80">
               <Pencil className="h-6 w-6" />
             </Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-text-2 hover:text-text-1">
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80">
               <Trash2 className="h-6 w-6" />
             </Button>
           </div>
@@ -125,11 +125,12 @@ export function CompanyTab() {
               <span className="text-[16px] text-text-2">
                 {formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
               </span>
-              <div className="h-[7px] w-[68px] shrink-0 rounded-full border border-border-4 overflow-hidden">
+              <div className="flex items-center h-[7px] w-[68px] shrink-0 rounded-full border border-border-4 overflow-hidden">
                 <div
-                  className={`h-full rounded-full ${remaining < 0 ? "bg-danger-5" : "bg-success-2"}`}
+                  className={`h-full shrink-0 ${remaining < 0 ? "bg-danger-5" : "bg-success-2"}`}
                   style={{ width: `${pct}%` }}
                 />
+                <div className="h-full flex-1 bg-bg-white" />
               </div>
             </div>
           </div>
