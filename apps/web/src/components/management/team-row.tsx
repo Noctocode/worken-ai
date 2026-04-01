@@ -24,7 +24,7 @@ function MemberAvatars({
     <div className="flex items-center">
       <div className="flex -space-x-2">
         {members.slice(0, 4).map((m, i) =>
-          m.picture ? (
+          m.picture && m.picture.length > 0 ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               key={i}

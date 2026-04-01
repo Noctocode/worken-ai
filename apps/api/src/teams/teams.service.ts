@@ -145,7 +145,7 @@ export class TeamsService {
       .groupBy(teamMembers.teamId);
 
     const countMap = new Map(
-      memberCounts.map((r) => [r.teamId, r.memberCount]),
+      memberCounts.map((r) => [r.teamId, Number(r.memberCount)]),
     );
 
     // Get first 4 accepted members with user info per team
