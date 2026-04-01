@@ -86,7 +86,7 @@ function MemberAvatars({
           ),
         )}
       </div>
-      {extra && extra > 0 && (
+      {extra != null && extra > 0 && (
         <span className="ml-1.5 text-[12px] text-slate-500">+{extra}</span>
       )}
     </div>
