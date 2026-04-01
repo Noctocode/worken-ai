@@ -10,66 +10,14 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Team } from "@/lib/api";
+import type { TeamListItem } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
-
-export interface TeamDemo extends Team {
-  description?: string;
-  monthlyBudget?: number;
-  spent?: number;
-  projected?: number;
-  members?: { picture: string | null; name: string }[];
-  extraMembers?: number;
-}
-
-function SpentBar({ spent, budget }: { spent: number; budget: number }) {
-  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
-  const exceeded = spent > budget;
-  return (
-    <div className="h-[7px] w-[44px] shrink-0 rounded-full bg-bg-3 outline outline-1 outline-border-4 overflow-hidden">
-      <div
-        className={`h-full rounded-full ${exceeded ? "bg-danger-5" : "bg-success-2"}`}
-        style={{ width: `${pct}%` }}
-      />
-    </div>
-  );
-}
-
-function ProjectedBadge({
-  projected,
-  budget,
-}: {
-  projected: number;
-  budget: number;
-}) {
-  if (budget <= 0) return <span className="text-black text-sm">—</span>;
-
-  const overBudget = projected > budget;
-
-  if (overBudget)
-    return (
-      <div className="flex items-center gap-1.5">
-        <span className="text-sm text-black">{formatCurrency(projected)}</span>
-        <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
-          Over Budget
-        </span>
-      </div>
-    );
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-sm text-black">{formatCurrency(projected)}</span>
-      <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
-        On track
-      </span>
-    </div>
-  );
-}
 
 function MemberAvatars({
   members,
   extra,
 }: {
-  members: { picture: string | null; name: string }[];
+  members: { picture: string | null; name: string | null }[];
   extra?: number;
 }) {
   return (
@@ -81,7 +29,7 @@ function MemberAvatars({
             <img
               key={i}
               src={m.picture}
-              alt={m.name}
+              alt={m.name ?? ""}
               className="h-6 w-6 rounded-full border-2 border-white object-cover"
             />
           ) : (
@@ -89,7 +37,7 @@ function MemberAvatars({
               key={i}
               className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-500"
             >
-              {m.name.charAt(0)}
+              {(m.name ?? "?").charAt(0)}
             </div>
           ),
         )}
@@ -105,12 +53,12 @@ export function TeamRow({
   team,
   isOwner,
 }: {
-  team: TeamDemo;
+  team: TeamListItem;
   isOwner: boolean;
 }) {
-  const budget = team.monthlyBudget ?? 0;
-  const spent = team.spent ?? 0;
-  const remaining = budget - spent;
+  const budget = team.monthlyBudgetCents / 100;
+  const extraMembers =
+    team.memberCount > 4 ? team.memberCount - 4 : 0;
 
   return (
     <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
@@ -139,36 +87,16 @@ export function TeamRow({
       </td>
       {/* Spent / Remaining */}
       <td className="w-[1%] px-4 align-middle whitespace-nowrap">
-        {budget > 0 ? (
-          <div className="flex items-center gap-3">
-            <span className="text-sm leading-tight text-black">
-              {formatCurrency(spent)} /{" "}
-              {remaining < 0 ? (
-                <span className="text-danger-5">{formatCurrency(remaining)}</span>
-              ) : (
-                formatCurrency(remaining)
-              )}
-            </span>
-            <span className="ml-auto">
-              <SpentBar spent={spent} budget={budget} />
-            </span>
-          </div>
-        ) : (
-          "—"
-        )}
+        <span className="text-sm text-black">—</span>
       </td>
       {/* Projected */}
       <td className="px-4 align-middle whitespace-nowrap">
-        {team.projected != null && budget > 0 ? (
-          <ProjectedBadge projected={team.projected} budget={budget} />
-        ) : (
-          <span className="text-sm text-black">—</span>
-        )}
+        <span className="text-sm text-black">—</span>
       </td>
       {/* Members */}
       <td className="px-4 align-middle">
-        {team.members && team.members.length > 0 ? (
-          <MemberAvatars members={team.members} extra={team.extraMembers} />
+        {team.members.length > 0 ? (
+          <MemberAvatars members={team.members} extra={extraMembers} />
         ) : (
           <span className="text-sm text-black">—</span>
         )}

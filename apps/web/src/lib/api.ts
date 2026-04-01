@@ -171,9 +171,16 @@ export async function uploadDocumentFile(
 export interface Team {
   id: string;
   name: string;
+  description: string | null;
   ownerId: string;
+  monthlyBudgetCents: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface TeamListItem extends Team {
+  memberCount: number;
+  members: { name: string | null; picture: string | null }[];
 }
 
 export interface TeamMember {
@@ -191,7 +198,7 @@ export interface TeamWithMembers extends Team {
   members: TeamMember[];
 }
 
-export async function fetchTeams(): Promise<Team[]> {
+export async function fetchTeams(): Promise<TeamListItem[]> {
   const res = await apiFetch("/teams");
   if (!res.ok) throw new Error("Failed to fetch teams");
   return res.json();

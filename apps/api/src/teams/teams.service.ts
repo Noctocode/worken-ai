@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import { teams, teamMembers, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
@@ -23,10 +23,15 @@ export class TeamsService {
     private readonly encryptionService: EncryptionService,
   ) {}
 
-  async create(name: string, userId: string, email: string) {
+  async create(
+    name: string,
+    userId: string,
+    email: string,
+    description?: string,
+  ) {
     const [team] = await this.db
       .insert(teams)
-      .values({ name, ownerId: userId })
+      .values({ name, description: description ?? null, ownerId: userId })
       .returning();
 
     // Auto-add owner as accepted advanced member
@@ -124,7 +129,58 @@ export class TeamsService {
         .where(inArray(teams.id, memberTeamIds));
     }
 
-    return [...ownedTeams, ...memberTeams];
+    const allTeams = [...ownedTeams, ...memberTeams];
+    if (allTeams.length === 0) return [];
+
+    const allTeamIds = allTeams.map((t) => t.id);
+
+    // Get member counts per team
+    const memberCounts = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        memberCount: count(teamMembers.id),
+      })
+      .from(teamMembers)
+      .where(inArray(teamMembers.teamId, allTeamIds))
+      .groupBy(teamMembers.teamId);
+
+    const countMap = new Map(
+      memberCounts.map((r) => [r.teamId, r.memberCount]),
+    );
+
+    // Get first 4 accepted members with user info per team
+    const avatarRows = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        name: users.name,
+        picture: users.picture,
+      })
+      .from(teamMembers)
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(
+        and(
+          inArray(teamMembers.teamId, allTeamIds),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+
+    const membersMap = new Map<
+      string,
+      { name: string | null; picture: string | null }[]
+    >();
+    for (const row of avatarRows) {
+      const arr = membersMap.get(row.teamId) ?? [];
+      if (arr.length < 4) {
+        arr.push({ name: row.name, picture: row.picture });
+      }
+      membersMap.set(row.teamId, arr);
+    }
+
+    return allTeams.map((t) => ({
+      ...t,
+      memberCount: countMap.get(t.id) ?? 0,
+      members: membersMap.get(t.id) ?? [],
+    }));
   }
 
   async findOne(teamId: string, userId: string) {
