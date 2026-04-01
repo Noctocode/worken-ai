@@ -138,9 +138,9 @@ export function TeamRow({
         {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
-      <td className="px-4 align-middle whitespace-nowrap">
+      <td className="w-[1%] px-4 align-middle whitespace-nowrap">
         {budget > 0 ? (
-          <div className="grid grid-cols-[110px_auto] items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-sm leading-tight text-black">
               {formatCurrency(spent)} /{" "}
               {remaining < 0 ? (
@@ -149,7 +149,9 @@ export function TeamRow({
                 formatCurrency(remaining)
               )}
             </span>
-            <SpentBar spent={spent} budget={budget} />
+            <span className="ml-auto">
+              <SpentBar spent={spent} budget={budget} />
+            </span>
           </div>
         ) : (
           "—"
