@@ -13,6 +13,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { TeamsModule } from './teams/teams.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TeamsModule } from './teams/teams.module';
     DocumentsModule,
     ProjectsModule,
     TeamsModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [

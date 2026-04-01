@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   picture: text("picture"),
   googleId: text("google_id").notNull().unique(),
   isPaid: boolean("is_paid").notNull().default(false),
+  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

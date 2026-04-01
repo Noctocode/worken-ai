@@ -408,9 +408,9 @@ export interface OrgUser {
   role: "basic" | "advanced" | "admin";
   status: "pending" | "accepted";
   teams: string[];
-  monthlyBudget: number | null;
-  spent: number | null;
-  projected: number | null;
+  monthlyBudgetCents: number;
+  spentCents: number;
+  projectedCents: number;
   createdAt: string;
 }
 

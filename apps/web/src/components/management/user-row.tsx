@@ -36,10 +36,10 @@ export function UserRow({ user }: { user: OrgUser }) {
     },
   });
 
-  const budget = user.monthlyBudget ?? 0;
-  const spent = user.spent ?? 0;
+  const budget = user.monthlyBudgetCents / 100;
+  const spent = user.spentCents / 100;
   const remaining = budget - spent;
-  const projected = user.projected ?? 0;
+  const projected = user.projectedCents / 100;
   const overBudget = projected > budget;
 
   return (
@@ -47,7 +47,7 @@ export function UserRow({ user }: { user: OrgUser }) {
       {/* Name */}
       <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         <div className="flex items-center gap-2">
-          {user.picture ? (
+          {user.picture && user.picture.length > 0 ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={user.picture}
