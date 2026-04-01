@@ -110,3 +110,16 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const modelConfigs = pgTable("model_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
+  customName: text("custom_name").notNull(),
+  modelIdentifier: text("model_identifier").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  fallbackModels: jsonb("fallback_models").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { createModel } from "@/lib/api";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -140,6 +142,18 @@ export function AddModelDialog({
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: createModel,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["models"] });
+      setCustomName("Model 1");
+      setModelId("");
+      setFallbacks([]);
+      setOpen(false);
+    },
+  });
 
   const {
     listRef,
@@ -187,11 +201,11 @@ export function AddModelDialog({
 
   const handleApply = () => {
     if (!customName.trim() || !modelId) return;
-    // TODO: wire up to API
-    setCustomName("Model 1");
-    setModelId("");
-    setFallbacks([]);
-    setOpen(false);
+    mutation.mutate({
+      customName: customName.trim(),
+      modelIdentifier: modelId,
+      fallbackModels: fallbacks,
+    });
   };
 
   const handleClose = () => {

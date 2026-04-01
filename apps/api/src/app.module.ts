@@ -12,6 +12,7 @@ import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
+import { ModelsModule } from './models/models.module';
 import { TeamsModule } from './teams/teams.module';
 import { UsersModule } from './users/users.module';
 
@@ -25,6 +26,7 @@ import { UsersModule } from './users/users.module';
     CompareModelsModule,
     ConversationsModule,
     DocumentsModule,
+    ModelsModule,
     ProjectsModule,
     TeamsModule,
     UsersModule,

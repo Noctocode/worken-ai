@@ -438,6 +438,62 @@ export async function removeOrgUser(userId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to remove user");
 }
 
+// Model Configs
+
+export interface ModelConfig {
+  id: string;
+  ownerId: string;
+  customName: string;
+  modelIdentifier: string;
+  isActive: boolean;
+  fallbackModels: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchModels(): Promise<ModelConfig[]> {
+  const res = await apiFetch("/models");
+  if (!res.ok) throw new Error("Failed to fetch models");
+  return res.json();
+}
+
+export async function createModel(data: {
+  customName: string;
+  modelIdentifier: string;
+  fallbackModels?: string[];
+}): Promise<ModelConfig> {
+  const res = await apiFetch("/models", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to create model");
+  return res.json();
+}
+
+export async function updateModel(
+  id: string,
+  data: {
+    customName?: string;
+    modelIdentifier?: string;
+    isActive?: boolean;
+    fallbackModels?: string[];
+  },
+): Promise<ModelConfig> {
+  const res = await apiFetch(`/models/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update model");
+  return res.json();
+}
+
+export async function deleteModel(id: string): Promise<void> {
+  const res = await apiFetch(`/models/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete model");
+}
+
 // Interface for model comparison (for /compare-models API)
 export interface ModelComparisonEntry {
   name: string;

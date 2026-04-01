@@ -14,9 +14,8 @@ import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchTeams, fetchOrgUsers } from "@/lib/api";
+import { fetchTeams, fetchOrgUsers, fetchModels } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
-import { MODELS } from "@/lib/models";
 import { TeamRow } from "@/components/management/team-row";
 import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
@@ -59,10 +58,19 @@ export default function TeamsPage() {
       (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()),
   );
 
-  const filteredModels = MODELS.filter(
+  const {
+    data: models = [],
+    isLoading: modelsLoading,
+    error: modelsError,
+  } = useQuery({
+    queryKey: ["models"],
+    queryFn: fetchModels,
+  });
+
+  const filteredModels = models.filter(
     (m) =>
-      m.label.toLowerCase().includes(modelSearch.toLowerCase()) ||
-      m.id.toLowerCase().includes(modelSearch.toLowerCase()),
+      m.customName.toLowerCase().includes(modelSearch.toLowerCase()) ||
+      m.modelIdentifier.toLowerCase().includes(modelSearch.toLowerCase()),
   );
 
   return (
@@ -297,15 +305,34 @@ export default function TeamsPage() {
               </tr>
             </thead>
             <tbody>
+              {modelsLoading && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center align-middle">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                  </td>
+                </tr>
+              )}
+              {modelsError && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-12 text-center align-middle text-sm text-red-500"
+                  >
+                    Failed to load models. Is the API running?
+                  </td>
+                </tr>
+              )}
               {filteredModels.map((model) => (
                 <ModelRow key={model.id} model={model} />
               ))}
-              {filteredModels.length === 0 && (
+              {!modelsLoading && !modelsError && filteredModels.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-12 text-center align-middle">
                     <Bot className="mx-auto h-10 w-10 text-slate-300" />
                     <p className="mt-3 text-sm text-slate-500">
-                      No models match your search.
+                      {modelSearch
+                        ? "No models match your search."
+                        : "No models configured yet. Add one to get started."}
                     </p>
                   </td>
                 </tr>
