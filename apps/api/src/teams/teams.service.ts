@@ -194,6 +194,7 @@ export class TeamsService {
     const avatarRows = await this.db
       .select({
         teamId: teamMembers.teamId,
+        email: teamMembers.email,
         name: users.name,
         picture: users.picture,
       })
@@ -213,7 +214,10 @@ export class TeamsService {
     for (const row of avatarRows) {
       const arr = membersMap.get(row.teamId) ?? [];
       if (arr.length < 4) {
-        arr.push({ name: row.name, picture: row.picture });
+        arr.push({
+          name: row.name ?? row.email,
+          picture: row.picture ?? null,
+        });
       }
       membersMap.set(row.teamId, arr);
     }
