@@ -181,6 +181,8 @@ export interface Team {
 export interface TeamListItem extends Team {
   memberCount: number;
   members: { name: string | null; picture: string | null }[];
+  spentCents: number;
+  projectedCents: number;
 }
 
 export interface TeamMember {

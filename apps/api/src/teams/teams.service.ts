@@ -218,11 +218,45 @@ export class TeamsService {
       membersMap.set(row.teamId, arr);
     }
 
-    return allTeams.map((t) => ({
-      ...t,
-      memberCount: countMap.get(t.id) ?? 0,
-      members: membersMap.get(t.id) ?? [],
-    }));
+    // Fetch usage data for each team's OpenRouter key
+    const usageMap = new Map<
+      string,
+      { spentCents: number; projectedCents: number }
+    >();
+    for (const t of allTeams) {
+      if (t.openrouterKeyId) {
+        const usage = await this.provisioningService.getKeyUsage(
+          t.openrouterKeyId,
+        );
+        if (usage) {
+          const dayOfMonth = new Date().getDate();
+          const daysInMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0,
+          ).getDate();
+          const projectedCents =
+            dayOfMonth > 0
+              ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+              : usage.usageCents;
+          usageMap.set(t.id, {
+            spentCents: usage.usageCents,
+            projectedCents,
+          });
+        }
+      }
+    }
+
+    return allTeams.map((t) => {
+      const usage = usageMap.get(t.id);
+      return {
+        ...t,
+        memberCount: countMap.get(t.id) ?? 0,
+        members: membersMap.get(t.id) ?? [],
+        spentCents: usage?.spentCents ?? 0,
+        projectedCents: usage?.projectedCents ?? 0,
+      };
+    });
   }
 
   async findOne(teamId: string, userId: string) {
