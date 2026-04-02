@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { createProject, fetchOrgUsers, fetchTeams, type OrgUser } from "@/lib/api";
+import { createProject, inviteTeamMember, fetchOrgUsers, fetchTeams, type OrgUser } from "@/lib/api";
 import { MODELS } from "@/lib/models";
 
 const AGENTS = [
@@ -138,7 +138,7 @@ export default function CreateProjectPage() {
   const [projectName, setProjectName] = useState("");
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
-  const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string }[]>([]);
+  const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
   const { data: teams } = useQuery({
@@ -156,7 +156,16 @@ export default function CreateProjectPage() {
 
   const mutation = useMutation({
     mutationFn: createProject,
-    onSuccess: (project) => {
+    onSuccess: async (project) => {
+      // Invite selected members to the team
+      if (projectType === "team" && selectedTeamId && selectedMembers.length > 0) {
+        await Promise.allSettled(
+          selectedMembers.map((m) =>
+            inviteTeamMember(selectedTeamId, m.email, "basic"),
+          ),
+        );
+        queryClient.invalidateQueries({ queryKey: ["teams", selectedTeamId] });
+      }
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       router.push(`/projects/${project.id}`);
     },
@@ -234,7 +243,7 @@ export default function CreateProjectPage() {
             {projectType === "team" && (
               <MemberPicker
                 selected={selectedMembers}
-                onAdd={(u) => setSelectedMembers((prev) => [...prev, { id: u.id, name: u.name ?? u.email }])}
+                onAdd={(u) => setSelectedMembers((prev) => [...prev, { id: u.id, name: u.name ?? u.email, email: u.email }])}
                 onRemove={(id) => setSelectedMembers((prev) => prev.filter((m) => m.id !== id))}
               />
             )}
