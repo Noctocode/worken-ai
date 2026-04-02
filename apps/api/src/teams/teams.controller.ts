@@ -46,7 +46,12 @@ export class TeamsController {
   @UseGuards(PaidGuard)
   create(
     @Body()
-    body: { name: string; description?: string; monthlyBudget?: number },
+    body: {
+      name: string;
+      description?: string;
+      monthlyBudget?: number;
+      parentTeamId?: string;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     const budgetCents = body.monthlyBudget
@@ -58,6 +63,7 @@ export class TeamsController {
       user.email,
       body.description,
       budgetCents,
+      body.parentTeamId,
     );
   }
 
@@ -77,6 +83,11 @@ export class TeamsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.teamsService.updateBudget(id, user.id, body.budgetUsd);
+  }
+
+  @Get(':id/subteams')
+  findSubteams(@Param('id') id: string) {
+    return this.teamsService.findSubteams(id);
   }
 
   @Post(':id/members')
@@ -105,5 +116,43 @@ export class TeamsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.teamsService.removeMember(id, memberId, user.id);
+  }
+
+  @Get(':id/guardrails')
+  findGuardrails(@Param('id') id: string) {
+    return this.teamsService.findGuardrails(id);
+  }
+
+  @Post(':id/guardrails')
+  createGuardrail(
+    @Param('id') id: string,
+    @Body() body: { name: string; type: string; severity: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.createGuardrail(id, user.id, body);
+  }
+
+  @Patch(':id/guardrails/:guardrailId')
+  toggleGuardrail(
+    @Param('id') id: string,
+    @Param('guardrailId') guardrailId: string,
+    @Body() body: { isActive: boolean },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.toggleGuardrail(
+      id,
+      guardrailId,
+      user.id,
+      body.isActive,
+    );
+  }
+
+  @Delete(':id/guardrails/:guardrailId')
+  deleteGuardrail(
+    @Param('id') id: string,
+    @Param('guardrailId') guardrailId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.deleteGuardrail(id, guardrailId, user.id);
   }
 }

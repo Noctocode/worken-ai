@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
-import { teams, teamMembers, users } from '@worken/database/schema';
+import { teams, teamMembers, users, guardrails } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -29,6 +29,7 @@ export class TeamsService {
     email: string,
     description?: string,
     monthlyBudgetCents?: number,
+    parentTeamId?: string,
   ) {
     const budgetCents = monthlyBudgetCents ?? 1000;
     const [team] = await this.db
@@ -37,6 +38,7 @@ export class TeamsService {
         name,
         description: description ?? null,
         ownerId: userId,
+        parentTeamId: parentTeamId ?? null,
         monthlyBudgetCents: budgetCents,
       })
       .returning();
@@ -589,5 +591,124 @@ export class TeamsService {
       .returning();
 
     return updated;
+  }
+
+  async findSubteams(parentTeamId: string) {
+    const subteams = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.parentTeamId, parentTeamId));
+
+    if (subteams.length === 0) return [];
+
+    const subteamIds = subteams.map((t) => t.id);
+    const memberCounts = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        memberCount: sql<number>`cast(count(${teamMembers.id}) as int)`,
+      })
+      .from(teamMembers)
+      .where(inArray(teamMembers.teamId, subteamIds))
+      .groupBy(teamMembers.teamId);
+
+    const countMap = new Map(
+      memberCounts.map((r) => [r.teamId, r.memberCount]),
+    );
+
+    return subteams.map((t) => ({
+      ...t,
+      memberCount: countMap.get(t.id) ?? 0,
+    }));
+  }
+
+  async findGuardrails(teamId: string) {
+    return this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.teamId, teamId));
+  }
+
+  async createGuardrail(
+    teamId: string,
+    userId: string,
+    data: { name: string; type: string; severity: string },
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can add guardrails');
+    }
+
+    if (!['high', 'medium', 'low'].includes(data.severity)) {
+      throw new BadRequestException('Severity must be high, medium, or low');
+    }
+
+    const [created] = await this.db
+      .insert(guardrails)
+      .values({
+        teamId,
+        name: data.name,
+        type: data.type,
+        severity: data.severity,
+      })
+      .returning();
+
+    return created;
+  }
+
+  async toggleGuardrail(
+    teamId: string,
+    guardrailId: string,
+    userId: string,
+    isActive: boolean,
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can update guardrails');
+    }
+
+    const [updated] = await this.db
+      .update(guardrails)
+      .set({ isActive })
+      .where(
+        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      )
+      .returning();
+
+    if (!updated) throw new NotFoundException('Guardrail not found');
+    return updated;
+  }
+
+  async deleteGuardrail(
+    teamId: string,
+    guardrailId: string,
+    userId: string,
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can delete guardrails');
+    }
+
+    await this.db
+      .delete(guardrails)
+      .where(
+        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      );
+
+    return { success: true };
   }
 }

@@ -31,6 +31,7 @@ export const teams = pgTable("teams", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
+  parentTeamId: uuid("parent_team_id"),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
@@ -109,6 +110,19 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const guardrails = pgTable("guardrails", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  teamId: uuid("team_id")
+    .references(() => teams.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  severity: text("severity").notNull().default("medium"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const modelConfigs = pgTable("model_configs", {

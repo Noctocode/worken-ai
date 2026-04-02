@@ -231,6 +231,7 @@ export async function createTeam(data: {
   name: string;
   description?: string;
   monthlyBudget?: number;
+  parentTeamId?: string;
 }): Promise<Team> {
   const res = await apiFetch("/teams", {
     method: "POST",
@@ -238,6 +239,16 @@ export async function createTeam(data: {
     body: JSON.stringify(data),
   });
   if (!res.ok) throw new Error("Failed to create team");
+  return res.json();
+}
+
+export interface SubteamListItem extends Team {
+  memberCount: number;
+}
+
+export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> {
+  const res = await apiFetch(`/teams/${teamId}/subteams`);
+  if (!res.ok) throw new Error("Failed to fetch subteams");
   return res.json();
 }
 
@@ -290,6 +301,62 @@ export async function updateTeamBudget(
   });
   if (!res.ok) throw new Error("Failed to update budget");
   return res.json();
+}
+
+// Guardrails
+
+export interface Guardrail {
+  id: string;
+  teamId: string;
+  name: string;
+  type: string;
+  severity: "high" | "medium" | "low";
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchGuardrails(teamId: string): Promise<Guardrail[]> {
+  const res = await apiFetch(`/teams/${teamId}/guardrails`);
+  if (!res.ok) throw new Error("Failed to fetch guardrails");
+  return res.json();
+}
+
+export async function createGuardrail(
+  teamId: string,
+  data: { name: string; type: string; severity: string },
+): Promise<Guardrail> {
+  const res = await apiFetch(`/teams/${teamId}/guardrails`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to create guardrail");
+  return res.json();
+}
+
+export async function toggleGuardrail(
+  teamId: string,
+  guardrailId: string,
+  isActive: boolean,
+): Promise<Guardrail> {
+  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isActive }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle guardrail");
+  return res.json();
+}
+
+export async function deleteGuardrail(
+  teamId: string,
+  guardrailId: string,
+): Promise<void> {
+  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete guardrail");
 }
 
 // Conversations
