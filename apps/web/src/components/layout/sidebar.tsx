@@ -111,7 +111,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       {/* Primary Actions */}
       <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
         {user?.canCreateProject ? (
-          <Link href="/projects/create">{newProjectButton}</Link>
+          <Link href="/projects/create" className="w-full">{newProjectButton}</Link>
         ) : collapsed ? (
           <Button
             className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
