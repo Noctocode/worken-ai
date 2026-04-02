@@ -169,8 +169,8 @@ export default function CreateProjectPage() {
 
   return (
     <div className="flex flex-col min-h-full -mx-6 -mb-6">
-      {/* Scrollable content */}
-      <div className="flex-1 overflow-auto">
+      {/* Content */}
+      <div className="flex-1">
         <div className="flex flex-col items-center gap-8 pt-16 pb-8 px-6">
           {/* Project Name */}
           <input
@@ -246,7 +246,7 @@ export default function CreateProjectPage() {
                   <button
                     key={agent.id}
                     onClick={() => setSelectedAgent(agent.id)}
-                    className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] transition-colors ${
+                    className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] cursor-pointer transition-colors ${
                       isSelected
                         ? "bg-primary-1 border border-primary-6"
                         : "bg-bg-1 border border-transparent hover:border-border-3"
