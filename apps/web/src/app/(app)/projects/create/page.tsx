@@ -168,10 +168,9 @@ export default function CreateProjectPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-full -mx-6 -mb-6">
+    <div className="-mx-6 -mb-6 flex flex-col" style={{ minHeight: "calc(100vh - 4.5rem)" }}>
       {/* Content */}
-      <div className="flex-1">
-        <div className="flex flex-col items-center gap-8 pt-16 pb-8 px-6">
+      <div className="flex-1 flex flex-col items-center gap-8 pt-16 pb-8 px-6">
           {/* Project Name */}
           <input
             type="text"
@@ -262,7 +261,6 @@ export default function CreateProjectPage() {
             </div>
           </div>
         </div>
-      </div>
 
       {/* Bottom bar */}
       <div className="sticky bottom-0 flex items-center justify-between bg-bg-white px-6 py-4">
