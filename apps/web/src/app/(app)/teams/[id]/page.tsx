@@ -344,7 +344,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 <thead>
                   <tr>
                     <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Team</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2" colSpan={4}>Description</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Description</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[140px]">Budget</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[179px]">Spent / Remaining</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[179px]">Projected</th>
                     <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[136px]">Members</th>
                     <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                   </tr>
