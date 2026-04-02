@@ -60,7 +60,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-[18px] font-semibold text-text-1">{teamName}</h1>
+          <h4 className="text-text-1">{teamName}</h4>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -116,7 +116,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-[18px] font-semibold text-text-1">{userName}</h1>
+          <h4 className="text-text-1">{userName}</h4>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -169,7 +169,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-[26px] font-bold text-text-1">Create Project</h1>
+          <h4 className="text-text-1">Create Project</h4>
         </div>
       </header>
     );
@@ -196,7 +196,7 @@ export const Appbar = () => {
         </Sheet>
 
         {config.title ? (
-          <h1 className="text-lg font-semibold text-slate-900">{config.title}</h1>
+          <h4 className="text-text-1">{config.title}</h4>
         ) : (
           <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
             {breadcrumbs.map((crumb, i) => {
