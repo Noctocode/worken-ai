@@ -295,7 +295,29 @@ export class TeamsService {
       .leftJoin(users, eq(teamMembers.userId, users.id))
       .where(eq(teamMembers.teamId, teamId));
 
-    return { ...team, members };
+    // Fetch usage data from OpenRouter key
+    let spentCents = 0;
+    let projectedCents = 0;
+    if (team.openrouterKeyId) {
+      const usage = await this.provisioningService.getKeyUsage(
+        team.openrouterKeyId,
+      );
+      if (usage) {
+        spentCents = usage.usageCents;
+        const dayOfMonth = new Date().getDate();
+        const daysInMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth() + 1,
+          0,
+        ).getDate();
+        projectedCents =
+          dayOfMonth > 0
+            ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+            : usage.usageCents;
+      }
+    }
+
+    return { ...team, members, spentCents, projectedCents };
   }
 
   async inviteMember(

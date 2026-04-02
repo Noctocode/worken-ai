@@ -198,6 +198,8 @@ export interface TeamMember {
 
 export interface TeamWithMembers extends Team {
   members: TeamMember[];
+  spentCents: number;
+  projectedCents: number;
 }
 
 export async function fetchTeams(): Promise<TeamListItem[]> {
@@ -275,6 +277,19 @@ export async function removeTeamMember(
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to remove member");
+}
+
+export async function updateTeamBudget(
+  teamId: string,
+  budgetUsd: number,
+): Promise<{ monthlyBudgetCents: number }> {
+  const res = await apiFetch(`/teams/${teamId}/budget`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ budgetUsd }),
+  });
+  if (!res.ok) throw new Error("Failed to update budget");
+  return res.json();
 }
 
 // Conversations
