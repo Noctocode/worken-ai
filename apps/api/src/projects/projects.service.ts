@@ -133,4 +133,22 @@ export class ProjectsService {
       .returning();
     return project;
   }
+
+  async remove(id: string, userId: string) {
+    const [project] = await this.db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, id));
+
+    if (!project) {
+      throw new NotFoundException(`Project ${id} not found`);
+    }
+
+    if (project.userId !== userId) {
+      throw new ForbiddenException('Only the project owner can delete it');
+    }
+
+    await this.db.delete(projects).where(eq(projects.id, id));
+    return { success: true };
+  }
 }

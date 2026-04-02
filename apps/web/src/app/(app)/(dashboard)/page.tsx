@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import {
   PlusCircle,
   MoreVertical,
+  Trash2,
   ArrowRight,
   Clock,
   DollarSign,
@@ -19,10 +20,18 @@ import {
   PenSquare,
   Activity,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,7 +40,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchProjects, type Project } from "@/lib/api";
+import { fetchProjects, deleteProject, type Project } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 
 function formatDate(dateStr: string) {
@@ -44,6 +53,16 @@ function formatDate(dateStr: string) {
 
 function ProjectCard({ project }: { project: Project }) {
   const [docDialogOpen, setDocDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProject(project.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setDeleteDialogOpen(false);
+    },
+  });
 
   return (
     <>
@@ -76,6 +95,13 @@ function ProjectCard({ project }: { project: Project }) {
                   <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
                     <FileText className="mr-2 h-4 w-4" />
                     Manage Context
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600"
+                    onSelect={() => setDeleteDialogOpen(true)}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -111,6 +137,22 @@ function ProjectCard({ project }: { project: Project }) {
         open={docDialogOpen}
         onOpenChange={setDocDialogOpen}
       />
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{project.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

@@ -96,6 +96,11 @@ export async function createProject(
   return res.json();
 }
 
+export async function deleteProject(id: string): Promise<void> {
+  const res = await apiFetch(`/projects/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete project");
+}
+
 // Documents
 
 export interface Document {
