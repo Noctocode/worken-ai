@@ -135,6 +135,7 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
+  const [projectName, setProjectName] = useState("");
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
   const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string }[]>([]);
@@ -157,8 +158,9 @@ export default function CreateProjectPage() {
   const handleSubmit = () => {
     const agent = AGENTS.find((a) => a.id === selectedAgent);
     if (!agent) return;
+    const name = projectName.trim() || agent.label;
     mutation.mutate({
-      name: agent.label,
+      name,
       description: `${agent.label} project`,
       model: MODELS[0].id,
       teamId: projectType === "team" && selectedTeamId ? selectedTeamId : undefined,
@@ -170,6 +172,15 @@ export default function CreateProjectPage() {
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto">
         <div className="flex flex-col items-center gap-8 pt-16 pb-8 px-6">
+          {/* Project Name */}
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            placeholder="Project Name"
+            className="w-[414px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30"
+          />
+
           {/* Select Project Type */}
           <div className="flex flex-col items-center gap-4 w-full max-w-[600px]">
             <h2 className="text-[23px] font-bold text-text-1">Select Project Type</h2>
@@ -254,7 +265,7 @@ export default function CreateProjectPage() {
       </div>
 
       {/* Bottom bar */}
-      <div className="sticky bottom-0 flex items-center justify-between border-t border-border-2 bg-bg-white px-6 py-4">
+      <div className="sticky bottom-0 flex items-center justify-between bg-bg-white px-6 py-4">
         <Button
           variant="outline"
           className="h-[43px] w-[97px] rounded-lg border-border-2 text-[16px] text-text-1"
