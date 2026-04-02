@@ -3,7 +3,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail";
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
@@ -36,6 +36,16 @@ export function getRouteConfig(pathname: string): RouteConfig {
       hideSearch: true,
       hideNotifications: true,
       appbarType: "createProject",
+    };
+  }
+
+  // Check /projects/[id] pattern (but not /projects/create)
+  if (/^\/projects\/[^/]+$/.test(pathname) && pathname !== "/projects/create") {
+    return {
+      bg: "bg-bg-1",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "projectDetail",
     };
   }
 
