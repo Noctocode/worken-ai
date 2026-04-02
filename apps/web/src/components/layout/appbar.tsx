@@ -162,7 +162,7 @@ export const Appbar = () => {
 
     return (
       <header
-        className={`sticky top-0 z-20 flex h-[4.5rem] items-center gap-20 px-6 ${config.bg}`}
+        className={`sticky top-0 z-20 flex items-center gap-[80px] px-6 py-6 ${config.bg}`}
       >
         {/* Mobile Menu */}
         <Sheet>
@@ -182,12 +182,12 @@ export const Appbar = () => {
 
         <h4 className="text-text-1 shrink-0">AI Chat</h4>
 
-        <div className="flex items-start rounded border border-border-2 overflow-hidden shrink-0">
+        <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
           {AI_CHAT_TABS.map((tab) => (
             <button
               key={tab.value}
               onClick={() => setTab(tab.value)}
-              className={`px-3 py-3 text-[16px] cursor-pointer transition-colors ${
+              className={`px-[12px] py-[12px] text-[16px] cursor-pointer transition-colors ${
                 activeTab === tab.value
                   ? "bg-bg-3 text-text-1"
                   : "bg-bg-white text-text-1 hover:bg-bg-1"
@@ -198,11 +198,11 @@ export const Appbar = () => {
           ))}
         </div>
 
-        <div className="flex flex-1 items-center gap-2 rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">
+        <div className="flex flex-1 items-center gap-[8px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">
           <Search className="h-5 w-5 shrink-0 text-text-3" />
           <input
             placeholder="Search"
-            className="flex-1 bg-transparent text-[16px] text-text-1 outline-none placeholder:text-text-3"
+            className="flex-1 bg-transparent text-[16px] leading-[24px] text-text-1 outline-none placeholder:text-text-3"
           />
         </div>
       </header>
