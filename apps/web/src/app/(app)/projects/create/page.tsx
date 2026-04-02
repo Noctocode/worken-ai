@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
@@ -17,17 +17,11 @@ import {
   Bot,
   Info,
   X,
+  ChevronDown,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { createProject, fetchTeams } from "@/lib/api";
+import { createProject, fetchOrgUsers, fetchTeams, type OrgUser } from "@/lib/api";
 import { MODELS } from "@/lib/models";
 
 const AGENTS = [
@@ -45,15 +39,106 @@ const AGENTS = [
   { id: "lawyer", label: "Lawyer", icon: Scale },
 ] as const;
 
+/* ─── Member picker ──────────────────────────────────────────────────────── */
+
+function MemberPicker({
+  selected,
+  onAdd,
+  onRemove,
+}: {
+  selected: { id: string; name: string }[];
+  onAdd: (user: OrgUser) => void;
+  onRemove: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { data: orgUsers = [] } = useQuery({
+    queryKey: ["orgUsers"],
+    queryFn: fetchOrgUsers,
+  });
+
+  const selectedIds = new Set(selected.map((m) => m.id));
+  const filtered = orgUsers.filter(
+    (u) =>
+      !selectedIds.has(u.id) &&
+      (u.name?.toLowerCase().includes(search.toLowerCase()) ||
+        u.email.toLowerCase().includes(search.toLowerCase())),
+  );
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative w-full">
+      <div
+        className="flex items-center gap-2 rounded-xl border border-border-2 px-3.5 py-3 cursor-text"
+        onClick={() => { inputRef.current?.focus(); setOpen(true); }}
+      >
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          {selected.map((m) => (
+            <span key={m.id} className="flex items-center gap-0.5 rounded bg-bg-1 pl-2 pr-0.5 py-0.5 text-[12px] font-medium text-text-1">
+              {m.name}
+              <button
+                onClick={(e) => { e.stopPropagation(); onRemove(m.id); }}
+                className="p-1 rounded hover:bg-bg-3"
+              >
+                <X className="h-2 w-2" />
+              </button>
+            </span>
+          ))}
+          <input
+            ref={inputRef}
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            placeholder={selected.length === 0 ? "Search members..." : ""}
+            className="flex-1 min-w-[80px] bg-transparent text-[14px] text-text-1 outline-none placeholder:text-text-3"
+          />
+        </div>
+        <span className="flex items-center gap-1 text-[13px] text-text-1 whitespace-nowrap">
+          Can Edit
+          <ChevronDown className="h-3.5 w-3.5 text-text-3" />
+        </span>
+      </div>
+
+      {open && filtered.length > 0 && (
+        <div className="absolute z-10 mt-1 w-full max-h-[200px] overflow-auto rounded-lg border border-border-2 bg-bg-white shadow-lg">
+          {filtered.map((u) => (
+            <button
+              key={u.id}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[14px] text-text-1 hover:bg-bg-1 transition-colors"
+              onClick={() => { onAdd(u); setSearch(""); setOpen(false); }}
+            >
+              <span className="truncate">{u.name ?? u.email}</span>
+              <span className="text-[12px] text-text-3 truncate">{u.email}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Main page ──────────────────────────────────────────────────────────── */
+
 export default function CreateProjectPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
 
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
+  const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string }[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
-  const [memberChips, setMemberChips] = useState<string[]>([]);
-  const [memberInput, setMemberInput] = useState("");
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],
@@ -68,14 +153,6 @@ export default function CreateProjectPage() {
       router.push(`/projects/${project.id}`);
     },
   });
-
-  const handleAddChip = (value: string) => {
-    const trimmed = value.trim();
-    if (trimmed && !memberChips.includes(trimmed)) {
-      setMemberChips((prev) => [...prev, trimmed]);
-    }
-    setMemberInput("");
-  };
 
   const handleSubmit = () => {
     const agent = AGENTS.find((a) => a.id === selectedAgent);
@@ -92,7 +169,7 @@ export default function CreateProjectPage() {
     <div className="flex flex-col min-h-full -mx-6 -mb-6">
       {/* Scrollable content */}
       <div className="flex-1 overflow-auto">
-        <div className="flex flex-col items-center gap-8 py-24 px-6">
+        <div className="flex flex-col items-center gap-8 pt-16 pb-8 px-6">
           {/* Select Project Type */}
           <div className="flex flex-col items-center gap-4 w-full max-w-[600px]">
             <h2 className="text-[23px] font-bold text-text-1">Select Project Type</h2>
@@ -136,51 +213,13 @@ export default function CreateProjectPage() {
               )}
             </p>
 
-            {/* Team members input */}
+            {/* Team members picker */}
             {projectType === "team" && (
-              <div className="w-full space-y-3">
-                {teams && teams.length > 0 && (
-                  <Select value={selectedTeamId} onValueChange={setSelectedTeamId}>
-                    <SelectTrigger className="border-border-2 text-text-1">
-                      <SelectValue placeholder="Select a team" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {teams.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                <div className="flex items-center gap-2 rounded-xl border border-border-2 px-3.5 py-3">
-                  <div className="flex flex-1 flex-wrap items-center gap-2">
-                    {memberChips.map((chip) => (
-                      <span key={chip} className="flex items-center gap-0.5 rounded bg-bg-1 pl-2 pr-0.5 py-0.5 text-[12px] font-medium text-text-1">
-                        {chip}
-                        <button onClick={() => setMemberChips((prev) => prev.filter((c) => c !== chip))} className="p-1 rounded hover:bg-bg-3">
-                          <X className="h-2 w-2" />
-                        </button>
-                      </span>
-                    ))}
-                    <input
-                      value={memberInput}
-                      onChange={(e) => setMemberInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if ((e.key === "Enter" || e.key === ",") && memberInput.trim()) {
-                          e.preventDefault();
-                          handleAddChip(memberInput);
-                        }
-                      }}
-                      placeholder={memberChips.length === 0 ? "Add members..." : ""}
-                      className="flex-1 min-w-[100px] bg-transparent text-[14px] text-text-1 outline-none placeholder:text-text-3"
-                    />
-                  </div>
-                  <span className="flex items-center gap-1 text-[13px] text-text-1 whitespace-nowrap">
-                    Can Edit
-                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="text-text-3"><path d="M3.5 5.25L7 8.75L10.5 5.25" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                  </span>
-                </div>
-              </div>
+              <MemberPicker
+                selected={selectedMembers}
+                onAdd={(u) => setSelectedMembers((prev) => [...prev, { id: u.id, name: u.name ?? u.email }])}
+                onRemove={(id) => setSelectedMembers((prev) => prev.filter((m) => m.id !== id))}
+              />
             )}
           </div>
 
