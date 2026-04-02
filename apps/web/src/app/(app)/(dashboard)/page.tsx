@@ -127,15 +127,66 @@ export default function WorkenDashboard() {
   } = useQuery({
     queryKey: ["projects", activeTab],
     queryFn: () => fetchProjects(activeTab),
+    enabled: activeTab !== "all",
+  });
+
+  const { data: teamProjects, isLoading: teamLoading } = useQuery({
+    queryKey: ["projects", "team"],
+    queryFn: () => fetchProjects("team"),
+    enabled: activeTab === "all",
+  });
+
+  const { data: personalProjects, isLoading: personalLoading } = useQuery({
+    queryKey: ["projects", "personal"],
+    queryFn: () => fetchProjects("personal"),
+    enabled: activeTab === "all",
   });
 
   const canCreateProject = user?.canCreateProject;
+
+  if (activeTab === "all") {
+    const allLoading = teamLoading || personalLoading;
+    return (
+      <div className="pt-4">
+        {allLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+          </div>
+        ) : (
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-0 space-y-4">
+              <p className="text-[26px] font-bold text-text-1">Team Projects</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {teamProjects?.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+                {teamProjects?.length === 0 && (
+                  <p className="col-span-2 py-8 text-center text-sm text-text-3">No team projects yet.</p>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 min-w-0 space-y-4">
+              <p className="text-[26px] font-bold text-text-1">Personal Projects</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {personalProjects?.map((project) => (
+                  <ProjectCard key={project.id} project={project} />
+                ))}
+                {personalProjects?.length === 0 && (
+                  <p className="col-span-2 py-8 text-center text-sm text-text-3">No personal projects yet.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pt-4">
       {/* Section title */}
       <p className="text-[26px] font-bold text-text-1">
-        {activeTab === "team" ? "Team Projects" : activeTab === "personal" ? "Personal Projects" : "Personal Projects"}
+        {activeTab === "team" ? "Team Projects" : "Personal Projects"}
       </p>
 
       {/* Projects Grid */}
