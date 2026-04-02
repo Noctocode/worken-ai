@@ -6,8 +6,7 @@ import {
   PlusCircle,
   ChevronRight,
   Filter,
-  MoreHorizontal,
-  Sparkles,
+  MoreVertical,
   ArrowRight,
   Clock,
   DollarSign,
@@ -17,22 +16,18 @@ import {
   FileText,
   FolderOpen,
   Users,
+  User,
+  Bot,
+  PenSquare,
+  Activity,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,15 +39,12 @@ import { useAuth } from "@/components/providers";
 import { fetchProjects, type Project } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 
-function formatTimeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function ProjectCard({ project }: { project: Project }) {
@@ -60,76 +52,64 @@ function ProjectCard({ project }: { project: Project }) {
 
   return (
     <>
-      <Link href={`/projects/${project.id}`} className="block">
-        <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-          <CardHeader className="pb-1 pt-3">
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
-                <Sparkles className="h-4 w-4" />
+      <Link href={`/projects/${project.id}`} className="block h-full">
+        <div className="group flex flex-col bg-bg-white cursor-pointer h-full transition-all duration-200 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]">
+          {/* Top section */}
+          <div className="flex-1 flex flex-col gap-2 border border-border-2 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center rounded bg-primary-1 p-1">
+                  <User className="h-[18px] w-[18px] text-primary-6" />
+                </div>
+                <span className="text-[18px] font-bold text-text-1">{project.name}</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                {project.teamId && (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 text-xs border-purple-200 bg-purple-50 text-purple-700"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-text-3 hover:text-text-1 cursor-pointer"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   >
-                    <Users className="h-3 w-3" />
-                    {project.teamName ?? "Team"}
-                  </Badge>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
-                  >
-                    <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      Manage Context
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <MoreVertical className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                >
+                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Manage Context
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            {/* Model badge */}
+            <div className="flex items-center gap-2.5 rounded bg-bg-2 px-2 py-1 w-fit">
+              <div className="flex items-center gap-1">
+                <Bot className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2">{project.name}</span>
+              </div>
+              <span className="text-[13px] text-text-2">/</span>
+              <div className="flex items-center gap-1">
+                <PenSquare className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2">{MODEL_LABELS[project.model] || project.model}</span>
               </div>
             </div>
-            <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-              {project.name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
-            <CardDescription className="line-clamp-2 text-xs text-slate-500">
-              {project.description || "No description"}
-            </CardDescription>
-          </CardContent>
-          <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-            <div className="flex w-full items-center justify-between">
-              <Badge
-                variant="secondary"
-                className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-              >
-                <Sparkles className="h-3 w-3" />
-                {MODEL_LABELS[project.model] || project.model}
-              </Badge>
-              <span className="text-xs font-medium text-slate-400">
-                {formatTimeAgo(project.createdAt)}
-              </span>
+          </div>
+          {/* Bottom section */}
+          <div className="flex items-center gap-5 px-3 py-2">
+            <div className="flex items-center gap-1">
+              <PenSquare className="h-[18px] w-[18px] text-text-2" />
+              <span className="text-[13px] text-text-2">{formatDate(project.createdAt)}</span>
             </div>
-          </CardFooter>
-        </Card>
+            <div className="flex items-center gap-1">
+              <Activity className="h-[18px] w-[18px] text-text-2" />
+              <span className="text-[13px] text-text-2">0</span>
+            </div>
+          </div>
+        </div>
       </Link>
       <AddDocumentDialog
         projectId={project.id}
