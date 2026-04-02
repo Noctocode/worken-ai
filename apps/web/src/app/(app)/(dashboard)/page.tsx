@@ -2,10 +2,9 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   PlusCircle,
-  ChevronRight,
-  Filter,
   MoreVertical,
   ArrowRight,
   Clock,
@@ -15,7 +14,6 @@ import {
   Loader2,
   FileText,
   FolderOpen,
-  Users,
   User,
   Bot,
   PenSquare,
@@ -24,9 +22,6 @@ import {
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
@@ -122,9 +117,8 @@ function ProjectCard({ project }: { project: Project }) {
 
 export default function WorkenDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"all" | "personal" | "team">(
-    "all",
-  );
+  const searchParams = useSearchParams();
+  const activeTab = (searchParams.get("filter") ?? "all") as "all" | "personal" | "team";
 
   const {
     data: projects,
@@ -138,78 +132,11 @@ export default function WorkenDashboard() {
   const canCreateProject = user?.canCreateProject;
 
   return (
-    <div className="space-y-8">
-      {/* Page Title & Mobile Search */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Ongoing Projects
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage and monitor your AI development workflows.
-          </p>
-        </div>
-        <div className="w-full sm:hidden">
-          <Input
-            placeholder="Search..."
-            className="bg-white border-slate-200"
-          />
-        </div>
-      </div>
-
-      {/* Filters & Controls */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200/60 pb-2 sm:flex-row sm:items-center">
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as typeof activeTab)}
-          className="w-auto"
-        >
-          <TabsList className="bg-slate-100 p-1">
-            <TabsTrigger value="all" className="px-4 text-xs font-medium">
-              All Projects
-            </TabsTrigger>
-            <TabsTrigger value="personal" className="px-4 text-xs font-medium">
-              Personal
-            </TabsTrigger>
-            <TabsTrigger value="team" className="px-4 text-xs font-medium">
-              Team
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
-            <span>Sort by:</span>
-            <Button
-              variant="ghost"
-              className="h-auto p-0 font-medium text-slate-700 hover:bg-transparent hover:text-blue-600"
-            >
-              Last Activity
-              <ChevronRight className="ml-1 h-3 w-3 rotate-90" />
-            </Button>
-          </div>
-          <Separator
-            orientation="vertical"
-            className="h-4 hidden sm:block bg-slate-300"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
-          {canCreateProject && (
-            <Link href="/projects/create">
-              <Button size="sm" className="gap-2 sm:hidden">
-                <PlusCircle className="h-4 w-4" />
-                New
-              </Button>
-            </Link>
-          )}
-        </div>
-      </div>
+    <div className="space-y-6 pt-4">
+      {/* Section title */}
+      <p className="text-[26px] font-bold text-text-1">
+        {activeTab === "team" ? "Team Projects" : activeTab === "personal" ? "Personal Projects" : "Personal Projects"}
+      </p>
 
       {/* Projects Grid */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
