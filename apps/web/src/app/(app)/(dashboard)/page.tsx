@@ -39,7 +39,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { useAuth } from "@/components/providers";
 import { fetchProjects, type Project } from "@/lib/api";
@@ -222,12 +221,12 @@ export default function WorkenDashboard() {
             Filter
           </Button>
           {canCreateProject && (
-            <CreateProjectDialog>
+            <Link href="/projects/create">
               <Button size="sm" className="gap-2 sm:hidden">
                 <PlusCircle className="h-4 w-4" />
                 New
               </Button>
-            </CreateProjectDialog>
+            </Link>
           )}
         </div>
       </div>
@@ -270,7 +269,7 @@ export default function WorkenDashboard() {
 
         {/* New Project Card */}
         {canCreateProject && (
-          <CreateProjectDialog>
+          <Link href="/projects/create">
             <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
@@ -284,7 +283,7 @@ export default function WorkenDashboard() {
                 </p>
               </div>
             </Card>
-          </CreateProjectDialog>
+          </Link>
         )}
       </div>
 

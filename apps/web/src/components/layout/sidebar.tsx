@@ -18,7 +18,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -112,7 +111,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       {/* Primary Actions */}
       <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
         {user?.canCreateProject ? (
-          <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
+          <Link href="/projects/create">{newProjectButton}</Link>
         ) : collapsed ? (
           <Button
             className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
