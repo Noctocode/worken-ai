@@ -147,6 +147,13 @@ export default function CreateProjectPage() {
     enabled: projectType === "team",
   });
 
+  // Auto-select the first team when teams load
+  useEffect(() => {
+    if (teams && teams.length > 0 && !selectedTeamId) {
+      setSelectedTeamId(teams[0].id);
+    }
+  }, [teams, selectedTeamId]);
+
   const mutation = useMutation({
     mutationFn: createProject,
     onSuccess: (project) => {
