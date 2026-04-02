@@ -3,10 +3,16 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat";
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
+  "/": {
+    bg: "bg-bg-1",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarType: "aiChat",
+  },
   "/teams": {
     bg: "bg-bg-1",
     title: "Management",
