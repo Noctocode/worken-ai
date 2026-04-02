@@ -1,15 +1,22 @@
 import {
+  BadRequestException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { users, teamMembers, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
+import { EncryptionService } from '../openrouter/encryption.service.js';
 
 @Injectable()
 export class UsersService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly provisioningService: OpenRouterProvisioningService,
+    private readonly encryptionService: EncryptionService,
+  ) {}
 
   async findAll() {
     const allUsers = await this.db
@@ -84,6 +91,122 @@ export class UsersService {
         createdAt: u.createdAt,
       };
     });
+  }
+
+  async findOne(userId: string) {
+    const [user] = await this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        picture: users.picture,
+        monthlyBudgetCents: users.monthlyBudgetCents,
+        openrouterKeyId: users.openrouterKeyId,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Get team memberships with team info
+    const membershipRows = await this.db
+      .select({
+        teamId: teams.id,
+        teamName: teams.name,
+        role: teamMembers.role,
+        status: teamMembers.status,
+      })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teamMembers.teamId, teams.id))
+      .where(eq(teamMembers.userId, userId));
+
+    // Determine org-level role
+    const isOwner = await this.db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.ownerId, userId))
+      .limit(1);
+
+    let role: string = 'basic';
+    if (isOwner.length > 0) {
+      role = 'admin';
+    } else if (membershipRows.some((m) => m.role === 'advanced')) {
+      role = 'advanced';
+    }
+
+    // Fetch usage data from user's OpenRouter key
+    let spentCents = 0;
+    let projectedCents = 0;
+    if (user.openrouterKeyId) {
+      const usage = await this.provisioningService.getKeyUsage(
+        user.openrouterKeyId,
+      );
+      if (usage) {
+        spentCents = usage.usageCents;
+        const dayOfMonth = new Date().getDate();
+        const daysInMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth() + 1,
+          0,
+        ).getDate();
+        projectedCents =
+          dayOfMonth > 0
+            ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+            : usage.usageCents;
+      }
+    }
+
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      picture: user.picture,
+      role,
+      monthlyBudgetCents: user.monthlyBudgetCents,
+      spentCents,
+      projectedCents,
+      teams: membershipRows.map((m) => ({
+        id: m.teamId,
+        name: m.teamName,
+        role: m.role,
+        status: m.status,
+      })),
+      createdAt: user.createdAt,
+    };
+  }
+
+  async updateBudget(
+    userId: string,
+    budgetUsd: number,
+  ): Promise<{ monthlyBudgetCents: number }> {
+    if (typeof budgetUsd !== 'number' || budgetUsd <= 0) {
+      throw new BadRequestException('budgetUsd must be a positive number');
+    }
+
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Update OpenRouter key limit if provisioned
+    if (user.openrouterKeyId) {
+      await this.provisioningService.updateKey(user.openrouterKeyId, budgetUsd);
+    }
+
+    const budgetCents = Math.round(budgetUsd * 100);
+    await this.db
+      .update(users)
+      .set({ monthlyBudgetCents: budgetCents })
+      .where(eq(users.id, userId));
+
+    return { monthlyBudgetCents: budgetCents };
   }
 
   async remove(userId: string) {

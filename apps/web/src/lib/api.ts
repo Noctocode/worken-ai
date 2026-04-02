@@ -435,6 +435,38 @@ export async function fetchOrgUsers(): Promise<OrgUser[]> {
   return res.json();
 }
 
+export interface OrgUserDetail {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+  role: "basic" | "advanced" | "admin";
+  monthlyBudgetCents: number;
+  spentCents: number;
+  projectedCents: number;
+  teams: { id: string; name: string; role: string; status: string }[];
+  createdAt: string;
+}
+
+export async function fetchOrgUser(id: string): Promise<OrgUserDetail> {
+  const res = await apiFetch(`/users/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch user");
+  return res.json();
+}
+
+export async function updateUserBudget(
+  userId: string,
+  budgetUsd: number,
+): Promise<{ monthlyBudgetCents: number }> {
+  const res = await apiFetch(`/users/${userId}/budget`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ budgetUsd }),
+  });
+  if (!res.ok) throw new Error("Failed to update user budget");
+  return res.json();
+}
+
 export async function inviteOrgUser(
   email: string,
   role: "basic" | "advanced" | "admin",
