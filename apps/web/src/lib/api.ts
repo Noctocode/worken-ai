@@ -314,6 +314,7 @@ export interface Guardrail {
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
+  triggers: number;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

@@ -502,11 +502,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       </div>
 
       {/* ── Guardrails ────────────────────────────────────────────── */}
-      <div className="space-y-3">
+      <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Guardrails</p>
           <AddGuardrailDialog teamId={id}>
-            <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
+            <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
           </AddGuardrailDialog>
         </div>
         {guardrails.length === 0 ? (
@@ -517,19 +517,35 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <table className="w-full min-w-[700px]">
                 <thead>
                   <tr>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Name</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Type</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Severity</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">Status</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Name</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Type</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Severity</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Triggers</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">Status</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {guardrails.map((g) => (
-                    <tr key={g.id} className="h-14 border-b border-border-2">
-                      <td className="px-4 align-middle"><span className="text-[16px] text-text-1 whitespace-nowrap">{g.name}</span></td>
-                      <td className="px-4 align-middle"><span className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">{g.type}</span></td>
-                      <td className="px-4 align-middle"><span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{g.severity}</span></td>
+                    <tr key={g.id} className="h-14 border-b border-bg-1">
+                      <td className="px-4 align-middle">
+                        <span className="text-[16px] text-text-1 whitespace-nowrap">{g.name}</span>
+                      </td>
+                      <td className="px-4 align-middle">
+                        <div className="flex gap-2.5">
+                          {g.type.split(",").map((t) => (
+                            <span key={t} className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">
+                              {t.trim()}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 align-middle">
+                        <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{g.severity}</span>
+                      </td>
+                      <td className="px-4 align-middle text-[16px] text-text-1">
+                        {g.triggers.toLocaleString()}
+                      </td>
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
                           <Switch checked={g.isActive} onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })} />
@@ -548,6 +564,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       </td>
                     </tr>
                   ))}
+                  {guardrails.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-[16px] text-text-3">No guardrails configured yet.</td></tr>}
                 </tbody>
               </table>
             </div>

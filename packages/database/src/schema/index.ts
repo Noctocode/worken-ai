@@ -120,6 +120,7 @@ export const guardrails = pgTable("guardrails", {
   name: text("name").notNull(),
   type: text("type").notNull(),
   severity: text("severity").notNull().default("medium"),
+  triggers: integer("triggers").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
