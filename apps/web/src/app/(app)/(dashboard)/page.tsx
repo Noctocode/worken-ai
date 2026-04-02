@@ -143,54 +143,54 @@ export default function WorkenDashboard() {
   });
 
   const canCreateProject = user?.canCreateProject;
-
-  if (activeTab === "all") {
-    const allLoading = teamLoading || personalLoading;
-    return (
-      <div className="pt-4">
-        {allLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-          </div>
-        ) : (
-          <div className="flex gap-4">
-            <div className="flex-1 min-w-0 space-y-4">
-              <p className="text-[26px] font-bold text-text-1">Team Projects</p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {teamProjects?.map((project) => (
-                  <ProjectCard key={project.id} project={project} />
-                ))}
-                {teamProjects?.length === 0 && (
-                  <p className="col-span-2 py-8 text-center text-sm text-text-3">No team projects yet.</p>
-                )}
-              </div>
-            </div>
-            <div className="flex-1 min-w-0 space-y-4">
-              <p className="text-[26px] font-bold text-text-1">Personal Projects</p>
-              <div className="grid grid-cols-2 gap-2.5">
-                {personalProjects?.map((project) => (
-                  <ProjectCard key={project.id} project={project} />
-                ))}
-                {personalProjects?.length === 0 && (
-                  <p className="col-span-2 py-8 text-center text-sm text-text-3">No personal projects yet.</p>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  }
+  const allLoading = activeTab === "all" ? (teamLoading || personalLoading) : isLoading;
 
   return (
     <div className="space-y-6 pt-4">
-      {/* Section title */}
-      <p className="text-[26px] font-bold text-text-1">
-        {activeTab === "team" ? "Team Projects" : "Personal Projects"}
-      </p>
+      {/* All tab: two-column layout */}
+      {activeTab === "all" && (
+        <>
+          {allLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <div className="flex gap-4">
+              <div className="flex-1 min-w-0 space-y-4">
+                <p className="text-[26px] font-bold text-text-1">Team Projects</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {teamProjects?.map((project) => (
+                    <ProjectCard key={project.id} project={project} />
+                  ))}
+                  {teamProjects?.length === 0 && (
+                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No team projects yet.</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-4">
+                <p className="text-[26px] font-bold text-text-1">Personal Projects</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {personalProjects?.map((project) => (
+                    <ProjectCard key={project.id} project={project} />
+                  ))}
+                  {personalProjects?.length === 0 && (
+                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No personal projects yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
 
-      {/* Projects Grid */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Personal/Team tab: single grid */}
+      {activeTab !== "all" && (
+        <>
+          <p className="text-[26px] font-bold text-text-1">
+            {activeTab === "team" ? "Team Projects" : "Personal Projects"}
+          </p>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading && (
           <div className="col-span-full flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -244,6 +244,8 @@ export default function WorkenDashboard() {
           </Link>
         )}
       </div>
+        </>
+      )}
 
       {/* Comparisons Section */}
       <div className="border-t border-slate-200/60 pt-8">
