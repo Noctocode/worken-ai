@@ -90,7 +90,7 @@ function MemberPicker({
               {m.name}
               <button
                 onClick={(e) => { e.stopPropagation(); onRemove(m.id); }}
-                className="p-1 rounded hover:bg-bg-3"
+                className="p-1 rounded cursor-pointer hover:bg-bg-3"
               >
                 <X className="h-2 w-2" />
               </button>
@@ -105,7 +105,7 @@ function MemberPicker({
             className="flex-1 min-w-[80px] bg-transparent text-[14px] text-text-1 outline-none placeholder:text-text-3"
           />
         </div>
-        <span className="flex items-center gap-1 text-[13px] text-text-1 whitespace-nowrap">
+        <span className="flex items-center gap-1 text-[13px] text-text-1 whitespace-nowrap cursor-pointer">
           Can Edit
           <ChevronDown className="h-3.5 w-3.5 text-text-3" />
         </span>
@@ -116,7 +116,7 @@ function MemberPicker({
           {filtered.map((u) => (
             <button
               key={u.id}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[14px] text-text-1 hover:bg-bg-1 transition-colors"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[14px] text-text-1 cursor-pointer hover:bg-bg-1 transition-colors"
               onClick={() => { onAdd(u); setSearch(""); setOpen(false); }}
             >
               <span className="truncate">{u.name ?? u.email}</span>
@@ -187,7 +187,7 @@ export default function CreateProjectPage() {
             <div className="flex rounded-lg border border-border-3 overflow-hidden">
               <button
                 onClick={() => setProjectType("personal")}
-                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] transition-colors ${
+                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] cursor-pointer transition-colors ${
                   projectType === "personal"
                     ? "bg-primary-6 text-white"
                     : "bg-bg-white text-text-1 hover:bg-bg-1"
@@ -198,7 +198,7 @@ export default function CreateProjectPage() {
               </button>
               <button
                 onClick={() => setProjectType("team")}
-                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] transition-colors ${
+                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] cursor-pointer transition-colors ${
                   projectType === "team"
                     ? "bg-primary-6 text-white"
                     : "bg-bg-white text-text-1 hover:bg-bg-1"
@@ -266,13 +266,13 @@ export default function CreateProjectPage() {
       <div className="sticky bottom-0 flex items-center justify-between bg-bg-white px-6 py-4">
         <Button
           variant="outline"
-          className="h-[43px] w-[97px] rounded-lg border-border-2 text-[16px] text-text-1"
+          className="h-[43px] w-[97px] rounded-lg border-border-2 text-[16px] text-text-1 cursor-pointer"
           onClick={() => router.back()}
         >
           Cancel
         </Button>
         <Button
-          className="h-10 w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white"
+          className="h-10 w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
           disabled={mutation.isPending || !selectedAgent}
         >
