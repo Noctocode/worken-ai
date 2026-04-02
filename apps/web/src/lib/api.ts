@@ -244,6 +244,9 @@ export async function createTeam(data: {
 
 export interface SubteamListItem extends Team {
   memberCount: number;
+  members: { name: string | null; picture: string | null }[];
+  spentCents: number;
+  projectedCents: number;
 }
 
 export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> {

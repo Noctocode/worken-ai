@@ -340,34 +340,74 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         ) : (
           <div className="rounded overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[540px]">
+              <table className="w-full min-w-[1100px]">
                 <thead>
                   <tr>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Team</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Description</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Members</th>
-                    <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Team</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2" colSpan={4}>Description</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[136px]">Members</th>
+                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {subteams.map((sub) => (
-                    <tr key={sub.id} className="h-14 border-b border-border-2">
-                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{sub.name}</td>
-                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{sub.description ?? "—"}</td>
-                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1">{sub.memberCount}</td>
-                      <td className="bg-bg-white px-4 align-middle w-[93px]">
-                        <div className="flex justify-center">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
-                              <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {subteams.map((sub) => {
+                    const subBudget = sub.monthlyBudgetCents / 100;
+                    const subSpent = sub.spentCents / 100;
+                    const subRemaining = subBudget - subSpent;
+                    const subProjected = sub.projectedCents / 100;
+                    const subOverBudget = subProjected > subBudget;
+                    const subPct = subBudget > 0 ? Math.min((subSpent / subBudget) * 100, 100) : 0;
+                    return (
+                      <tr key={sub.id} className="h-14">
+                        <td className="bg-bg-white px-4 align-middle w-[300px]">
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">{sub.name}</span>
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">
+                          {sub.description ?? "—"}
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle w-[140px] text-[16px] text-text-1 whitespace-nowrap">
+                          {formatCurrency(subBudget)}
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle w-[179px]">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[16px] text-text-1 whitespace-nowrap">
+                              {formatCurrency(subSpent)} / {formatCurrency(subRemaining > 0 ? subRemaining : 0)}
+                            </span>
+                            <div className="flex items-center h-[7px] w-[44px] shrink-0 rounded-full border border-border-4 overflow-hidden">
+                              <div className={`h-full shrink-0 ${subSpent > subBudget ? "bg-danger-5" : "bg-success-2"}`} style={{ width: `${subPct}%` }} />
+                              <div className="h-full flex-1 bg-bg-3" />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle w-[179px]">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-[16px] text-text-1 whitespace-nowrap">{formatCurrency(subProjected)}</span>
+                            <span className={`rounded-lg px-2 py-1 text-[13px] whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
+                              {subOverBudget ? "Will Exceed" : "On track"}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle w-[136px]">
+                          <div className="flex -space-x-2.5">
+                            {sub.members.slice(0, 4).map((m, i) => (
+                              <UserAvatar key={i} name={m.name ?? "?"} picture={m.picture} size={24} />
+                            ))}
+                          </div>
+                        </td>
+                        <td className="bg-bg-white px-4 align-middle w-[93px]">
+                          <div className="flex justify-center">
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                                <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -602,6 +602,8 @@ export class TeamsService {
     if (subteams.length === 0) return [];
 
     const subteamIds = subteams.map((t) => t.id);
+
+    // Member counts
     const memberCounts = await this.db
       .select({
         teamId: teamMembers.teamId,
@@ -615,10 +617,73 @@ export class TeamsService {
       memberCounts.map((r) => [r.teamId, r.memberCount]),
     );
 
-    return subteams.map((t) => ({
-      ...t,
-      memberCount: countMap.get(t.id) ?? 0,
-    }));
+    // Member avatars (first 4 accepted per subteam)
+    const avatarRows = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        email: teamMembers.email,
+        name: users.name,
+        picture: users.picture,
+      })
+      .from(teamMembers)
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(
+        and(
+          inArray(teamMembers.teamId, subteamIds),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+
+    const membersMap = new Map<
+      string,
+      { name: string | null; picture: string | null }[]
+    >();
+    for (const row of avatarRows) {
+      const arr = membersMap.get(row.teamId) ?? [];
+      if (arr.length < 4) {
+        arr.push({ name: row.name ?? row.email, picture: row.picture ?? null });
+      }
+      membersMap.set(row.teamId, arr);
+    }
+
+    // Usage data per subteam
+    const usageMap = new Map<
+      string,
+      { spentCents: number; projectedCents: number }
+    >();
+    for (const t of subteams) {
+      if (t.openrouterKeyId) {
+        const usage = await this.provisioningService.getKeyUsage(
+          t.openrouterKeyId,
+        );
+        if (usage) {
+          const dayOfMonth = new Date().getDate();
+          const daysInMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0,
+          ).getDate();
+          usageMap.set(t.id, {
+            spentCents: usage.usageCents,
+            projectedCents:
+              dayOfMonth > 0
+                ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+                : usage.usageCents,
+          });
+        }
+      }
+    }
+
+    return subteams.map((t) => {
+      const usage = usageMap.get(t.id);
+      return {
+        ...t,
+        memberCount: countMap.get(t.id) ?? 0,
+        members: membersMap.get(t.id) ?? [],
+        spentCents: usage?.spentCents ?? 0,
+        projectedCents: usage?.projectedCents ?? 0,
+      };
+    });
   }
 
   async findGuardrails(teamId: string) {
