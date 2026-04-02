@@ -280,20 +280,20 @@ export const Appbar = () => {
           </button>
 
           <div className="flex items-center gap-1">
-            <div className="flex items-center pr-[10px]">
-              {visibleMembers.map((m) =>
+            <div className="flex items-center">
+              {visibleMembers.map((m, i) =>
                 m.userPicture ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     key={m.id}
                     src={m.userPicture}
                     alt={m.userName ?? ""}
-                    className="mr-[-10px] h-8 w-8 shrink-0 rounded-full object-cover"
+                    className={`${i > 0 ? "ml-[-10px]" : ""} h-8 w-8 shrink-0 rounded-full object-cover`}
                   />
                 ) : (
                   <div
                     key={m.id}
-                    className="mr-[-10px] flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white"
+                    className={`${i > 0 ? "ml-[-10px]" : ""} flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white`}
                   >
                     {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
                   </div>
@@ -301,7 +301,7 @@ export const Appbar = () => {
               )}
             </div>
             {extraCount > 0 && (
-              <span className="text-[11px] text-text-3">+{extraCount}</span>
+              <span className="ml-1 text-[11px] text-text-3">+{extraCount}</span>
             )}
           </div>
 
