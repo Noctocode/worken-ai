@@ -338,82 +338,105 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         {subteams.length === 0 ? (
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No subteams yet.</div></div>
         ) : (
-          <div className="rounded overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px]">
-                <thead>
-                  <tr>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Team</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Description</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[140px]">Budget</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[179px]">Spent / Remaining</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[179px]">Projected</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[136px]">Members</th>
-                    <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subteams.map((sub) => {
-                    const subBudget = sub.monthlyBudgetCents / 100;
-                    const subSpent = sub.spentCents / 100;
-                    const subRemaining = subBudget - subSpent;
-                    const subProjected = sub.projectedCents / 100;
-                    const subOverBudget = subProjected > subBudget;
-                    const subPct = subBudget > 0 ? Math.min((subSpent / subBudget) * 100, 100) : 0;
-                    return (
-                      <tr key={sub.id} className="h-14">
-                        <td className="bg-bg-white px-4 align-middle w-[300px]">
-                          <span className="text-[16px] text-text-1 whitespace-nowrap">{sub.name}</span>
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">
-                          {sub.description ?? "—"}
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle w-[140px] text-[16px] text-text-1 whitespace-nowrap">
-                          {formatCurrency(subBudget)}
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle w-[179px]">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[16px] text-text-1 whitespace-nowrap">
-                              {formatCurrency(subSpent)} / {formatCurrency(subRemaining > 0 ? subRemaining : 0)}
+          <div className="overflow-x-auto bg-bg-white rounded">
+            <table className="w-full min-w-[800px]">
+              <thead>
+                <tr className="h-[33px] border-b border-bg-1">
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Team</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Description</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Monthly Budget</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Spent / Remaining</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Projected</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Members</th>
+                  <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subteams.map((sub) => {
+                  const subBudget = sub.monthlyBudgetCents / 100;
+                  const subSpent = sub.spentCents / 100;
+                  const subRemaining = subBudget - subSpent;
+                  const subProjected = sub.projectedCents / 100;
+                  const subOverBudget = subProjected > subBudget;
+                  const subPct = subBudget > 0 ? Math.min((subSpent / subBudget) * 100, 100) : 0;
+                  const subExtraMembers = sub.memberCount > 4 ? sub.memberCount - 4 : 0;
+                  return (
+                    <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+                      <td className="px-4 align-middle text-base text-black whitespace-nowrap">{sub.name}</td>
+                      <td className="px-4 align-middle text-sm text-slate-500 whitespace-nowrap">{sub.description ?? "—"}</td>
+                      <td className="px-4 align-middle text-sm text-black whitespace-nowrap">
+                        {subBudget > 0 ? formatCurrency(subBudget) : "—"}
+                      </td>
+                      <td className="w-[1%] px-4 align-middle whitespace-nowrap">
+                        {subBudget > 0 ? (
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm leading-tight text-black">
+                              {formatCurrency(subSpent)} /{" "}
+                              {subRemaining < 0 ? (
+                                <span className="text-danger-5">{formatCurrency(subRemaining)}</span>
+                              ) : (
+                                formatCurrency(subRemaining)
+                              )}
                             </span>
-                            <div className="flex items-center h-[7px] w-[44px] shrink-0 rounded-full border border-border-4 overflow-hidden">
-                              <div className={`h-full shrink-0 ${subSpent > subBudget ? "bg-danger-5" : "bg-success-2"}`} style={{ width: `${subPct}%` }} />
-                              <div className="h-full flex-1 bg-bg-3" />
+                            <span className="ml-auto">
+                              <SpentBar spent={subSpent} budget={subBudget} />
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-black">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 align-middle whitespace-nowrap">
+                        {subBudget > 0 ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm text-black">{formatCurrency(subProjected)}</span>
+                            <span className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
+                              {subOverBudget ? "Over Budget" : "On track"}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-black">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 align-middle">
+                        {sub.members.length > 0 ? (
+                          <div className="flex items-center">
+                            <div className="flex -space-x-2">
+                              {sub.members.slice(0, 4).map((m, i) =>
+                                m.picture ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img key={i} src={m.picture} alt={m.name ?? ""} className="h-6 w-6 rounded-full border-2 border-white object-cover" />
+                                ) : (
+                                  <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-500">
+                                    {(m.name ?? "?").charAt(0)}
+                                  </div>
+                                ),
+                              )}
                             </div>
+                            {subExtraMembers > 0 && (
+                              <span className="ml-1.5 text-[12px] text-slate-500">+{subExtraMembers}</span>
+                            )}
                           </div>
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle w-[179px]">
-                          <div className="flex items-center gap-2.5">
-                            <span className="text-[16px] text-text-1 whitespace-nowrap">{formatCurrency(subProjected)}</span>
-                            <span className={`rounded-lg px-2 py-1 text-[13px] whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
-                              {subOverBudget ? "Will Exceed" : "On track"}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle w-[136px]">
-                          <div className="flex -space-x-2.5">
-                            {sub.members.slice(0, 4).map((m, i) => (
-                              <UserAvatar key={i} name={m.name ?? "?"} picture={m.picture} size={24} />
-                            ))}
-                          </div>
-                        </td>
-                        <td className="bg-bg-white px-4 align-middle w-[93px]">
-                          <div className="flex justify-center">
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
-                                <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                        ) : (
+                          <span className="text-sm text-black">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 align-middle text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600"><MoreVertical className="h-4 w-4" /></Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
