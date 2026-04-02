@@ -43,14 +43,17 @@ import {
   fetchSubteams,
   fetchGuardrails,
   createTeam,
+  updateTeam,
+  deleteTeam,
+  updateTeamBudget,
   createGuardrail,
   toggleGuardrail as apiToggleGuardrail,
   deleteGuardrail as apiDeleteGuardrail,
-  updateTeamBudget,
   updateMemberRole,
   removeTeamMember,
   inviteTeamMember,
   type TeamMember,
+  type SubteamListItem,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 
@@ -120,6 +123,104 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
             </Button>
           </DialogFooter>
         </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListItem; parentTeamId: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [monthlyBudget, setMonthlyBudget] = useState("");
+  const qc = useQueryClient();
+
+  const handleOpen = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (isOpen) {
+      setName(sub.name);
+      setDescription(sub.description ?? "");
+      setMonthlyBudget(sub.monthlyBudgetCents ? String(sub.monthlyBudgetCents / 100) : "");
+    }
+  };
+
+  const updateMutation = useMutation({
+    mutationFn: () => updateTeam(sub.id, { name: name.trim(), description: description.trim() || undefined }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }); setOpen(false); },
+  });
+
+  const budgetMut = useMutation({
+    mutationFn: (budgetUsd: number) => updateTeamBudget(sub.id, budgetUsd),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }),
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    updateMutation.mutate();
+    const budgetNum = monthlyBudget ? parseFloat(monthlyBudget) : null;
+    if (budgetNum && budgetNum > 0 && budgetNum !== sub.monthlyBudgetCents / 100) {
+      budgetMut.mutate(budgetNum);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit Subteam</DialogTitle>
+          <DialogDescription>Update the subteam details.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-subteam-name">Name</Label>
+            <Input id="edit-subteam-name" value={name} onChange={(e) => setName(e.target.value)} required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-subteam-desc">Description</Label>
+            <Textarea id="edit-subteam-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-subteam-budget">Monthly Budget ($)</Label>
+            <Input id="edit-subteam-budget" type="number" min="0" step="0.01" value={monthlyBudget} onChange={(e) => setMonthlyBudget(e.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button type="submit" disabled={updateMutation.isPending || !name.trim()}>
+              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId: string; subName: string; parentTeamId: string; children: React.ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => deleteTeam(subId),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }); setOpen(false); },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Delete Subteam</DialogTitle>
+          <DialogDescription>
+            Are you sure you want to delete <strong>{subName}</strong>? This action cannot be undone.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="destructive" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            {mutation.isPending ? "Deleting..." : "Delete"}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -427,8 +528,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600"><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                            <EditSubteamDialog sub={sub} parentTeamId={id}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                            </EditSubteamDialog>
+                            <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
+                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                            </DeleteSubteamDialog>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>

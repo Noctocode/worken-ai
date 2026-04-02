@@ -109,6 +109,27 @@ export class TeamsService {
     return updated;
   }
 
+  async deleteTeam(teamId: string, userId: string) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can delete the team');
+    }
+
+    // Remove all members first (cascade should handle this, but be explicit)
+    await this.db
+      .delete(teamMembers)
+      .where(eq(teamMembers.teamId, teamId));
+
+    await this.db.delete(teams).where(eq(teams.id, teamId));
+
+    return { success: true };
+  }
+
   async updateBudget(
     teamId: string,
     userId: string,

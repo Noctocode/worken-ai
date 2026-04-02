@@ -67,6 +67,14 @@ export class TeamsController {
     );
   }
 
+  @Delete(':id')
+  deleteTeam(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.deleteTeam(id, user.id);
+  }
+
   @Patch(':id')
   update(
     @Param('id') id: string,
