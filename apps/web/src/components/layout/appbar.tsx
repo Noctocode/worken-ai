@@ -13,7 +13,9 @@ import {
   Users,
   ChevronDown,
   Plus,
+  X,
 } from "lucide-react";
+import { Popover } from "radix-ui";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -280,31 +282,70 @@ export const Appbar = () => {
             <Search className="h-6 w-6" />
           </button>
 
-          <div className="flex items-center gap-1">
-            <div className="flex items-center">
-              {visibleMembers.map((m, i) =>
-                m.userPicture ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    key={m.id}
-                    src={m.userPicture}
-                    alt={m.userName ?? ""}
-                    className={`${i > 0 ? "ml-[-10px]" : ""} h-8 w-8 shrink-0 rounded-full object-cover`}
-                  />
-                ) : (
-                  <div
-                    key={m.id}
-                    className={`${i > 0 ? "ml-[-10px]" : ""} flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white`}
-                  >
-                    {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
-                  </div>
-                ),
-              )}
-            </div>
-            {extraCount > 0 && (
-              <span className="ml-1 text-[11px] text-text-3">+{extraCount}</span>
-            )}
-          </div>
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <button className="flex items-center gap-1 cursor-pointer">
+                <div className="flex items-center">
+                  {visibleMembers.map((m, i) =>
+                    m.userPicture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={m.id}
+                        src={m.userPicture}
+                        alt={m.userName ?? ""}
+                        className={`${i > 0 ? "ml-[-10px]" : ""} h-8 w-8 shrink-0 rounded-full object-cover`}
+                      />
+                    ) : (
+                      <div
+                        key={m.id}
+                        className={`${i > 0 ? "ml-[-10px]" : ""} flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white`}
+                      >
+                        {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                    ),
+                  )}
+                </div>
+                {extraCount > 0 && (
+                  <span className="ml-1 text-[11px] text-text-3">+{extraCount}</span>
+                )}
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                align="end"
+                sideOffset={8}
+                className="z-50 w-[320px] rounded-lg border border-border-2 bg-bg-white p-4 shadow-lg"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[14px] font-bold text-text-1">Team Members ({members.length})</span>
+                  <Popover.Close asChild>
+                    <button className="cursor-pointer text-text-3 hover:text-text-1">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </Popover.Close>
+                </div>
+                <div className="flex flex-col gap-3 max-h-[300px] overflow-auto">
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3">
+                      {m.userPicture ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={m.userPicture} alt={m.userName ?? ""} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                      ) : (
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white">
+                          {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-text-1 truncate">{m.userName ?? m.email}</p>
+                        <p className="text-[11px] text-text-3 truncate">{m.email}</p>
+                      </div>
+                      <span className="text-[11px] text-text-3 capitalize shrink-0">{m.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
 
           {_project?.teamId && (
             <InviteMemberDialog teamId={_project.teamId}>
