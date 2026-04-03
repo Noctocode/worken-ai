@@ -14,6 +14,7 @@ import {
   ChevronDown,
   Plus,
   X,
+  CheckCircle,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useQuery } from "@tanstack/react-query";
@@ -337,7 +338,14 @@ export const Appbar = () => {
                       )}
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium text-text-1 truncate">{m.userName ?? m.email}</p>
-                        <p className="text-[11px] text-text-3 truncate">{m.email}</p>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-text-3 truncate">{m.email}</span>
+                          {m.status === "accepted" ? (
+                            <CheckCircle className="h-3 w-3 shrink-0 text-success-7" />
+                          ) : (
+                            <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-warning-2 text-warning-5">Pending</span>
+                          )}
+                        </div>
                       </div>
                       <span className="text-[11px] text-text-3 capitalize shrink-0">{m.role}</span>
                     </div>
