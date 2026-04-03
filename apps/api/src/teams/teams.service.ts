@@ -397,13 +397,17 @@ export class TeamsService {
       })
       .returning();
 
-    await this.mailService.sendTeamInvitation({
-      to: email,
-      teamName: team.name,
-      inviterName: inviter?.name ?? 'A team member',
-      role,
-      token,
-    });
+    try {
+      await this.mailService.sendTeamInvitation({
+        to: email,
+        teamName: team.name,
+        inviterName: inviter?.name ?? 'A team member',
+        role,
+        token,
+      });
+    } catch (err) {
+      console.error('Failed to send invitation email:', err);
+    }
 
     return member;
   }

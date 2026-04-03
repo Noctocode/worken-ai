@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
+import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { fetchProject, fetchTeam } from "@/lib/api";
@@ -305,10 +306,14 @@ export const Appbar = () => {
             )}
           </div>
 
-          <Button variant="plusAction" className="rounded-lg w-[174px]">
-            <Plus className="h-4 w-4 text-text-white" />
-            Invite Member
-          </Button>
+          {_project?.teamId && (
+            <InviteMemberDialog teamId={_project.teamId}>
+              <Button variant="plusAction" className="rounded-lg w-[174px]">
+                <Plus className="h-4 w-4 text-text-white" />
+                Invite Member
+              </Button>
+            </InviteMemberDialog>
+          )}
         </div>
       </header>
     );
