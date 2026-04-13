@@ -301,20 +301,23 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
-          <button
-            className="flex h-[40px] w-[40px] items-center justify-center text-text-3 transition-colors hover:text-text-1"
+          <Button
+            variant="ghost"
+            className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
             title="Toggle dark mode"
           >
-            <Moon className="h-5 w-5" />
-          </button>
+            <Moon className="h-5 w-5 text-text-3" />
+          </Button>
         ) : (
-          <button
-            className="flex h-[40px] w-full items-center gap-3 rounded-lg py-2 text-text-3 transition-colors hover:text-text-1"
+          <Button
+            variant="ghost"
+            size="nav"
+            className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
             title="Toggle dark mode"
           >
-            <Moon className="h-5 w-5 shrink-0" />
-            <span className="text-sm">Light / Dark</span>
-          </button>
+            <Moon className="h-5 w-5 shrink-0 text-text-3" />
+            <span>Light / Dark</span>
+          </Button>
         )}
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
