@@ -42,7 +42,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";
-  const inactiveClass = "text-text-3 hover:text-text-1";
+  const inactiveClass = "text-text-3 font-normal hover:text-text-1";
   const inactiveIconClass = "text-text-3";
 
   const newProjectButton = collapsed ? (
@@ -255,7 +255,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
               title="Chat"
             >
               <MessageSquare className="h-5 w-5 shrink-0" />
@@ -269,7 +269,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
@@ -278,7 +278,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
@@ -287,7 +287,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
