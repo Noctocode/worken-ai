@@ -92,7 +92,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h4 className="text-text-1">{teamName}</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{teamName}</h4>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -148,7 +148,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h4 className="text-text-1">{userName}</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{userName}</h4>
         </div>
         <div className="flex items-center gap-1">
           <Button
@@ -261,7 +261,7 @@ export const Appbar = () => {
             </Button>
           </Link>
 
-          <h4 className="text-text-1">{_project?.name ?? "Loading..."}</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{_project?.name ?? "Loading..."}</h4>
 
           {_project?.teamId && (
             <div className="flex items-center gap-2 rounded-lg bg-bg-white px-2 py-1">
@@ -399,7 +399,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h4 className="text-text-1">Create Project</h4>
+          <h4 className="text-[26px] font-bold text-text-1">Create Project</h4>
         </div>
       </header>
     );
@@ -426,7 +426,7 @@ export const Appbar = () => {
         </Sheet>
 
         {config.title ? (
-          <h4 className="text-text-1">{config.title}</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{config.title}</h4>
         ) : (
           <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
             {breadcrumbs.map((crumb, i) => {
