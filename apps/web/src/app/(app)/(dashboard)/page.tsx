@@ -24,6 +24,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -291,9 +292,9 @@ export default function WorkenDashboard() {
             </Card>
           </Link>
         ) : (
-          <div
-            title="Requires a paid plan or an Advanced role in a team."
-            aria-disabled="true"
+          <DisabledReasonTooltip
+            disabled
+            reason="Requires a paid plan or an Advanced role in a team."
           >
             <Card className="flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center opacity-50 cursor-not-allowed">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
@@ -308,7 +309,7 @@ export default function WorkenDashboard() {
                 </p>
               </div>
             </Card>
-          </div>
+          </DisabledReasonTooltip>
         )}
       </div>
         </>

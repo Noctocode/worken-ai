@@ -22,6 +22,7 @@ import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
 
@@ -113,23 +114,29 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       <div className="flex justify-center py-[60px]">
         {user?.canCreateProject ? (
           newProjectButton
-        ) : collapsed ? (
-          <Button
-            className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
-            disabled
-            title="Requires a paid plan or an Advanced role in a team."
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-          </Button>
         ) : (
-          <Button
-            className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
+          <DisabledReasonTooltip
             disabled
-            title="Requires a paid plan or an Advanced role in a team."
+            reason="Requires a paid plan or an Advanced role in a team."
+            className={collapsed ? undefined : "block w-full"}
           >
-            <Plus className="h-4 w-4 shrink-0" />
-            <span>New Project</span>
-          </Button>
+            {collapsed ? (
+              <Button
+                className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+              </Button>
+            ) : (
+              <Button
+                className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span>New Project</span>
+              </Button>
+            )}
+          </DisabledReasonTooltip>
         )}
       </div>
 

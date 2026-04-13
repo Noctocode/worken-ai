@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-query";
 import { useState } from "react";
 import { Toaster } from "sonner";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { fetchCurrentUser, type User } from "@/lib/api";
 
 interface AuthContextValue {
@@ -48,7 +49,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <TooltipProvider>{children}</TooltipProvider>
       <Toaster position="top-right" richColors closeButton />
     </QueryClientProvider>
   );

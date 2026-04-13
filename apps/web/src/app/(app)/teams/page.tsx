@@ -13,6 +13,7 @@ import {
 import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { AddModelDialog } from "@/components/add-model-dialog";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useAuth } from "@/components/providers";
 import { fetchTeams, fetchOrgUsers, fetchModels } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
@@ -98,21 +99,22 @@ export default function TeamsPage() {
             value={teamSearch}
             onChange={(e) => setTeamSearch(e.target.value)}
           />
-          <CreateTeamDialog>
-            <Button
-              variant="plusAction"
-              className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!user?.isPaid}
-              title={
-                user?.isPaid
-                  ? undefined
-                  : "Requires a paid plan to create teams."
-              }
-            >
-              <Plus className="h-4 w-4 text-white" />
-              Create Team
-            </Button>
-          </CreateTeamDialog>
+          <DisabledReasonTooltip
+            disabled={!user?.isPaid}
+            reason="Requires a paid plan or an Advanced role in a team."
+            className="w-full sm:w-auto"
+          >
+            <CreateTeamDialog>
+              <Button
+                variant="plusAction"
+                className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!user?.isPaid}
+              >
+                <Plus className="h-4 w-4 text-white" />
+                Create Team
+              </Button>
+            </CreateTeamDialog>
+          </DisabledReasonTooltip>
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
           <table className="w-full min-w-[800px]">
@@ -197,21 +199,22 @@ export default function TeamsPage() {
             value={userSearch}
             onChange={(e) => setUserSearch(e.target.value)}
           />
-          <InviteUserDialog>
-            <Button
-              variant="plusAction"
-              className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!user?.isPaid}
-              title={
-                user?.isPaid
-                  ? undefined
-                  : "Requires a paid plan to invite users."
-              }
-            >
-              <Plus className="h-4 w-4 text-white" />
-              Invite User
-            </Button>
-          </InviteUserDialog>
+          <DisabledReasonTooltip
+            disabled={!user?.isPaid}
+            reason="Requires a paid plan or an Advanced role in a team."
+            className="w-full sm:w-auto"
+          >
+            <InviteUserDialog>
+              <Button
+                variant="plusAction"
+                className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!user?.isPaid}
+              >
+                <Plus className="h-4 w-4 text-white" />
+                Invite User
+              </Button>
+            </InviteUserDialog>
+          </DisabledReasonTooltip>
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
           <table className="w-full min-w-[850px]">
