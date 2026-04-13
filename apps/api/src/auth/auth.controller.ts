@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
   Post,
@@ -8,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
+import { TeamsService } from '../teams/teams.service.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
@@ -20,9 +23,26 @@ const COOKIE_OPTIONS = {
   path: '/',
 };
 
+function setSessionCookies(
+  res: Res,
+  tokens: { accessToken: string; refreshToken: string },
+) {
+  res.cookie('access_token', tokens.accessToken, {
+    ...COOKIE_OPTIONS,
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie('refresh_token', tokens.refreshToken, {
+    ...COOKIE_OPTIONS,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+}
+
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly teamsService: TeamsService,
+  ) {}
 
   @Public()
   @Get('google')
@@ -46,14 +66,7 @@ export class AuthController {
       user.isPaid,
     );
 
-    res.cookie('access_token', tokens.accessToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 15 * 60 * 1000, // 15 minutes
-    });
-    res.cookie('refresh_token', tokens.refreshToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    setSessionCookies(res, tokens);
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const cookies = req.cookies as Record<string, string> | undefined;
@@ -79,16 +92,113 @@ export class AuthController {
 
     const tokens = await this.authService.refreshAccessToken(refreshToken);
 
-    res.cookie('access_token', tokens.accessToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 15 * 60 * 1000,
-    });
-    res.cookie('refresh_token', tokens.refreshToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    setSessionCookies(res, tokens);
 
     res.json({ message: 'Tokens refreshed' });
+  }
+
+  @Public()
+  @Post('signup')
+  async signup(
+    @Body()
+    body: {
+      email?: string;
+      password?: string;
+      name?: string;
+      token?: string;
+    },
+    @Response() res: Res,
+  ) {
+    if (!body?.email || !body?.password || !body?.name) {
+      throw new BadRequestException('Email, password, and name are required');
+    }
+    const email = body.email.trim().toLowerCase();
+
+    // Defense-in-depth: if signing up via an invite, the submitted email must
+    // match the invite's email. The /register UI disables the field when it
+    // has ?email=, so this rejects tampering.
+    if (body.token) {
+      const invite = await this.teamsService.getInviteByToken(body.token);
+      if (invite.email.toLowerCase() !== email) {
+        throw new BadRequestException(
+          'Please sign up using the email address the invitation was sent to',
+        );
+      }
+    }
+
+    const user = await this.authService.signupWithPassword({
+      email,
+      password: body.password,
+      name: body.name,
+    });
+
+    // Accept the specific invite the user came from (if any) up-front so its
+    // error path (expired/revoked) surfaces clearly, then sweep up any
+    // sibling invites addressed to the same email.
+    if (body.token) {
+      try {
+        await this.teamsService.acceptInviteByToken(
+          body.token,
+          user.id,
+          user.email,
+        );
+      } catch {
+        // Best-effort: the user account is already created. The sweep below
+        // will still accept any live sibling invites.
+      }
+    }
+    await this.authService.processTeamInvitations(user.id, user.email);
+
+    const tokens = await this.authService.generateTokens(
+      user.id,
+      user.email,
+      user.isPaid,
+    );
+    setSessionCookies(res, tokens);
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+      },
+    });
+  }
+
+  @Public()
+  @Post('login')
+  async login(
+    @Body() body: { email?: string; password?: string },
+    @Response() res: Res,
+  ) {
+    if (!body?.email || !body?.password) {
+      throw new BadRequestException('Email and password are required');
+    }
+
+    const user = await this.authService.loginWithPassword(
+      body.email,
+      body.password,
+    );
+
+    // A user signing back in may have received new invites since last login.
+    await this.authService.processTeamInvitations(user.id, user.email);
+
+    const tokens = await this.authService.generateTokens(
+      user.id,
+      user.email,
+      user.isPaid,
+    );
+    setSessionCookies(res, tokens);
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        picture: user.picture,
+      },
+    });
   }
 
   @Post('logout')
