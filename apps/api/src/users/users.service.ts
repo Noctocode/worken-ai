@@ -4,18 +4,16 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { users, teamMembers, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
-import { EncryptionService } from '../openrouter/encryption.service.js';
 
 @Injectable()
 export class UsersService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly provisioningService: OpenRouterProvisioningService,
-    private readonly encryptionService: EncryptionService,
   ) {}
 
   async findAll() {
