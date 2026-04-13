@@ -89,25 +89,22 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between"}`}>
           <Link
             href="/"
-            className="flex cursor-pointer items-center group"
+            className="relative flex cursor-pointer items-center group"
           >
-            {collapsed ? (
-              <Image
-                src="/main-logo.png"
-                alt="WorkenAI"
-                width={30}
-                height={14}
-                className="shrink-0"
-              />
-            ) : (
-              <Image
-                src="/full-logo.png"
-                alt="WorkenAI"
-                width={140}
-                height={32}
-                className="shrink-0"
-              />
-            )}
+            <Image
+              src="/main-logo.png"
+              alt="WorkenAI"
+              width={30}
+              height={14}
+              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-100" : "opacity-0 absolute"}`}
+            />
+            <Image
+              src="/full-logo.png"
+              alt="WorkenAI"
+              width={140}
+              height={32}
+              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
+            />
           </Link>
         </div>
       </div>
