@@ -137,6 +137,7 @@ export default function CreateProjectPage() {
 
   const [projectName, setProjectName] = useState("");
   const [nameError, setNameError] = useState(false);
+  const [membersError, setMembersError] = useState(false);
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
   const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -174,8 +175,10 @@ export default function CreateProjectPage() {
 
   const handleSubmit = () => {
     const name = projectName.trim();
-    if (!name) {
-      setNameError(true);
+    const needsMembers = projectType === "team" && selectedMembers.length === 0;
+    if (!name || needsMembers) {
+      if (!name) setNameError(true);
+      if (needsMembers) setMembersError(true);
       return;
     }
     const agent = AGENTS.find((a) => a.id === selectedAgent);
@@ -212,7 +215,7 @@ export default function CreateProjectPage() {
 
             <div className="flex rounded-lg border border-border-3 overflow-hidden">
               <button
-                onClick={() => setProjectType("personal")}
+                onClick={() => { setProjectType("personal"); setMembersError(false); }}
                 className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] cursor-pointer transition-colors ${
                   projectType === "personal"
                     ? "bg-primary-6 text-white"
@@ -251,11 +254,16 @@ export default function CreateProjectPage() {
 
             {/* Team members picker */}
             {projectType === "team" && (
-              <MemberPicker
-                selected={selectedMembers}
-                onAdd={(u) => setSelectedMembers((prev) => [...prev, { id: u.id, name: u.name ?? u.email, email: u.email }])}
-                onRemove={(id) => setSelectedMembers((prev) => prev.filter((m) => m.id !== id))}
-              />
+              <div className="flex flex-col w-full">
+                <MemberPicker
+                  selected={selectedMembers}
+                  onAdd={(u) => { setSelectedMembers((prev) => [...prev, { id: u.id, name: u.name ?? u.email, email: u.email }]); setMembersError(false); }}
+                  onRemove={(id) => setSelectedMembers((prev) => prev.filter((m) => m.id !== id))}
+                />
+                {membersError && (
+                  <span className="mt-1 text-[13px] text-danger-5">At least one member is required</span>
+                )}
+              </div>
             )}
           </div>
 
