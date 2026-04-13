@@ -147,7 +147,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className="h-5 w-5 shrink-0" />
+                <FolderOpen className="size-5 shrink-0" />
               </Link>
             </Button>
             <Button
@@ -157,7 +157,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className="h-5 w-5 shrink-0" />
+                <Layers className="size-5 shrink-0" />
               </Link>
             </Button>
             <Button
@@ -167,7 +167,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className="h-5 w-5 shrink-0" />
+                <Users className="size-5 shrink-0" />
               </Link>
             </Button>
 
@@ -180,7 +180,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Chat"
             >
-              <MessageSquare className="h-5 w-5 shrink-0" />
+              <MessageSquare className="size-5 shrink-0" />
             </Button>
 
             {/* Divider */}
@@ -192,21 +192,21 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Observability"
             >
-              <BarChart2 className="h-5 w-5 shrink-0" />
+              <BarChart2 className="size-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
               className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <ShieldCheck className="size-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
               className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
-              <Library className="h-5 w-5 shrink-0" />
+              <Library className="size-5 shrink-0" />
             </Button>
           </div>
         ) : (
@@ -219,7 +219,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className={`h-5 w-5 shrink-0 ${pathname === "/" ? activeIconClass : inactiveIconClass}`} />
+                <FolderOpen className={`size-5 shrink-0 ${pathname === "/" ? activeIconClass : inactiveIconClass}`} />
                 <span>Ongoing Projects</span>
               </Link>
             </Button>
@@ -231,7 +231,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className={`h-5 w-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`} />
+                <Layers className={`size-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`} />
                 <span>Compare Models</span>
               </Link>
             </Button>
@@ -243,7 +243,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className={`h-5 w-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`} />
+                <Users className={`size-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`} />
                 <span>Team Management</span>
               </Link>
             </Button>
@@ -258,7 +258,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Chat"
             >
-              <MessageSquare className="h-5 w-5 shrink-0 text-text-3" />
+              <MessageSquare className="size-5 shrink-0 text-text-3" />
               <span>AI Chat</span>
             </Button>
 
@@ -272,7 +272,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Observability"
             >
-              <BarChart2 className="h-5 w-5 shrink-0 text-text-3" />
+              <BarChart2 className="size-5 shrink-0 text-text-3" />
               <span>Observability</span>
             </Button>
             <Button
@@ -281,7 +281,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5 shrink-0 text-text-3" />
+              <ShieldCheck className="size-5 shrink-0 text-text-3" />
               <span>Guardrails</span>
             </Button>
             <Button
@@ -290,7 +290,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
-              <Library className="h-5 w-5 shrink-0 text-text-3" />
+              <Library className="size-5 shrink-0 text-text-3" />
               <span>Prompt Library</span>
             </Button>
           </div>
@@ -315,7 +315,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
             title="Toggle dark mode"
           >
-            <Moon className="h-5 w-5 shrink-0 text-text-3" />
+            <Moon className="size-5 shrink-0 text-text-3" />
             <span>Light / Dark</span>
           </Button>
         )}
