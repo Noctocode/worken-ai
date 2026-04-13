@@ -58,13 +58,17 @@ function RegisterContent() {
         name: name.trim(),
         token: token ?? undefined,
       }),
-    onSuccess: () => {
-      toast.success(
-        inviteQuery.data
-          ? `Welcome to ${inviteQuery.data.teamName}!`
-          : "Account created",
-      );
-      window.location.href = "/";
+    onSuccess: (result) => {
+      if (result.verified) {
+        toast.success(
+          inviteQuery.data
+            ? `Welcome to ${inviteQuery.data.teamName}!`
+            : "Account created",
+        );
+        window.location.href = "/setup-profile";
+      } else {
+        window.location.href = `/check-email?email=${encodeURIComponent(result.email)}`;
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message);

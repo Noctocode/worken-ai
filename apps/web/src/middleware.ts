@@ -9,7 +9,11 @@ export function middleware(request: NextRequest) {
   // Invite acceptance must be reachable without an account — that's the entry
   // point for users who haven't signed up yet.
   const isInvitePage = request.nextUrl.pathname === "/invite";
-  const isPublic = isLoginPage || isRegisterPage || isInvitePage;
+  // Post-signup confirmation screen — the user has just submitted /register
+  // and has no cookies yet; they must still reach this page.
+  const isCheckEmailPage = request.nextUrl.pathname === "/check-email";
+  const isPublic =
+    isLoginPage || isRegisterPage || isInvitePage || isCheckEmailPage;
 
   // If user has any auth token and tries to visit /login or /register, redirect to home
   if ((isLoginPage || isRegisterPage) && (accessToken || refreshToken)) {

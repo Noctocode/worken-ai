@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Mail, Lock, LogIn } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -15,14 +16,32 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { loginWithPassword } from "@/lib/api";
+import {
+  AuthApiError,
+  loginWithPassword,
+  resendVerificationEmail,
+} from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export default function LoginPage() {
+function LoginContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+
+  // Surface /auth/verify redirect errors (expired / invalid link).
+  useEffect(() => {
+    const verifyError = searchParams.get("verify_error");
+    if (verifyError === "expired") {
+      toast.error("That verification link has expired. Request a new one below.");
+    } else if (verifyError === "invalid") {
+      toast.error(
+        "That verification link is invalid or has already been used.",
+      );
+    }
+  }, [searchParams]);
 
   const mutation = useMutation({
     mutationFn: () => loginWithPassword(email.trim(), password),
@@ -30,13 +49,31 @@ export default function LoginPage() {
       window.location.href = "/";
     },
     onError: (err: Error) => {
+      if (err instanceof AuthApiError && err.code === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(email.trim());
+        return;
+      }
       toast.error(err.message);
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      if (!unverifiedEmail) return;
+      await resendVerificationEmail(unverifiedEmail);
+    },
+    onSuccess: () => {
+      toast.success("Verification email sent. Please check your inbox.");
+    },
+    onError: () => {
+      toast.error("Couldn't resend right now. Please try again.");
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError(null);
+    setUnverifiedEmail(null);
     if (!email.trim()) {
       setValidationError("Please enter your email");
       return;
@@ -98,6 +135,27 @@ export default function LoginPage() {
                 {validationError}
               </p>
             )}
+            {unverifiedEmail && (
+              <div className="mt-4 rounded-md border border-warning-5 bg-warning-1 p-3 text-left text-sm">
+                <p className="text-text-1 font-medium mb-1">
+                  Please verify your email before signing in.
+                </p>
+                <p className="text-text-2 mb-2">
+                  We sent a confirmation link to{" "}
+                  <span className="font-medium">{unverifiedEmail}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => resendMutation.mutate()}
+                  disabled={resendMutation.isPending}
+                  className="text-primary-6 hover:text-primary-7 font-medium disabled:opacity-60"
+                >
+                  {resendMutation.isPending
+                    ? "Resending…"
+                    : "Resend verification email"}
+                </button>
+              </div>
+            )}
             <Button
               type="submit"
               disabled={mutation.isPending}
@@ -137,5 +195,17 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-bg-1" />
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

@@ -50,6 +50,8 @@ export interface User {
   name: string | null;
   picture: string | null;
   isPaid: boolean;
+  emailVerified: boolean;
+  profileType: "company" | "personal" | null;
   canCreateProject: boolean;
 }
 
@@ -73,20 +75,33 @@ export async function logout(): Promise<void> {
   window.location.href = "/login";
 }
 
-export interface AuthResponse {
-  user: {
-    id: string;
-    email: string;
-    name: string | null;
-    picture: string | null;
-  };
+export interface AuthUserSummary {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
 }
 
-async function parseAuthError(res: Response): Promise<string> {
+export type SignupResponse =
+  | { verified: true; user: AuthUserSummary }
+  | { verified: false; email: string; message: string };
+
+export class AuthApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "AuthApiError";
+    this.code = code;
+  }
+}
+
+async function parseAuthError(res: Response): Promise<AuthApiError> {
   const body = await res.json().catch(() => ({}));
-  if (typeof body?.message === "string") return body.message;
-  if (Array.isArray(body?.message)) return body.message.join(", ");
-  return "Something went wrong";
+  let message = "Something went wrong";
+  if (typeof body?.message === "string") message = body.message;
+  else if (Array.isArray(body?.message)) message = body.message.join(", ");
+  const code = typeof body?.code === "string" ? body.code : undefined;
+  return new AuthApiError(message, code);
 }
 
 export async function signupWithPassword(input: {
@@ -94,28 +109,53 @@ export async function signupWithPassword(input: {
   password: string;
   name: string;
   token?: string;
-}): Promise<AuthResponse> {
+}): Promise<SignupResponse> {
   const res = await apiFetch("/auth/signup", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
     skipAuthRedirect: true,
   });
-  if (!res.ok) throw new Error(await parseAuthError(res));
+  if (!res.ok) throw await parseAuthError(res);
   return res.json();
+}
+
+export async function resendVerificationEmail(email: string): Promise<void> {
+  await apiFetch("/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  });
+}
+
+export async function setProfileType(
+  profileType: "company" | "personal",
+): Promise<User> {
+  const res = await apiFetch("/auth/profile-type", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profileType }),
+  });
+  if (!res.ok) throw new Error("Failed to save profile type");
+  return res.json();
+}
+
+export interface LoginResponse {
+  user: AuthUserSummary;
 }
 
 export async function loginWithPassword(
   email: string,
   password: string,
-): Promise<AuthResponse> {
+): Promise<LoginResponse> {
   const res = await apiFetch("/auth/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
     skipAuthRedirect: true,
   });
-  if (!res.ok) throw new Error(await parseAuthError(res));
+  if (!res.ok) throw await parseAuthError(res);
   return res.json();
 }
 
