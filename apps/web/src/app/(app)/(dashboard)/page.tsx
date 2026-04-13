@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   PlusCircle,
   MoreVertical,
@@ -52,6 +52,7 @@ function formatDate(dateStr: string) {
 }
 
 function ProjectCard({ project }: { project: Project }) {
+  const router = useRouter();
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -66,8 +67,10 @@ function ProjectCard({ project }: { project: Project }) {
 
   return (
     <>
-      <Link href={`/projects/${project.id}`} className="block h-full">
-        <div className="group flex flex-col bg-bg-white cursor-pointer h-full transition-all duration-200 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]">
+      <div
+        className="group flex flex-col bg-bg-white cursor-pointer h-full transition-all duration-200 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]"
+        onClick={() => router.push(`/projects/${project.id}`)}
+      >
           {/* Top section */}
           <div className="flex-1 flex flex-col gap-2 border border-border-2 px-6 py-4">
             <div className="flex items-center justify-between">
@@ -131,7 +134,6 @@ function ProjectCard({ project }: { project: Project }) {
             </div>
           </div>
         </div>
-      </Link>
       <AddDocumentDialog
         projectId={project.id}
         open={docDialogOpen}
