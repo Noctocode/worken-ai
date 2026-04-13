@@ -101,7 +101,7 @@ export default function TeamsPage() {
           {user?.isPaid && (
             <CreateTeamDialog>
               <Button variant="plusAction" className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 text-black-900" />
+                <Plus className="h-4 w-4 text-white" />
                 Create Team
               </Button>
             </CreateTeamDialog>
@@ -193,7 +193,7 @@ export default function TeamsPage() {
           {user?.isPaid && (
             <InviteUserDialog>
               <Button variant="plusAction" className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 text-black-900" />
+                <Plus className="h-4 w-4 text-white" />
                 Invite User
               </Button>
             </InviteUserDialog>
@@ -278,7 +278,7 @@ export default function TeamsPage() {
           />
           <AddModelDialog>
             <Button variant="plusAction" className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 text-black-900" />
+              <Plus className="h-4 w-4 text-white" />
               Add New Model
             </Button>
           </AddModelDialog>
