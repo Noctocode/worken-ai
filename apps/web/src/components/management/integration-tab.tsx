@@ -210,7 +210,7 @@ export function IntegrationTab() {
           onChange={(e) => setSearch(e.target.value)}
         />
         <Button variant="plusAction" onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 text-black-900" />
+          <Plus className="h-4 w-4 text-white" />
           Add Custom LLM
         </Button>
       </div>

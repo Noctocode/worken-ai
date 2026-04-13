@@ -58,7 +58,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   ) : (
     <Button
       asChild
-      className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7"
+      className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 text-[16px] font-normal"
       title="New Project"
     >
       <Link href="/projects/create">

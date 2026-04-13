@@ -64,7 +64,7 @@ export const Appbar = () => {
 
     return (
       <header
-        className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
+        className={`sticky top-0 z-20 flex py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
       >
         <div className="flex items-center gap-2">
           {/* Mobile Menu Trigger */}
@@ -120,7 +120,7 @@ export const Appbar = () => {
 
     return (
       <header
-        className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
+        className={`sticky top-0 z-20 flex py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
       >
         <div className="flex items-center gap-2">
           {/* Mobile Menu Trigger */}
@@ -373,7 +373,7 @@ export const Appbar = () => {
   if (config.appbarType === "createProject") {
     return (
       <header
-        className={`sticky top-0 z-20 flex h-[4.5rem] items-center border-b border-bg-1 px-6 ${config.bg}`}
+        className={`sticky top-0 z-20 flex py-6 items-center border-b border-bg-1 px-6 ${config.bg}`}
       >
         <div className="flex items-center gap-2">
           <Sheet>
@@ -408,7 +408,7 @@ export const Appbar = () => {
 
   /* ── Default appbar ──────────────────────────────────────────────────── */
   return (
-    <header className={`sticky top-0 z-20 flex h-[4.5rem] items-center justify-between px-6 ${config.bg}`}>
+    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
