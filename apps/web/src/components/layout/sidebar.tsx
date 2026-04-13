@@ -42,7 +42,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";
-  const inactiveClass = "text-text-3 font-normal hover:text-text-1";
+  const inactiveClass = "text-text-2 font-normal hover:text-text-1";
   const inactiveIconClass = "text-text-3";
 
   const newProjectButton = collapsed ? (
@@ -177,7 +177,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Chat"
             >
               <MessageSquare className="h-5 w-5 shrink-0" />
@@ -189,21 +189,21 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             {/* Intelligence icons */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
@@ -219,7 +219,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className={`h-5 w-5 shrink-0 ${pathname === "/" ? activeIconClass : ""}`} />
+                <FolderOpen className={`h-5 w-5 shrink-0 ${pathname === "/" ? activeIconClass : inactiveIconClass}`} />
                 <span>Ongoing Projects</span>
               </Link>
             </Button>
@@ -231,7 +231,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className={`h-5 w-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : ""}`} />
+                <Layers className={`h-5 w-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`} />
                 <span>Compare Models</span>
               </Link>
             </Button>
@@ -243,7 +243,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className={`h-5 w-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : ""}`} />
+                <Users className={`h-5 w-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`} />
                 <span>Team Management</span>
               </Link>
             </Button>
@@ -255,10 +255,10 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Chat"
             >
-              <MessageSquare className="h-5 w-5 shrink-0" />
+              <MessageSquare className="h-5 w-5 shrink-0 text-text-3" />
               <span>AI Chat</span>
             </Button>
 
@@ -269,28 +269,28 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Observability"
             >
-              <BarChart2 className="h-5 w-5 shrink-0" />
+              <BarChart2 className="h-5 w-5 shrink-0 text-text-3" />
               <span>Observability</span>
             </Button>
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <ShieldCheck className="h-5 w-5 shrink-0 text-text-3" />
               <span>Guardrails</span>
             </Button>
             <Button
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-3 hover:text-text-1"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
-              <Library className="h-5 w-5 shrink-0" />
+              <Library className="h-5 w-5 shrink-0 text-text-3" />
               <span>Prompt Library</span>
             </Button>
           </div>
