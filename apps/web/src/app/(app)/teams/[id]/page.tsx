@@ -97,7 +97,12 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
 
   const mutation = useMutation({
     mutationFn: () => createTeam({ name: name.trim(), description: description.trim() || undefined, parentTeamId }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }); setOpen(false); setName(""); setDescription(""); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      setOpen(false); setName(""); setDescription("");
+    },
   });
 
   return (
@@ -146,7 +151,12 @@ function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListIt
 
   const updateMutation = useMutation({
     mutationFn: () => updateTeam(sub.id, { name: name.trim(), description: description.trim() || undefined }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }); setOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      setOpen(false);
+    },
   });
 
   const budgetMut = useMutation({
@@ -202,7 +212,12 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
 
   const mutation = useMutation({
     mutationFn: () => deleteTeam(subId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }); setOpen(false); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] });
+      qc.invalidateQueries({ queryKey: ["teams"] });
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      setOpen(false);
+    },
   });
 
   return (
@@ -298,7 +313,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   });
   const removeMutation = useMutation({
     mutationFn: (memberId: string) => removeTeamMember(id, memberId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+    },
   });
   const toggleMutation = useMutation({
     mutationFn: ({ guardrailId, isActive }: { guardrailId: string; isActive: boolean }) => apiToggleGuardrail(id, guardrailId, isActive),

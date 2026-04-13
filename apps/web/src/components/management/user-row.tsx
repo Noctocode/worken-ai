@@ -33,6 +33,7 @@ export function UserRow({ user }: { user: OrgUser }) {
     mutationFn: () => removeOrgUser(user.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
     },
   });
 
