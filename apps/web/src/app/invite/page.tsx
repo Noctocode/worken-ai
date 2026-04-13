@@ -2,291 +2,439 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import {
-  Infinity,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-} from "lucide-react";
+import Image from "next/image";
+import { Loader2, LogIn } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import {
-  fetchInviteDetails,
-  fetchCurrentUser,
-  acceptInvite,
-  type InviteDetails,
-  type User,
-} from "@/lib/api";
+import { Card } from "@/components/ui/card";
+import { apiFetch, fetchInviteDetails, fetchCurrentUser, acceptInvite, type InviteDetails, type User } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
+type LoadError =
+  | { kind: "not_found" }
+  | { kind: "expired"; inviterName?: string }
+  | { kind: "revoked" }
+  | { kind: "already_accepted" }
+  | { kind: "missing_token" }
+  | { kind: "unknown"; message: string };
+
 type PageState =
-  | { type: "loading" }
-  | { type: "error"; message: string }
-  | { type: "invite"; invite: InviteDetails; user: User | null }
-  | { type: "accepting" }
-  | { type: "accepted" }
-  | { type: "already_accepted" };
+  | { kind: "loading" }
+  | { kind: "load_error"; error: LoadError }
+  | { kind: "ready"; invite: InviteDetails; user: User | null }
+  | { kind: "mismatch"; invite: InviteDetails; user: User }
+  | { kind: "accepting"; invite: InviteDetails; user: User }
+  | { kind: "accept_error"; invite: InviteDetails; user: User; message: string }
+  | { kind: "accepted"; invite: InviteDetails };
+
+function classifyLoadError(message: string): LoadError {
+  const m = message.toLowerCase();
+  if (m.includes("not found")) return { kind: "not_found" };
+  if (m.includes("expired")) return { kind: "expired" };
+  if (m.includes("revoked")) return { kind: "revoked" };
+  if (m.includes("already been accepted")) return { kind: "already_accepted" };
+  return { kind: "unknown", message };
+}
+
+function classifyAcceptError(message: string): "expired" | "revoked" | "already_accepted" | "mismatch" | "other" {
+  const m = message.toLowerCase();
+  if (m.includes("expired")) return "expired";
+  if (m.includes("revoked")) return "revoked";
+  if (m.includes("already been accepted")) return "already_accepted";
+  if (m.includes("different email")) return "mismatch";
+  return "other";
+}
 
 function InviteContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [state, setState] = useState<PageState>({ type: "loading" });
+  const [state, setState] = useState<PageState>({ kind: "loading" });
 
   useEffect(() => {
     if (!token) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setState({ type: "error", message: "No invitation token provided." });
+      setState({ kind: "load_error", error: { kind: "missing_token" } });
       return;
     }
 
-    async function load() {
-      let invite: InviteDetails | null = null;
-      let user: User | null = null;
-      let inviteError: string | null = null;
+    let cancelled = false;
 
-      // Fetch invite details and auth state in parallel
+    async function load() {
       const [inviteResult, userResult] = await Promise.allSettled([
         fetchInviteDetails(token!),
         fetchCurrentUser(),
       ]);
+      if (cancelled) return;
 
-      if (inviteResult.status === "fulfilled") {
-        invite = inviteResult.value;
-      } else {
-        inviteError = inviteResult.reason?.message || "Invalid invitation";
-      }
+      const user =
+        userResult.status === "fulfilled" ? userResult.value : null;
 
-      if (userResult.status === "fulfilled") {
-        user = userResult.value;
-      }
-
-      if (inviteError) {
-        // If invite fetch failed but user is logged in, it might be already accepted
-        if (user && inviteError.includes("already been accepted")) {
-          setState({ type: "already_accepted" });
-        } else if (user && inviteError.includes("not found")) {
-          // Token consumed by processTeamInvitations during OAuth
-          setState({ type: "already_accepted" });
-        } else {
-          setState({ type: "error", message: inviteError });
-        }
+      if (inviteResult.status === "rejected") {
+        const message =
+          inviteResult.reason?.message || "Invalid invitation";
+        setState({ kind: "load_error", error: classifyLoadError(message) });
         return;
       }
 
-      setState({ type: "invite", invite: invite!, user });
+      const invite = inviteResult.value;
+      if (
+        user &&
+        user.email.toLowerCase() !== invite.email.toLowerCase()
+      ) {
+        setState({ kind: "mismatch", invite, user });
+        return;
+      }
+      setState({ kind: "ready", invite, user });
     }
 
     load();
+    return () => {
+      cancelled = true;
+    };
   }, [token]);
 
   const handleAccept = useCallback(async () => {
-    if (!token) return;
-    setState({ type: "accepting" });
+    if (!token || state.kind !== "ready" || !state.user) return;
+    const { invite, user } = state;
+    setState({ kind: "accepting", invite, user });
     try {
       await acceptInvite(token);
-      setState({ type: "accepted" });
+      setState({ kind: "accepted", invite });
+      toast.success(`Welcome to ${invite.teamName}!`);
       setTimeout(() => {
-        window.location.href = "/teams";
-      }, 2000);
-    } catch (err: unknown) {
+        window.location.href = "/";
+      }, 1500);
+    } catch (err) {
       const message =
         err instanceof Error ? err.message : "Failed to accept invitation";
-      if (message.includes("already been accepted")) {
-        setState({ type: "already_accepted" });
+      const cls = classifyAcceptError(message);
+      if (cls === "expired") {
+        setState({ kind: "load_error", error: { kind: "expired" } });
+      } else if (cls === "revoked") {
+        setState({ kind: "load_error", error: { kind: "revoked" } });
+      } else if (cls === "already_accepted") {
+        setState({ kind: "load_error", error: { kind: "already_accepted" } });
+      } else if (cls === "mismatch") {
+        setState({ kind: "mismatch", invite, user });
       } else {
-        setState({ type: "error", message });
+        setState({
+          kind: "accept_error",
+          invite,
+          user,
+          message,
+        });
       }
     }
-  }, [token]);
+  }, [token, state]);
 
-  const handleSignIn = useCallback(() => {
+  const handleSignInWithGoogle = useCallback(() => {
     if (!token) return;
-    // Set cookie so OAuth callback redirects back here
     document.cookie = `invite_return_to=/invite?token=${token}; path=/; max-age=600; SameSite=Lax`;
     window.location.href = `${API_URL}/auth/google`;
   }, [token]);
 
+  const handleSignOutAndRetry = useCallback(async () => {
+    try {
+      await apiFetch("/auth/logout", { method: "POST" });
+    } catch {
+      // best-effort; cookies will be cleared by the redirect anyway
+    }
+    handleSignInWithGoogle();
+  }, [handleSignInWithGoogle]);
+
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
-      <Card className="w-full max-w-md text-center">
-        <CardHeader>
-          <div className="flex items-center justify-center gap-2.5 mb-2">
-            <div className="flex items-center justify-center text-blue-600">
-              <Infinity className="h-10 w-10" />
-            </div>
-            <span className="text-2xl font-semibold tracking-tight text-slate-900">
-              WorkenAI
-            </span>
+    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+      <Card className="w-full max-w-[500px] flex flex-col items-center gap-8 p-[30px] bg-bg-white border-border-3 rounded-md text-center">
+        <Image
+          src="/full-logo.png"
+          alt="WorkenAI"
+          width={106}
+          height={29}
+          priority
+        />
+
+        {state.kind === "loading" && (
+          <div className="flex flex-col items-center gap-3 py-4 self-stretch">
+            <Loader2 className="h-8 w-8 animate-spin text-text-3" />
+            <p className="text-base text-text-2">Loading invitation…</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          {state.type === "loading" && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-              <p className="text-sm text-slate-500">Loading invitation...</p>
-            </div>
-          )}
+        )}
 
-          {state.type === "error" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <XCircle className="h-12 w-12 text-red-400" />
-              <div>
-                <CardTitle className="text-lg mb-1">
-                  Invalid Invitation
-                </CardTitle>
-                <CardDescription>{state.message}</CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                className="mt-2"
-                onClick={() => {
-                  window.location.href = "/login";
-                }}
-              >
-                Go to Login
-              </Button>
-            </div>
-          )}
+        {state.kind === "load_error" && (
+          <ErrorPanel error={state.error} />
+        )}
 
-          {state.type === "invite" &&
-            (() => {
-              const { invite, user } = state;
-              const emailMatch =
-                user && user.email.toLowerCase() === invite.email.toLowerCase();
-              const emailMismatch = user && !emailMatch;
+        {state.kind === "ready" && (
+          <ReadyPanel
+            invite={state.invite}
+            user={state.user}
+            onAccept={handleAccept}
+            onSignIn={handleSignInWithGoogle}
+          />
+        )}
 
-              return (
-                <div className="flex flex-col items-center gap-4 py-2">
-                  <div className="text-left w-full space-y-3">
-                    <p className="text-sm text-slate-600">
-                      <span className="font-medium text-slate-900">
-                        {invite.inviterName}
-                      </span>{" "}
-                      invited you to join
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-lg font-semibold text-slate-900">
-                        {invite.teamName}
-                      </h3>
-                      <Badge variant="secondary">{invite.role}</Badge>
-                    </div>
-                    <p className="text-xs text-slate-400">
-                      Invitation sent to {invite.email}
-                    </p>
-                  </div>
+        {state.kind === "mismatch" && (
+          <MismatchPanel
+            invite={state.invite}
+            user={state.user}
+            onSignOut={handleSignOutAndRetry}
+          />
+        )}
 
-                  {emailMatch && (
-                    <Button
-                      className="w-full mt-2"
-                      size="lg"
-                      onClick={handleAccept}
-                    >
-                      Accept Invitation
-                    </Button>
-                  )}
+        {state.kind === "accepting" && (
+          <AcceptingPanel invite={state.invite} />
+        )}
 
-                  {emailMismatch && (
-                    <div className="w-full space-y-3 mt-2">
-                      <div className="flex items-start gap-2 rounded-md bg-amber-50 border border-amber-200 p-3">
-                        <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                        <p className="text-sm text-amber-700 text-left">
-                          You&apos;re signed in as <strong>{user.email}</strong>
-                          , but this invitation was sent to{" "}
-                          <strong>{invite.email}</strong>.
-                        </p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={handleSignIn}
-                      >
-                        Sign in with a different account
-                      </Button>
-                    </div>
-                  )}
+        {state.kind === "accept_error" && (
+          <AcceptErrorPanel
+            message={state.message}
+            onRetry={handleAccept}
+          />
+        )}
 
-                  {!user && (
-                    <Button
-                      className="w-full gap-3 mt-2"
-                      size="lg"
-                      onClick={handleSignIn}
-                    >
-                      <svg className="h-5 w-5" viewBox="0 0 24 24">
-                        <path
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
-                          fill="#4285F4"
-                        />
-                        <path
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                          fill="#34A853"
-                        />
-                        <path
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                          fill="#FBBC05"
-                        />
-                        <path
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                          fill="#EA4335"
-                        />
-                      </svg>
-                      Sign in with Google to Accept
-                    </Button>
-                  )}
-                </div>
-              );
-            })()}
-
-          {state.type === "accepting" && (
-            <div className="flex flex-col items-center gap-3 py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-              <p className="text-sm text-slate-500">Accepting invitation...</p>
-            </div>
-          )}
-
-          {state.type === "accepted" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <CheckCircle2 className="h-12 w-12 text-green-500" />
-              <div>
-                <CardTitle className="text-lg mb-1">
-                  Invitation Accepted!
-                </CardTitle>
-                <CardDescription>Redirecting to your teams...</CardDescription>
-              </div>
-            </div>
-          )}
-
-          {state.type === "already_accepted" && (
-            <div className="flex flex-col items-center gap-4 py-4">
-              <CheckCircle2 className="h-12 w-12 text-green-500" />
-              <div>
-                <CardTitle className="text-lg mb-1">Already Accepted</CardTitle>
-                <CardDescription>
-                  This invitation has already been accepted.
-                </CardDescription>
-              </div>
-              <Button
-                variant="outline"
-                className="mt-2"
-                onClick={() => {
-                  window.location.href = "/teams";
-                }}
-              >
-                Go to Teams
-              </Button>
-            </div>
-          )}
-        </CardContent>
+        {state.kind === "accepted" && (
+          <AcceptedPanel invite={state.invite} />
+        )}
       </Card>
     </div>
+  );
+}
+
+function HeaderText({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle?: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-2 self-stretch">
+      <h4 className="text-text-1">{title}</h4>
+      {subtitle && (
+        <p className="text-[18px] leading-snug font-normal text-text-2">
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReadyPanel({
+  invite,
+  user,
+  onAccept,
+  onSignIn,
+}: {
+  invite: InviteDetails;
+  user: User | null;
+  onAccept: () => void;
+  onSignIn: () => void;
+}) {
+  const greetingName = user?.name?.split(" ")[0]?.trim() || "there";
+  return (
+    <>
+      <HeaderText
+        title={`Hi ${greetingName}!`}
+        subtitle={
+          <>
+            You were invited to workspace{" "}
+            <span className="font-semibold text-text-1">
+              “{invite.teamName}”
+            </span>{" "}
+            by{" "}
+            <span className="font-semibold text-text-1">
+              {invite.inviterName ?? "a teammate"}
+            </span>
+            .
+          </>
+        }
+      />
+      {user ? (
+        <Button
+          onClick={onAccept}
+          className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
+        >
+          Accept Invitation
+        </Button>
+      ) : (
+        <Button
+          onClick={onSignIn}
+          className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg gap-2"
+        >
+          <LogIn className="h-4 w-4" />
+          Continue with Google to Accept
+        </Button>
+      )}
+    </>
+  );
+}
+
+function MismatchPanel({
+  invite,
+  user,
+  onSignOut,
+}: {
+  invite: InviteDetails;
+  user: User;
+  onSignOut: () => void;
+}) {
+  return (
+    <>
+      <HeaderText
+        title="Wrong account"
+        subtitle={
+          <>
+            This invitation was sent to{" "}
+            <span className="font-semibold text-text-1">{invite.email}</span>,
+            but you’re signed in as{" "}
+            <span className="font-semibold text-text-1">{user.email}</span>.
+            Please sign out and try again.
+          </>
+        }
+      />
+      <Button
+        onClick={onSignOut}
+        className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
+      >
+        Sign out
+      </Button>
+    </>
+  );
+}
+
+function AcceptingPanel({ invite }: { invite: InviteDetails }) {
+  return (
+    <>
+      <HeaderText
+        title="Joining…"
+        subtitle={
+          <>
+            Accepting your invitation to{" "}
+            <span className="font-semibold text-text-1">
+              “{invite.teamName}”
+            </span>
+            .
+          </>
+        }
+      />
+      <Button
+        disabled
+        className="w-full h-[52px] px-6 bg-primary-6 text-text-white text-base font-normal rounded-lg gap-2"
+      >
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Accepting…
+      </Button>
+    </>
+  );
+}
+
+function AcceptedPanel({ invite }: { invite: InviteDetails }) {
+  return (
+    <>
+      <HeaderText
+        title={`Welcome to ${invite.teamName}!`}
+        subtitle="Redirecting you to your workspace…"
+      />
+      <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+    </>
+  );
+}
+
+function AcceptErrorPanel({
+  message,
+  onRetry,
+}: {
+  message: string;
+  onRetry: () => void;
+}) {
+  return (
+    <>
+      <HeaderText
+        title="Something went wrong"
+        subtitle="We couldn’t accept the invitation. Please try again."
+      />
+      <div className="self-stretch space-y-3">
+        <p className="rounded-md border border-danger-5 bg-bg-1 px-3 py-2 text-sm text-danger-6 text-left">
+          {message}
+        </p>
+        <Button
+          onClick={onRetry}
+          className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
+        >
+          Try again
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function ErrorPanel({ error }: { error: LoadError }) {
+  let title: string;
+  let subtitle: React.ReactNode;
+  let primary: { label: string; href: string } | null = null;
+  let secondary: { label: string; href: string } | null = null;
+
+  switch (error.kind) {
+    case "missing_token":
+      title = "Invitation not found";
+      subtitle = "The link is missing a token. Please use the link from your invitation email.";
+      secondary = { label: "Back to login", href: "/login" };
+      break;
+    case "not_found":
+      title = "Invitation not found";
+      subtitle = "The link may be incorrect or incomplete.";
+      secondary = { label: "Back to login", href: "/login" };
+      break;
+    case "expired":
+      title = "This invitation has expired";
+      subtitle = "Please ask the person who invited you to send a new invitation.";
+      secondary = { label: "Back to login", href: "/login" };
+      break;
+    case "revoked":
+      title = "This invitation is no longer valid";
+      subtitle = "The invitation was revoked by the company admin.";
+      secondary = { label: "Back to login", href: "/login" };
+      break;
+    case "already_accepted":
+      title = "This invitation has already been accepted";
+      subtitle = "You can sign in to your account.";
+      primary = { label: "Go to login", href: "/login" };
+      break;
+    case "unknown":
+      title = "Invalid invitation";
+      subtitle = error.message;
+      secondary = { label: "Back to login", href: "/login" };
+      break;
+  }
+
+  return (
+    <>
+      <HeaderText title={title} subtitle={subtitle} />
+      <div className="self-stretch flex flex-col gap-2">
+        {primary && (
+          <Button
+            onClick={() => {
+              window.location.href = primary!.href;
+            }}
+            className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
+          >
+            {primary.label}
+          </Button>
+        )}
+        {secondary && (
+          <Button
+            variant="outline"
+            onClick={() => {
+              window.location.href = secondary!.href;
+            }}
+            className="w-full h-[52px] px-6 border-border-3 text-text-1 text-base font-normal rounded-lg"
+          >
+            {secondary.label}
+          </Button>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -294,8 +442,8 @@ export default function InvitePage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen w-full items-center justify-center bg-slate-50/50">
-          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+        <div className="flex min-h-screen w-full items-center justify-center bg-bg-1">
+          <Loader2 className="h-8 w-8 animate-spin text-text-3" />
         </div>
       }
     >

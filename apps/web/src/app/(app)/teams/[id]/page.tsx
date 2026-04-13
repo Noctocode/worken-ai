@@ -51,10 +51,10 @@ import {
   deleteGuardrail as apiDeleteGuardrail,
   updateMemberRole,
   removeTeamMember,
-  inviteTeamMember,
   type TeamMember,
   type SubteamListItem,
 } from "@/lib/api";
+import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { formatCurrency } from "@/lib/utils";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -221,52 +221,6 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
             {mutation.isPending ? "Deleting..." : "Delete"}
           </Button>
         </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function InviteUserDialog({ teamId, children }: { teamId: string; children: React.ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"basic" | "advanced">("basic");
-  const qc = useQueryClient();
-
-  const mutation = useMutation({
-    mutationFn: () => inviteTeamMember(teamId, email.trim(), role),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["teams", teamId] }); setOpen(false); setEmail(""); setRole("basic"); },
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Invite User</DialogTitle>
-          <DialogDescription>Send an invitation to join this team.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); if (email.trim()) mutation.mutate(); }} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="invite-email">Email</Label>
-            <Input id="invite-email" type="email" placeholder="user@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>Role</Label>
-            <Select value={role} onValueChange={(v) => setRole(v as "basic" | "advanced")}>
-              <SelectTrigger className="border-border-2 text-text-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="basic">Basic</SelectItem>
-                <SelectItem value="advanced">Advanced</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          {mutation.isError && <p className="text-[13px] text-red-600">{(mutation.error as Error).message}</p>}
-          <DialogFooter>
-            <Button type="submit" disabled={mutation.isPending || !email.trim()}>
-              {mutation.isPending ? "Inviting..." : "Send Invite"}
-            </Button>
-          </DialogFooter>
-        </form>
       </DialogContent>
     </Dialog>
   );
@@ -549,9 +503,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Users</p>
-          <InviteUserDialog teamId={id}>
+          <InviteMemberDialog teamId={id}>
             <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
-          </InviteUserDialog>
+          </InviteMemberDialog>
         </div>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">

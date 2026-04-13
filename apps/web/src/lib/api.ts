@@ -1,6 +1,6 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
   const res = await fetch(`${BASE_URL}${input}`, {
     ...init,
     credentials: "include",
@@ -265,18 +265,53 @@ export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> 
   return res.json();
 }
 
+export interface InviteTeamMemberResult extends TeamMember {
+  resent: boolean;
+}
+
 export async function inviteTeamMember(
   teamId: string,
   email: string,
   role: "basic" | "advanced",
-): Promise<TeamMember> {
+): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, role }),
   });
-  if (!res.ok) throw new Error("Failed to invite member");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to invite member");
+  }
   return res.json();
+}
+
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  invitationStatus: "pending" | "expired" | "revoked" | "accepted";
+  invitationExpiresAt: string | null;
+  invitationRevokedAt: string | null;
+  createdAt: string;
+}
+
+export async function listTeamInvitations(
+  teamId: string,
+): Promise<PendingInvitation[]> {
+  const res = await apiFetch(`/teams/${teamId}/invitations`);
+  if (!res.ok) throw new Error("Failed to list invitations");
+  return res.json();
+}
+
+export async function revokeInvitation(memberId: string): Promise<void> {
+  const res = await apiFetch(`/teams/invitations/${memberId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to revoke invitation");
+  }
 }
 
 export async function updateMemberRole(
@@ -469,6 +504,7 @@ export interface InviteDetails {
   role: string;
   teamName: string;
   inviterName: string;
+  expiresAt: string | null;
 }
 
 export async function fetchInviteDetails(
@@ -545,19 +581,6 @@ export async function updateUserBudget(
     body: JSON.stringify({ budgetUsd }),
   });
   if (!res.ok) throw new Error("Failed to update user budget");
-  return res.json();
-}
-
-export async function inviteOrgUser(
-  email: string,
-  role: "basic" | "advanced" | "admin",
-): Promise<OrgUser> {
-  const res = await apiFetch("/users/invite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, role }),
-  });
-  if (!res.ok) throw new Error("Failed to invite user");
   return res.json();
 }
 

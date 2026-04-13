@@ -49,6 +49,9 @@ export const teamMembers = pgTable("team_members", {
   role: text("role").notNull(), // 'basic' | 'advanced'
   status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
   invitationToken: text("invitation_token"),
+  invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
+  invitationExpiresAt: timestamp("invitation_expires_at", { withTimezone: true }),
+  invitationRevokedAt: timestamp("invitation_revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

@@ -37,6 +37,24 @@ export class TeamsController {
     return this.teamsService.acceptInviteByToken(token, user.id, user.email);
   }
 
+  // Declared before `Delete(':id')` so the literal "invitations" segment isn't
+  // captured as a team id.
+  @Delete('invitations/:memberId')
+  revokeInvitation(
+    @Param('memberId') memberId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.revokeInvitation(memberId, user.id);
+  }
+
+  @Get(':id/invitations')
+  listInvitations(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.teamsService.listInvitations(id, user.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.teamsService.findOne(id, user.id);

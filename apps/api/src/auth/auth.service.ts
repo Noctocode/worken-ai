@@ -1,7 +1,7 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { users, teamMembers } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { REDIS } from '../redis/redis.module.js';
@@ -133,11 +133,34 @@ export class AuthService {
   }
 
   async processTeamInvitations(userId: string, email: string) {
+    // Only auto-accept invites that are still live: not revoked and not expired.
+    // NULL invitationStatus/invitationExpiresAt are legacy rows from before the
+    // expiry feature — treat them as still valid pending invites.
     await this.db
       .update(teamMembers)
-      .set({ userId, status: 'accepted', invitationToken: null })
+      .set({
+        userId,
+        status: 'accepted',
+        invitationToken: null,
+        invitationStatus: 'accepted',
+        // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
+        // Revert by removing this line so the role from the invitation is preserved.
+        role: 'advanced',
+      })
       .where(
-        and(eq(teamMembers.email, email), eq(teamMembers.status, 'pending')),
+        and(
+          eq(teamMembers.email, email),
+          eq(teamMembers.status, 'pending'),
+          isNull(teamMembers.invitationRevokedAt),
+          or(
+            isNull(teamMembers.invitationStatus),
+            eq(teamMembers.invitationStatus, 'pending'),
+          ),
+          or(
+            isNull(teamMembers.invitationExpiresAt),
+            gt(teamMembers.invitationExpiresAt, new Date()),
+          ),
+        ),
       );
   }
 }
