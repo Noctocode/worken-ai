@@ -136,6 +136,7 @@ export default function CreateProjectPage() {
   const queryClient = useQueryClient();
 
   const [projectName, setProjectName] = useState("");
+  const [nameError, setNameError] = useState(false);
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
   const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -172,9 +173,13 @@ export default function CreateProjectPage() {
   });
 
   const handleSubmit = () => {
+    const name = projectName.trim();
+    if (!name) {
+      setNameError(true);
+      return;
+    }
     const agent = AGENTS.find((a) => a.id === selectedAgent);
     if (!agent) return;
-    const name = projectName.trim() || agent.label;
     mutation.mutate({
       name,
       description: `${agent.label} project`,
@@ -188,13 +193,18 @@ export default function CreateProjectPage() {
       {/* Content */}
       <div className="flex-1 flex flex-col items-center gap-8 pt-16 pb-8 px-6">
           {/* Project Name */}
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="Project Name"
-            className="w-[414px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30"
-          />
+          <div className="flex flex-col w-[414px]">
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => { setProjectName(e.target.value); setNameError(false); }}
+              placeholder="Project Name"
+              className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError ? "border-danger-5" : "border-border-3"}`}
+            />
+            {nameError && (
+              <span className="mt-1 text-[13px] text-danger-5">Project name is required</span>
+            )}
+          </div>
 
           {/* Select Project Type */}
           <div className="flex flex-col items-center gap-4 w-full max-w-[600px]">
