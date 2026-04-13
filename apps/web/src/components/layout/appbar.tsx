@@ -181,7 +181,8 @@ export const Appbar = () => {
       } else {
         params.set("filter", tab);
       }
-      router.push(`/?${params.toString()}`);
+      const qs = params.toString();
+      router.push(qs ? `/?${qs}` : "/");
     };
 
     return (
