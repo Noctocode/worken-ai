@@ -274,7 +274,7 @@ export default function WorkenDashboard() {
           )}
 
         {/* New Project Card */}
-        {canCreateProject && (
+        {canCreateProject ? (
           <Link href="/projects/create">
             <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
@@ -290,6 +290,25 @@ export default function WorkenDashboard() {
               </div>
             </Card>
           </Link>
+        ) : (
+          <div
+            title="Requires a paid plan or an Advanced role in a team."
+            aria-disabled="true"
+          >
+            <Card className="flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center opacity-50 cursor-not-allowed">
+              <div className="flex flex-1 flex-col items-center justify-center p-4">
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
+                  <PlusCircle className="h-5 w-5 text-slate-400" />
+                </div>
+                <h3 className="text-sm font-semibold text-slate-700">
+                  Create New Project
+                </h3>
+                <p className="mt-1 max-w-[180px] text-xs text-slate-400">
+                  Start a new thread, compare models, or analyze documents.
+                </p>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
         </>

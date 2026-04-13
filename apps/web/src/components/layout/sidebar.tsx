@@ -117,7 +117,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           <Button
             className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
             disabled
-            title="New Project"
+            title="Requires a paid plan or an Advanced role in a team."
           >
             <Plus className="h-4 w-4 shrink-0" />
           </Button>
@@ -125,7 +125,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           <Button
             className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
             disabled
-            title="New Project"
+            title="Requires a paid plan or an Advanced role in a team."
           >
             <Plus className="h-4 w-4 shrink-0" />
             <span>New Project</span>

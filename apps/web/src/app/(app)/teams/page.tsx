@@ -98,14 +98,21 @@ export default function TeamsPage() {
             value={teamSearch}
             onChange={(e) => setTeamSearch(e.target.value)}
           />
-          {user?.isPaid && (
-            <CreateTeamDialog>
-              <Button variant="plusAction" className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 text-white" />
-                Create Team
-              </Button>
-            </CreateTeamDialog>
-          )}
+          <CreateTeamDialog>
+            <Button
+              variant="plusAction"
+              className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!user?.isPaid}
+              title={
+                user?.isPaid
+                  ? undefined
+                  : "Requires a paid plan to create teams."
+              }
+            >
+              <Plus className="h-4 w-4 text-white" />
+              Create Team
+            </Button>
+          </CreateTeamDialog>
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
           <table className="w-full min-w-[800px]">
@@ -190,14 +197,21 @@ export default function TeamsPage() {
             value={userSearch}
             onChange={(e) => setUserSearch(e.target.value)}
           />
-          {user?.isPaid && (
-            <InviteUserDialog>
-              <Button variant="plusAction" className="w-full sm:w-auto">
-                <Plus className="h-4 w-4 text-white" />
-                Invite User
-              </Button>
-            </InviteUserDialog>
-          )}
+          <InviteUserDialog>
+            <Button
+              variant="plusAction"
+              className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!user?.isPaid}
+              title={
+                user?.isPaid
+                  ? undefined
+                  : "Requires a paid plan to invite users."
+              }
+            >
+              <Plus className="h-4 w-4 text-white" />
+              Invite User
+            </Button>
+          </InviteUserDialog>
         </div>
         <div className="overflow-x-auto bg-white rounded-lg">
           <table className="w-full min-w-[850px]">
