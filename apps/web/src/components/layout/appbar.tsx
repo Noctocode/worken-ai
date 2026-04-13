@@ -212,7 +212,7 @@ export const Appbar = () => {
             <button
               key={tab.value}
               onClick={() => setTab(tab.value)}
-              className={`px-[12px] py-[12px] text-[16px] cursor-pointer transition-colors ${
+              className={`px-[14px] py-[8px] text-[16px] font-normal cursor-pointer transition-colors ${
                 activeTab === tab.value
                   ? "bg-bg-3 text-text-1"
                   : "bg-bg-white text-text-1 hover:bg-bg-1"

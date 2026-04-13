@@ -40,12 +40,10 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
 
-  const activeClass = collapsed
-    ? "text-primary-6 hover:text-primary-7"
-    : "text-primary-6 hover:text-primary-7";
-  const inactiveClass = collapsed
-    ? "text-text-3 hover:text-text-1"
-    : "text-text-3 hover:text-text-1";
+  const activeClass = "text-text-1 hover:text-text-1";
+  const activeIconClass = "text-primary-6";
+  const inactiveClass = "text-text-2 font-normal hover:text-text-1";
+  const inactiveIconClass = "text-text-3";
 
   const newProjectButton = collapsed ? (
     <Button
@@ -71,51 +69,48 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col py-[30px] px-[24px]">
+      {/* Toggle button – centered on the border between sidebar and content */}
+      {showToggle && (
+        <button
+          onClick={toggle}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute top-[50px] -right-3 -translate-y-1/2 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 cursor-pointer transition-colors hover:bg-bg-1 hover:text-text-2"
+        >
+          {collapsed ? (
+            <ChevronsRight className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
       {/* Logo Area */}
-      <div className="relative flex h-[4.5rem] items-center">
-        <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
+      <div className="relative flex items-center py-[9px]">
+        <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between"}`}>
           <Link
             href="/"
-            className="flex cursor-pointer items-center group"
+            className="relative flex cursor-pointer items-center group"
           >
-            {collapsed ? (
-              <Image
-                src="/main-logo.png"
-                alt="WorkenAI"
-                width={30}
-                height={14}
-                className="shrink-0"
-              />
-            ) : (
-              <Image
-                src="/full-logo.png"
-                alt="WorkenAI"
-                width={140}
-                height={32}
-                className="shrink-0"
-              />
-            )}
+            <Image
+              src="/main-logo.png"
+              alt="WorkenAI"
+              width={30}
+              height={14}
+              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-100" : "opacity-0 absolute"}`}
+            />
+            <Image
+              src="/full-logo.png"
+              alt="WorkenAI"
+              width={140}
+              height={32}
+              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
+            />
           </Link>
         </div>
-        {/* Toggle button – positioned on the edge of the sidebar */}
-        {showToggle && (
-          <button
-            onClick={toggle}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
-          >
-            {collapsed ? (
-              <ChevronsRight className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronsLeft className="h-3.5 w-3.5" />
-            )}
-          </button>
-        )}
       </div>
 
       {/* Primary Actions */}
-      <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
+      <div className="flex justify-center py-[60px]">
         {user?.canCreateProject ? (
           newProjectButton
         ) : collapsed ? (
@@ -145,147 +140,154 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeIconClass : inactiveIconClass}`}
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className="h-5 w-5 shrink-0" />
+                <FolderOpen className="size-5 shrink-0" />
               </Link>
             </Button>
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`}
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className="h-5 w-5 shrink-0" />
+                <Layers className="size-5 shrink-0" />
               </Link>
             </Button>
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`}
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className="h-5 w-5 shrink-0" />
+                <Users className="size-5 shrink-0" />
               </Link>
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-border-2" />
+            <div className="my-4 w-[40px] border-t border-border-2" />
 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Chat"
             >
-              <MessageSquare className="h-5 w-5 shrink-0" />
+              <MessageSquare className="size-5 shrink-0" />
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-border-2" />
+            <div className="my-4 w-[40px] border-t border-border-2" />
 
             {/* Intelligence icons */}
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Observability"
             >
-              <BarChart2 className="h-5 w-5 shrink-0" />
+              <BarChart2 className="size-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <ShieldCheck className="size-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-3 hover:text-text-1"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
-              <Library className="h-5 w-5 shrink-0" />
+              <Library className="size-5 shrink-0" />
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 px-6">
+          <div className="flex flex-col items-center gap-1">
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className="h-5 w-5 shrink-0" />
+                <FolderOpen className={`size-5 shrink-0 ${pathname === "/" ? activeIconClass : inactiveIconClass}`} />
                 <span>Ongoing Projects</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className="h-5 w-5 shrink-0" />
+                <Layers className={`size-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`} />
                 <span>Compare Models</span>
               </Link>
             </Button>
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className="h-5 w-5 shrink-0" />
+                <Users className={`size-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`} />
                 <span>Team Management</span>
               </Link>
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-full border-t border-border-2" />
+            <div className="my-4 w-full border-t border-border-2" />
 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Chat"
             >
-              <MessageSquare className="h-5 w-5 shrink-0" />
+              <MessageSquare className="size-5 shrink-0 text-text-3" />
               <span>AI Chat</span>
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-full border-t border-border-2" />
+            <div className="my-4 w-full border-t border-border-2" />
 
             {/* Intelligence */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Observability"
             >
-              <BarChart2 className="h-5 w-5 shrink-0" />
+              <BarChart2 className="size-5 shrink-0 text-text-3" />
               <span>Observability</span>
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Guardrails"
             >
-              <ShieldCheck className="h-5 w-5 shrink-0" />
+              <ShieldCheck className="size-5 shrink-0 text-text-3" />
               <span>Guardrails</span>
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               title="Prompt Library"
             >
-              <Library className="h-5 w-5 shrink-0" />
+              <Library className="size-5 shrink-0 text-text-3" />
               <span>Prompt Library</span>
             </Button>
           </div>
@@ -293,26 +295,29 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "flex flex-col items-center gap-3 px-6 py-4"}`}>
+      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
-          <button
-            className="flex h-[40px] w-[40px] items-center justify-center text-text-3 transition-colors hover:text-text-1"
+          <Button
+            variant="ghost"
+            className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
             title="Toggle dark mode"
           >
-            <Moon className="h-5 w-5" />
-          </button>
+            <Moon className="h-5 w-5 text-text-3" />
+          </Button>
         ) : (
-          <button
-            className="flex h-[40px] w-full items-center gap-3 rounded-lg py-2 text-text-3 transition-colors hover:text-text-1"
+          <Button
+            variant="ghost"
+            size="nav"
+            className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
             title="Toggle dark mode"
           >
-            <Moon className="h-5 w-5 shrink-0" />
-            <span className="text-sm">Light / Dark</span>
-          </button>
+            <Moon className="size-5 shrink-0 text-text-3" />
+            <span>Light / Dark</span>
+          </Button>
         )}
         <div
-          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3 py-2"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >
           <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
