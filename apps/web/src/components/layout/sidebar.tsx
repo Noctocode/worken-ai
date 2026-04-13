@@ -172,7 +172,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-border-2" />
+            <div className="my-4 w-[40px] border-t border-border-2" />
 
             {/* Chat */}
             <Button
@@ -184,7 +184,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-[40px] border-t border-border-2" />
+            <div className="my-4 w-[40px] border-t border-border-2" />
 
             {/* Intelligence icons */}
             <Button
@@ -249,7 +249,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-full border-t border-border-2" />
+            <div className="my-4 w-full border-t border-border-2" />
 
             {/* Chat */}
             <Button
@@ -263,7 +263,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
 
             {/* Divider */}
-            <div className="my-2 w-full border-t border-border-2" />
+            <div className="my-4 w-full border-t border-border-2" />
 
             {/* Intelligence */}
             <Button
