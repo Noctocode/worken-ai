@@ -162,7 +162,11 @@ function ProjectCard({ project }: { project: Project }) {
 export default function WorkenDashboard() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
-  const activeTab = (searchParams.get("filter") ?? "all") as "all" | "personal" | "team";
+  const VALID_FILTERS = ["all", "personal", "team"] as const;
+  const filterParam = searchParams.get("filter");
+  const activeTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
+    ? (filterParam as typeof VALID_FILTERS[number])
+    : "all";
 
   const {
     data: projects,
