@@ -7,7 +7,7 @@ import { Loader2, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { apiFetch, fetchInviteDetails, fetchCurrentUser, acceptInvite, type InviteDetails, type User } from "@/lib/api";
+import { apiFetch, fetchInviteDetails, fetchCurrentUserOptional, acceptInvite, type InviteDetails, type User } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -63,7 +63,7 @@ function InviteContent() {
     async function load() {
       const [inviteResult, userResult] = await Promise.allSettled([
         fetchInviteDetails(token!),
-        fetchCurrentUser(),
+        fetchCurrentUserOptional(),
       ]);
       if (cancelled) return;
 

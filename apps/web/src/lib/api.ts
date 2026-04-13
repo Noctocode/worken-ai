@@ -1,8 +1,19 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export interface ApiFetchOptions extends RequestInit {
+  // Pass true on public pages (e.g. /invite) where an unauthenticated 401
+  // is an expected outcome, not a session expiry. The caller handles the
+  // response itself instead of being bounced to /login.
+  skipAuthRedirect?: boolean;
+}
+
+export async function apiFetch(
+  input: string,
+  init?: ApiFetchOptions,
+): Promise<Response> {
+  const { skipAuthRedirect, ...fetchInit } = init ?? {};
   const res = await fetch(`${BASE_URL}${input}`, {
-    ...init,
+    ...fetchInit,
     credentials: "include",
   });
 
@@ -16,9 +27,13 @@ export async function apiFetch(input: string, init?: RequestInit): Promise<Respo
     if (refreshRes.ok) {
       // Retry the original request
       return fetch(`${BASE_URL}${input}`, {
-        ...init,
+        ...fetchInit,
         credentials: "include",
       });
+    }
+
+    if (skipAuthRedirect) {
+      return res;
     }
 
     // Refresh failed — redirect to login
@@ -41,6 +56,15 @@ export interface User {
 export async function fetchCurrentUser(): Promise<User> {
   const res = await apiFetch("/auth/me");
   if (!res.ok) throw new Error("Failed to fetch user");
+  return res.json();
+}
+
+// Public-page variant: returns null when the visitor isn't signed in,
+// instead of redirecting them to /login.
+export async function fetchCurrentUserOptional(): Promise<User | null> {
+  const res = await apiFetch("/auth/me", { skipAuthRedirect: true });
+  if (res.status === 401) return null;
+  if (!res.ok) return null;
   return res.json();
 }
 
