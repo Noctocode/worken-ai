@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Post,
+  Query,
   Request,
   Response,
   UseGuards,
@@ -11,6 +12,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService } from './auth.service.js';
 import { TeamsService } from '../teams/teams.service.js';
+import { MailService } from '../mail/mail.service.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
@@ -42,6 +44,7 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly teamsService: TeamsService,
+    private readonly mailService: MailService,
   ) {}
 
   @Public()
@@ -126,16 +129,17 @@ export class AuthController {
       }
     }
 
-    const user = await this.authService.signupWithPassword({
+    const { user, verificationToken } = await this.authService.signupWithPassword({
       email,
       password: body.password,
       name: body.name,
+      // Invite token is proof of email ownership — skip the verification email.
+      autoVerify: !!body.token,
     });
 
-    // Accept the specific invite the user came from (if any) up-front so its
-    // error path (expired/revoked) surfaces clearly, then sweep up any
-    // sibling invites addressed to the same email.
     if (body.token) {
+      // Invited flow: accept the invite, issue a session right away, return
+      // the same { user } shape as before.
       try {
         await this.teamsService.acceptInviteByToken(
           body.token,
@@ -143,27 +147,109 @@ export class AuthController {
           user.email,
         );
       } catch {
-        // Best-effort: the user account is already created. The sweep below
-        // will still accept any live sibling invites.
+        // Best-effort: user is created, sweep below still catches siblings.
+      }
+      await this.authService.processTeamInvitations(user.id, user.email);
+
+      const tokens = await this.authService.generateTokens(
+        user.id,
+        user.email,
+        user.isPaid,
+      );
+      setSessionCookies(res, tokens);
+
+      res.json({
+        verified: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          picture: user.picture,
+        },
+      });
+      return;
+    }
+
+    // Standalone signup: send the verification email and return without a
+    // session. Frontend will redirect to /check-email. If mail delivery
+    // fails we still 200 — the user can resend from /check-email.
+    if (verificationToken) {
+      try {
+        await this.mailService.sendVerificationEmail({
+          to: user.email,
+          name: user.name ?? 'there',
+          token: verificationToken,
+        });
+      } catch (err) {
+        console.error('Failed to send verification email:', err);
       }
     }
-    await this.authService.processTeamInvitations(user.id, user.email);
-
-    const tokens = await this.authService.generateTokens(
-      user.id,
-      user.email,
-      user.isPaid,
-    );
-    setSessionCookies(res, tokens);
 
     res.json({
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        picture: user.picture,
-      },
+      verified: false,
+      email: user.email,
+      message: 'Verification email sent. Please check your inbox.',
     });
+  }
+
+  @Public()
+  @Get('verify')
+  async verifyEmail(
+    @Query('token') token: string,
+    @Response() res: Res,
+  ) {
+    const frontendUrl =
+      process.env.FRONTEND_URL || 'http://localhost:3000';
+
+    try {
+      const user = await this.authService.verifyEmailToken(token);
+      // Email proved — auto-login and send them to the profile-type picker.
+      // If they've already picked a profile type (rare: they clicked an old
+      // link after finishing setup), the frontend guard will pass them
+      // straight through to the dashboard.
+      const tokens = await this.authService.generateTokens(
+        user.id,
+        user.email,
+        user.isPaid,
+      );
+      setSessionCookies(res, tokens);
+      res.redirect(`${frontendUrl}/setup-profile`);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message.toLowerCase() : '';
+      const code = message.includes('expired')
+        ? 'expired'
+        : message.includes('used') || message.includes('invalid')
+          ? 'invalid'
+          : 'invalid';
+      res.redirect(`${frontendUrl}/login?verify_error=${code}`);
+    }
+  }
+
+  @Public()
+  @Post('resend-verification')
+  async resendVerification(
+    @Body() body: { email?: string },
+  ) {
+    if (body?.email) {
+      const result = await this.authService.issueVerificationToken(body.email);
+      if (result) {
+        try {
+          await this.mailService.sendVerificationEmail({
+            to: result.user.email,
+            name: result.user.name ?? 'there',
+            token: result.token,
+          });
+        } catch (err) {
+          console.error('Failed to send verification email:', err);
+        }
+      }
+    }
+    // Always 200 — don't leak whether the account exists.
+    return {
+      message:
+        "If that account exists and isn't verified, we've sent a new link.",
+    };
   }
 
   @Public()
@@ -213,6 +299,18 @@ export class AuthController {
 
   @Get('me')
   async me(@CurrentUser() user: AuthenticatedUser) {
+    return this.authService.getUser(user.id);
+  }
+
+  @Post('profile-type')
+  async setProfileType(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { profileType?: 'company' | 'personal' },
+  ) {
+    if (!body?.profileType) {
+      throw new BadRequestException('profileType is required');
+    }
+    await this.authService.setProfileType(user.id, body.profileType);
     return this.authService.getUser(user.id);
   }
 }

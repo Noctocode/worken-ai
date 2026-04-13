@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   UnauthorizedException,
@@ -9,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import * as argon2 from 'argon2';
+import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { users, teamMembers } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { REDIS } from '../redis/redis.module.js';
@@ -18,6 +20,17 @@ import type { GoogleProfile } from './types.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
+const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function generateVerificationToken() {
+  const token = randomBytes(32).toString('base64url');
+  const hash = createHash('sha256').update(token).digest('hex');
+  return { token, hash };
+}
+
+function hashVerificationToken(token: string) {
+  return createHash('sha256').update(token).digest('hex');
+}
 
 @Injectable()
 export class AuthService {
@@ -36,12 +49,14 @@ export class AuthService {
       .where(eq(users.googleId, profile.googleId));
 
     if (existing) {
-      // Update name/picture if changed
+      // Update name/picture if changed; ensure emailVerifiedAt is set since
+      // Google has already proven ownership of this email.
       const [updated] = await this.db
         .update(users)
         .set({
           name: profile.name,
           picture: profile.picture,
+          emailVerifiedAt: existing.emailVerifiedAt ?? new Date(),
           updatedAt: new Date(),
         })
         .where(eq(users.id, existing.id))
@@ -50,7 +65,8 @@ export class AuthService {
     }
 
     // An email-registered user signed in with Google for the first time —
-    // link the accounts by attaching the googleId instead of creating a duplicate.
+    // link the accounts by attaching the googleId instead of creating a
+    // duplicate. Google proves the email so we mark it verified now.
     const [emailMatch] = await this.db
       .select()
       .from(users)
@@ -62,6 +78,7 @@ export class AuthService {
           googleId: profile.googleId,
           name: emailMatch.name ?? profile.name,
           picture: emailMatch.picture ?? profile.picture,
+          emailVerifiedAt: emailMatch.emailVerifiedAt ?? new Date(),
           updatedAt: new Date(),
         })
         .where(eq(users.id, emailMatch.id))
@@ -76,19 +93,18 @@ export class AuthService {
         name: profile.name,
         picture: profile.picture,
         googleId: profile.googleId,
+        emailVerifiedAt: new Date(),
       })
       .returning();
     return user;
   }
 
-  // TODO: email verification before prod — currently anyone can claim any
-  // email. The invite flow proves email ownership via the token, but
-  // standalone signups do not. Add a verification-email step before launch.
   // TODO: rate limiting / bruteforce protection on /auth/signup.
   async signupWithPassword(input: {
     email: string;
     password: string;
     name: string;
+    autoVerify?: boolean; // set by invite flow — token already proves the email
   }) {
     const email = input.email.trim().toLowerCase();
     const name = input.name.trim();
@@ -122,19 +138,40 @@ export class AuthService {
           'This email is already registered with Google. Please sign in with Google.',
         );
       }
-      // Row exists with neither credential (shouldn't happen) — refuse rather
-      // than silently take it over.
       throw new ConflictException('An account with this email already exists');
     }
 
     const passwordHash = await argon2.hash(password);
 
+    // When auto-verifying (invite flow), skip the token ceremony entirely.
+    // Otherwise issue a token and stash its hash for /auth/verify to check.
+    let verificationToken: string | null = null;
+    const verificationFields: {
+      emailVerifiedAt: Date | null;
+      verificationTokenHash: string | null;
+      verificationTokenExpiresAt: Date | null;
+    } = {
+      emailVerifiedAt: null,
+      verificationTokenHash: null,
+      verificationTokenExpiresAt: null,
+    };
+    if (input.autoVerify) {
+      verificationFields.emailVerifiedAt = new Date();
+    } else {
+      const { token, hash } = generateVerificationToken();
+      verificationToken = token;
+      verificationFields.verificationTokenHash = hash;
+      verificationFields.verificationTokenExpiresAt = new Date(
+        Date.now() + VERIFICATION_TTL_MS,
+      );
+    }
+
     const [user] = await this.db
       .insert(users)
-      .values({ email, name, passwordHash })
+      .values({ email, name, passwordHash, ...verificationFields })
       .returning();
 
-    return user;
+    return { user, verificationToken };
   }
 
   // TODO: rate limiting / bruteforce protection on /auth/login.
@@ -149,7 +186,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.email, email));
 
-    // Uniform error so we don't leak which emails are registered.
+    // Uniform 401 so we don't leak which emails are registered.
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -159,7 +196,128 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
+    // Only valid credentials reveal the "not verified" state — that way an
+    // attacker can't probe which emails exist.
+    if (!user.emailVerifiedAt) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        code: 'EMAIL_NOT_VERIFIED',
+        message:
+          'Please verify your email before signing in. Check your inbox for the confirmation link.',
+      });
+    }
+
     return user;
+  }
+
+  /**
+   * Consume a verification token. Marks the email verified and clears the
+   * token fields. Rejects expired, used, or unknown tokens.
+   */
+  async verifyEmailToken(rawToken: string) {
+    if (!rawToken) {
+      throw new BadRequestException('Missing verification token');
+    }
+    const providedHash = hashVerificationToken(rawToken);
+
+    // Fetch by hash, then compare in constant time as defense-in-depth.
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.verificationTokenHash, providedHash));
+
+    if (!user || !user.verificationTokenHash) {
+      throw new BadRequestException('Invalid or already-used verification link');
+    }
+
+    const a = Buffer.from(providedHash, 'hex');
+    const b = Buffer.from(user.verificationTokenHash, 'hex');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new BadRequestException('Invalid or already-used verification link');
+    }
+
+    if (
+      user.verificationTokenExpiresAt &&
+      user.verificationTokenExpiresAt.getTime() < Date.now()
+    ) {
+      throw new BadRequestException('Verification link has expired');
+    }
+
+    if (user.emailVerifiedAt) {
+      // Token was valid but the user is already verified (e.g. clicked twice).
+      // Clear the token and return the user so the caller can still issue a session.
+      const [cleared] = await this.db
+        .update(users)
+        .set({
+          verificationTokenHash: null,
+          verificationTokenExpiresAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, user.id))
+        .returning();
+      return cleared;
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({
+        emailVerifiedAt: new Date(),
+        verificationTokenHash: null,
+        verificationTokenExpiresAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id))
+      .returning();
+
+    return updated;
+  }
+
+  /**
+   * Generate + persist a fresh verification token for an existing user.
+   * Returns the raw token so the caller can dispatch an email. Callers
+   * should swallow "user not found" / "already verified" to avoid email
+   * enumeration; this method simply returns null in those cases.
+   */
+  // TODO: rate limiting on /auth/resend-verification.
+  async issueVerificationToken(emailInput: string) {
+    const email = emailInput.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return null;
+
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
+
+    if (!user || !user.passwordHash || user.emailVerifiedAt) {
+      return null;
+    }
+
+    const { token, hash } = generateVerificationToken();
+    await this.db
+      .update(users)
+      .set({
+        verificationTokenHash: hash,
+        verificationTokenExpiresAt: new Date(Date.now() + VERIFICATION_TTL_MS),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+
+    return { token, user };
+  }
+
+  async setProfileType(userId: string, profileType: 'company' | 'personal') {
+    if (profileType !== 'company' && profileType !== 'personal') {
+      throw new BadRequestException('Invalid profile type');
+    }
+    const [updated] = await this.db
+      .update(users)
+      .set({ profileType, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning();
+    if (!updated) {
+      throw new UnauthorizedException('User not found');
+    }
+    return updated;
   }
 
   async generateTokens(userId: string, email: string, isPaid: boolean) {
@@ -239,6 +397,8 @@ export class AuthService {
       name: user.name,
       picture: user.picture,
       isPaid: user.isPaid,
+      emailVerified: !!user.emailVerifiedAt,
+      profileType: user.profileType as 'company' | 'personal' | null,
       canCreateProject,
     };
   }

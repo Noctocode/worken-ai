@@ -6,9 +6,10 @@ import { AuthService } from './auth.service.js';
 import { GoogleStrategy } from './google.strategy.js';
 import { JwtStrategy } from './jwt.strategy.js';
 import { TeamsModule } from '../teams/teams.module.js';
+import { MailModule } from '../mail/mail.module.js';
 
 @Module({
-  imports: [PassportModule, JwtModule.register({}), TeamsModule],
+  imports: [PassportModule, JwtModule.register({}), TeamsModule, MailModule],
   controllers: [AuthController],
   providers: [AuthService, GoogleStrategy, JwtStrategy],
 })
