@@ -20,6 +20,7 @@ import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
@@ -335,9 +336,21 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           {!collapsed && (
             <>
               <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm font-medium text-text-1">
-                  {user?.name ?? "Loading..."}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-medium text-text-1">
+                    {user?.name ?? "Loading..."}
+                  </p>
+                  {user &&
+                    (user.canCreateProject ? (
+                      <Badge className="shrink-0 border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                        Advanced
+                      </Badge>
+                    ) : (
+                      <Badge className="shrink-0 border-transparent bg-bg-1 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                        Basic
+                      </Badge>
+                    ))}
+                </div>
                 <p className="truncate text-xs text-text-3">
                   {user?.email ?? ""}
                 </p>
