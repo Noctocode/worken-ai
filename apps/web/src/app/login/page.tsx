@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Mail, Lock, LogIn } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,10 +15,39 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { loginWithPassword } from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export default function LoginPage() {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => loginWithPassword(email.trim(), password),
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+    if (!email.trim()) {
+      setValidationError("Please enter your email");
+      return;
+    }
+    if (!password) {
+      setValidationError("Please enter your password");
+      return;
+    }
+    mutation.mutate();
+  };
+
   return (
     <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
@@ -38,29 +70,44 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="email"
-              placeholder="Email Address"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <div className="relative mt-4">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="password"
-              placeholder="Password"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <Button
-            className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
-            size="lg"
-          >
-            <LogIn className="h-4 w-4" />
-            Continue
-          </Button>
+          <form onSubmit={handleSubmit}>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            <div className="relative mt-4">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            {validationError && (
+              <p className="mt-3 text-sm text-danger-6 text-left">
+                {validationError}
+              </p>
+            )}
+            <Button
+              type="submit"
+              disabled={mutation.isPending}
+              className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
+              size="lg"
+            >
+              <LogIn className="h-4 w-4" />
+              {mutation.isPending ? "Signing in..." : "Continue"}
+            </Button>
+          </form>
           <div className="flex items-center gap-2 my-6">
             <div className="flex-1 h-0 border-t border-divider" />
             <span className="text-sm text-text-2">or continue with</span>

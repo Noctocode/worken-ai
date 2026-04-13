@@ -1,8 +1,12 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { Mail, Lock, LogIn, User } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,12 +16,87 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  fetchInviteDetails,
+  signupWithPassword,
+  type InviteDetails,
+} from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const MIN_PASSWORD_LENGTH = 8;
 
-export default function RegisterPage() {
+function RegisterContent() {
+  const searchParams = useSearchParams();
+  const token = searchParams.get("token");
+  const invitedEmail = searchParams.get("email");
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState(invitedEmail ?? "");
+  const [password, setPassword] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Pre-fill the invited email if it arrived after the first render.
+  useEffect(() => {
+    if (invitedEmail && !email) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEmail(invitedEmail);
+    }
+  }, [invitedEmail, email]);
+
+  const inviteQuery = useQuery<InviteDetails>({
+    queryKey: ["invite", token],
+    queryFn: () => fetchInviteDetails(token!),
+    enabled: !!token,
+    retry: false,
+  });
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      signupWithPassword({
+        email: email.trim(),
+        password,
+        name: name.trim(),
+        token: token ?? undefined,
+      }),
+    onSuccess: () => {
+      toast.success(
+        inviteQuery.data
+          ? `Welcome to ${inviteQuery.data.teamName}!`
+          : "Account created",
+      );
+      window.location.href = "/";
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    if (!trimmedName) {
+      setValidationError("Please enter your name");
+      return;
+    }
+    if (!trimmedEmail) {
+      setValidationError("Please enter your email");
+      return;
+    }
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      setValidationError(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      );
+      return;
+    }
+    mutation.mutate();
+  };
+
+  const emailLocked = !!invitedEmail;
+
   return (
-    <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
+    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
         <CardHeader>
           <div className="flex items-center justify-center">
@@ -33,41 +112,63 @@ export default function RegisterPage() {
             Create an Account
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Enter your details to create a new workspace
+            {token && inviteQuery.data
+              ? `You're signing up to join ${inviteQuery.data.teamName}`
+              : "Enter your details to create a new workspace"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="text"
-              placeholder="Full Name"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <div className="relative mt-4">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="email"
-              placeholder="Email Address"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <div className="relative mt-4">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="password"
-              placeholder="Password"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <Button
-            className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
-            size="lg"
-          >
-            <LogIn className="h-4 w-4" />
-            Continue
-          </Button>
+          <form onSubmit={handleSubmit}>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="text"
+                placeholder="Full Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            <div className="relative mt-4">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                disabled={emailLocked}
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3 disabled:opacity-80"
+              />
+            </div>
+            <div className="relative mt-4">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="password"
+                placeholder="Password (min 8 characters)"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={MIN_PASSWORD_LENGTH}
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            {validationError && (
+              <p className="mt-3 text-sm text-danger-6 text-left">
+                {validationError}
+              </p>
+            )}
+            <Button
+              type="submit"
+              disabled={mutation.isPending}
+              className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
+              size="lg"
+            >
+              <LogIn className="h-4 w-4" />
+              {mutation.isPending ? "Creating account..." : "Continue"}
+            </Button>
+          </form>
           <div className="flex items-center gap-2 my-6">
             <div className="flex-1 h-0 border-t border-divider" />
             <span className="text-sm text-text-2">or continue with</span>
@@ -78,6 +179,9 @@ export default function RegisterPage() {
             className="w-full gap-2 h-14 text-base font-normal rounded-md border-border-3"
             size="lg"
             onClick={() => {
+              if (token) {
+                document.cookie = `invite_return_to=/invite?token=${token}; path=/; max-age=600; SameSite=Lax`;
+              }
               window.location.href = `${API_URL}/auth/google`;
             }}
           >
@@ -97,5 +201,17 @@ export default function RegisterPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-screen w-full items-center justify-center bg-bg-1" />
+      }
+    >
+      <RegisterContent />
+    </Suspense>
   );
 }

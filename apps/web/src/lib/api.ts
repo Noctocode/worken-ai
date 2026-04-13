@@ -73,6 +73,52 @@ export async function logout(): Promise<void> {
   window.location.href = "/login";
 }
 
+export interface AuthResponse {
+  user: {
+    id: string;
+    email: string;
+    name: string | null;
+    picture: string | null;
+  };
+}
+
+async function parseAuthError(res: Response): Promise<string> {
+  const body = await res.json().catch(() => ({}));
+  if (typeof body?.message === "string") return body.message;
+  if (Array.isArray(body?.message)) return body.message.join(", ");
+  return "Something went wrong";
+}
+
+export async function signupWithPassword(input: {
+  email: string;
+  password: string;
+  name: string;
+  token?: string;
+}): Promise<AuthResponse> {
+  const res = await apiFetch("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw new Error(await parseAuthError(res));
+  return res.json();
+}
+
+export async function loginWithPassword(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  const res = await apiFetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw new Error(await parseAuthError(res));
+  return res.json();
+}
+
 // Projects
 
 export interface Project {

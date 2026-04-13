@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { Loader2, LogIn } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -169,6 +170,7 @@ function InviteContent() {
           <ReadyPanel
             invite={state.invite}
             user={state.user}
+            token={token ?? ""}
             onAccept={handleAccept}
             onSignIn={handleSignInWithGoogle}
           />
@@ -223,11 +225,13 @@ function HeaderText({
 function ReadyPanel({
   invite,
   user,
+  token,
   onAccept,
   onSignIn,
 }: {
   invite: InviteDetails;
   user: User | null;
+  token: string;
   onAccept: () => void;
   onSignIn: () => void;
 }) {
@@ -258,13 +262,21 @@ function ReadyPanel({
           Accept Invitation
         </Button>
       ) : (
-        <Button
-          onClick={onSignIn}
-          className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg gap-2"
-        >
-          <LogIn className="h-4 w-4" />
-          Continue with Google to Accept
-        </Button>
+        <div className="self-stretch flex flex-col items-center gap-3">
+          <Button
+            onClick={onSignIn}
+            className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg gap-2"
+          >
+            <LogIn className="h-4 w-4" />
+            Continue with Google to Accept
+          </Button>
+          <Link
+            href={`/register?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`}
+            className="text-sm text-primary-6 hover:text-primary-7 font-medium"
+          >
+            Sign up with email instead
+          </Link>
+        </div>
       )}
     </>
   );
