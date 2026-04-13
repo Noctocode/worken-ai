@@ -40,12 +40,10 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   const pathname = usePathname();
   const { collapsed, toggle } = useSidebar();
 
-  const activeClass = collapsed
-    ? "text-primary-6 hover:text-primary-7"
-    : "text-primary-6 hover:text-primary-7";
-  const inactiveClass = collapsed
-    ? "text-text-3 hover:text-text-1"
-    : "text-text-3 hover:text-text-1";
+  const activeClass = "text-text-1 hover:text-text-1";
+  const activeIconClass = "text-primary-6";
+  const inactiveClass = "text-text-3 hover:text-text-1";
+  const inactiveIconClass = "text-text-3";
 
   const newProjectButton = collapsed ? (
     <Button
@@ -145,7 +143,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeIconClass : inactiveIconClass}`}
               title="Ongoing Projects"
             >
               <Link href="/">
@@ -155,7 +153,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`}
               title="Compare Models"
             >
               <Link href="/compare-models">
@@ -165,7 +163,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`}
               title="Team Management"
             >
               <Link href="/teams">
@@ -220,7 +218,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Ongoing Projects"
             >
               <Link href="/">
-                <FolderOpen className="h-5 w-5 shrink-0" />
+                <FolderOpen className={`h-5 w-5 shrink-0 ${pathname === "/" ? activeIconClass : ""}`} />
                 <span>Ongoing Projects</span>
               </Link>
             </Button>
@@ -231,7 +229,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Compare Models"
             >
               <Link href="/compare-models">
-                <Layers className="h-5 w-5 shrink-0" />
+                <Layers className={`h-5 w-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : ""}`} />
                 <span>Compare Models</span>
               </Link>
             </Button>
@@ -242,7 +240,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
               title="Team Management"
             >
               <Link href="/teams">
-                <Users className="h-5 w-5 shrink-0" />
+                <Users className={`h-5 w-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : ""}`} />
                 <span>Team Management</span>
               </Link>
             </Button>
