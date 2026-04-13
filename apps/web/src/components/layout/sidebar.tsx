@@ -69,7 +69,21 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   );
 
   return (
-    <div className="flex h-full flex-col py-[30px] px-[24px]">
+    <div className="relative flex h-full flex-col py-[30px] px-[24px]">
+      {/* Toggle button – centered on the border between sidebar and content */}
+      {showToggle && (
+        <button
+          onClick={toggle}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          className="absolute top-[42px] -right-3 -translate-y-1/2 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
+        >
+          {collapsed ? (
+            <ChevronsRight className="h-3.5 w-3.5" />
+          ) : (
+            <ChevronsLeft className="h-3.5 w-3.5" />
+          )}
+        </button>
+      )}
       {/* Logo Area */}
       <div className="relative flex items-center">
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between"}`}>
@@ -96,20 +110,6 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             )}
           </Link>
         </div>
-        {/* Toggle button – positioned on the edge of the sidebar */}
-        {showToggle && (
-          <button
-            onClick={toggle}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            className="absolute top-1/2 -translate-y-1/2 -right-3 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 transition-colors hover:bg-bg-1 hover:text-text-2"
-          >
-            {collapsed ? (
-              <ChevronsRight className="h-3.5 w-3.5" />
-            ) : (
-              <ChevronsLeft className="h-3.5 w-3.5" />
-            )}
-          </button>
-        )}
       </div>
 
       {/* Primary Actions */}
