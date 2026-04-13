@@ -33,9 +33,7 @@ export function TeamInviteForm({
   onSuccess,
 }: TeamInviteFormProps) {
   const [email, setEmail] = useState("");
-  // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-  // Revert by changing the default back to "basic" and removing the `disabled` + helper text below.
-  const [role, setRole] = useState<Role>("advanced");
+  const [role, setRole] = useState<Role>("basic");
   const [selectedTeamId, setSelectedTeamId] = useState<string>(
     mode.kind === "fixed" ? mode.teamId : "",
   );
@@ -144,13 +142,7 @@ export function TeamInviteForm({
 
       <div className="space-y-2">
         <Label htmlFor="invite-role">Role</Label>
-        {/* TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-            Revert by removing `disabled` and the helper text below. */}
-        <Select
-          value={role}
-          onValueChange={(v) => setRole(v as Role)}
-          disabled
-        >
+        <Select value={role} onValueChange={(v) => setRole(v as Role)}>
           <SelectTrigger id="invite-role" className="w-full border-border-3">
             <SelectValue />
           </SelectTrigger>
@@ -161,9 +153,6 @@ export function TeamInviteForm({
             </SelectItem>
           </SelectContent>
         </Select>
-        <p className="text-xs text-text-3">
-          All new users get Advanced access for now.
-        </p>
       </div>
 
       <Button
