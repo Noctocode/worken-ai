@@ -75,7 +75,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
         <button
           onClick={toggle}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          className="absolute top-[42px] -right-3 -translate-y-1/2 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 cursor-pointer transition-colors hover:bg-bg-1 hover:text-text-2"
+          className="absolute top-[50px] -right-3 -translate-y-1/2 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 cursor-pointer transition-colors hover:bg-bg-1 hover:text-text-2"
         >
           {collapsed ? (
             <ChevronsRight className="h-3.5 w-3.5" />
@@ -85,7 +85,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
         </button>
       )}
       {/* Logo Area */}
-      <div className="relative flex items-center">
+      <div className="relative flex items-center py-[9px]">
         <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between"}`}>
           <Link
             href="/"
