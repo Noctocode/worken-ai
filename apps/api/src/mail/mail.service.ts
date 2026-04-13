@@ -88,6 +88,13 @@ export class MailService {
     const verifyUrl = `${apiUrl}/auth/verify?token=${encodeURIComponent(token)}`;
     const greetingName = (name || 'there').split(' ')[0];
 
+    // Dev-mode affordance: without SMTP configured locally the verification
+    // email silently no-ops. Logging the URL here lets a developer just
+    // click it from the terminal. Never runs in production.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[dev] verification URL for ${to}: ${verifyUrl}`);
+    }
+
     // Matches Figma frame 4110-16154: 800px container, white bg, centered
     // inner card (30px padding, 30px radius), blue (#178ACA) CTA, IBM Plex
     // Sans type. Inlined styles because email clients don't run CSS files.

@@ -212,7 +212,14 @@ export class AuthService {
 
   /**
    * Consume a verification token. Marks the email verified and clears the
-   * token fields. Rejects expired, used, or unknown tokens.
+   * expiry (keeping the hash so a legitimate re-click is idempotent rather
+   * than looking "invalid"). Rejects expired and unknown tokens.
+   *
+   * Token states represented by (hash, expires_at):
+   *   (hash, future) → unused, valid
+   *   (hash, null)   → consumed (idempotent re-click returns user silently)
+   *   (hash, past)   → expired
+   *   (null, _)      → never existed or replaced by a newer resend
    */
   async verifyEmailToken(rawToken: string) {
     if (!rawToken) {
@@ -220,7 +227,6 @@ export class AuthService {
     }
     const providedHash = hashVerificationToken(rawToken);
 
-    // Fetch by hash, then compare in constant time as defense-in-depth.
     const [user] = await this.db
       .select()
       .from(users)
@@ -230,39 +236,26 @@ export class AuthService {
       throw new BadRequestException('Invalid or already-used verification link');
     }
 
+    // Constant-time defense-in-depth.
     const a = Buffer.from(providedHash, 'hex');
     const b = Buffer.from(user.verificationTokenHash, 'hex');
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
       throw new BadRequestException('Invalid or already-used verification link');
     }
 
-    if (
-      user.verificationTokenExpiresAt &&
-      user.verificationTokenExpiresAt.getTime() < Date.now()
-    ) {
-      throw new BadRequestException('Verification link has expired');
+    // expires_at null = already consumed → re-click is idempotent.
+    if (user.verificationTokenExpiresAt === null) {
+      return user;
     }
 
-    if (user.emailVerifiedAt) {
-      // Token was valid but the user is already verified (e.g. clicked twice).
-      // Clear the token and return the user so the caller can still issue a session.
-      const [cleared] = await this.db
-        .update(users)
-        .set({
-          verificationTokenHash: null,
-          verificationTokenExpiresAt: null,
-          updatedAt: new Date(),
-        })
-        .where(eq(users.id, user.id))
-        .returning();
-      return cleared;
+    if (user.verificationTokenExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Verification link has expired');
     }
 
     const [updated] = await this.db
       .update(users)
       .set({
-        emailVerifiedAt: new Date(),
-        verificationTokenHash: null,
+        emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
         verificationTokenExpiresAt: null,
         updatedAt: new Date(),
       })

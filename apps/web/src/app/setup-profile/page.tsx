@@ -3,6 +3,9 @@
 import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+// TODO: replace with exported SVGs from Figma frame 4107-13028.
+// Current lucide icons (Building2 / UserRound) are placeholders until the
+// design-team exports land.
 import { Building2, UserRound } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
