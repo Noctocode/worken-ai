@@ -214,7 +214,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
               title="Ongoing Projects"
             >
               <Link href="/">
@@ -225,7 +226,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
               title="Compare Models"
             >
               <Link href="/compare-models">
@@ -236,7 +238,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             <Button
               asChild
               variant="ghost"
-              className={`h-[40px] w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
               title="Team Management"
             >
               <Link href="/teams">
@@ -251,7 +254,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             {/* Chat */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Chat"
             >
               <MessageSquare className="h-5 w-5 shrink-0" />
@@ -264,7 +268,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             {/* Intelligence */}
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Observability"
             >
               <BarChart2 className="h-5 w-5 shrink-0" />
@@ -272,7 +277,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Guardrails"
             >
               <ShieldCheck className="h-5 w-5 shrink-0" />
@@ -280,7 +286,8 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
             <Button
               variant="ghost"
-              className="h-[40px] w-full justify-start gap-3 text-text-3 hover:text-text-1"
+              size="nav"
+              className="w-full justify-start gap-3 text-text-3 hover:text-text-1"
               title="Prompt Library"
             >
               <Library className="h-5 w-5 shrink-0" />
