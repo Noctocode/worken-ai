@@ -17,6 +17,7 @@ export const users = pgTable("users", {
   picture: text("picture"),
   googleId: text("google_id").notNull().unique(),
   isPaid: boolean("is_paid").notNull().default(false),
+  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -26,9 +27,11 @@ export const users = pgTable("users", {
 export const teams = pgTable("teams", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
+  description: text("description"),
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
+  parentTeamId: uuid("parent_team_id").references(() => teams.id, { onDelete: "set null" }),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
@@ -107,4 +110,31 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const guardrails = pgTable("guardrails", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  teamId: uuid("team_id")
+    .references(() => teams.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  severity: text("severity").notNull().default("medium"),
+  triggers: integer("triggers").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const modelConfigs = pgTable("model_configs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
+  customName: text("custom_name").notNull(),
+  modelIdentifier: text("model_identifier").notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  fallbackModels: jsonb("fallback_models").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

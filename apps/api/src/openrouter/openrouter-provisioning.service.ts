@@ -59,6 +59,38 @@ export class OpenRouterProvisioningService {
     }
   }
 
+  /** Fetch current-period usage for a provisioned key. */
+  async getKeyUsage(
+    hash: string,
+  ): Promise<{ usageCents: number; limitCents: number } | null> {
+    // TODO: Replace with real OpenRouter usage API when available.
+    // OpenRouter does not currently expose per-key usage via a public endpoint.
+    // For now return null so callers can fall back to mock/placeholder data.
+    try {
+      const response = await fetch(
+        `https://openrouter.ai/api/v1/keys/${hash}`,
+        {
+          headers: {
+            Authorization: `Bearer ${this.provisioningKey}`,
+          },
+        },
+      );
+      if (!response.ok) return null;
+      const data = (await response.json()) as {
+        data?: { usage?: number; limit?: number };
+      };
+      if (data.data?.usage != null && data.data?.limit != null) {
+        return {
+          usageCents: Math.round(data.data.usage * 100),
+          limitCents: Math.round(data.data.limit * 100),
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
   async deleteKey(hash: string): Promise<void> {
     const response = await fetch(`https://openrouter.ai/api/v1/keys/${hash}`, {
       method: 'DELETE',

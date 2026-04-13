@@ -1,116 +1,365 @@
 "use client";
 
-import Link from "next/link";
-import { PlusCircle, Users, ChevronRight, Loader2, Crown } from "lucide-react";
+import { Plus, Users, Loader2, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+  PageTabs,
+  PageTabsList,
+  PageTabsTrigger,
+  PageTabsContent,
+} from "@/components/ui/page-tabs";
 import { CreateTeamDialog } from "@/components/create-team-dialog";
+import { InviteUserDialog } from "@/components/invite-user-dialog";
+import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchTeams, type Team } from "@/lib/api";
-
-function TeamCard({ team }: { team: Team }) {
-  const { user } = useAuth();
-  const isOwner = user?.id === team.ownerId;
-
-  return (
-    <Link href={`/teams/${team.id}`} className="block">
-      <Card className="group flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-        <CardHeader className="pb-2">
-          <div className="mb-2 flex items-start justify-between">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
-              <Users className="h-4 w-4" />
-            </div>
-            {isOwner && (
-              <Badge variant="secondary" className="gap-1 text-xs border-amber-200 bg-amber-50 text-amber-700">
-                <Crown className="h-3 w-3" />
-                Owner
-              </Badge>
-            )}
-          </div>
-          <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-            {team.name}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex-1" />
-        <CardFooter className="border-t border-slate-100 pt-3">
-          <div className="flex w-full items-center justify-between text-xs text-slate-400">
-            <span>View team</span>
-            <ChevronRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </div>
-        </CardFooter>
-      </Card>
-    </Link>
-  );
-}
+import { fetchTeams, fetchOrgUsers, fetchModels } from "@/lib/api";
+import { SearchInput } from "@/components/ui/search-input";
+import { TeamRow } from "@/components/management/team-row";
+import { UserRow } from "@/components/management/user-row";
+import { ModelRow } from "@/components/management/model-row";
+import { CompanyTab } from "@/components/management/company-tab";
+import { IntegrationTab } from "@/components/management/integration-tab";
+import { BillingTab } from "@/components/management/billing-tab";
+import { ApiTab } from "@/components/management/api-tab";
 
 export default function TeamsPage() {
   const { user } = useAuth();
+  const [teamSearch, setTeamSearch] = useState("");
+  const [userSearch, setUserSearch] = useState("");
+  const [modelSearch, setModelSearch] = useState("");
+
   const {
-    data: teams,
-    isLoading,
-    error,
+    data: teams = [],
+    isLoading: teamsLoading,
+    error: teamsError,
   } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
   });
 
+  const {
+    data: orgUsers = [],
+    isLoading: usersLoading,
+    error: usersError,
+  } = useQuery({
+    queryKey: ["org-users"],
+    queryFn: fetchOrgUsers,
+  });
+
+  const filteredTeams = teams.filter((t) =>
+    t.name.toLowerCase().includes(teamSearch.toLowerCase()),
+  );
+
+  const filteredUsers = orgUsers.filter(
+    (u) =>
+      u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+      (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()),
+  );
+
+  const {
+    data: models = [],
+    isLoading: modelsLoading,
+    error: modelsError,
+  } = useQuery({
+    queryKey: ["models"],
+    queryFn: fetchModels,
+  });
+
+  const filteredModels = models.filter(
+    (m) =>
+      m.customName.toLowerCase().includes(modelSearch.toLowerCase()) ||
+      m.modelIdentifier.toLowerCase().includes(modelSearch.toLowerCase()),
+  );
+
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Team Management
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Create and manage your teams.
-          </p>
+    <PageTabs defaultValue="teams">
+      <PageTabsList>
+        <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
+        <PageTabsTrigger value="users">Users</PageTabsTrigger>
+        <PageTabsTrigger value="models">Models</PageTabsTrigger>
+        <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
+        <PageTabsTrigger value="company">Company</PageTabsTrigger>
+        <PageTabsTrigger value="api">API</PageTabsTrigger>
+        <PageTabsTrigger value="billing">Billing</PageTabsTrigger>
+        <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
+      </PageTabsList>
+
+      {/* ── Teams ────────────────────────────────────────────────────────────── */}
+      <PageTabsContent value="teams">
+        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-6">
+          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
+            Teams
+          </span>
+          <SearchInput
+            className="flex-1"
+            placeholder="Search"
+            value={teamSearch}
+            onChange={(e) => setTeamSearch(e.target.value)}
+          />
+          {user?.isPaid && (
+            <CreateTeamDialog>
+              <Button variant="plusAction" className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 text-black-900" />
+                Create Team
+              </Button>
+            </CreateTeamDialog>
+          )}
         </div>
-        {user?.isPaid && (
-          <CreateTeamDialog>
-            <Button size="sm" className="gap-2">
-              <PlusCircle className="h-4 w-4" />
-              Create Team
+        <div className="overflow-x-auto bg-white rounded-lg">
+          <table className="w-full min-w-[800px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Team
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Description
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Monthly Budget
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Spent / Remaining
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Projected
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Members
+                </th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {teamsLoading && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center align-middle">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                  </td>
+                </tr>
+              )}
+              {teamsError && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="py-12 text-center align-middle text-sm text-red-500"
+                  >
+                    Failed to load teams. Is the API running?
+                  </td>
+                </tr>
+              )}
+              {filteredTeams.map((team) => (
+                <TeamRow
+                  key={team.id}
+                  team={team}
+                  isOwner={user?.id === team.ownerId}
+                />
+              ))}
+              {!teamsLoading && !teamsError && filteredTeams.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center align-middle">
+                    <Users className="mx-auto h-10 w-10 text-slate-300" />
+                    <p className="mt-3 text-sm text-slate-500">
+                      {teamSearch
+                        ? "No teams match your search."
+                        : user?.isPaid
+                          ? "No teams yet. Create your first team to get started."
+                          : "You are not a member of any team yet."}
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PageTabsContent>
+
+      {/* ── Users ────────────────────────────────────────────────────────────── */}
+      <PageTabsContent value="users">
+        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
+          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
+            Users
+          </span>
+          <SearchInput
+            className="flex-1"
+            placeholder="Search"
+            value={userSearch}
+            onChange={(e) => setUserSearch(e.target.value)}
+          />
+          {user?.isPaid && (
+            <InviteUserDialog>
+              <Button variant="plusAction" className="w-full sm:w-auto">
+                <Plus className="h-4 w-4 text-black-900" />
+                Invite User
+              </Button>
+            </InviteUserDialog>
+          )}
+        </div>
+        <div className="overflow-x-auto bg-white rounded-lg">
+          <table className="w-full min-w-[850px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Name
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Email
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Teams
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Personal Monthly Budget
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Spent/Remaining
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Projected
+                </th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {usersLoading && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center align-middle">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                  </td>
+                </tr>
+              )}
+              {usersError && (
+                <tr>
+                  <td
+                    colSpan={7}
+                    className="py-12 text-center align-middle text-sm text-red-500"
+                  >
+                    Failed to load users. Is the API running?
+                  </td>
+                </tr>
+              )}
+              {filteredUsers.map((u) => (
+                <UserRow key={u.id} user={u} />
+              ))}
+              {!usersLoading && !usersError && filteredUsers.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="py-12 text-center align-middle">
+                    <Users className="mx-auto h-10 w-10 text-slate-300" />
+                    <p className="mt-3 text-sm text-slate-500">
+                      {userSearch
+                        ? "No users match your search."
+                        : "No users yet. Invite someone to get started."}
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PageTabsContent>
+
+      {/* ── Models ───────────────────────────────────────────────────────────── */}
+      <PageTabsContent value="models">
+        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
+          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
+            Models
+          </span>
+          <SearchInput
+            className="flex-1"
+            placeholder="Search"
+            value={modelSearch}
+            onChange={(e) => setModelSearch(e.target.value)}
+          />
+          <AddModelDialog>
+            <Button variant="plusAction" className="w-full sm:w-auto">
+              <Plus className="h-4 w-4 text-black-900" />
+              Add New Model
             </Button>
-          </CreateTeamDialog>
-        )}
-      </div>
+          </AddModelDialog>
+        </div>
+        <div className="overflow-x-auto bg-white rounded-lg">
+          <table className="w-full min-w-[700px]">
+            <thead>
+              <tr className="h-[33px] border-b border-bg-1">
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Custom Name
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Status
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Model
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Fallback models
+                </th>
+                <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {modelsLoading && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center align-middle">
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                  </td>
+                </tr>
+              )}
+              {modelsError && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-12 text-center align-middle text-sm text-red-500"
+                  >
+                    Failed to load models. Is the API running?
+                  </td>
+                </tr>
+              )}
+              {filteredModels.map((model) => (
+                <ModelRow key={model.id} model={model} />
+              ))}
+              {!modelsLoading && !modelsError && filteredModels.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-12 text-center align-middle">
+                    <Bot className="mx-auto h-10 w-10 text-slate-300" />
+                    <p className="mt-3 text-sm text-slate-500">
+                      {modelSearch
+                        ? "No models match your search."
+                        : "No models configured yet. Add one to get started."}
+                    </p>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </PageTabsContent>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {isLoading && (
-          <div className="col-span-full flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
-          </div>
-        )}
-
-        {error && (
-          <div className="col-span-full text-center py-12 text-sm text-red-500">
-            Failed to load teams. Is the API running?
-          </div>
-        )}
-
-        {teams?.map((team) => (
-          <TeamCard key={team.id} team={team} />
-        ))}
-
-        {!isLoading && !error && teams?.length === 0 && (
-          <div className="col-span-full text-center py-12">
-            <Users className="mx-auto h-10 w-10 text-slate-300" />
-            <p className="mt-3 text-sm text-slate-500">
-              {user?.isPaid
-                ? "No teams yet. Create your first team to get started."
-                : "You are not a member of any team yet."}
-            </p>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* ── Other tabs ───────────────────────────────────────────────────────── */}
+      <PageTabsContent value="my-account">
+        <div className="py-16 text-center text-sm text-slate-400">
+          Coming soon.
+        </div>
+      </PageTabsContent>
+      <PageTabsContent value="company">
+        <CompanyTab />
+      </PageTabsContent>
+      <PageTabsContent value="api">
+        <ApiTab />
+      </PageTabsContent>
+      <PageTabsContent value="billing">
+        <BillingTab />
+      </PageTabsContent>
+      <PageTabsContent value="integration">
+        <IntegrationTab />
+      </PageTabsContent>
+    </PageTabs>
   );
 }

@@ -7,8 +7,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, inArray } from 'drizzle-orm';
-import { teams, teamMembers, users } from '@worken/database/schema';
+import { and, eq, inArray, sql } from 'drizzle-orm';
+import { teams, teamMembers, users, guardrails } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -23,11 +23,25 @@ export class TeamsService {
     private readonly encryptionService: EncryptionService,
   ) {}
 
-  async create(name: string, userId: string, email: string) {
+  async create(
+    name: string,
+    userId: string,
+    email: string,
+    description?: string,
+    monthlyBudgetCents?: number,
+    parentTeamId?: string,
+  ) {
+    const budgetCents = monthlyBudgetCents ?? 1000;
     const [team] = await this.db
       .insert(teams)
-      .values({ name, ownerId: userId })
-      .returning();
+      .values({
+        name,
+        description: description ?? null,
+        ownerId: userId,
+        parentTeamId: parentTeamId ?? null,
+        monthlyBudgetCents: budgetCents,
+      })
+      .returning() as typeof teams.$inferSelect[];
 
     // Auto-add owner as accepted advanced member
     await this.db.insert(teamMembers).values({
@@ -39,10 +53,11 @@ export class TeamsService {
     });
 
     // Provision OpenRouter key for this team (non-blocking)
+    const budgetUsd = budgetCents / 100;
     try {
       const { key, hash } = await this.provisioningService.createKey(
         `team-${team.id}`,
-        10, // price limit of 10$ hardcoded for now
+        budgetUsd,
       );
       const encrypted = this.encryptionService.encrypt(key);
       await this.db
@@ -50,7 +65,6 @@ export class TeamsService {
         .set({
           openrouterKeyId: hash,
           openrouterKeyEncrypted: encrypted,
-          monthlyBudgetCents: 1000,
         })
         .where(eq(teams.id, team.id));
     } catch (err) {
@@ -58,6 +72,62 @@ export class TeamsService {
     }
 
     return team;
+  }
+
+  async update(
+    teamId: string,
+    userId: string,
+    data: { name?: string; description?: string },
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) {
+      throw new NotFoundException('Team not found');
+    }
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can update the team');
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (data.name !== undefined) updates.name = data.name;
+    if (data.description !== undefined)
+      updates.description = data.description || null;
+
+    if (Object.keys(updates).length === 0) {
+      return team;
+    }
+
+    const [updated] = await this.db
+      .update(teams)
+      .set(updates)
+      .where(eq(teams.id, teamId))
+      .returning();
+
+    return updated;
+  }
+
+  async deleteTeam(teamId: string, userId: string) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can delete the team');
+    }
+
+    // Remove all members first (cascade should handle this, but be explicit)
+    await this.db
+      .delete(teamMembers)
+      .where(eq(teamMembers.teamId, teamId));
+
+    await this.db.delete(teams).where(eq(teams.id, teamId));
+
+    return { success: true };
   }
 
   async updateBudget(
@@ -124,7 +194,96 @@ export class TeamsService {
         .where(inArray(teams.id, memberTeamIds));
     }
 
-    return [...ownedTeams, ...memberTeams];
+    const allTeams = [...ownedTeams, ...memberTeams];
+    if (allTeams.length === 0) return [];
+
+    const allTeamIds = allTeams.map((t) => t.id);
+
+    // Get member counts per team
+    const memberCounts = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        memberCount: sql<number>`cast(count(${teamMembers.id}) as int)`,
+      })
+      .from(teamMembers)
+      .where(inArray(teamMembers.teamId, allTeamIds))
+      .groupBy(teamMembers.teamId);
+
+    const countMap = new Map(
+      memberCounts.map((r) => [r.teamId, r.memberCount]),
+    );
+
+    // Get first 4 accepted members with user info per team
+    const avatarRows = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        email: teamMembers.email,
+        name: users.name,
+        picture: users.picture,
+      })
+      .from(teamMembers)
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(
+        and(
+          inArray(teamMembers.teamId, allTeamIds),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+
+    const membersMap = new Map<
+      string,
+      { name: string | null; picture: string | null }[]
+    >();
+    for (const row of avatarRows) {
+      const arr = membersMap.get(row.teamId) ?? [];
+      if (arr.length < 4) {
+        arr.push({
+          name: row.name ?? row.email,
+          picture: row.picture ?? null,
+        });
+      }
+      membersMap.set(row.teamId, arr);
+    }
+
+    // Fetch usage data for each team's OpenRouter key
+    const usageMap = new Map<
+      string,
+      { spentCents: number; projectedCents: number }
+    >();
+    for (const t of allTeams) {
+      if (t.openrouterKeyId) {
+        const usage = await this.provisioningService.getKeyUsage(
+          t.openrouterKeyId,
+        );
+        if (usage) {
+          const dayOfMonth = new Date().getDate();
+          const daysInMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0,
+          ).getDate();
+          const projectedCents =
+            dayOfMonth > 0
+              ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+              : usage.usageCents;
+          usageMap.set(t.id, {
+            spentCents: usage.usageCents,
+            projectedCents,
+          });
+        }
+      }
+    }
+
+    return allTeams.map((t) => {
+      const usage = usageMap.get(t.id);
+      return {
+        ...t,
+        memberCount: countMap.get(t.id) ?? 0,
+        members: membersMap.get(t.id) ?? [],
+        spentCents: usage?.spentCents ?? 0,
+        projectedCents: usage?.projectedCents ?? 0,
+      };
+    });
   }
 
   async findOne(teamId: string, userId: string) {
@@ -159,7 +318,29 @@ export class TeamsService {
       .leftJoin(users, eq(teamMembers.userId, users.id))
       .where(eq(teamMembers.teamId, teamId));
 
-    return { ...team, members };
+    // Fetch usage data from OpenRouter key
+    let spentCents = 0;
+    let projectedCents = 0;
+    if (team.openrouterKeyId) {
+      const usage = await this.provisioningService.getKeyUsage(
+        team.openrouterKeyId,
+      );
+      if (usage) {
+        spentCents = usage.usageCents;
+        const dayOfMonth = new Date().getDate();
+        const daysInMonth = new Date(
+          new Date().getFullYear(),
+          new Date().getMonth() + 1,
+          0,
+        ).getDate();
+        projectedCents =
+          dayOfMonth > 0
+            ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+            : usage.usageCents;
+      }
+    }
+
+    return { ...team, members, spentCents, projectedCents };
   }
 
   async inviteMember(
@@ -431,5 +612,189 @@ export class TeamsService {
       .returning();
 
     return updated;
+  }
+
+  async findSubteams(parentTeamId: string) {
+    const subteams = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.parentTeamId, parentTeamId));
+
+    if (subteams.length === 0) return [];
+
+    const subteamIds = subteams.map((t) => t.id);
+
+    // Member counts
+    const memberCounts = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        memberCount: sql<number>`cast(count(${teamMembers.id}) as int)`,
+      })
+      .from(teamMembers)
+      .where(inArray(teamMembers.teamId, subteamIds))
+      .groupBy(teamMembers.teamId);
+
+    const countMap = new Map(
+      memberCounts.map((r) => [r.teamId, r.memberCount]),
+    );
+
+    // Member avatars (first 4 accepted per subteam)
+    const avatarRows = await this.db
+      .select({
+        teamId: teamMembers.teamId,
+        email: teamMembers.email,
+        name: users.name,
+        picture: users.picture,
+      })
+      .from(teamMembers)
+      .leftJoin(users, eq(teamMembers.userId, users.id))
+      .where(
+        and(
+          inArray(teamMembers.teamId, subteamIds),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+
+    const membersMap = new Map<
+      string,
+      { name: string | null; picture: string | null }[]
+    >();
+    for (const row of avatarRows) {
+      const arr = membersMap.get(row.teamId) ?? [];
+      if (arr.length < 4) {
+        arr.push({ name: row.name ?? row.email, picture: row.picture ?? null });
+      }
+      membersMap.set(row.teamId, arr);
+    }
+
+    // Usage data per subteam
+    const usageMap = new Map<
+      string,
+      { spentCents: number; projectedCents: number }
+    >();
+    for (const t of subteams) {
+      if (t.openrouterKeyId) {
+        const usage = await this.provisioningService.getKeyUsage(
+          t.openrouterKeyId,
+        );
+        if (usage) {
+          const dayOfMonth = new Date().getDate();
+          const daysInMonth = new Date(
+            new Date().getFullYear(),
+            new Date().getMonth() + 1,
+            0,
+          ).getDate();
+          usageMap.set(t.id, {
+            spentCents: usage.usageCents,
+            projectedCents:
+              dayOfMonth > 0
+                ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
+                : usage.usageCents,
+          });
+        }
+      }
+    }
+
+    return subteams.map((t) => {
+      const usage = usageMap.get(t.id);
+      return {
+        ...t,
+        memberCount: countMap.get(t.id) ?? 0,
+        members: membersMap.get(t.id) ?? [],
+        spentCents: usage?.spentCents ?? 0,
+        projectedCents: usage?.projectedCents ?? 0,
+      };
+    });
+  }
+
+  async findGuardrails(teamId: string) {
+    return this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.teamId, teamId));
+  }
+
+  async createGuardrail(
+    teamId: string,
+    userId: string,
+    data: { name: string; type: string; severity: string },
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can add guardrails');
+    }
+
+    if (!['high', 'medium', 'low'].includes(data.severity)) {
+      throw new BadRequestException('Severity must be high, medium, or low');
+    }
+
+    const [created] = await this.db
+      .insert(guardrails)
+      .values({
+        teamId,
+        name: data.name,
+        type: data.type,
+        severity: data.severity,
+      })
+      .returning();
+
+    return created;
+  }
+
+  async toggleGuardrail(
+    teamId: string,
+    guardrailId: string,
+    userId: string,
+    isActive: boolean,
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can update guardrails');
+    }
+
+    const [updated] = await this.db
+      .update(guardrails)
+      .set({ isActive })
+      .where(
+        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      )
+      .returning();
+
+    if (!updated) throw new NotFoundException('Guardrail not found');
+    return updated;
+  }
+
+  async deleteGuardrail(
+    teamId: string,
+    guardrailId: string,
+    userId: string,
+  ) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can delete guardrails');
+    }
+
+    await this.db
+      .delete(guardrails)
+      .where(
+        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      );
+
+    return { success: true };
   }
 }
