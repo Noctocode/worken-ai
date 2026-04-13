@@ -28,7 +28,7 @@ export function InviteMemberDialog({
         <DialogHeader>
           <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription>
-            Invited users will auto-join when they sign in with Google.
+            Invited users will auto-join when they accept the invitation.
           </DialogDescription>
         </DialogHeader>
         <TeamInviteForm

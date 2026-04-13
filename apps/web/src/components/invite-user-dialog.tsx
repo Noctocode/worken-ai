@@ -26,7 +26,7 @@ export function InviteUserDialog({
         <DialogHeader>
           <DialogTitle>Invite User</DialogTitle>
           <DialogDescription>
-            Pick a team and role — they’ll join when they sign in with Google.
+            Pick a team and role — they’ll join automatically when they accept the invitation.
           </DialogDescription>
         </DialogHeader>
         <TeamInviteForm
