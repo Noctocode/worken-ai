@@ -54,7 +54,7 @@ export class TeamsController {
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const budgetCents = body.monthlyBudget
+    const budgetCents = body.monthlyBudget != null
       ? Math.round(body.monthlyBudget * 100)
       : undefined;
     return this.teamsService.create(

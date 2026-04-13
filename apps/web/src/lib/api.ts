@@ -338,7 +338,7 @@ export async function fetchGuardrails(teamId: string): Promise<Guardrail[]> {
 
 export async function createGuardrail(
   teamId: string,
-  data: { name: string; type: string; severity: string },
+  data: { name: string; type: string; severity: Guardrail["severity"] },
 ): Promise<Guardrail> {
   const res = await apiFetch(`/teams/${teamId}/guardrails`, {
     method: "POST",
