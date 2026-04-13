@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
 import { ProjectsService } from './projects.service.js';
 import type { CreateProjectDto } from './projects.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -27,5 +27,10 @@ export class ProjectsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.projectsService.create(dto, user.id, user.isPaid);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.projectsService.remove(id, user.id);
   }
 }

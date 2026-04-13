@@ -18,7 +18,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -50,18 +49,24 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
 
   const newProjectButton = collapsed ? (
     <Button
+      asChild
       className="h-[48px] w-[40px] bg-primary-6 p-0 hover:bg-primary-7 text-white"
       title="New Project"
     >
-      <Plus className="h-4 w-4 shrink-0" />
+      <Link href="/projects/create">
+        <Plus className="h-4 w-4 shrink-0" />
+      </Link>
     </Button>
   ) : (
     <Button
+      asChild
       className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7"
       title="New Project"
     >
-      <Plus className="h-4 w-4 shrink-0" />
-      <span>New Project</span>
+      <Link href="/projects/create">
+        <Plus className="h-4 w-4 shrink-0" />
+        <span>New Project</span>
+      </Link>
     </Button>
   );
 
@@ -112,7 +117,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       {/* Primary Actions */}
       <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
         {user?.canCreateProject ? (
-          <CreateProjectDialog>{newProjectButton}</CreateProjectDialog>
+          newProjectButton
         ) : collapsed ? (
           <Button
             className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
@@ -137,33 +142,36 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       <ScrollArea className="flex-1 py-4 px-0">
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
-            <Link href="/">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeClass : inactiveClass}`}
-                title="Ongoing Projects"
-              >
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeClass : inactiveClass}`}
+              title="Ongoing Projects"
+            >
+              <Link href="/">
                 <FolderOpen className="h-5 w-5 shrink-0" />
-              </Button>
-            </Link>
-            <Link href="/compare-models">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
-                title="Compare Models"
-              >
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              title="Compare Models"
+            >
+              <Link href="/compare-models">
                 <Layers className="h-5 w-5 shrink-0" />
-              </Button>
-            </Link>
-            <Link href="/teams">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
-                title="Team Management"
-              >
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              title="Team Management"
+            >
+              <Link href="/teams">
                 <Users className="h-5 w-5 shrink-0" />
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
             {/* Divider */}
             <div className="my-2 w-[40px] border-t border-border-2" />
@@ -205,36 +213,39 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1 px-6">
-            <Link href="/" className="w-full">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
-                title="Ongoing Projects"
-              >
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
+              title="Ongoing Projects"
+            >
+              <Link href="/">
                 <FolderOpen className="h-5 w-5 shrink-0" />
                 <span>Ongoing Projects</span>
-              </Button>
-            </Link>
-            <Link href="/compare-models" className="w-full">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
-                title="Compare Models"
-              >
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
+              title="Compare Models"
+            >
+              <Link href="/compare-models">
                 <Layers className="h-5 w-5 shrink-0" />
                 <span>Compare Models</span>
-              </Button>
-            </Link>
-            <Link href="/teams" className="w-full">
-              <Button
-                variant="ghost"
-                className={`h-[40px] w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
-                title="Team Management"
-              >
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
+              title="Team Management"
+            >
+              <Link href="/teams">
                 <Users className="h-5 w-5 shrink-0" />
                 <span>Team Management</span>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
             {/* Divider */}
             <div className="my-2 w-full border-t border-border-2" />

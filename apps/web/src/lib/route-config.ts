@@ -3,10 +3,16 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail";
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
+  "/": {
+    bg: "bg-bg-1",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarType: "aiChat",
+  },
   "/teams": {
     bg: "bg-bg-1",
     title: "Management",
@@ -22,6 +28,26 @@ const DEFAULT_CONFIG: RouteConfig = {
 export function getRouteConfig(pathname: string): RouteConfig {
   // Check exact match first
   if (ROUTE_CONFIGS[pathname]) return ROUTE_CONFIGS[pathname];
+
+  // Check /projects/create
+  if (pathname === "/projects/create") {
+    return {
+      bg: "bg-bg-white",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "createProject",
+    };
+  }
+
+  // Check /projects/[id] pattern (but not /projects/create)
+  if (/^\/projects\/[^/]+$/.test(pathname) && pathname !== "/projects/create") {
+    return {
+      bg: "bg-bg-1",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "projectDetail",
+    };
+  }
 
   // Check /teams/[id] pattern
   if (/^\/teams\/[^/]+$/.test(pathname)) {

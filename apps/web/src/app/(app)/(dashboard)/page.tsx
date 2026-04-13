@@ -2,12 +2,11 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   PlusCircle,
-  ChevronRight,
-  Filter,
-  MoreHorizontal,
-  Sparkles,
+  MoreVertical,
+  Trash2,
   ArrowRight,
   Clock,
   DollarSign,
@@ -16,136 +15,158 @@ import {
   Loader2,
   FileText,
   FolderOpen,
-  Users,
+  User,
+  Bot,
+  PenSquare,
+  Activity,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { CreateProjectDialog } from "@/components/create-project-dialog";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchProjects, type Project } from "@/lib/api";
+import { fetchProjects, deleteProject, type Project } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 
-function formatTimeAgo(dateStr: string) {
-  const diff = Date.now() - new Date(dateStr).getTime();
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function ProjectCard({ project }: { project: Project }) {
+  const router = useRouter();
   const [docDialogOpen, setDocDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteProject(project.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setDeleteDialogOpen(false);
+    },
+  });
 
   return (
     <>
-      <Link href={`/projects/${project.id}`} className="block">
-        <Card className="group relative flex flex-col border-slate-200 transition-all duration-300 hover:border-blue-300 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.05)] cursor-pointer h-full">
-          <CardHeader className="pb-1 pt-3">
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-blue-600">
-                <Sparkles className="h-4 w-4" />
+      <div
+        className="group flex flex-col bg-bg-white cursor-pointer h-full transition-all duration-200 hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.08)]"
+        onClick={() => router.push(`/projects/${project.id}`)}
+      >
+          {/* Top section */}
+          <div className="flex-1 flex flex-col gap-2 border border-border-2 px-6 py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center rounded bg-primary-1 p-1">
+                  <User className="h-[18px] w-[18px] text-primary-6" />
+                </div>
+                <span className="text-[18px] font-bold text-text-1">{project.name}</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                {project.teamId && (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 text-xs border-purple-200 bg-purple-50 text-purple-700"
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-text-3 hover:text-text-1 cursor-pointer"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   >
-                    <Users className="h-3 w-3" />
-                    {project.teamName ?? "Team"}
-                  </Badge>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-slate-400 opacity-0 transition-opacity hover:text-slate-600 group-hover:opacity-100"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                      }}
-                    >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="end"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                    }}
+                    <MoreVertical className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                >
+                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Manage Context
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-red-600 focus:text-red-600"
+                    onSelect={() => setDeleteDialogOpen(true)}
                   >
-                    <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      Manage Context
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            {/* Model badge */}
+            <div className="flex items-center gap-2.5 rounded bg-bg-2 px-2 py-1 w-fit">
+              <div className="flex items-center gap-1">
+                <Bot className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2">{project.name}</span>
+              </div>
+              <span className="text-[13px] text-text-2">/</span>
+              <div className="flex items-center gap-1">
+                <PenSquare className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2">{MODEL_LABELS[project.model] || project.model}</span>
               </div>
             </div>
-            <CardTitle className="text-sm font-semibold text-slate-900 transition-colors group-hover:text-blue-600">
-              {project.name}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
-            <CardDescription className="line-clamp-2 text-xs text-slate-500">
-              {project.description || "No description"}
-            </CardDescription>
-          </CardContent>
-          <CardFooter className="mt-auto border-t border-slate-100 pt-3">
-            <div className="flex w-full items-center justify-between">
-              <Badge
-                variant="secondary"
-                className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
-              >
-                <Sparkles className="h-3 w-3" />
-                {MODEL_LABELS[project.model] || project.model}
-              </Badge>
-              <span className="text-xs font-medium text-slate-400">
-                {formatTimeAgo(project.createdAt)}
-              </span>
+          </div>
+          {/* Bottom section */}
+          <div className="flex items-center gap-5 px-3 py-2">
+            <div className="flex items-center gap-1">
+              <PenSquare className="h-[18px] w-[18px] text-text-2" />
+              <span className="text-[13px] text-text-2">{formatDate(project.createdAt)}</span>
             </div>
-          </CardFooter>
-        </Card>
-      </Link>
+            <div className="flex items-center gap-1">
+              <Activity className="h-[18px] w-[18px] text-text-2" />
+              <span className="text-[13px] text-text-2">0</span>
+            </div>
+          </div>
+        </div>
       <AddDocumentDialog
         projectId={project.id}
         open={docDialogOpen}
         onOpenChange={setDocDialogOpen}
       />
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{project.name}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
 export default function WorkenDashboard() {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"all" | "personal" | "team">(
-    "all",
-  );
+  const searchParams = useSearchParams();
+  const VALID_FILTERS = ["all", "personal", "team"] as const;
+  const filterParam = searchParams.get("filter");
+  const activeTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
+    ? (filterParam as typeof VALID_FILTERS[number])
+    : "all";
 
   const {
     data: projects,
@@ -154,86 +175,70 @@ export default function WorkenDashboard() {
   } = useQuery({
     queryKey: ["projects", activeTab],
     queryFn: () => fetchProjects(activeTab),
+    enabled: activeTab !== "all",
+  });
+
+  const { data: teamProjects, isLoading: teamLoading } = useQuery({
+    queryKey: ["projects", "team"],
+    queryFn: () => fetchProjects("team"),
+    enabled: activeTab === "all",
+  });
+
+  const { data: personalProjects, isLoading: personalLoading } = useQuery({
+    queryKey: ["projects", "personal"],
+    queryFn: () => fetchProjects("personal"),
+    enabled: activeTab === "all",
   });
 
   const canCreateProject = user?.canCreateProject;
+  const allLoading = activeTab === "all" ? (teamLoading || personalLoading) : isLoading;
 
   return (
-    <div className="space-y-8">
-      {/* Page Title & Mobile Search */}
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-900">
-            Ongoing Projects
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Manage and monitor your AI development workflows.
-          </p>
-        </div>
-        <div className="w-full sm:hidden">
-          <Input
-            placeholder="Search..."
-            className="bg-white border-slate-200"
-          />
-        </div>
-      </div>
-
-      {/* Filters & Controls */}
-      <div className="flex flex-col justify-between gap-4 border-b border-slate-200/60 pb-2 sm:flex-row sm:items-center">
-        <Tabs
-          value={activeTab}
-          onValueChange={(v) => setActiveTab(v as typeof activeTab)}
-          className="w-auto"
-        >
-          <TabsList className="bg-slate-100 p-1">
-            <TabsTrigger value="all" className="px-4 text-xs font-medium">
-              All Projects
-            </TabsTrigger>
-            <TabsTrigger value="personal" className="px-4 text-xs font-medium">
-              Personal
-            </TabsTrigger>
-            <TabsTrigger value="team" className="px-4 text-xs font-medium">
-              Team
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
-
-        <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-2 text-sm text-slate-500 sm:flex">
-            <span>Sort by:</span>
-            <Button
-              variant="ghost"
-              className="h-auto p-0 font-medium text-slate-700 hover:bg-transparent hover:text-blue-600"
-            >
-              Last Activity
-              <ChevronRight className="ml-1 h-3 w-3 rotate-90" />
-            </Button>
-          </div>
-          <Separator
-            orientation="vertical"
-            className="h-4 hidden sm:block bg-slate-300"
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            <Filter className="h-4 w-4" />
-            Filter
-          </Button>
-          {canCreateProject && (
-            <CreateProjectDialog>
-              <Button size="sm" className="gap-2 sm:hidden">
-                <PlusCircle className="h-4 w-4" />
-                New
-              </Button>
-            </CreateProjectDialog>
+    <div className="space-y-6 pt-4">
+      {/* All tab: two-column layout */}
+      {activeTab === "all" && (
+        <>
+          {allLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            </div>
+          ) : (
+            <div className="flex gap-4">
+              <div className="flex-1 min-w-0 space-y-4">
+                <p className="text-[26px] font-bold text-text-1">Team Projects</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {teamProjects?.map((project) => (
+                    <ProjectCard key={project.id} project={project} />
+                  ))}
+                  {teamProjects?.length === 0 && (
+                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No team projects yet.</p>
+                  )}
+                </div>
+              </div>
+              <div className="flex-1 min-w-0 space-y-4">
+                <p className="text-[26px] font-bold text-text-1">Personal Projects</p>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {personalProjects?.map((project) => (
+                    <ProjectCard key={project.id} project={project} />
+                  ))}
+                  {personalProjects?.length === 0 && (
+                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No personal projects yet.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           )}
-        </div>
-      </div>
+        </>
+      )}
 
-      {/* Projects Grid */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {/* Personal/Team tab: single grid */}
+      {activeTab !== "all" && (
+        <>
+          <p className="text-[26px] font-bold text-text-1">
+            {activeTab === "team" ? "Team Projects" : "Personal Projects"}
+          </p>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading && (
           <div className="col-span-full flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
@@ -270,7 +275,7 @@ export default function WorkenDashboard() {
 
         {/* New Project Card */}
         {canCreateProject && (
-          <CreateProjectDialog>
+          <Link href="/projects/create">
             <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
                 <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
@@ -284,9 +289,11 @@ export default function WorkenDashboard() {
                 </p>
               </div>
             </Card>
-          </CreateProjectDialog>
+          </Link>
         )}
       </div>
+        </>
+      )}
 
       {/* Comparisons Section */}
       <div className="border-t border-slate-200/60 pt-8">
