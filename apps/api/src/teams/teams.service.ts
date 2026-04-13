@@ -41,7 +41,7 @@ export class TeamsService {
         parentTeamId: parentTeamId ?? null,
         monthlyBudgetCents: budgetCents,
       })
-      .returning();
+      .returning() as typeof teams.$inferSelect[];
 
     // Auto-add owner as accepted advanced member
     await this.db.insert(teamMembers).values({
