@@ -71,10 +71,10 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
   );
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col py-[30px] px-[24px]">
       {/* Logo Area */}
-      <div className="relative flex h-[4.5rem] items-center">
-        <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between px-6"}`}>
+      <div className="relative flex items-center">
+        <div className={`flex w-full items-center ${collapsed ? "justify-center" : "justify-between"}`}>
           <Link
             href="/"
             className="flex cursor-pointer items-center group"
@@ -115,7 +115,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Primary Actions */}
-      <div className={`flex justify-center ${collapsed ? "p-3" : "px-6 py-3"}`}>
+      <div className="flex justify-center py-[60px]">
         {user?.canCreateProject ? (
           newProjectButton
         ) : collapsed ? (
@@ -212,7 +212,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 px-6">
+          <div className="flex flex-col items-center gap-1">
             <Button
               asChild
               variant="ghost"
@@ -293,7 +293,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </ScrollArea>
 
       {/* User Profile */}
-      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3 p-4" : "flex flex-col items-center gap-3 px-6 py-4"}`}>
+      <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
           <button
@@ -312,7 +312,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           </button>
         )}
         <div
-          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3 py-2"}`}
+          className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >
           <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
             <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
