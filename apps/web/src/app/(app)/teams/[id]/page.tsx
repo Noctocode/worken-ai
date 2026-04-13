@@ -459,7 +459,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   const subRemaining = subBudget - subSpent;
                   const subProjected = sub.projectedCents / 100;
                   const subOverBudget = subProjected > subBudget;
-                  const subPct = subBudget > 0 ? Math.min((subSpent / subBudget) * 100, 100) : 0;
                   const subExtraMembers = sub.memberCount > 4 ? sub.memberCount - 4 : 0;
                   return (
                     <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
