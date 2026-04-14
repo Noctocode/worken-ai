@@ -346,7 +346,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
                         Advanced
                       </Badge>
                     ) : (
-                      <Badge className="shrink-0 border-transparent bg-bg-1 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                      <Badge className="shrink-0 border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0">
                         Basic
                       </Badge>
                     ))}
