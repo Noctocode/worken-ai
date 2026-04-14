@@ -22,7 +22,6 @@ import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
@@ -37,10 +36,17 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2);
 }
 
-export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) => {
+export const SidebarContent = ({
+  showToggle = true,
+  forceCollapsed = false,
+}: {
+  showToggle?: boolean;
+  forceCollapsed?: boolean;
+}) => {
   const { user } = useAuth();
   const pathname = usePathname();
-  const { collapsed, toggle } = useSidebar();
+  const { collapsed: providerCollapsed, toggle } = useSidebar();
+  const collapsed = forceCollapsed || providerCollapsed;
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";
@@ -112,7 +118,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Primary Actions */}
-      <div className="flex justify-center py-[60px]">
+      <div className="flex justify-center pt-9 pb-6">
         {user?.canCreateProject ? (
           newProjectButton
         ) : (
@@ -142,7 +148,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Navigation Links */}
-      <ScrollArea className="flex-1 py-4 px-0">
+      <div className="scrollbar-on-hover min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
             <Button
@@ -300,7 +306,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* User Profile */}
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
