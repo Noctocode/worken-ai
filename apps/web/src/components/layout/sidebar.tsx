@@ -111,7 +111,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Primary Actions */}
-      <div className="flex justify-center py-[60px]">
+      <div className="flex justify-center pt-9 pb-6">
         {user?.canCreateProject ? (
           newProjectButton
         ) : (
