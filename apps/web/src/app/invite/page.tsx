@@ -4,13 +4,11 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { apiFetch, fetchInviteDetails, fetchCurrentUserOptional, acceptInvite, type InviteDetails, type User } from "@/lib/api";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 type LoadError =
   | { kind: "not_found" }
@@ -129,20 +127,21 @@ function InviteContent() {
     }
   }, [token, state]);
 
-  const handleSignInWithGoogle = useCallback(() => {
-    if (!token) return;
-    document.cookie = `invite_return_to=/invite?token=${token}; path=/; max-age=600; SameSite=Lax`;
-    window.location.href = `${API_URL}/auth/google`;
-  }, [token]);
-
   const handleSignOutAndRetry = useCallback(async () => {
     try {
       await apiFetch("/auth/logout", { method: "POST" });
     } catch {
-      // best-effort; cookies will be cleared by the redirect anyway
+      // best-effort; cookies will be cleared by the reload anyway
     }
-    handleSignInWithGoogle();
-  }, [handleSignInWithGoogle]);
+    window.location.href = token ? `/invite?token=${token}` : "/invite";
+  }, [token]);
+
+  // Auto-accept: logged in with matching email → skip the manual click.
+  useEffect(() => {
+    if (state.kind === "ready" && state.user) {
+      handleAccept();
+    }
+  }, [state, handleAccept]);
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -172,7 +171,6 @@ function InviteContent() {
             user={state.user}
             token={token ?? ""}
             onAccept={handleAccept}
-            onSignIn={handleSignInWithGoogle}
           />
         )}
 
@@ -227,15 +225,15 @@ function ReadyPanel({
   user,
   token,
   onAccept,
-  onSignIn,
 }: {
   invite: InviteDetails;
   user: User | null;
   token: string;
   onAccept: () => void;
-  onSignIn: () => void;
 }) {
   const greetingName = user?.name?.split(" ")[0]?.trim() || "there";
+  const loginHref = `/login?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`;
+  const registerHref = `/register?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`;
   return (
     <>
       <HeaderText
@@ -264,18 +262,20 @@ function ReadyPanel({
       ) : (
         <div className="self-stretch flex flex-col items-center gap-3">
           <Button
-            onClick={onSignIn}
-            className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg gap-2"
+            asChild
+            className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
           >
-            <LogIn className="h-4 w-4" />
-            Continue with Google to Accept
+            <Link href={loginHref}>Accept Invitation</Link>
           </Button>
-          <Link
-            href={`/register?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`}
-            className="text-sm text-primary-6 hover:text-primary-7 font-medium"
-          >
-            Sign up with email instead
-          </Link>
+          <p className="text-sm text-text-2">
+            {"Don't have an account? "}
+            <Link
+              href={registerHref}
+              className="text-primary-6 hover:text-primary-7 font-medium"
+            >
+              Sign up
+            </Link>
+          </p>
         </div>
       )}
     </>

@@ -26,10 +26,16 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 function LoginContent() {
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
+  const inviteToken = searchParams.get("token");
+  const emailParam = searchParams.get("email");
+  const [email, setEmail] = useState(emailParam ?? "");
   const [password, setPassword] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+
+  const signupHref = inviteToken
+    ? `/register?token=${encodeURIComponent(inviteToken)}${emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""}`
+    : "/register";
 
   // Surface /auth/verify redirect errors (expired / invalid link).
   useEffect(() => {
@@ -46,7 +52,9 @@ function LoginContent() {
   const mutation = useMutation({
     mutationFn: () => loginWithPassword(email.trim(), password),
     onSuccess: () => {
-      window.location.href = "/";
+      window.location.href = inviteToken
+        ? `/invite?token=${encodeURIComponent(inviteToken)}`
+        : "/";
     },
     onError: (err: Error) => {
       if (err instanceof AuthApiError && err.code === "EMAIL_NOT_VERIFIED") {
@@ -189,7 +197,7 @@ function LoginContent() {
           </Button>
           <p className="text-sm text-text-2 mt-6">
             {"Don't have an account? "}
-            <Link href="/register" className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
+            <Link href={signupHref} className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
             {" to create a workspace"}
           </p>
         </CardContent>
