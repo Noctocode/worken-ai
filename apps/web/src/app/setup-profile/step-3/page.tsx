@@ -72,7 +72,7 @@ export default function SetupProfileStep3Page() {
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-                onClick={() => router.push("/")}
+                onClick={() => router.push("/setup-profile/step-4")}
               >
                 Continue
               </Button>

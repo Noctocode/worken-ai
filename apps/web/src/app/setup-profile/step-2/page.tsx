@@ -124,7 +124,7 @@ export default function SetupProfileStep2Page() {
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-                onClick={() => router.push("/setup-profile/step-3")}
+                onClick={() => router.push("/setup-profile/step-4")}
               >
                 Continue
               </Button>
