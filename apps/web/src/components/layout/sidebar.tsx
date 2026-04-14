@@ -22,7 +22,6 @@ import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
@@ -142,7 +141,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Navigation Links */}
-      <ScrollArea className="flex-1 py-4 px-0">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-4">
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
             <Button
@@ -300,7 +299,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
             </Button>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* User Profile */}
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
