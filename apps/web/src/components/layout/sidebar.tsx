@@ -36,10 +36,17 @@ function getInitials(name: string | null | undefined): string {
     .slice(0, 2);
 }
 
-export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) => {
+export const SidebarContent = ({
+  showToggle = true,
+  forceCollapsed = false,
+}: {
+  showToggle?: boolean;
+  forceCollapsed?: boolean;
+}) => {
   const { user } = useAuth();
   const pathname = usePathname();
-  const { collapsed, toggle } = useSidebar();
+  const { collapsed: providerCollapsed, toggle } = useSidebar();
+  const collapsed = forceCollapsed || providerCollapsed;
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";

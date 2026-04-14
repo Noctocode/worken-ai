@@ -78,8 +78,8 @@ export const Appbar = () => {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-72">
-              <SidebarContent showToggle={false} />
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
             </SheetContent>
           </Sheet>
 
@@ -134,8 +134,8 @@ export const Appbar = () => {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-72">
-              <SidebarContent showToggle={false} />
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
             </SheetContent>
           </Sheet>
 
@@ -200,8 +200,8 @@ export const Appbar = () => {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72">
-            <SidebarContent showToggle={false} />
+          <SheetContent side="left" className="p-0 w-[88px]">
+            <SidebarContent showToggle={false} forceCollapsed />
           </SheetContent>
         </Sheet>
 
@@ -251,8 +251,8 @@ export const Appbar = () => {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-72">
-              <SidebarContent showToggle={false} />
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
             </SheetContent>
           </Sheet>
 
@@ -386,8 +386,8 @@ export const Appbar = () => {
                 <Menu className="h-5 w-5" />
               </Button>
             </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-72">
-              <SidebarContent showToggle={false} />
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
             </SheetContent>
           </Sheet>
 
@@ -421,8 +421,8 @@ export const Appbar = () => {
               <Menu className="h-5 w-5" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72">
-            <SidebarContent showToggle={false} />
+          <SheetContent side="left" className="p-0 w-[88px]">
+            <SidebarContent showToggle={false} forceCollapsed />
           </SheetContent>
         </Sheet>
 
