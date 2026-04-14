@@ -1,20 +1,15 @@
 "use client";
 
-import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 // TODO: replace with exported SVGs from Figma frame 4107-13028.
 // Current lucide icons (Building2 / UserRound) are placeholders until the
 // design-team exports land.
 import { Building2, UserRound } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
-import {
-  fetchCurrentUser,
-  setProfileType,
-  type User,
-} from "@/lib/api";
+import { setProfileType } from "@/lib/api";
 
 type ProfileType = "company" | "personal";
 
@@ -43,22 +38,14 @@ const OPTIONS: Array<{
 export default function SetupProfilePage() {
   const router = useRouter();
 
-  const userQuery = useQuery<User>({
-    queryKey: ["auth", "me"],
-    queryFn: fetchCurrentUser,
-  });
-
-  // If the user has already picked a profile type, skip this screen.
-  useEffect(() => {
-    if (userQuery.data?.profileType) {
-      router.replace("/");
-    }
-  }, [userQuery.data?.profileType, router]);
-
   const mutation = useMutation({
     mutationFn: (type: ProfileType) => setProfileType(type),
-    onSuccess: () => {
-      window.location.href = "/";
+    onSuccess: (_data, type) => {
+      router.push(
+        type === "company"
+          ? "/setup-profile/step-2"
+          : "/setup-profile/step-3",
+      );
     },
     onError: () => {
       toast.error("Couldn't save your choice. Please try again.");
