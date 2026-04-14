@@ -396,9 +396,7 @@ export class TeamsService {
       const [refreshed] = await this.db
         .update(teamMembers)
         .set({
-          // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-          // Revert by replacing this with the original `role` param.
-          role: 'advanced',
+          role,
           status: 'pending',
           invitationToken: token,
           invitationStatus: 'pending',
@@ -430,9 +428,7 @@ export class TeamsService {
       .values({
         teamId,
         email,
-        // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-        // Revert by replacing this with the original `role` param.
-        role: 'advanced',
+        role,
         status: 'pending',
         invitationToken: token,
         invitationStatus: 'pending',
@@ -771,9 +767,6 @@ export class TeamsService {
         status: 'accepted',
         invitationToken: null,
         invitationStatus: 'accepted',
-        // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-        // Revert by removing this line so the role from the invitation is preserved.
-        role: 'advanced',
       })
       .where(eq(teamMembers.id, member.id))
       .returning();

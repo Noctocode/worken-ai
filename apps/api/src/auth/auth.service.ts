@@ -407,9 +407,6 @@ export class AuthService {
         status: 'accepted',
         invitationToken: null,
         invitationStatus: 'accepted',
-        // TODO: temporary 2026-04-13 — all users get advanced until permissions are finalized.
-        // Revert by removing this line so the role from the invitation is preserved.
-        role: 'advanced',
       })
       .where(
         and(
