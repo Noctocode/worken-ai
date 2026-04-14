@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-// TODO: replace lucide placeholders with exported SVGs from Figma frame 4109-14790.
 import { UserRound, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
