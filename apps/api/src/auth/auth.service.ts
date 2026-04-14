@@ -43,6 +43,11 @@ export class AuthService {
   ) {}
 
   async validateOrCreateUser(profile: GoogleProfile) {
+    // Normalize so Google (User@X.com) and password auth (user@x.com) resolve
+    // to the same row — otherwise account linking misses and we create a
+    // duplicate.
+    const email = profile.email.trim().toLowerCase();
+
     const [existing] = await this.db
       .select()
       .from(users)
@@ -70,7 +75,7 @@ export class AuthService {
     const [emailMatch] = await this.db
       .select()
       .from(users)
-      .where(eq(users.email, profile.email));
+      .where(eq(users.email, email));
     if (emailMatch) {
       const [linked] = await this.db
         .update(users)
@@ -89,7 +94,7 @@ export class AuthService {
     const [user] = await this.db
       .insert(users)
       .values({
-        email: profile.email,
+        email,
         name: profile.name,
         picture: profile.picture,
         googleId: profile.googleId,
