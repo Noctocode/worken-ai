@@ -252,10 +252,11 @@
   }
 }
 
-/* Track stays invisible; thumb only appears on hover. Uses scrollbar-gutter
-   to reserve space so the content doesn't reflow when the thumb shows. */
+/* Track stays invisible; thumb only appears on hover. Gutter reserved on
+   both edges so centered content stays aligned with the column above (no
+   horizontal shift when the scrollbar appears). */
 .scrollbar-on-hover {
-  scrollbar-gutter: stable;
+  scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color 0.2s ease;
