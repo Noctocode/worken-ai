@@ -1,9 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import { MoreVertical, UserX, Eye } from "lucide-react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,12 +37,14 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 
 export function UserRow({ user }: { user: OrgUser }) {
   const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const removeMutation = useMutation({
     mutationFn: () => removeOrgUser(user.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+      setConfirmOpen(false);
     },
   });
 
@@ -145,13 +156,44 @@ export function UserRow({ user }: { user: OrgUser }) {
             <DropdownMenuItem
               className="gap-2 text-red-600 focus:text-red-600"
               disabled={removeMutation.isPending}
-              onClick={() => removeMutation.mutate()}
+              onSelect={(e) => {
+                e.preventDefault();
+                setConfirmOpen(true);
+              }}
             >
               <UserX className="h-4 w-4" />
               Remove user
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remove user</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to remove{" "}
+                <strong>{user.name ?? user.email}</strong> from the
+                organization? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={removeMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => removeMutation.mutate()}
+                disabled={removeMutation.isPending}
+              >
+                {removeMutation.isPending ? "Removing..." : "Remove"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </td>
     </tr>
   );
