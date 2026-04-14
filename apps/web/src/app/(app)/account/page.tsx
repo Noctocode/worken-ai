@@ -1,11 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, Building2, UserRound, Cloud, Server, FileText, Key } from "lucide-react";
+import {
+  Loader2,
+  Building2,
+  UserRound,
+  Cloud,
+  Server,
+  FileText,
+  Key,
+  ShieldCheck,
+  Check,
+  X,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
 
 const PROVIDER_LABELS: Record<string, string> = {
@@ -42,7 +55,19 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+function buildPermissions(canCreateProject: boolean) {
+  const perms: Array<{ label: string; allowed: boolean }> = [
+    { label: "Create projects", allowed: canCreateProject },
+    { label: "Create teams", allowed: canCreateProject },
+    { label: "Invite users to a team", allowed: canCreateProject },
+    { label: "Remove users from the organization", allowed: canCreateProject },
+    { label: "View projects and teams you belong to", allowed: true },
+  ];
+  return perms;
+}
+
 export default function AccountPage() {
+  const { user: currentUser } = useAuth();
   const { data, isLoading, error } = useQuery<OnboardingProfile>({
     queryKey: ["onboarding", "profile"],
     queryFn: fetchOnboardingProfile,
@@ -84,6 +109,68 @@ export default function AccountPage() {
           <p className="text-sm text-text-3">{data.email}</p>
         </div>
       </Card>
+
+      {/* Tier & permissions */}
+      {(() => {
+        const isAdvanced = currentUser?.canCreateProject ?? false;
+        const permissions = buildPermissions(isAdvanced);
+        return (
+          <Card className="flex w-full flex-col items-center gap-5 p-8 text-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded bg-bg-1">
+                <ShieldCheck className="h-6 w-6 text-primary-7" strokeWidth={2} />
+              </div>
+              <div className="flex flex-col items-center gap-1">
+                <span className="text-xs font-medium uppercase tracking-wide text-text-3">
+                  Access tier
+                </span>
+                <Badge
+                  className={
+                    isAdvanced
+                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[11px] px-2 py-0.5"
+                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[11px] px-2 py-0.5"
+                  }
+                >
+                  {isAdvanced ? "Advanced" : "Basic"}
+                </Badge>
+              </div>
+              <p className="max-w-[360px] text-sm text-text-3">
+                {isAdvanced
+                  ? "You have full access to team and project management."
+                  : "Ask a team owner to upgrade your role to Advanced, or upgrade to a paid plan."}
+              </p>
+            </div>
+
+            <ul className="flex w-full flex-col gap-2 text-left">
+              {permissions.map((p) => (
+                <li
+                  key={p.label}
+                  className="flex items-center gap-3 rounded border border-border-2 bg-bg-white px-4 py-3"
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                      p.allowed ? "bg-[#23C343]/15" : "bg-bg-3"
+                    }`}
+                  >
+                    {p.allowed ? (
+                      <Check className="h-3.5 w-3.5 text-[#23C343]" strokeWidth={3} />
+                    ) : (
+                      <X className="h-3.5 w-3.5 text-text-3" strokeWidth={3} />
+                    )}
+                  </span>
+                  <span
+                    className={`text-sm ${
+                      p.allowed ? "text-text-1" : "text-text-3 line-through"
+                    }`}
+                  >
+                    {p.label}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        );
+      })()}
 
       {/* Profile type */}
       <Card className="flex w-full flex-col items-center gap-6 p-8 text-center">
