@@ -17,6 +17,12 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     });
   }
 
+  // Force the Google account chooser on every sign-in attempt instead of
+  // silently reusing the browser's active Google session.
+  authorizationParams(): Record<string, string> {
+    return { prompt: 'select_account' };
+  }
+
   validate(
     _accessToken: string,
     _refreshToken: string,

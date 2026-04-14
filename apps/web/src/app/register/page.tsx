@@ -33,6 +33,7 @@ function RegisterContent() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState(invitedEmail ?? "");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
 
   // Pre-fill the invited email if it arrived after the first render.
@@ -94,6 +95,10 @@ function RegisterContent() {
       );
       return;
     }
+    if (password !== confirmPassword) {
+      setValidationError("Passwords don't match");
+      return;
+    }
     mutation.mutate();
   };
 
@@ -153,6 +158,18 @@ function RegisterContent() {
                 placeholder="Password (min 8 characters)"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={MIN_PASSWORD_LENGTH}
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            <div className="relative mt-4">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="password"
+                placeholder="Confirm password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={MIN_PASSWORD_LENGTH}
                 className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
