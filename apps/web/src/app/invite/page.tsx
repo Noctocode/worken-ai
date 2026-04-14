@@ -232,8 +232,8 @@ function ReadyPanel({
   onAccept: () => void;
 }) {
   const greetingName = user?.name?.split(" ")[0]?.trim() || "there";
+  const setPasswordHref = `/invite/set-password?token=${encodeURIComponent(token)}`;
   const loginHref = `/login?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`;
-  const registerHref = `/register?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`;
   return (
     <>
       <HeaderText
@@ -265,15 +265,15 @@ function ReadyPanel({
             asChild
             className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
           >
-            <Link href={loginHref}>Accept Invitation</Link>
+            <Link href={setPasswordHref}>Accept Invitation</Link>
           </Button>
           <p className="text-sm text-text-2">
-            {"Don't have an account? "}
+            {"Already have an account? "}
             <Link
-              href={registerHref}
+              href={loginHref}
               className="text-primary-6 hover:text-primary-7 font-medium"
             >
-              Sign up
+              Log in
             </Link>
           </p>
         </div>
