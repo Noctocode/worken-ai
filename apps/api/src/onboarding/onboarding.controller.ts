@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
   Post,
   UploadedFiles,
   UseInterceptors,
@@ -21,6 +22,11 @@ const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
 @Controller('onboarding')
 export class OnboardingController {
   constructor(private readonly onboardingService: OnboardingService) {}
+
+  @Get('profile')
+  getProfile(@CurrentUser() user: AuthenticatedUser) {
+    return this.onboardingService.getProfile(user.id);
+  }
 
   @Post('complete')
   @UseInterceptors(

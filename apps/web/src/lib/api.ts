@@ -795,6 +795,32 @@ export async function sendQuestionToCompareModels(
 
 // Onboarding
 
+export interface OnboardingProfile {
+  name: string | null;
+  email: string;
+  picture: string | null;
+  profileType: "company" | "personal" | null;
+  companyName: string | null;
+  industry: string | null;
+  teamSize: string | null;
+  infraChoice: "managed" | "on-premise" | null;
+  onboardingCompletedAt: string | null;
+  providers: Array<{ id: string; provider: string; createdAt: string }>;
+  documents: Array<{
+    id: string;
+    filename: string;
+    sizeBytes: number;
+    mimeType: string | null;
+    createdAt: string;
+  }>;
+}
+
+export async function fetchOnboardingProfile(): Promise<OnboardingProfile> {
+  const res = await apiFetch("/onboarding/profile");
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}
+
 export interface CompleteOnboardingPayload {
   profileType: "company" | "personal";
   fullName?: string;

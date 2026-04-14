@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { mkdir, writeFile } from 'fs/promises';
@@ -129,6 +130,48 @@ export class OnboardingService {
         });
       }
     });
+  }
+
+  async getProfile(userId: string) {
+    const [u] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!u) throw new NotFoundException('User not found');
+
+    const providers = await this.db
+      .select({
+        id: userLlmCredentials.id,
+        provider: userLlmCredentials.provider,
+        createdAt: userLlmCredentials.createdAt,
+      })
+      .from(userLlmCredentials)
+      .where(eq(userLlmCredentials.userId, userId));
+
+    const documents = await this.db
+      .select({
+        id: knowledgeDocuments.id,
+        filename: knowledgeDocuments.filename,
+        sizeBytes: knowledgeDocuments.sizeBytes,
+        mimeType: knowledgeDocuments.mimeType,
+        createdAt: knowledgeDocuments.createdAt,
+      })
+      .from(knowledgeDocuments)
+      .where(eq(knowledgeDocuments.userId, userId));
+
+    return {
+      name: u.name,
+      email: u.email,
+      picture: u.picture,
+      profileType: u.profileType as 'company' | 'personal' | null,
+      companyName: u.companyName,
+      industry: u.industry,
+      teamSize: u.teamSize,
+      infraChoice: u.infraChoice as 'managed' | 'on-premise' | null,
+      onboardingCompletedAt: u.onboardingCompletedAt?.toISOString() ?? null,
+      providers,
+      documents,
+    };
   }
 
   private validate(p: OnboardingPayload) {
