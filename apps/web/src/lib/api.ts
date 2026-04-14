@@ -131,6 +131,29 @@ export async function resendVerificationEmail(email: string): Promise<void> {
   if (!res.ok) throw await parseAuthError(res);
 }
 
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await apiFetch("/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function resetPassword(
+  token: string,
+  password: string,
+): Promise<void> {
+  const res = await apiFetch("/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+}
+
 export async function setProfileType(
   profileType: "company" | "personal",
 ): Promise<User> {

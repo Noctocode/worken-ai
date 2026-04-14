@@ -22,6 +22,10 @@ export const users = pgTable("users", {
   verificationTokenExpiresAt: timestamp("verification_token_expires_at", {
     withTimezone: true,
   }),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", {
+    withTimezone: true,
+  }),
   profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
   // Onboarding fields (populated in a single transaction when the user
   // completes the /setup-profile wizard). Nullable while onboarding is

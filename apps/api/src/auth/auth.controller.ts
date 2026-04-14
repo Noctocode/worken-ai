@@ -253,6 +253,42 @@ export class AuthController {
   }
 
   @Public()
+  @Post('forgot-password')
+  async forgotPassword(@Body() body: { email?: string }) {
+    if (body?.email) {
+      const result = await this.authService.issuePasswordResetToken(body.email);
+      if (result) {
+        try {
+          await this.mailService.sendPasswordResetEmail({
+            to: result.user.email,
+            name: result.user.name ?? 'there',
+            token: result.token,
+          });
+        } catch (err) {
+          console.error('Failed to send password reset email:', err);
+        }
+      }
+    }
+    // Always 200 — don't leak whether the account exists.
+    return {
+      message:
+        "If that account exists, we've sent a password reset link.",
+    };
+  }
+
+  @Public()
+  @Post('reset-password')
+  async resetPassword(
+    @Body() body: { token?: string; password?: string },
+  ) {
+    if (!body?.token || !body?.password) {
+      throw new BadRequestException('token and password are required');
+    }
+    await this.authService.resetPassword(body.token, body.password);
+    return { success: true };
+  }
+
+  @Public()
   @Post('login')
   async login(
     @Body() body: { email?: string; password?: string },
