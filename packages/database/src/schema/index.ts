@@ -15,7 +15,14 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   name: text("name"),
   picture: text("picture"),
-  googleId: text("google_id").notNull().unique(),
+  googleId: text("google_id").unique(),
+  passwordHash: text("password_hash"),
+  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+  verificationTokenHash: text("verification_token_hash"),
+  verificationTokenExpiresAt: timestamp("verification_token_expires_at", {
+    withTimezone: true,
+  }),
+  profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
   isPaid: boolean("is_paid").notNull().default(false),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
@@ -49,6 +56,9 @@ export const teamMembers = pgTable("team_members", {
   role: text("role").notNull(), // 'basic' | 'advanced'
   status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
   invitationToken: text("invitation_token"),
+  invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
+  invitationExpiresAt: timestamp("invitation_expires_at", { withTimezone: true }),
+  invitationRevokedAt: timestamp("invitation_revoked_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

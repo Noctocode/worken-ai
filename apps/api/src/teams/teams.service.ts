@@ -8,6 +8,10 @@ import {
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
+
+const INVITE_EXPIRY_DAYS = 7;
+const inviteExpiry = () =>
+  new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 import { teams, teamMembers, users, guardrails } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
@@ -349,6 +353,10 @@ export class TeamsService {
     role: string,
     userId: string,
   ) {
+    // Normalize email so Foo@X.com and foo@x.com can't create two rows or
+    // dodge the post-signup sweep, which matches case-sensitively.
+    email = email.trim().toLowerCase();
+
     // Verify caller is owner
     const [team] = await this.db
       .select()
@@ -366,23 +374,56 @@ export class TeamsService {
       throw new BadRequestException('Role must be basic or advanced');
     }
 
-    // Check for duplicate
+    // Look up inviter name
+    const [inviter] = await this.db
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, userId));
+    const inviterName = inviter?.name ?? 'A team member';
+
+    // Existing row for this email + team?
     const [existing] = await this.db
       .select()
       .from(teamMembers)
       .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.email, email)));
 
     if (existing) {
-      throw new ConflictException(
-        'This email has already been invited to this team',
-      );
-    }
+      // Already accepted — block duplicate invite
+      if (existing.status === 'accepted') {
+        throw new ConflictException(
+          'This user is already a member of the team',
+        );
+      }
 
-    // Look up inviter name
-    const [inviter] = await this.db
-      .select({ name: users.name })
-      .from(users)
-      .where(eq(users.id, userId));
+      // Resend path: pending/expired/revoked → re-arm token, reset expiry, resend email
+      const token = existing.invitationToken ?? randomBytes(32).toString('hex');
+      const [refreshed] = await this.db
+        .update(teamMembers)
+        .set({
+          role,
+          status: 'pending',
+          invitationToken: token,
+          invitationStatus: 'pending',
+          invitationExpiresAt: inviteExpiry(),
+          invitationRevokedAt: null,
+        })
+        .where(eq(teamMembers.id, existing.id))
+        .returning();
+
+      try {
+        await this.mailService.sendTeamInvitation({
+          to: email,
+          teamName: team.name,
+          inviterName,
+          role,
+          token,
+        });
+      } catch (err) {
+        console.error('Failed to resend invitation email:', err);
+      }
+
+      return { ...refreshed, resent: true };
+    }
 
     const token = randomBytes(32).toString('hex');
 
@@ -394,6 +435,8 @@ export class TeamsService {
         role,
         status: 'pending',
         invitationToken: token,
+        invitationStatus: 'pending',
+        invitationExpiresAt: inviteExpiry(),
       })
       .returning();
 
@@ -401,7 +444,7 @@ export class TeamsService {
       await this.mailService.sendTeamInvitation({
         to: email,
         teamName: team.name,
-        inviterName: inviter?.name ?? 'A team member',
+        inviterName,
         role,
         token,
       });
@@ -409,7 +452,83 @@ export class TeamsService {
       console.error('Failed to send invitation email:', err);
     }
 
-    return member;
+    return { ...member, resent: false };
+  }
+
+  async listInvitations(teamId: string, userId: string) {
+    const [team] = await this.db
+      .select()
+      .from(teams)
+      .where(eq(teams.id, teamId));
+    if (!team) throw new NotFoundException('Team not found');
+    if (team.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can list invitations');
+    }
+
+    const rows = await this.db
+      .select({
+        id: teamMembers.id,
+        email: teamMembers.email,
+        role: teamMembers.role,
+        invitationStatus: teamMembers.invitationStatus,
+        invitationExpiresAt: teamMembers.invitationExpiresAt,
+        invitationRevokedAt: teamMembers.invitationRevokedAt,
+        createdAt: teamMembers.createdAt,
+      })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.status, 'pending'),
+        ),
+      );
+
+    // Surface lazy expiry to the caller without writing to the row here.
+    const now = Date.now();
+    return rows.map((r) => ({
+      ...r,
+      invitationStatus:
+        r.invitationStatus === 'pending' &&
+        r.invitationExpiresAt &&
+        r.invitationExpiresAt.getTime() < now
+          ? 'expired'
+          : r.invitationStatus ?? 'pending',
+    }));
+  }
+
+  async revokeInvitation(memberId: string, userId: string) {
+    const [row] = await this.db
+      .select({
+        id: teamMembers.id,
+        teamId: teamMembers.teamId,
+        status: teamMembers.status,
+        ownerId: teams.ownerId,
+      })
+      .from(teamMembers)
+      .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+      .where(eq(teamMembers.id, memberId));
+
+    if (!row) throw new NotFoundException('Invitation not found');
+    if (row.ownerId !== userId) {
+      throw new ForbiddenException('Only the team owner can revoke invitations');
+    }
+    if (row.status === 'accepted') {
+      throw new BadRequestException(
+        'Cannot revoke an invitation that has already been accepted',
+      );
+    }
+
+    const [updated] = await this.db
+      .update(teamMembers)
+      .set({
+        invitationStatus: 'revoked',
+        invitationRevokedAt: new Date(),
+        invitationToken: null,
+      })
+      .where(eq(teamMembers.id, memberId))
+      .returning();
+
+    return updated;
   }
 
   async updateMemberRole(
@@ -562,9 +681,13 @@ export class TeamsService {
   async getInviteByToken(token: string) {
     const [member] = await this.db
       .select({
+        id: teamMembers.id,
         email: teamMembers.email,
         role: teamMembers.role,
         status: teamMembers.status,
+        invitationStatus: teamMembers.invitationStatus,
+        invitationExpiresAt: teamMembers.invitationExpiresAt,
+        invitationRevokedAt: teamMembers.invitationRevokedAt,
         teamName: teams.name,
         inviterName: users.name,
       })
@@ -581,11 +704,28 @@ export class TeamsService {
       throw new BadRequestException('Invitation has already been accepted');
     }
 
+    if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
+      throw new BadRequestException('Invitation has been revoked');
+    }
+
+    if (
+      member.invitationExpiresAt &&
+      member.invitationExpiresAt.getTime() < Date.now()
+    ) {
+      // Lazy mark as expired so future reads are consistent
+      await this.db
+        .update(teamMembers)
+        .set({ invitationStatus: 'expired' })
+        .where(eq(teamMembers.id, member.id));
+      throw new BadRequestException('Invitation has expired');
+    }
+
     return {
       email: member.email,
       role: member.role,
       teamName: member.teamName,
       inviterName: member.inviterName,
+      expiresAt: member.invitationExpiresAt?.toISOString() ?? null,
     };
   }
 
@@ -603,6 +743,21 @@ export class TeamsService {
       throw new BadRequestException('Invitation has already been accepted');
     }
 
+    if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
+      throw new BadRequestException('Invitation has been revoked');
+    }
+
+    if (
+      member.invitationExpiresAt &&
+      member.invitationExpiresAt.getTime() < Date.now()
+    ) {
+      await this.db
+        .update(teamMembers)
+        .set({ invitationStatus: 'expired' })
+        .where(eq(teamMembers.id, member.id));
+      throw new BadRequestException('Invitation has expired');
+    }
+
     if (member.email.toLowerCase() !== userEmail.toLowerCase()) {
       throw new ForbiddenException(
         'This invitation was sent to a different email address',
@@ -611,7 +766,12 @@ export class TeamsService {
 
     const [updated] = await this.db
       .update(teamMembers)
-      .set({ userId, status: 'accepted', invitationToken: null })
+      .set({
+        userId,
+        status: 'accepted',
+        invitationToken: null,
+        invitationStatus: 'accepted',
+      })
       .where(eq(teamMembers.id, member.id))
       .returning();
 

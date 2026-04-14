@@ -1,8 +1,12 @@
 "use client";
 
+import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Mail, Lock, LogIn } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,10 +16,83 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  AuthApiError,
+  loginWithPassword,
+  resendVerificationEmail,
+} from "@/lib/api";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-export default function LoginPage() {
+function LoginContent() {
+  const searchParams = useSearchParams();
+  const inviteToken = searchParams.get("token");
+  const emailParam = searchParams.get("email");
+  const [email, setEmail] = useState(emailParam ?? "");
+  const [password, setPassword] = useState("");
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+
+  const signupHref = inviteToken
+    ? `/register?token=${encodeURIComponent(inviteToken)}${emailParam ? `&email=${encodeURIComponent(emailParam)}` : ""}`
+    : "/register";
+
+  // Surface /auth/verify redirect errors (expired / invalid link).
+  useEffect(() => {
+    const verifyError = searchParams.get("verify_error");
+    if (verifyError === "expired") {
+      toast.error("That verification link has expired. Request a new one below.");
+    } else if (verifyError === "invalid") {
+      toast.error(
+        "That verification link is invalid or has already been used.",
+      );
+    }
+  }, [searchParams]);
+
+  const mutation = useMutation({
+    mutationFn: () => loginWithPassword(email.trim(), password),
+    onSuccess: () => {
+      window.location.href = inviteToken
+        ? `/invite?token=${encodeURIComponent(inviteToken)}`
+        : "/";
+    },
+    onError: (err: Error) => {
+      if (err instanceof AuthApiError && err.code === "EMAIL_NOT_VERIFIED") {
+        setUnverifiedEmail(email.trim());
+        return;
+      }
+      toast.error(err.message);
+    },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: async () => {
+      if (!unverifiedEmail) return;
+      await resendVerificationEmail(unverifiedEmail);
+    },
+    onSuccess: () => {
+      toast.success("Verification email sent. Please check your inbox.");
+    },
+    onError: () => {
+      toast.error("Couldn't resend right now. Please try again.");
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setValidationError(null);
+    setUnverifiedEmail(null);
+    if (!email.trim()) {
+      setValidationError("Please enter your email");
+      return;
+    }
+    if (!password) {
+      setValidationError("Please enter your password");
+      return;
+    }
+    mutation.mutate();
+  };
+
   return (
     <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
@@ -38,29 +115,65 @@ export default function LoginPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="email"
-              placeholder="Email Address"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <div className="relative mt-4">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
-            <Input
-              type="password"
-              placeholder="Password"
-              className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
-            />
-          </div>
-          <Button
-            className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
-            size="lg"
-          >
-            <LogIn className="h-4 w-4" />
-            Continue
-          </Button>
+          <form onSubmit={handleSubmit}>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            <div className="relative mt-4">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
+              <Input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
+              />
+            </div>
+            {validationError && (
+              <p className="mt-3 text-sm text-danger-6 text-left">
+                {validationError}
+              </p>
+            )}
+            {unverifiedEmail && (
+              <div className="mt-4 rounded-md border border-warning-5 bg-warning-1 p-3 text-left text-sm">
+                <p className="text-text-1 font-medium mb-1">
+                  Please verify your email before signing in.
+                </p>
+                <p className="text-text-2 mb-2">
+                  We sent a confirmation link to{" "}
+                  <span className="font-medium">{unverifiedEmail}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => resendMutation.mutate()}
+                  disabled={resendMutation.isPending}
+                  className="text-primary-6 hover:text-primary-7 font-medium disabled:opacity-60"
+                >
+                  {resendMutation.isPending
+                    ? "Resending…"
+                    : "Resend verification email"}
+                </button>
+              </div>
+            )}
+            <Button
+              type="submit"
+              disabled={mutation.isPending}
+              className="w-full h-14 gap-2 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md mt-4"
+              size="lg"
+            >
+              <LogIn className="h-4 w-4" />
+              {mutation.isPending ? "Signing in..." : "Continue"}
+            </Button>
+          </form>
           <div className="flex items-center gap-2 my-6">
             <div className="flex-1 h-0 border-t border-divider" />
             <span className="text-sm text-text-2">or continue with</span>
@@ -84,11 +197,23 @@ export default function LoginPage() {
           </Button>
           <p className="text-sm text-text-2 mt-6">
             {"Don't have an account? "}
-            <Link href="/register" className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
+            <Link href={signupHref} className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
             {" to create a workspace"}
           </p>
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen w-full items-center justify-center bg-bg-1" />
+      }
+    >
+      <LoginContent />
+    </Suspense>
   );
 }

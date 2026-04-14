@@ -1,9 +1,23 @@
-import { Body, Controller, Delete, Get, Param, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  ForbiddenException,
+  Get,
+  Param,
+  Patch,
+} from '@nestjs/common';
 import { UsersService } from './users.service.js';
+import { TeamsService } from '../teams/teams.service.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { AuthenticatedUser } from '../auth/types.js';
 
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly teamsService: TeamsService,
+  ) {}
 
   @Get()
   findAll() {
@@ -24,7 +38,18 @@ export class UsersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    const canManage =
+      caller.isPaid ||
+      (await this.teamsService.userHasAdvancedRoleInAnyTeam(caller.id));
+    if (!canManage) {
+      throw new ForbiddenException(
+        'A paid plan or an Advanced team role is required to remove users.',
+      );
+    }
     return this.usersService.remove(id);
   }
 }

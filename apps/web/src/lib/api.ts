@@ -1,8 +1,19 @@
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
+export interface ApiFetchOptions extends RequestInit {
+  // Pass true on public pages (e.g. /invite) where an unauthenticated 401
+  // is an expected outcome, not a session expiry. The caller handles the
+  // response itself instead of being bounced to /login.
+  skipAuthRedirect?: boolean;
+}
+
+export async function apiFetch(
+  input: string,
+  init?: ApiFetchOptions,
+): Promise<Response> {
+  const { skipAuthRedirect, ...fetchInit } = init ?? {};
   const res = await fetch(`${BASE_URL}${input}`, {
-    ...init,
+    ...fetchInit,
     credentials: "include",
   });
 
@@ -16,9 +27,13 @@ async function apiFetch(input: string, init?: RequestInit): Promise<Response> {
     if (refreshRes.ok) {
       // Retry the original request
       return fetch(`${BASE_URL}${input}`, {
-        ...init,
+        ...fetchInit,
         credentials: "include",
       });
+    }
+
+    if (skipAuthRedirect) {
+      return res;
     }
 
     // Refresh failed — redirect to login
@@ -35,6 +50,8 @@ export interface User {
   name: string | null;
   picture: string | null;
   isPaid: boolean;
+  emailVerified: boolean;
+  profileType: "company" | "personal" | null;
   canCreateProject: boolean;
 }
 
@@ -44,9 +61,103 @@ export async function fetchCurrentUser(): Promise<User> {
   return res.json();
 }
 
+// Public-page variant: returns null when the visitor isn't signed in,
+// instead of redirecting them to /login.
+export async function fetchCurrentUserOptional(): Promise<User | null> {
+  const res = await apiFetch("/auth/me", { skipAuthRedirect: true });
+  if (res.status === 401) return null;
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function logout(): Promise<void> {
   await apiFetch("/auth/logout", { method: "POST" });
   window.location.href = "/login";
+}
+
+export interface AuthUserSummary {
+  id: string;
+  email: string;
+  name: string | null;
+  picture: string | null;
+}
+
+export type SignupResponse =
+  | { verified: true; user: AuthUserSummary }
+  | { verified: false; email: string; message: string };
+
+export class AuthApiError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "AuthApiError";
+    this.code = code;
+  }
+}
+
+async function parseAuthError(res: Response): Promise<AuthApiError> {
+  const body = await res.json().catch(() => ({}));
+  let message = "Something went wrong";
+  if (typeof body?.message === "string") message = body.message;
+  else if (Array.isArray(body?.message)) message = body.message.join(", ");
+  const code = typeof body?.code === "string" ? body.code : undefined;
+  return new AuthApiError(message, code);
+}
+
+export async function signupWithPassword(input: {
+  email: string;
+  password: string;
+  name: string;
+  token?: string;
+}): Promise<SignupResponse> {
+  const res = await apiFetch("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function resendVerificationEmail(email: string): Promise<void> {
+  const res = await apiFetch("/auth/resend-verification", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function setProfileType(
+  profileType: "company" | "personal",
+): Promise<User> {
+  const res = await apiFetch("/auth/profile-type", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profileType }),
+  });
+  if (!res.ok) throw new Error("Failed to save profile type");
+  return res.json();
+}
+
+export interface LoginResponse {
+  user: AuthUserSummary;
+}
+
+export async function loginWithPassword(
+  email: string,
+  password: string,
+): Promise<LoginResponse> {
+  const res = await apiFetch("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
 }
 
 // Projects
@@ -265,18 +376,53 @@ export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> 
   return res.json();
 }
 
+export interface InviteTeamMemberResult extends TeamMember {
+  resent: boolean;
+}
+
 export async function inviteTeamMember(
   teamId: string,
   email: string,
   role: "basic" | "advanced",
-): Promise<TeamMember> {
+): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, role }),
   });
-  if (!res.ok) throw new Error("Failed to invite member");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to invite member");
+  }
   return res.json();
+}
+
+export interface PendingInvitation {
+  id: string;
+  email: string;
+  role: string;
+  invitationStatus: "pending" | "expired" | "revoked" | "accepted";
+  invitationExpiresAt: string | null;
+  invitationRevokedAt: string | null;
+  createdAt: string;
+}
+
+export async function listTeamInvitations(
+  teamId: string,
+): Promise<PendingInvitation[]> {
+  const res = await apiFetch(`/teams/${teamId}/invitations`);
+  if (!res.ok) throw new Error("Failed to list invitations");
+  return res.json();
+}
+
+export async function revokeInvitation(memberId: string): Promise<void> {
+  const res = await apiFetch(`/teams/invitations/${memberId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to revoke invitation");
+  }
 }
 
 export async function updateMemberRole(
@@ -469,6 +615,7 @@ export interface InviteDetails {
   role: string;
   teamName: string;
   inviterName: string;
+  expiresAt: string | null;
 }
 
 export async function fetchInviteDetails(
@@ -545,19 +692,6 @@ export async function updateUserBudget(
     body: JSON.stringify({ budgetUsd }),
   });
   if (!res.ok) throw new Error("Failed to update user budget");
-  return res.json();
-}
-
-export async function inviteOrgUser(
-  email: string,
-  role: "basic" | "advanced" | "admin",
-): Promise<OrgUser> {
-  const res = await apiFetch("/users/invite", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, role }),
-  });
-  if (!res.ok) throw new Error("Failed to invite user");
   return res.json();
 }
 

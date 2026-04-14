@@ -10,6 +10,12 @@ interface TeamInvitationParams {
   token: string;
 }
 
+interface VerificationEmailParams {
+  to: string;
+  name: string;
+  token: string;
+}
+
 @Injectable()
 export class MailService {
   private transporter: Transporter;
@@ -73,4 +79,62 @@ export class MailService {
       html,
     });
   }
+
+  async sendVerificationEmail({ to, name, token }: VerificationEmailParams) {
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const apiUrl =
+      this.config.get<string>('API_URL') || 'http://localhost:3001';
+    const verifyUrl = `${apiUrl}/auth/verify?token=${encodeURIComponent(token)}`;
+    const greetingName = (name || 'there').split(' ')[0];
+
+    // Dev-mode affordance: without SMTP configured locally the verification
+    // email silently no-ops. Logging the URL here lets a developer just
+    // click it from the terminal. Never runs in production.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[dev] verification URL for ${to}: ${verifyUrl}`);
+    }
+
+    // Matches Figma frame 4110-16154: 800px container, white bg, centered
+    // inner card (30px padding, 30px radius), blue (#178ACA) CTA, IBM Plex
+    // Sans type. Inlined styles because email clients don't run CSS files.
+    const html = `
+      <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
+        <div style="display: flex; align-items: center; gap: 6px; height: 48px; margin-bottom: 30px;">
+          <span style="font-size: 26px; font-weight: 700; color: #1D2129; letter-spacing: -0.01em;">WorkenAI</span>
+        </div>
+        <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
+          <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Hi ${escapeHtml(greetingName)},</h1>
+          <p style="font-size: 23px; font-weight: 400; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Thanks for joining WorkenAI</p>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.3;">To complete your account setup, please confirm your email address by clicking the button below:</p>
+          <div style="margin: 0 0 30px;">
+            <a href="${verifyUrl}" style="display: inline-block; background: #178ACA; color: #ffffff; font-size: 16px; font-weight: 400; text-decoration: none; padding: 16px 24px; border-radius: 8px;">Confirm Email Address</a>
+          </div>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 8px; line-height: 1.3;">Can't see the button? Copy and paste this link into your browser:</p>
+          <p style="font-size: 16px; font-weight: 400; color: #86909C; margin: 0 0 30px; line-height: 1.3; word-break: break-all;">${verifyUrl}</p>
+          <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
+        </div>
+      </div>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.config.get<string>('MAIL_FROM'),
+      to,
+      subject: 'Confirm your email address',
+      html,
+    });
+
+    // Reference frontend URL so the import stays useful even when the
+    // template later links back into app flows.
+    void frontendUrl;
+  }
+}
+
+function escapeHtml(s: string) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

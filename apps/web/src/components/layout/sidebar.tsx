@@ -20,8 +20,10 @@ import { usePathname } from "next/navigation";
 
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
 
@@ -113,23 +115,29 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       <div className="flex justify-center py-[60px]">
         {user?.canCreateProject ? (
           newProjectButton
-        ) : collapsed ? (
-          <Button
-            className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
-            disabled
-            title="New Project"
-          >
-            <Plus className="h-4 w-4 shrink-0" />
-          </Button>
         ) : (
-          <Button
-            className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
+          <DisabledReasonTooltip
             disabled
-            title="New Project"
+            reason="Requires a paid plan or an Advanced role in a team."
+            className={collapsed ? undefined : "block w-full"}
           >
-            <Plus className="h-4 w-4 shrink-0" />
-            <span>New Project</span>
-          </Button>
+            {collapsed ? (
+              <Button
+                className="h-[48px] w-[40px] bg-primary-6 p-0 text-white opacity-50 cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+              </Button>
+            ) : (
+              <Button
+                className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 opacity-50 cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 shrink-0" />
+                <span>New Project</span>
+              </Button>
+            )}
+          </DisabledReasonTooltip>
         )}
       </div>
 
@@ -328,9 +336,21 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
           {!collapsed && (
             <>
               <div className="flex-1 overflow-hidden">
-                <p className="truncate text-sm font-medium text-text-1">
-                  {user?.name ?? "Loading..."}
-                </p>
+                <div className="flex items-center gap-1.5">
+                  <p className="truncate text-sm font-medium text-text-1">
+                    {user?.name ?? "Loading..."}
+                  </p>
+                  {user &&
+                    (user.canCreateProject ? (
+                      <Badge className="shrink-0 border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                        Advanced
+                      </Badge>
+                    ) : (
+                      <Badge className="shrink-0 border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                        Basic
+                      </Badge>
+                    ))}
+                </div>
                 <p className="truncate text-xs text-text-3">
                   {user?.email ?? ""}
                 </p>

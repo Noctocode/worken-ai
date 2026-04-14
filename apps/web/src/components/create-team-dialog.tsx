@@ -50,6 +50,7 @@ export function CreateTeamDialog({
     mutationFn: createTeam,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
       setOpen(false);
     },
   });
@@ -59,6 +60,7 @@ export function CreateTeamDialog({
       updateTeam(team!.id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
       setOpen(false);
     },
   });
