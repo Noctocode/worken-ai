@@ -698,7 +698,10 @@ export async function updateUserBudget(
 
 export async function removeOrgUser(userId: string): Promise<void> {
   const res = await apiFetch(`/users/${userId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to remove user");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to remove user");
+  }
 }
 
 // Model Configs
