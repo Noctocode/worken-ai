@@ -3,7 +3,7 @@
 import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { UploadCloud, FolderClosed, Users, Server, Award } from "lucide-react";
+import { UploadCloud, FolderClosed, Users, Server, Award, FileText, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,8 +29,26 @@ export default function SetupProfileStep6Page() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = (incoming: FileList | null) => {
-    if (!incoming) return;
-    setFiles(Array.from(incoming));
+    if (!incoming || incoming.length === 0) return;
+    // Append, but dedupe on name+size so picking the same file twice
+    // doesn't create duplicates.
+    const existingKeys = new Set(files.map((f) => `${f.name}:${f.size}`));
+    const additions = Array.from(incoming).filter(
+      (f) => !existingKeys.has(`${f.name}:${f.size}`),
+    );
+    setFiles([...files, ...additions]);
+    // Clear the input so selecting the same file again after a remove works.
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (index: number) => {
+    setFiles(files.filter((_, i) => i !== index));
+  };
+
+  const formatBytes = (n: number) => {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const mutation = useMutation({
@@ -142,12 +160,39 @@ export default function SetupProfileStep6Page() {
             ))}
           </div>
 
-          {/* Upload status */}
-          <div className="rounded border border-border-2 bg-bg-1 px-6 py-5 text-center text-[13px] text-text-3">
-            {files.length === 0
-              ? "No files uploaded yet. Add documents to begin training your AI."
-              : `${files.length} file${files.length === 1 ? "" : "s"} selected: ${files.map((f) => f.name).join(", ")}`}
-          </div>
+          {/* Upload status / selected files */}
+          {files.length === 0 ? (
+            <div className="rounded border border-border-2 bg-bg-1 px-6 py-5 text-center text-[13px] text-text-3">
+              No files uploaded yet. Add documents to begin training your AI.
+            </div>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {files.map((f, i) => (
+                <li
+                  key={`${f.name}-${f.size}-${i}`}
+                  className="flex items-center gap-3 rounded border border-border-2 bg-bg-white px-4 py-3"
+                >
+                  <FileText className="h-5 w-5 shrink-0 text-primary-7" strokeWidth={2} />
+                  <div className="flex flex-1 flex-col overflow-hidden">
+                    <span className="truncate text-sm font-medium text-text-1">
+                      {f.name}
+                    </span>
+                    <span className="text-xs text-text-3">
+                      {formatBytes(f.size)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    title="Remove file"
+                    className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
 
           <div className="flex justify-between">
             <Button
