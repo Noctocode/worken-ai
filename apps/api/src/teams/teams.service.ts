@@ -357,7 +357,7 @@ export class TeamsService {
     // dodge the post-signup sweep, which matches case-sensitively.
     email = email.trim().toLowerCase();
 
-    // Verify caller is owner
+    // Verify caller is the owner or an advanced member of this team.
     const [team] = await this.db
       .select()
       .from(teams)
@@ -366,8 +366,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can invite members');
+    const callerRole = await this.getUserTeamRole(teamId, userId);
+    if (callerRole !== 'owner' && callerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can invite users',
+      );
     }
 
     if (role !== 'basic' && role !== 'advanced') {
