@@ -141,7 +141,7 @@ export const SidebarContent = ({ showToggle = true }: { showToggle?: boolean }) 
       </div>
 
       {/* Navigation Links */}
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-4">
+      <div className="scrollbar-on-hover min-h-0 flex-1 overflow-y-auto overflow-x-hidden py-4">
         {collapsed ? (
           <div className="flex flex-col items-center gap-1">
             <Button

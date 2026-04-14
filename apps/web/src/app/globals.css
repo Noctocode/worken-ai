@@ -251,3 +251,27 @@
     font-style: normal;
   }
 }
+
+/* Track stays invisible; thumb only appears on hover. Uses scrollbar-gutter
+   to reserve space so the content doesn't reflow when the thumb shows. */
+.scrollbar-on-hover {
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s ease;
+}
+.scrollbar-on-hover:hover {
+  scrollbar-color: rgba(0, 0, 0, 0.25) transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar {
+  width: 6px;
+  background: transparent;
+}
+.scrollbar-on-hover::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background-color 0.2s ease;
+}
+.scrollbar-on-hover:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.25);
+}
