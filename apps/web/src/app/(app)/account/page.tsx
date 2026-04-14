@@ -33,7 +33,7 @@ function getInitials(name: string | null): string {
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-center gap-1 text-center">
       <span className="text-xs font-medium uppercase tracking-wide text-text-3">
         {label}
       </span>
@@ -68,28 +68,28 @@ export default function AccountPage() {
   const InfraIcon = data.infraChoice === "on-premise" ? Server : Cloud;
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6 py-6">
+    <div className="mx-auto flex w-full max-w-[640px] flex-col items-center gap-6 py-6">
       {/* Header card */}
-      <Card className="flex items-center gap-4 p-6">
-        <Avatar className="h-16 w-16 border border-black-400">
+      <Card className="flex w-full flex-col items-center gap-3 p-8 text-center">
+        <Avatar className="h-20 w-20 border border-black-400">
           <AvatarImage src={data.picture ?? "/default-avatar.png"} alt={data.name ?? ""} />
-          <AvatarFallback className="bg-primary-1 text-sm font-medium text-primary-6">
+          <AvatarFallback className="bg-primary-1 text-base font-medium text-primary-6">
             {getInitials(data.name)}
           </AvatarFallback>
         </Avatar>
-        <div className="flex-1 overflow-hidden">
-          <h1 className="truncate text-2xl font-bold text-text-1">
+        <div className="flex flex-col items-center gap-1">
+          <h1 className="text-2xl font-bold text-text-1">
             {data.name ?? data.email}
           </h1>
-          <p className="truncate text-sm text-text-3">{data.email}</p>
+          <p className="text-sm text-text-3">{data.email}</p>
         </div>
       </Card>
 
       {/* Profile type */}
-      <Card className="flex flex-col gap-4 p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded bg-bg-1">
-            <ProfileIcon className="h-5 w-5 text-primary-7" strokeWidth={2} />
+      <Card className="flex w-full flex-col items-center gap-6 p-8 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded bg-bg-1">
+            <ProfileIcon className="h-6 w-6 text-primary-7" strokeWidth={2} />
           </div>
           <h2 className="text-lg font-semibold text-text-1">
             {data.profileType === "company"
@@ -101,7 +101,7 @@ export default function AccountPage() {
         </div>
 
         {data.profileType === "company" && (
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="flex w-full flex-col items-center gap-5">
             <Field label="Company name" value={data.companyName} />
             <Field label="Industry" value={data.industry} />
             <Field label="Team size" value={data.teamSize} />
@@ -113,11 +113,11 @@ export default function AccountPage() {
       </Card>
 
       {/* Infrastructure */}
-      <Card className="flex items-center gap-4 p-6">
-        <div className="flex h-10 w-10 items-center justify-center rounded bg-bg-1">
-          <InfraIcon className="h-5 w-5 text-primary-7" strokeWidth={2} />
+      <Card className="flex w-full flex-col items-center gap-3 p-8 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded bg-bg-1">
+          <InfraIcon className="h-6 w-6 text-primary-7" strokeWidth={2} />
         </div>
-        <div className="flex flex-col">
+        <div className="flex flex-col items-center gap-1">
           <span className="text-xs font-medium uppercase tracking-wide text-text-3">
             AI Infrastructure
           </span>
@@ -132,10 +132,10 @@ export default function AccountPage() {
       </Card>
 
       {/* LLM providers */}
-      <Card className="flex flex-col gap-4 p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded bg-bg-1">
-            <Key className="h-5 w-5 text-primary-7" strokeWidth={2} />
+      <Card className="flex w-full flex-col items-center gap-4 p-8 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded bg-bg-1">
+            <Key className="h-6 w-6 text-primary-7" strokeWidth={2} />
           </div>
           <h2 className="text-lg font-semibold text-text-1">
             Language Model Providers
@@ -146,7 +146,7 @@ export default function AccountPage() {
             No providers connected. You can add API keys from Settings.
           </p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex w-full flex-col items-stretch gap-2">
             {data.providers.map((p) => (
               <li
                 key={p.id}
@@ -163,21 +163,19 @@ export default function AccountPage() {
       </Card>
 
       {/* Knowledge docs */}
-      <Card className="flex flex-col gap-4 p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded bg-bg-1">
-            <FileText className="h-5 w-5 text-primary-7" strokeWidth={2} />
+      <Card className="flex w-full flex-col items-center gap-4 p-8 text-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded bg-bg-1">
+            <FileText className="h-6 w-6 text-primary-7" strokeWidth={2} />
           </div>
           <h2 className="text-lg font-semibold text-text-1">
             Knowledge Documents
           </h2>
         </div>
         {data.documents.length === 0 ? (
-          <p className="text-sm text-text-3">
-            No documents uploaded yet.
-          </p>
+          <p className="text-sm text-text-3">No documents uploaded yet.</p>
         ) : (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex w-full flex-col items-stretch gap-2 text-left">
             {data.documents.map((d) => (
               <li
                 key={d.id}
@@ -197,11 +195,9 @@ export default function AccountPage() {
         )}
       </Card>
 
-      <div className="flex justify-end">
-        <Button asChild variant="outline">
-          <Link href="/">Back to dashboard</Link>
-        </Button>
-      </div>
+      <Button asChild variant="outline">
+        <Link href="/">Back to dashboard</Link>
+      </Button>
     </div>
   );
 }
