@@ -353,6 +353,10 @@ export class TeamsService {
     role: string,
     userId: string,
   ) {
+    // Normalize email so Foo@X.com and foo@x.com can't create two rows or
+    // dodge the post-signup sweep, which matches case-sensitively.
+    email = email.trim().toLowerCase();
+
     // Verify caller is owner
     const [team] = await this.db
       .select()

@@ -397,6 +397,9 @@ export class AuthService {
   }
 
   async processTeamInvitations(userId: string, email: string) {
+    // Match invites case-insensitively — the invite row is stored lowercase,
+    // but callers here pass whatever casing Google/JWT gave us.
+    const normalized = email.trim().toLowerCase();
     // Only auto-accept invites that are still live: not revoked and not expired.
     // NULL invitationStatus/invitationExpiresAt are legacy rows from before the
     // expiry feature — treat them as still valid pending invites.
@@ -410,7 +413,7 @@ export class AuthService {
       })
       .where(
         and(
-          eq(teamMembers.email, email),
+          eq(teamMembers.email, normalized),
           eq(teamMembers.status, 'pending'),
           isNull(teamMembers.invitationRevokedAt),
           or(
