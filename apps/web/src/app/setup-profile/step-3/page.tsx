@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { UserRound, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useOnboarding } from "../layout";
 
 export default function SetupProfileStep3Page() {
   const router = useRouter();
-  const [fullName, setFullName] = useState("");
+  const { state, update } = useOnboarding();
+  const fullName = state.fullName ?? "";
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -56,7 +57,7 @@ export default function SetupProfileStep3Page() {
               <Input
                 placeholder="Full name"
                 value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
+                onChange={(e) => update({ fullName: e.target.value })}
                 className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
               />
             </div>

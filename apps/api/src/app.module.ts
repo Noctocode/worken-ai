@@ -13,6 +13,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
+import { OnboardingModule } from './onboarding/onboarding.module';
 import { TeamsModule } from './teams/teams.module';
 import { UsersModule } from './users/users.module';
 
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     ConversationsModule,
     DocumentsModule,
     ModelsModule,
+    OnboardingModule,
     ProjectsModule,
     TeamsModule,
     UsersModule,

@@ -397,6 +397,7 @@ export class AuthService {
       isPaid: user.isPaid,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
+      onboardingCompleted: !!user.onboardingCompletedAt,
       canCreateProject,
     };
   }

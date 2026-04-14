@@ -1,11 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { UploadCloud, FolderClosed, Users, Server, Award } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { completeOnboarding } from "@/lib/api";
+import { useOnboarding } from "../layout";
 
 const CATEGORIES: Array<{
   title: string;
@@ -20,13 +24,51 @@ const CATEGORIES: Array<{
 
 export default function SetupProfileStep6Page() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const { state, files, setFiles, reset } = useOnboarding();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [fileNames, setFileNames] = useState<string[]>([]);
 
-  const handleFiles = (files: FileList | null) => {
-    if (!files) return;
-    setFileNames(Array.from(files).map((f) => f.name));
+  const handleFiles = (incoming: FileList | null) => {
+    if (!incoming) return;
+    setFiles(Array.from(incoming));
   };
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      if (!state.profileType) {
+        throw new Error("Please restart setup from the beginning.");
+      }
+      if (!state.infraChoice) {
+        throw new Error("Please pick an infrastructure option in step 4.");
+      }
+      if (state.profileType === "company" && !state.companyName?.trim()) {
+        throw new Error("Company name is required.");
+      }
+      if (state.profileType === "personal" && !state.fullName?.trim()) {
+        throw new Error("Full name is required.");
+      }
+      await completeOnboarding(
+        {
+          profileType: state.profileType,
+          fullName: state.fullName,
+          companyName: state.companyName,
+          industry: state.industry,
+          teamSize: state.teamSize,
+          infraChoice: state.infraChoice,
+          apiKeys: state.apiKeys,
+        },
+        files,
+      );
+    },
+    onSuccess: () => {
+      reset();
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      window.location.href = "/";
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't save your setup. Please try again.");
+    },
+  });
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -102,9 +144,9 @@ export default function SetupProfileStep6Page() {
 
           {/* Upload status */}
           <div className="rounded border border-border-2 bg-bg-1 px-6 py-5 text-center text-[13px] text-text-3">
-            {fileNames.length === 0
+            {files.length === 0
               ? "No files uploaded yet. Add documents to begin training your AI."
-              : `${fileNames.length} file${fileNames.length === 1 ? "" : "s"} selected: ${fileNames.join(", ")}`}
+              : `${files.length} file${files.length === 1 ? "" : "s"} selected: ${files.map((f) => f.name).join(", ")}`}
           </div>
 
           <div className="flex justify-between">
@@ -112,14 +154,16 @@ export default function SetupProfileStep6Page() {
               variant="ghost"
               className="h-12 w-[75px] rounded-lg text-text-1"
               onClick={() => router.back()}
+              disabled={mutation.isPending}
             >
               Back
             </Button>
             <Button
               className="h-12 w-[175px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-              onClick={() => router.push("/")}
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
             >
-              Complete Setup
+              {mutation.isPending ? "Saving..." : "Complete Setup"}
             </Button>
           </div>
         </div>

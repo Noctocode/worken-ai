@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Cloud, Server, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { useOnboarding } from "../layout";
 
 type Infra = "managed" | "on-premise";
 
@@ -47,7 +47,8 @@ const INFRA_OPTIONS: Array<{
 
 export default function SetupProfileStep4Page() {
   const router = useRouter();
-  const [selected, setSelected] = useState<Infra>("managed");
+  const { state, update } = useOnboarding();
+  const selected: Infra = state.infraChoice ?? "managed";
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -78,7 +79,7 @@ export default function SetupProfileStep4Page() {
                 <button
                   key={type}
                   type="button"
-                  onClick={() => setSelected(type)}
+                  onClick={() => update({ infraChoice: type })}
                   className={`flex-1 flex flex-col gap-4 rounded bg-bg-white p-6 text-left transition-colors ${
                     isSelected
                       ? "border-[1.5px] border-primary-6"

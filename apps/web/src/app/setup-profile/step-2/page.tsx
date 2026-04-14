@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Building2, User as UserIcon } from "lucide-react";
@@ -14,6 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useOnboarding } from "../layout";
 
 const INDUSTRIES = [
   { value: "technology", label: "Technology" },
@@ -35,9 +35,10 @@ const TEAM_SIZES = [
 
 export default function SetupProfileStep2Page() {
   const router = useRouter();
-  const [companyName, setCompanyName] = useState("");
-  const [industry, setIndustry] = useState("");
-  const [teamSize, setTeamSize] = useState("");
+  const { state, update } = useOnboarding();
+  const companyName = state.companyName ?? "";
+  const industry = state.industry ?? "";
+  const teamSize = state.teamSize ?? "";
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -84,11 +85,11 @@ export default function SetupProfileStep2Page() {
               <Input
                 placeholder="Company Name"
                 value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
+                onChange={(e) => update({ companyName: e.target.value })}
                 className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
               />
             </div>
-            <Select value={industry} onValueChange={setIndustry}>
+            <Select value={industry} onValueChange={(v) => update({ industry: v })}>
               <SelectTrigger className="h-11 w-full rounded-md border-border-2 text-base">
                 <SelectValue placeholder="Industry" />
               </SelectTrigger>
@@ -100,7 +101,7 @@ export default function SetupProfileStep2Page() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={teamSize} onValueChange={setTeamSize}>
+            <Select value={teamSize} onValueChange={(v) => update({ teamSize: v })}>
               <SelectTrigger className="h-11 w-full rounded-md border-border-2 text-base">
                 <SelectValue placeholder="Team Size" />
               </SelectTrigger>

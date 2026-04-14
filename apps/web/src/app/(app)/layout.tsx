@@ -7,20 +7,20 @@ import { AuthProvider, useAuth } from "@/components/providers";
 import { SidebarProvider } from "@/hooks/use-sidebar";
 import { getRouteConfig } from "@/lib/route-config";
 
-// Any authenticated user with profileType=null must complete the picker
-// at /setup-profile before entering the app. Placed inside AuthProvider so
-// it can read the loaded user record.
-function ProfileTypeGuard({ children }: { children: React.ReactNode }) {
+// Any authenticated user who hasn't finished the /setup-profile wizard
+// must complete it before entering the app. Atomic completion flips
+// users.onboarding_completed_at on step 6's submit.
+function OnboardingGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && user && !user.profileType) {
+    if (!isLoading && user && !user.onboardingCompleted) {
       router.replace("/setup-profile");
     }
   }, [isLoading, user, router]);
 
-  if (!isLoading && user && !user.profileType) {
+  if (!isLoading && user && !user.onboardingCompleted) {
     return null;
   }
   return <>{children}</>;
@@ -36,7 +36,7 @@ export default function AppLayout({
 
   return (
     <AuthProvider>
-      <ProfileTypeGuard>
+      <OnboardingGuard>
         <SidebarProvider>
           <div className={`flex h-screen w-full overflow-hidden text-slate-600 selection:bg-blue-100 selection:text-blue-900 ${bg}`}>
             <Sidebar />
@@ -50,7 +50,7 @@ export default function AppLayout({
             </main>
           </div>
         </SidebarProvider>
-      </ProfileTypeGuard>
+      </OnboardingGuard>
     </AuthProvider>
   );
 }

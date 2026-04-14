@@ -52,6 +52,7 @@ export interface User {
   isPaid: boolean;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
+  onboardingCompleted: boolean;
   canCreateProject: boolean;
 }
 
@@ -790,4 +791,36 @@ export async function sendQuestionToCompareModels(
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
+}
+
+// Onboarding
+
+export interface CompleteOnboardingPayload {
+  profileType: "company" | "personal";
+  fullName?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+  infraChoice: "managed" | "on-premise";
+  apiKeys?: Partial<
+    Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
+  >;
+}
+
+export async function completeOnboarding(
+  payload: CompleteOnboardingPayload,
+  files: File[],
+): Promise<void> {
+  const form = new FormData();
+  form.append("data", JSON.stringify(payload));
+  for (const f of files) form.append("files", f, f.name);
+
+  const res = await apiFetch("/onboarding/complete", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to complete onboarding");
+  }
 }

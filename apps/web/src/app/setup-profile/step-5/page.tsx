@@ -7,6 +7,7 @@ import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { useOnboarding } from "../layout";
 
 type ProviderId = "openai" | "azure" | "anthropic" | "private-vpc";
 
@@ -19,8 +20,9 @@ const PROVIDERS: Array<{ id: ProviderId; name: string; models: string }> = [
 
 export default function SetupProfileStep5Page() {
   const router = useRouter();
+  const { state, setApiKey } = useOnboarding();
   const [expanded, setExpanded] = useState<ProviderId | null>("openai");
-  const [apiKeys, setApiKeys] = useState<Partial<Record<ProviderId, string>>>({});
+  const apiKeys = state.apiKeys;
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -85,9 +87,7 @@ export default function SetupProfileStep5Page() {
                         type="password"
                         placeholder={`Enter your ${name} API key`}
                         value={apiKeys[id] ?? ""}
-                        onChange={(e) =>
-                          setApiKeys((prev) => ({ ...prev, [id]: e.target.value }))
-                        }
+                        onChange={(e) => setApiKey(id, e.target.value)}
                         className="h-11 text-base rounded-md border-border-3 placeholder:text-text-3"
                       />
                     </div>
