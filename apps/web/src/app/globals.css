@@ -252,11 +252,9 @@
   }
 }
 
-/* Track stays invisible; thumb only appears on hover. Gutter reserved on
-   both edges so centered content stays aligned with the column above (no
-   horizontal shift when the scrollbar appears). */
+/* Track stays invisible; thumb only appears on hover. No gutter reservation
+   so the scroll container spans the full width of its parent. */
 .scrollbar-on-hover {
-  scrollbar-gutter: stable both-edges;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color 0.2s ease;
