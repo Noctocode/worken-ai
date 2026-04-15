@@ -353,7 +353,7 @@ export const SidebarContent = ({
           {!collapsed && (
             <button
               onClick={() => logout()}
-              className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
+              className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
               title="Sign out"
             >
               <LogOut className="h-4 w-4" />
