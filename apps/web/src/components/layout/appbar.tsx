@@ -83,7 +83,10 @@ export const Appbar = () => {
     if (!teamDetailData || !currentUser) return false;
     if (currentUser.id === teamDetailData.ownerId) return true;
     const me = teamDetailData.members.find(
-      (m) => m.userId && m.userId === currentUser.id,
+      (m) =>
+        m.userId &&
+        m.userId === currentUser.id &&
+        m.status === "accepted",
     );
     return me?.role === "advanced";
   })();

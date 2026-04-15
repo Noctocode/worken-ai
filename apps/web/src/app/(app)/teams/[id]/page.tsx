@@ -351,7 +351,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   // backend gate: team owners and advanced members of this team; basic
   // members and non-members get disabled controls.
   const myMembership = team.members.find(
-    (m) => m.userId && m.userId === currentUser?.id,
+    (m) =>
+      m.userId &&
+      m.userId === currentUser?.id &&
+      m.status === "accepted",
   );
   const canManageTeam =
     !!currentUser &&
