@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/components/providers";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -297,6 +298,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 
 export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { user: currentUser } = useAuth();
   const { id } = use(params);
   const queryClient = useQueryClient();
 
@@ -343,6 +345,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const projected = team.projectedCents / 100;
   const onTrack = projected <= budget;
   const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Role editing mirrors the backend gate: team owners and advanced
+  // members of this team; basic members and non-members get a disabled
+  // control.
+  const myMembership = team.members.find(
+    (m) => m.userId && m.userId === currentUser?.id,
+  );
+  const canEditRoles =
+    !!currentUser &&
+    (currentUser.id === team.ownerId || myMembership?.role === "advanced");
 
   const handleBudgetBlur = () => {
     if (budgetInput === null) return;
@@ -562,8 +574,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     </td>
                     <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{m.email}</td>
                     <td className="bg-bg-white px-4 align-middle">
-                      <Select value={m.role} onValueChange={(value) => roleMutation.mutate({ memberId: m.id, role: value as "basic" | "advanced" })}>
-                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1"><SelectValue /></SelectTrigger>
+                      <Select
+                        value={m.role}
+                        // Backend allows owners + advanced members to update
+                        // roles; anyone else sees the select disabled.
+                        disabled={!canEditRoles}
+                        onValueChange={(value) =>
+                          roleMutation.mutate({
+                            memberId: m.id,
+                            role: value as "basic" | "advanced",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                          <SelectValue />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="basic">Basic</SelectItem>
                           <SelectItem value="advanced">Advanced</SelectItem>

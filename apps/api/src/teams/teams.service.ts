@@ -548,9 +548,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
+    // Owners and advanced members can update roles; basic/non-members can't.
+    const callerRole = await this.getUserTeamRole(teamId, userId);
+    if (callerRole !== 'owner' && callerRole !== 'advanced') {
       throw new ForbiddenException(
-        'Only the team owner can update member roles',
+        'Only team owners or advanced members can update member roles',
       );
     }
 
