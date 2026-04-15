@@ -649,6 +649,14 @@ export class TeamsService {
       throw new BadRequestException('Cannot remove yourself from the team');
     }
 
+    // The team owner is pinned to the member list (teams.owner_id is a
+    // NOT NULL FK) — advanced members mustn't be able to evict them.
+    if (member.userId && member.userId === team.ownerId) {
+      throw new BadRequestException(
+        'Cannot remove the team owner. Transfer ownership first.',
+      );
+    }
+
     await this.db
       .delete(teamMembers)
       .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
