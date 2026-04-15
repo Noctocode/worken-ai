@@ -11,6 +11,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -317,6 +318,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       queryClient.invalidateQueries({ queryKey: ["teams", id] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      toast.success("Member removed from the team.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove member.");
     },
   });
   const toggleMutation = useMutation({

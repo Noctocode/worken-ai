@@ -470,7 +470,10 @@ export async function removeTeamMember(
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error("Failed to remove member");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to remove member");
+  }
 }
 
 export async function updateTeamBudget(
