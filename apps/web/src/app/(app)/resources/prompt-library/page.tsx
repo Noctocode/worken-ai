@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import {
   Search,
   ChevronDown,
+  ChevronUp,
   Copy,
   CheckCircle2,
   FileText,
@@ -37,8 +38,51 @@ const PROMPTS: Prompt[] = [
     category: "Strategic Analysis",
     tags: ["RFP", "Decision Making", "Strategic"],
     example: "Upload RFP document → Get structured bid recommendation",
-    promptText:
-      "You are an expert procurement strategist. Analyze the attached RFP and produce a structured bid/no-bid recommendation...",
+    promptText: `You are an expert procurement analyst with 15 years of experience in government contracting and RFP evaluation.
+
+Your task is to analyze the provided RFP document and provide a comprehensive bid/no-bid recommendation.
+
+## Analysis Requirements:
+1. Review the RFP requirements against our organizational capabilities
+2. Assess the competitive landscape and win probability
+3. Evaluate resource requirements and timeline feasibility
+4. Calculate estimated costs vs. potential revenue
+5. Identify compliance requirements and risks
+
+## Output Format:
+Provide your analysis in the following structured JSON format:
+
+{
+  "recommendation": "BID" | "NO_BID" | "CONDITIONAL",
+  "confidence_score": 0-100,
+  "win_probability": 0-100,
+  "key_strengths": ["strength 1", "strength 2", ...],
+  "capability_gaps": ["gap 1", "gap 2", ...],
+  "resource_requirements": {
+    "team_size": number,
+    "estimated_hours": number,
+    "critical_skills": ["skill 1", "skill 2", ...]
+  },
+  "timeline_analysis": {
+    "submission_deadline": "YYYY-MM-DD",
+    "preparation_time_needed": "X weeks",
+    "feasibility": "HIGH" | "MEDIUM" | "LOW"
+  },
+  "financial_summary": {
+    "estimated_cost": number,
+    "contract_value": number,
+    "expected_margin": number
+  },
+  "risks": ["risk 1", "risk 2", ...],
+  "next_steps": ["action 1", "action 2", ...]
+}
+
+## Safety Guidelines:
+- Base all recommendations on factual information from the RFP
+- Clearly distinguish between facts and assumptions
+- Flag any missing critical information
+- Do not make commitments beyond stated capabilities
+- Escalate high-risk decisions for human review`,
   },
   {
     title: "Vendor Proposal Comparison",
@@ -133,6 +177,16 @@ function AccuracyPill({ value }: { value: number }) {
 export default function PromptLibraryPage() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  const toggleExpanded = (title: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -243,14 +297,37 @@ export default function PromptLibraryPage() {
 
               <button
                 type="button"
-                onClick={() =>
-                  toast.info("Full prompt view is coming soon.")
-                }
+                onClick={() => toggleExpanded(p.title)}
                 className="inline-flex self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
               >
-                View Full Prompt
-                <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+                {expanded.has(p.title) ? "Hide Full Prompt" : "View Full Prompt"}
+                {expanded.has(p.title) ? (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                )}
               </button>
+
+              {expanded.has(p.title) && (
+                <div className="mt-1 flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <h4 className="text-[13px] font-semibold text-text-1">
+                      Full Prompt Template
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(p)}
+                      className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="max-h-[400px] overflow-auto rounded bg-bg-1 p-3 font-mono text-[12px] leading-[1.625] text-text-1 whitespace-pre-wrap">
+                    {p.promptText}
+                  </pre>
+                </div>
+              )}
             </div>
           </article>
         ))}
