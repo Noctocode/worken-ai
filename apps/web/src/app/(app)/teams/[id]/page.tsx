@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -548,9 +549,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     <td className="bg-bg-white px-4 align-middle w-[300px]">
                       <div className="flex items-center gap-2.5">
                         <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
-                        <span className="text-[16px] text-text-1 whitespace-nowrap">
+                        <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
                           {memberName(m)}
-                          {m.status === "pending" && <span className="ml-2 rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
+                          {m.userId && m.userId === team.ownerId && (
+                            <Badge className="border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                              Team Owner
+                            </Badge>
+                          )}
+                          {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
                         </span>
                       </div>
                     </td>
