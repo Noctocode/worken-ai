@@ -122,7 +122,7 @@ export const SidebarContent = ({
         ) : (
           <DisabledReasonTooltip
             disabled
-            reason="Requires a paid plan or an Advanced role in a team."
+            reason="Not available for basic users"
             className={collapsed ? undefined : "block w-full"}
           >
             {collapsed ? (

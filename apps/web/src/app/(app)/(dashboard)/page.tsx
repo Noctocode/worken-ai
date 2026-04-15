@@ -294,7 +294,7 @@ export default function WorkenDashboard() {
         ) : (
           <DisabledReasonTooltip
             disabled
-            reason="Requires a paid plan or an Advanced role in a team."
+            reason="Not available for basic users"
           >
             <Card className="flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center opacity-50 cursor-not-allowed">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
