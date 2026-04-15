@@ -11,7 +11,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { useAuth } from "@/components/providers";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -295,6 +299,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 
 export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { user: currentUser } = useAuth();
   const { id } = use(params);
   const queryClient = useQueryClient();
 
@@ -317,6 +322,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       queryClient.invalidateQueries({ queryKey: ["teams", id] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      toast.success("Member removed from the team.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove member.");
     },
   });
   const toggleMutation = useMutation({
@@ -337,6 +346,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const projected = team.projectedCents / 100;
   const onTrack = projected <= budget;
   const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Role editing / member removal / team rename-delete all mirror the
+  // backend gate: team owners and advanced members of this team; basic
+  // members and non-members get disabled controls.
+  const myMembership = team.members.find(
+    (m) =>
+      m.userId &&
+      m.userId === currentUser?.id &&
+      m.status === "accepted",
+  );
+  const canManageTeam =
+    !!currentUser &&
+    (currentUser.id === team.ownerId || myMembership?.role === "advanced");
+  // Back-compat alias used by the role Select.
+  const canEditRoles = canManageTeam;
 
   const handleBudgetBlur = () => {
     if (budgetInput === null) return;
@@ -366,10 +390,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <p className="text-[18px] font-bold text-text-1">{team.name}</p>
               <p className="text-[16px] text-text-1">{team.description ?? "No description"}</p>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80"><Pencil className="h-6 w-6" /></Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80"><Trash2 className="h-6 w-6" /></Button>
           </div>
         </div>
 
@@ -405,9 +425,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Subteams</p>
-          <AddSubteamDialog parentTeamId={id}>
-            <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
-          </AddSubteamDialog>
+          {canManageTeam ? (
+            <AddSubteamDialog parentTeamId={id}>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
+            </AddSubteamDialog>
+          ) : (
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Add Subteam
+              </Button>
+            </DisabledReasonTooltip>
+          )}
         </div>
         {subteams.length === 0 ? (
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No subteams yet.</div></div>
@@ -500,12 +532,33 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600"><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <EditSubteamDialog sub={sub} parentTeamId={id}>
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
-                            </EditSubteamDialog>
-                            <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
-                            </DeleteSubteamDialog>
+                            {canManageTeam ? (
+                              <>
+                                <EditSubteamDialog sub={sub} parentTeamId={id}>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                                </EditSubteamDialog>
+                                <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                                </DeleteSubteamDialog>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuItem
+                                  disabled
+                                  onSelect={(e) => e.preventDefault()}
+                                  className="gap-2"
+                                >
+                                  <Pencil className="h-4 w-4" />Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled
+                                  onSelect={(e) => e.preventDefault()}
+                                  className="gap-2 text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4" />Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
@@ -522,9 +575,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Users</p>
-          <InviteMemberDialog teamId={id}>
-            <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
-          </InviteMemberDialog>
+          {canManageTeam ? (
+            <InviteMemberDialog teamId={id}>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
+            </InviteMemberDialog>
+          ) : (
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Invite Users
+              </Button>
+            </DisabledReasonTooltip>
+          )}
         </div>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
@@ -543,16 +608,34 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     <td className="bg-bg-white px-4 align-middle w-[300px]">
                       <div className="flex items-center gap-2.5">
                         <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
-                        <span className="text-[16px] text-text-1 whitespace-nowrap">
+                        <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
                           {memberName(m)}
-                          {m.status === "pending" && <span className="ml-2 rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
+                          {m.userId && m.userId === team.ownerId && (
+                            <Badge className="border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                              Team Owner
+                            </Badge>
+                          )}
+                          {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
                         </span>
                       </div>
                     </td>
                     <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{m.email}</td>
                     <td className="bg-bg-white px-4 align-middle">
-                      <Select value={m.role} onValueChange={(value) => roleMutation.mutate({ memberId: m.id, role: value as "basic" | "advanced" })}>
-                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1"><SelectValue /></SelectTrigger>
+                      <Select
+                        value={m.role}
+                        // Backend allows owners + advanced members to update
+                        // roles; anyone else sees the select disabled.
+                        disabled={!canEditRoles}
+                        onValueChange={(value) =>
+                          roleMutation.mutate({
+                            memberId: m.id,
+                            role: value as "basic" | "advanced",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                          <SelectValue />
+                        </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="basic">Basic</SelectItem>
                           <SelectItem value="advanced">Advanced</SelectItem>
@@ -564,7 +647,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onClick={() => removeMutation.mutate(m.id)}><UserX className="h-4 w-4" />Remove user</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2 text-red-600 focus:text-red-600"
+                              disabled={!canManageTeam}
+                              onSelect={(e) => {
+                                if (!canManageTeam) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                removeMutation.mutate(m.id);
+                              }}
+                            >
+                              <UserX className="h-4 w-4" />Remove user
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -582,9 +677,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Guardrails</p>
-          <AddGuardrailDialog teamId={id}>
-            <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
-          </AddGuardrailDialog>
+          {canManageTeam ? (
+            <AddGuardrailDialog teamId={id}>
+              <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
+            </AddGuardrailDialog>
+          ) : (
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Add Guardrail
+              </Button>
+            </DisabledReasonTooltip>
+          )}
         </div>
         {guardrails.length === 0 ? (
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No guardrails configured yet.</div></div>
@@ -625,7 +732,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       </td>
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
-                          <Switch checked={g.isActive} onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })} />
+                          <Switch
+                            checked={g.isActive}
+                            disabled={!canManageTeam}
+                            onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })}
+                          />
                           <span className="text-[16px] text-text-1 whitespace-nowrap">{g.isActive ? "Active" : "Inactive"}</span>
                         </div>
                       </td>
@@ -634,7 +745,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onClick={() => deleteGuardrailMutation.mutate(g.id)}><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2 text-red-600 focus:text-red-600"
+                                disabled={!canManageTeam}
+                                onSelect={(e) => {
+                                  if (!canManageTeam) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  deleteGuardrailMutation.mutate(g.id);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

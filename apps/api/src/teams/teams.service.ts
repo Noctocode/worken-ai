@@ -35,6 +35,17 @@ export class TeamsService {
     monthlyBudgetCents?: number,
     parentTeamId?: string,
   ) {
+    // Subteams inherit the parent's management gate: only owners or
+    // advanced members of the parent can create children.
+    if (parentTeamId) {
+      const parentRole = await this.getUserTeamRole(parentTeamId, userId);
+      if (parentRole !== 'owner' && parentRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can add subteams',
+        );
+      }
+    }
+
     const budgetCents = monthlyBudgetCents ?? 1000;
     const [team] = await this.db
       .insert(teams)
@@ -91,8 +102,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update the team');
+    const updateCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (updateCallerRole !== 'owner' && updateCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can update the team',
+      );
     }
 
     const updates: Record<string, unknown> = {};
@@ -120,8 +134,11 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can delete the team');
+    const deleteCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can delete the team',
+      );
     }
 
     // Remove all members first (cascade should handle this, but be explicit)
@@ -178,13 +195,18 @@ export class TeamsService {
       .from(teams)
       .where(eq(teams.ownerId, userId));
 
-    // Teams where user is accepted member
+    // Teams where user is accepted member — keep the role so we can
+    // derive canManage per team without another query.
     const memberRows = await this.db
-      .select({ teamId: teamMembers.teamId })
+      .select({ teamId: teamMembers.teamId, role: teamMembers.role })
       .from(teamMembers)
       .where(
         and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
       );
+
+    const myRoleByTeam = new Map<string, string>(
+      memberRows.map((r) => [r.teamId, r.role]),
+    );
 
     const memberTeamIds = memberRows
       .map((r) => r.teamId)
@@ -280,12 +302,17 @@ export class TeamsService {
 
     return allTeams.map((t) => {
       const usage = usageMap.get(t.id);
+      const isOwner = t.ownerId === userId;
+      const myRole = myRoleByTeam.get(t.id);
       return {
         ...t,
         memberCount: countMap.get(t.id) ?? 0,
         members: membersMap.get(t.id) ?? [],
         spentCents: usage?.spentCents ?? 0,
         projectedCents: usage?.projectedCents ?? 0,
+        // Matches the backend gate for edit/delete/invite/etc: owner or
+        // advanced member. Everyone else sees read-only controls.
+        canManage: isOwner || myRole === 'advanced',
       };
     });
   }
@@ -384,6 +411,14 @@ export class TeamsService {
       .where(eq(users.id, userId));
     const inviterName = inviter?.name ?? 'A team member';
 
+    // Does the invited email already belong to a registered account?
+    // Used to pick the right email template for both fresh invites and
+    // resends.
+    const [existingUser] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+
     // Existing row for this email + team?
     const [existing] = await this.db
       .select()
@@ -414,13 +449,23 @@ export class TeamsService {
         .returning();
 
       try {
-        await this.mailService.sendTeamInvitation({
-          to: email,
-          teamName: team.name,
-          inviterName,
-          role,
-          token,
-        });
+        if (existingUser) {
+          await this.mailService.sendTeamInvitationExisting({
+            to: email,
+            teamName: team.name,
+            inviterName,
+            role,
+            token,
+          });
+        } else {
+          await this.mailService.sendTeamInvitation({
+            to: email,
+            teamName: team.name,
+            inviterName,
+            role,
+            token,
+          });
+        }
       } catch (err) {
         console.error('Failed to resend invitation email:', err);
       }
@@ -434,6 +479,7 @@ export class TeamsService {
       .insert(teamMembers)
       .values({
         teamId,
+        userId: existingUser?.id ?? null,
         email,
         role,
         status: 'pending',
@@ -444,13 +490,23 @@ export class TeamsService {
       .returning();
 
     try {
-      await this.mailService.sendTeamInvitation({
-        to: email,
-        teamName: team.name,
-        inviterName,
-        role,
-        token,
-      });
+      if (existingUser) {
+        await this.mailService.sendTeamInvitationExisting({
+          to: email,
+          teamName: team.name,
+          inviterName,
+          role,
+          token,
+        });
+      } else {
+        await this.mailService.sendTeamInvitation({
+          to: email,
+          teamName: team.name,
+          inviterName,
+          role,
+          token,
+        });
+      }
     } catch (err) {
       console.error('Failed to send invitation email:', err);
     }
@@ -548,9 +604,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
+    // Owners and advanced members can update roles; basic/non-members can't.
+    const callerRole = await this.getUserTeamRole(teamId, userId);
+    if (callerRole !== 'owner' && callerRole !== 'advanced') {
       throw new ForbiddenException(
-        'Only the team owner can update member roles',
+        'Only team owners or advanced members can update member roles',
       );
     }
 
@@ -580,8 +638,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can remove members');
+    const removeCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (removeCallerRole !== 'owner' && removeCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can remove members',
+      );
     }
 
     // Prevent removing self (owner)
@@ -596,6 +657,14 @@ export class TeamsService {
 
     if (member.userId === userId) {
       throw new BadRequestException('Cannot remove yourself from the team');
+    }
+
+    // The team owner is pinned to the member list (teams.owner_id is a
+    // NOT NULL FK) — advanced members mustn't be able to evict them.
+    if (member.userId && member.userId === team.ownerId) {
+      throw new BadRequestException(
+        'Cannot remove the team owner. Transfer ownership first.',
+      );
     }
 
     await this.db
@@ -723,12 +792,21 @@ export class TeamsService {
       throw new BadRequestException('Invitation has expired');
     }
 
+    // Does this email already map to a registered account? The /invite
+    // page uses this to route logged-out users to /login instead of the
+    // set-password signup.
+    const [existingUser] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, member.email.toLowerCase()));
+
     return {
       email: member.email,
       role: member.role,
       teamName: member.teamName,
       inviterName: member.inviterName,
       expiresAt: member.invitationExpiresAt?.toISOString() ?? null,
+      hasAccount: !!existingUser,
     };
   }
 
@@ -892,8 +970,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can add guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can add guardrails',
+        );
+      }
     }
 
     if (!['high', 'medium', 'low'].includes(data.severity)) {
@@ -925,8 +1008,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can update guardrails',
+        );
+      }
     }
 
     const [updated] = await this.db
@@ -952,8 +1040,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can delete guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can delete guardrails',
+        );
+      }
     }
 
     await this.db

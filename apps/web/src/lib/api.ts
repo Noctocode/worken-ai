@@ -323,6 +323,7 @@ export interface TeamListItem extends Team {
   members: { name: string | null; picture: string | null }[];
   spentCents: number;
   projectedCents: number;
+  canManage: boolean;
 }
 
 export interface TeamMember {
@@ -356,7 +357,10 @@ export async function fetchTeam(id: string): Promise<TeamWithMembers> {
 
 export async function deleteTeam(id: string): Promise<void> {
   const res = await apiFetch(`/teams/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete team");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to delete team");
+  }
 }
 
 export async function updateTeam(
@@ -470,7 +474,10 @@ export async function removeTeamMember(
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error("Failed to remove member");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to remove member");
+  }
 }
 
 export async function updateTeamBudget(
@@ -640,6 +647,7 @@ export interface InviteDetails {
   teamName: string;
   inviterName: string;
   expiresAt: string | null;
+  hasAccount: boolean;
 }
 
 export async function fetchInviteDetails(
@@ -697,7 +705,14 @@ export interface OrgUserDetail {
   monthlyBudgetCents: number;
   spentCents: number;
   projectedCents: number;
-  teams: { id: string; name: string; role: string; status: string }[];
+  teams: {
+    id: string;
+    memberId: string;
+    name: string;
+    role: string;
+    status: string;
+    canManage: boolean;
+  }[];
   createdAt: string;
 }
 

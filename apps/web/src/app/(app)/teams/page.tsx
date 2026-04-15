@@ -101,7 +101,7 @@ export default function TeamsPage() {
           />
           <DisabledReasonTooltip
             disabled={!user?.canCreateProject}
-            reason="Requires a paid plan or an Advanced role in a team."
+            reason="Not available for basic users"
             className="w-full sm:w-auto"
           >
             <CreateTeamDialog>
@@ -201,7 +201,7 @@ export default function TeamsPage() {
           />
           <DisabledReasonTooltip
             disabled={!user?.canCreateProject}
-            reason="Requires a paid plan or an Advanced role in a team."
+            reason="Not available for basic users"
             className="w-full sm:w-auto"
           >
             <InviteUserDialog>

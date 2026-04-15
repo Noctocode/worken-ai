@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { createTeam, updateTeam, type TeamListItem } from "@/lib/api";
+import { createTeam, updateTeam, type Team } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,7 +22,7 @@ export function CreateTeamDialog({
   team,
 }: {
   children: React.ReactNode;
-  team?: TeamListItem;
+  team?: Team;
 }) {
   const isEdit = !!team;
   const [open, setOpen] = useState(false);

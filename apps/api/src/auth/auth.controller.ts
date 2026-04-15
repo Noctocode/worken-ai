@@ -62,7 +62,9 @@ export class AuthController {
     @Response() res: Res,
   ) {
     const user = await this.authService.validateOrCreateUser(req.user);
-    await this.authService.processTeamInvitations(user.id, user.email);
+    // Team-invite acceptance is explicit via the /invite page, not a
+    // silent login sweep — otherwise we'd accept invites behind the
+    // user's back.
     const tokens = await this.authService.generateTokens(
       user.id,
       user.email,
@@ -303,8 +305,9 @@ export class AuthController {
       body.password,
     );
 
-    // A user signing back in may have received new invites since last login.
-    await this.authService.processTeamInvitations(user.id, user.email);
+    // Team-invite acceptance happens explicitly via /invite?token=…
+    // once the user reaches the page — don't sweep pending invites on
+    // login, or the invite token gets consumed before the page loads.
 
     const tokens = await this.authService.generateTokens(
       user.id,

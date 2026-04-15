@@ -24,7 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchOrgUser, updateUserBudget } from "@/lib/api";
+import { fetchOrgUser, updateMemberRole, updateUserBudget } from "@/lib/api";
+import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 
 /* ─── Helper components ──────────────────────────────────────────────────── */
@@ -94,6 +95,25 @@ export default function UserDetailPage({
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users", id] }),
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: ({
+      teamId,
+      memberId,
+      role,
+    }: {
+      teamId: string;
+      memberId: string;
+      role: "basic" | "advanced";
+    }) => updateMemberRole(teamId, memberId, role),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["users", id] });
+      toast.success("Role updated.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't update role.");
+    },
   });
 
   if (isLoading) {
@@ -236,8 +256,18 @@ export default function UserDetailPage({
                       )}
                     </td>
                     <td className="bg-bg-white px-4 align-middle">
-                      <Select value={t.role} disabled>
-                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1">
+                      <Select
+                        value={t.role}
+                        disabled={!t.canManage}
+                        onValueChange={(value) =>
+                          roleMutation.mutate({
+                            teamId: t.id,
+                            memberId: t.memberId,
+                            role: value as "basic" | "advanced",
+                          })
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

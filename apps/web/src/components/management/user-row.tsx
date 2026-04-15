@@ -164,7 +164,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             </DropdownMenuItem>
             <DisabledReasonTooltip
               disabled={!canRemove}
-              reason="Requires a paid plan or an Advanced team role."
+              reason="Not available for basic users"
             >
               <DropdownMenuItem
                 className="gap-2 text-red-600 focus:text-red-600"

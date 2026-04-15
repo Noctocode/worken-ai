@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { users, teamMembers, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
@@ -91,7 +91,7 @@ export class UsersService {
     });
   }
 
-  async findOne(userId: string) {
+  async findOne(userId: string, callerId: string) {
     const [user] = await this.db
       .select({
         id: users.id,
@@ -113,6 +113,7 @@ export class UsersService {
     // Get team memberships with team info
     const membershipRows = await this.db
       .select({
+        memberId: teamMembers.id,
         teamId: teams.id,
         teamName: teams.name,
         role: teamMembers.role,
@@ -165,6 +166,40 @@ export class UsersService {
       isOwner.length > 0 ||
       membershipRows.some((m) => m.role === 'advanced');
 
+    // Derive — from the CALLER's perspective — which of these teams they
+    // can manage (owner OR accepted advanced member). Drives the per-team
+    // role select and actions on the user detail page.
+    const teamIds = membershipRows.map((m) => m.teamId);
+    const callerOwnedTeams =
+      teamIds.length === 0
+        ? []
+        : await this.db
+            .select({ id: teams.id })
+            .from(teams)
+            .where(
+              and(inArray(teams.id, teamIds), eq(teams.ownerId, callerId)),
+            );
+    const callerMemberships =
+      teamIds.length === 0
+        ? []
+        : await this.db
+            .select({
+              teamId: teamMembers.teamId,
+              role: teamMembers.role,
+            })
+            .from(teamMembers)
+            .where(
+              and(
+                inArray(teamMembers.teamId, teamIds),
+                eq(teamMembers.userId, callerId),
+                eq(teamMembers.status, 'accepted'),
+              ),
+            );
+    const callerOwnedIds = new Set(callerOwnedTeams.map((t) => t.id));
+    const callerRoleByTeam = new Map(
+      callerMemberships.map((m) => [m.teamId, m.role]),
+    );
+
     return {
       id: user.id,
       name: user.name,
@@ -177,9 +212,13 @@ export class UsersService {
       projectedCents,
       teams: membershipRows.map((m) => ({
         id: m.teamId,
+        memberId: m.memberId,
         name: m.teamName,
         role: m.role,
         status: m.status,
+        canManage:
+          callerOwnedIds.has(m.teamId) ||
+          callerRoleByTeam.get(m.teamId) === 'advanced',
       })),
       createdAt: user.createdAt,
     };
