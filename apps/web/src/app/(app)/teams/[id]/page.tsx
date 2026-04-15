@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useAuth } from "@/components/providers";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -426,14 +427,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
             </AddSubteamDialog>
           ) : (
-            <Button
-              variant="plusAction"
-              className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-              title="Only team owners or advanced members can add subteams"
-            >
-              <Plus className="h-4 w-4 text-text-white" />Add Subteam
-            </Button>
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Add Subteam
+              </Button>
+            </DisabledReasonTooltip>
           )}
         </div>
         {subteams.length === 0 ? (
@@ -575,14 +577,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
             </InviteMemberDialog>
           ) : (
-            <Button
-              variant="plusAction"
-              className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-              title="Only team owners or advanced members can invite users"
-            >
-              <Plus className="h-4 w-4 text-text-white" />Invite Users
-            </Button>
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Invite Users
+              </Button>
+            </DisabledReasonTooltip>
           )}
         </div>
         <div className="rounded overflow-hidden">
@@ -676,14 +679,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
             </AddGuardrailDialog>
           ) : (
-            <Button
-              variant="plusAction"
-              className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-              title="Only team owners or advanced members can add guardrails"
-            >
-              <Plus className="h-4 w-4 text-text-white" />Add Guardrail
-            </Button>
+            <DisabledReasonTooltip disabled reason="Not available for basic users">
+              <Button
+                variant="plusAction"
+                className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />Add Guardrail
+              </Button>
+            </DisabledReasonTooltip>
           )}
         </div>
         {guardrails.length === 0 ? (

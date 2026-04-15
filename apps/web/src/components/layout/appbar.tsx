@@ -22,6 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
@@ -115,32 +116,34 @@ export const Appbar = () => {
           <h4 className="text-[26px] font-bold text-text-1">{teamName}</h4>
         </div>
         <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          <DisabledReasonTooltip
             disabled={!canManageCurrentTeam}
-            title={
-              canManageCurrentTeam
-                ? "Edit team"
-                : "Only team owners or advanced members can edit the team"
-            }
+            reason="Not available for basic users"
           >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canManageCurrentTeam}
+              title={canManageCurrentTeam ? "Edit team" : undefined}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </DisabledReasonTooltip>
+          <DisabledReasonTooltip
             disabled={!canManageCurrentTeam}
-            title={
-              canManageCurrentTeam
-                ? "Delete team"
-                : "Only team owners or advanced members can delete the team"
-            }
+            reason="Not available for basic users"
           >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canManageCurrentTeam}
+              title={canManageCurrentTeam ? "Delete team" : undefined}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </DisabledReasonTooltip>
         </div>
       </header>
     );
