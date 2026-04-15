@@ -445,12 +445,21 @@ export class TeamsService {
       return { ...refreshed, resent: true };
     }
 
+    // Does the invited email already belong to a registered account?
+    // If so we still require an explicit accept, but the email copy drops
+    // the "create your account" framing — they just need to sign in.
+    const [existingUser] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+
     const token = randomBytes(32).toString('hex');
 
     const [member] = await this.db
       .insert(teamMembers)
       .values({
         teamId,
+        userId: existingUser?.id ?? null,
         email,
         role,
         status: 'pending',
@@ -461,13 +470,23 @@ export class TeamsService {
       .returning();
 
     try {
-      await this.mailService.sendTeamInvitation({
-        to: email,
-        teamName: team.name,
-        inviterName,
-        role,
-        token,
-      });
+      if (existingUser) {
+        await this.mailService.sendTeamInvitationExisting({
+          to: email,
+          teamName: team.name,
+          inviterName,
+          role,
+          token,
+        });
+      } else {
+        await this.mailService.sendTeamInvitation({
+          to: email,
+          teamName: team.name,
+          inviterName,
+          role,
+          token,
+        });
+      }
     } catch (err) {
       console.error('Failed to send invitation email:', err);
     }
@@ -745,12 +764,21 @@ export class TeamsService {
       throw new BadRequestException('Invitation has expired');
     }
 
+    // Does this email already map to a registered account? The /invite
+    // page uses this to route logged-out users to /login instead of the
+    // set-password signup.
+    const [existingUser] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, member.email.toLowerCase()));
+
     return {
       email: member.email,
       role: member.role,
       teamName: member.teamName,
       inviterName: member.inviterName,
       expiresAt: member.invitationExpiresAt?.toISOString() ?? null,
+      hasAccount: !!existingUser,
     };
   }
 

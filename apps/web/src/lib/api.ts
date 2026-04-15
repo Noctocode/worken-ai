@@ -643,6 +643,7 @@ export interface InviteDetails {
   teamName: string;
   inviterName: string;
   expiresAt: string | null;
+  hasAccount: boolean;
 }
 
 export async function fetchInviteDetails(

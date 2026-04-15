@@ -259,6 +259,17 @@ function ReadyPanel({
         >
           Accept Invitation
         </Button>
+      ) : invite.hasAccount ? (
+        // Registered user — skip the signup page and send them to /login.
+        // After login the invite page auto-accepts on remount.
+        <div className="self-stretch flex flex-col items-center gap-3">
+          <Button
+            asChild
+            className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
+          >
+            <Link href={loginHref}>Sign in to accept</Link>
+          </Button>
+        </div>
       ) : (
         <div className="self-stretch flex flex-col items-center gap-3">
           <Button
