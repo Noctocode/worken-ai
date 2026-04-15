@@ -385,10 +385,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               <p className="text-[16px] text-text-1">{team.description ?? "No description"}</p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80"><Pencil className="h-6 w-6" /></Button>
-            <Button variant="ghost" size="icon" className="h-6 w-6 text-success-7 hover:text-success-7/80"><Trash2 className="h-6 w-6" /></Button>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
