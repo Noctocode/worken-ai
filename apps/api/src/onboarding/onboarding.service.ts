@@ -67,15 +67,22 @@ export class OnboardingService {
     payload: OnboardingPayload,
     files: Express.Multer.File[],
   ) {
+    // Track absolute paths of files we've moved into the user's permanent
+    // dir. If the DB transaction (or anything after the moves) fails, these
+    // would orphan on disk without cleanup.
+    const movedPaths: string[] = [];
     try {
-      await this.completeInner(userId, payload, files);
+      await this.completeInner(userId, payload, files, movedPaths);
     } catch (err) {
-      // Multer already wrote every file to the tmp dir before the handler
-      // ran. If validation / the transaction throws after that, cleanup any
-      // leftover tmp files so the disk doesn't leak.
-      await Promise.all(
-        files.map((f) => unlink(f.path).catch(() => undefined)),
-      );
+      // Two classes of leftovers to clean up:
+      //  1. multer tmp files that never got moved (validation / pre-move
+      //     failure) — unlink by `file.path`.
+      //  2. files already renamed into the user dir but whose DB writes
+      //     rolled back — unlink by the tracked movedPaths.
+      await Promise.all([
+        ...files.map((f) => unlink(f.path).catch(() => undefined)),
+        ...movedPaths.map((p) => unlink(p).catch(() => undefined)),
+      ]);
       throw err;
     }
   }
@@ -84,6 +91,7 @@ export class OnboardingService {
     userId: string,
     payload: OnboardingPayload,
     files: Express.Multer.File[],
+    movedPaths: string[],
   ) {
     this.validate(payload);
 
@@ -96,9 +104,8 @@ export class OnboardingService {
       throw new ConflictException('Onboarding already completed');
     }
 
-    // Write files to disk first — if this fails we haven't touched the DB.
-    // Stored paths are relative to the api process's cwd so they survive
-    // restarts without env-dependent absolute paths.
+    // Write files to disk first. If the subsequent DB transaction rolls
+    // back we unlink everything we moved via `movedPaths` in the caller.
     const userDir = join(UPLOADS_ROOT, userId);
     await mkdir(userDir, { recursive: true });
     const writtenFiles: Array<{
@@ -128,6 +135,7 @@ export class OnboardingService {
           throw err;
         }
       }
+      movedPaths.push(absolutePath);
       writtenFiles.push({
         // Preserve the original display name (post-sanitize) so the /account
         // page shows something the user recognises.
