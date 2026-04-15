@@ -184,13 +184,15 @@ export const SidebarContent = ({
             <div className="my-4 w-[40px] border-t border-border-2" />
 
             {/* Chat */}
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Chat"
-            >
-              <MessageSquare className="size-5 shrink-0" />
-            </Button>
+            <DisabledReasonTooltip disabled reason="Coming Soon">
+              <Button
+                variant="ghost"
+                className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <MessageSquare className="size-5 shrink-0" />
+              </Button>
+            </DisabledReasonTooltip>
 
             {/* Divider */}
             <div className="my-4 w-[40px] border-t border-border-2" />
@@ -250,15 +252,21 @@ export const SidebarContent = ({
             <div className="my-4 w-full border-t border-border-2" />
 
             {/* Chat */}
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Chat"
+            <DisabledReasonTooltip
+              disabled
+              reason="Coming Soon"
+              className="w-full"
             >
-              <MessageSquare className="size-5 shrink-0 text-text-3" />
-              <span>AI Chat</span>
-            </Button>
+              <Button
+                variant="ghost"
+                size="nav"
+                className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <MessageSquare className="size-5 shrink-0 text-text-3" />
+                <span>AI Chat</span>
+              </Button>
+            </DisabledReasonTooltip>
 
             {/* Divider */}
             <div className="my-4 w-full border-t border-border-2" />
@@ -284,23 +292,31 @@ export const SidebarContent = ({
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
-          <Button
-            variant="ghost"
-            className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-            title="Toggle dark mode"
-          >
-            <Moon className="h-5 w-5 text-text-3" />
-          </Button>
+          <DisabledReasonTooltip disabled reason="Coming Soon">
+            <Button
+              variant="ghost"
+              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+            >
+              <Moon className="h-5 w-5 text-text-3" />
+            </Button>
+          </DisabledReasonTooltip>
         ) : (
-          <Button
-            variant="ghost"
-            size="nav"
-            className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-            title="Toggle dark mode"
+          <DisabledReasonTooltip
+            disabled
+            reason="Coming Soon"
+            className="w-full"
           >
-            <Moon className="size-5 shrink-0 text-text-3" />
-            <span>Light / Dark</span>
-          </Button>
+            <Button
+              variant="ghost"
+              size="nav"
+              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+            >
+              <Moon className="size-5 shrink-0 text-text-3" />
+              <span>Light / Dark</span>
+            </Button>
+          </DisabledReasonTooltip>
         )}
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
