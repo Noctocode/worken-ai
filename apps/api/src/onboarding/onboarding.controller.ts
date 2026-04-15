@@ -3,7 +3,9 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
+  Res,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
@@ -12,6 +14,7 @@ import { diskStorage } from 'multer';
 import { randomUUID } from 'crypto';
 import { mkdirSync } from 'fs';
 import { join } from 'path';
+import type { Response as ExpressResponse } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import {
@@ -39,6 +42,27 @@ export class OnboardingController {
   @Get('profile')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.getProfile(user.id);
+  }
+
+  @Get('documents/:id/download')
+  async downloadDocument(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: false }) res: ExpressResponse,
+  ) {
+    const { stream, filename, mimeType } =
+      await this.onboardingService.openDocumentForUser(id, user.id);
+    // RFC 5987 filename* for non-ASCII names; plain filename= for legacy
+    // clients. Quotes around the filename are escaped defensively.
+    const safeAscii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/"/g, '');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${safeAscii}"; filename*=UTF-8''${encodeURIComponent(
+        filename,
+      )}`,
+    );
+    stream.pipe(res);
   }
 
   @Post('complete')

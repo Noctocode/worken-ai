@@ -12,7 +12,10 @@ import {
   ShieldCheck,
   Check,
   X,
+  Download,
 } from "lucide-react";
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -266,16 +269,26 @@ export default function AccountPage() {
             {data.documents.map((d) => (
               <li
                 key={d.id}
-                className="flex items-center justify-between rounded border border-border-2 bg-bg-white px-4 py-3"
+                className="flex items-center justify-between gap-3 rounded border border-border-2 bg-bg-white px-4 py-3"
               >
-                <div className="flex flex-col">
-                  <span className="text-sm font-medium text-text-1">
+                <div className="flex min-w-0 flex-col">
+                  <span className="truncate text-sm font-medium text-text-1">
                     {d.filename}
                   </span>
                   <span className="text-xs text-text-3">
                     {d.mimeType ?? "unknown"} • {formatBytes(d.sizeBytes)}
                   </span>
                 </div>
+                {/* Same-origin credential cookies are set on the API host,
+                    so a direct anchor to the API carries auth. */}
+                <a
+                  href={`${API_URL}/onboarding/documents/${d.id}/download`}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-medium text-primary-6 transition-colors hover:bg-primary-1/40"
+                  title={`Download ${d.filename}`}
+                >
+                  <Download className="h-4 w-4" />
+                  Download
+                </a>
               </li>
             ))}
           </ul>

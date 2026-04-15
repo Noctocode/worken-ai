@@ -6,7 +6,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { copyFile, mkdir, rename, unlink } from 'fs/promises';
+import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
+import { createReadStream } from 'fs';
+import { resolve } from 'path';
 import { randomUUID } from 'crypto';
 import { join, posix as pathPosix } from 'path';
 import {
@@ -195,6 +197,42 @@ export class OnboardingService {
         });
       }
     });
+  }
+
+  /**
+   * Resolve a knowledge document owned by `userId` to an absolute path that
+   * is provably inside UPLOADS_ROOT, plus the stream + display metadata
+   * needed to send it to the client.
+   */
+  async openDocumentForUser(documentId: string, userId: string) {
+    const [doc] = await this.db
+      .select()
+      .from(knowledgeDocuments)
+      .where(eq(knowledgeDocuments.id, documentId));
+    if (!doc || doc.userId !== userId) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // storagePath is a POSIX-style relative path we wrote. Resolve against
+    // cwd and reject anything that would escape UPLOADS_ROOT — defensive
+    // check in case of DB tampering.
+    const absolutePath = resolve(process.cwd(), doc.storagePath);
+    const rootResolved = resolve(UPLOADS_ROOT);
+    if (!absolutePath.startsWith(rootResolved)) {
+      throw new NotFoundException('Document not found');
+    }
+
+    try {
+      await stat(absolutePath);
+    } catch {
+      throw new NotFoundException('Document file is missing on disk');
+    }
+
+    return {
+      stream: createReadStream(absolutePath),
+      filename: doc.filename,
+      mimeType: doc.mimeType ?? 'application/octet-stream',
+    };
   }
 
   async getProfile(userId: string) {
