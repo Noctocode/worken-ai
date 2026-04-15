@@ -128,7 +128,13 @@ export default function SetupProfileStep4Page() {
             </Button>
             <Button
               className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-              onClick={() => router.push("/setup-profile/step-5")}
+              onClick={() => {
+                // Persist the visible default if the user never touched the
+                // cards — otherwise step 6 would see infraChoice undefined
+                // and reject the submit.
+                if (!state.infraChoice) update({ infraChoice: selected });
+                router.push("/setup-profile/step-5");
+              }}
             >
               Continue
             </Button>
