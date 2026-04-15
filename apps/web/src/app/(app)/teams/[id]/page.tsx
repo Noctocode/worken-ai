@@ -570,9 +570,20 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Users</p>
-          <InviteMemberDialog teamId={id}>
-            <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
-          </InviteMemberDialog>
+          {canManageTeam ? (
+            <InviteMemberDialog teamId={id}>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
+            </InviteMemberDialog>
+          ) : (
+            <Button
+              variant="plusAction"
+              className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+              title="Only team owners or advanced members can invite users"
+            >
+              <Plus className="h-4 w-4 text-text-white" />Invite Users
+            </Button>
+          )}
         </div>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
@@ -660,9 +671,20 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Guardrails</p>
-          <AddGuardrailDialog teamId={id}>
-            <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
-          </AddGuardrailDialog>
+          {canManageTeam ? (
+            <AddGuardrailDialog teamId={id}>
+              <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
+            </AddGuardrailDialog>
+          ) : (
+            <Button
+              variant="plusAction"
+              className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+              title="Only team owners or advanced members can add guardrails"
+            >
+              <Plus className="h-4 w-4 text-text-white" />Add Guardrail
+            </Button>
+          )}
         </div>
         {guardrails.length === 0 ? (
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No guardrails configured yet.</div></div>
@@ -703,7 +725,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       </td>
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
-                          <Switch checked={g.isActive} onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })} />
+                          <Switch
+                            checked={g.isActive}
+                            disabled={!canManageTeam}
+                            onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })}
+                          />
                           <span className="text-[16px] text-text-1 whitespace-nowrap">{g.isActive ? "Active" : "Inactive"}</span>
                         </div>
                       </td>
@@ -712,7 +738,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onClick={() => deleteGuardrailMutation.mutate(g.id)}><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="gap-2 text-red-600 focus:text-red-600"
+                                disabled={!canManageTeam}
+                                onSelect={(e) => {
+                                  if (!canManageTeam) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  deleteGuardrailMutation.mutate(g.id);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />Delete
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>

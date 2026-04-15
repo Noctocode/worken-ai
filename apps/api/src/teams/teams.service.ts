@@ -914,8 +914,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can add guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can add guardrails',
+        );
+      }
     }
 
     if (!['high', 'medium', 'low'].includes(data.severity)) {
@@ -947,8 +952,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can update guardrails',
+        );
+      }
     }
 
     const [updated] = await this.db
@@ -974,8 +984,13 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can delete guardrails');
+    {
+      const callerRole = await this.getUserTeamRole(teamId, userId);
+      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can delete guardrails',
+        );
+      }
     }
 
     await this.db
