@@ -57,20 +57,30 @@ export default function SetupProfileLayout({
     try {
       const raw = sessionStorage.getItem(STORAGE_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as OnboardingScalarState;
+        const parsed = JSON.parse(raw) as Omit<
+          OnboardingScalarState,
+          "apiKeys"
+        >;
+        // API keys intentionally never round-trip through storage; always
+        // restart them as empty on reload.
         // eslint-disable-next-line react-hooks/set-state-in-effect
-        setState({ ...emptyState, ...parsed, apiKeys: parsed.apiKeys ?? {} });
+        setState({ ...emptyState, ...parsed, apiKeys: {} });
       }
     } catch {
       // Corrupt storage — ignore and start fresh.
     }
   }, []);
 
-  // Persist scalars on every change.
+  // Persist scalars on every change. API keys are held in memory only so
+  // a compromised tab (XSS / malicious extension) can't lift secrets out
+  // of storage — at worst it reads the current tab's JS heap.
   useEffect(() => {
     if (!hydrated.current) return;
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      // Strip apiKeys before writing.
+      const { apiKeys: _apiKeys, ...persistable } = state;
+      void _apiKeys;
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(persistable));
     } catch {
       // Quota exceeded or disabled — not fatal.
     }
