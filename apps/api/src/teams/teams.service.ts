@@ -411,6 +411,14 @@ export class TeamsService {
       .where(eq(users.id, userId));
     const inviterName = inviter?.name ?? 'A team member';
 
+    // Does the invited email already belong to a registered account?
+    // Used to pick the right email template for both fresh invites and
+    // resends.
+    const [existingUser] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+
     // Existing row for this email + team?
     const [existing] = await this.db
       .select()
@@ -441,27 +449,29 @@ export class TeamsService {
         .returning();
 
       try {
-        await this.mailService.sendTeamInvitation({
-          to: email,
-          teamName: team.name,
-          inviterName,
-          role,
-          token,
-        });
+        if (existingUser) {
+          await this.mailService.sendTeamInvitationExisting({
+            to: email,
+            teamName: team.name,
+            inviterName,
+            role,
+            token,
+          });
+        } else {
+          await this.mailService.sendTeamInvitation({
+            to: email,
+            teamName: team.name,
+            inviterName,
+            role,
+            token,
+          });
+        }
       } catch (err) {
         console.error('Failed to resend invitation email:', err);
       }
 
       return { ...refreshed, resent: true };
     }
-
-    // Does the invited email already belong to a registered account?
-    // If so we still require an explicit accept, but the email copy drops
-    // the "create your account" framing — they just need to sign in.
-    const [existingUser] = await this.db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, email));
 
     const token = randomBytes(32).toString('hex');
 
