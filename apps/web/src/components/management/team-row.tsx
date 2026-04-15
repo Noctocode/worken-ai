@@ -136,8 +136,17 @@ export function TeamRow({
 
   return (
     <tr
-      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-slate-50/50"
+      role="link"
+      tabIndex={0}
+      aria-label={`Open ${team.name}`}
+      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-slate-50/50 focus:outline-none focus-visible:bg-slate-50/60 focus-visible:ring-1 focus-visible:ring-primary-6"
       onClick={() => router.push(`/teams/${team.id}`)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          router.push(`/teams/${team.id}`);
+        }
+      }}
     >
       {/* Team name */}
       <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
