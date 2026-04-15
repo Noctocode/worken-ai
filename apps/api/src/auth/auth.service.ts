@@ -21,6 +21,7 @@ import type { GoogleProfile } from './types.js';
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 8;
 const VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
 function generateVerificationToken() {
   const token = randomBytes(32).toString('base64url');
@@ -303,6 +304,94 @@ export class AuthService {
     return { token, user };
   }
 
+  /**
+   * Generate + persist a password-reset token for an existing password-auth
+   * user. Returns { token, user } so the caller can dispatch an email.
+   * Returns null silently for unknown emails / Google-only accounts — the
+   * caller should still surface a generic "email sent" message to avoid
+   * enumeration.
+   */
+  // TODO: rate limiting on /auth/forgot-password.
+  async issuePasswordResetToken(emailInput: string) {
+    const email = emailInput.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) return null;
+
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email));
+
+    // Only password-auth users get a reset link. Google-only accounts need
+    // to sign in via Google; sending a reset email would be misleading.
+    if (!user || !user.passwordHash) return null;
+
+    const { token, hash } = generateVerificationToken();
+    await this.db
+      .update(users)
+      .set({
+        passwordResetTokenHash: hash,
+        passwordResetExpiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+
+    return { token, user };
+  }
+
+  /**
+   * Consume a password-reset token and set the new password. The token
+   * is single-use: successful reset clears both the hash and expiry so a
+   * leaked link can't be replayed.
+   */
+  async resetPassword(rawToken: string, newPassword: string) {
+    if (!rawToken) {
+      throw new BadRequestException('Missing reset token');
+    }
+    if (!newPassword || newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new BadRequestException(
+        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
+      );
+    }
+    const providedHash = hashVerificationToken(rawToken);
+
+    const [user] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.passwordResetTokenHash, providedHash));
+
+    if (!user || !user.passwordResetTokenHash) {
+      throw new BadRequestException('Invalid or already-used reset link');
+    }
+
+    const a = Buffer.from(providedHash, 'hex');
+    const b = Buffer.from(user.passwordResetTokenHash, 'hex');
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      throw new BadRequestException('Invalid or already-used reset link');
+    }
+
+    if (
+      !user.passwordResetExpiresAt ||
+      user.passwordResetExpiresAt.getTime() < Date.now()
+    ) {
+      throw new BadRequestException('Reset link has expired');
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+    await this.db
+      .update(users)
+      .set({
+        passwordHash,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+        // Invalidate any outstanding refresh tokens on password change.
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user.id));
+    await this.redis.del(`refresh:${user.id}`);
+
+    return { id: user.id, email: user.email };
+  }
+
   async setProfileType(userId: string, profileType: 'company' | 'personal') {
     if (profileType !== 'company' && profileType !== 'personal') {
       throw new BadRequestException('Invalid profile type');
@@ -397,6 +486,12 @@ export class AuthService {
       isPaid: user.isPaid,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
+      // Back-compat: users who completed the legacy single-step profile-type
+      // flow have profileType set but no onboardingCompletedAt. Treat them
+      // as onboarded so the guard doesn't bounce them through the new
+      // wizard. Can drop once we backfill onboarding_completed_at.
+      onboardingCompleted:
+        !!user.onboardingCompletedAt || !!user.profileType,
       canCreateProject,
     };
   }

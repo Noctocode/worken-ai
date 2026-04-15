@@ -1,20 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-// TODO: replace with exported SVGs from Figma frame 4107-13028.
-// Current lucide icons (Building2 / UserRound) are placeholders until the
-// design-team exports land.
 import { Building2, UserRound } from "lucide-react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
-import {
-  fetchCurrentUser,
-  setProfileType,
-  type User,
-} from "@/lib/api";
+import { useOnboarding } from "./layout";
 
 type ProfileType = "company" | "personal";
 
@@ -42,28 +32,14 @@ const OPTIONS: Array<{
 
 export default function SetupProfilePage() {
   const router = useRouter();
+  const { update } = useOnboarding();
 
-  const userQuery = useQuery<User>({
-    queryKey: ["auth", "me"],
-    queryFn: fetchCurrentUser,
-  });
-
-  // If the user has already picked a profile type, skip this screen.
-  useEffect(() => {
-    if (userQuery.data?.profileType) {
-      router.replace("/");
-    }
-  }, [userQuery.data?.profileType, router]);
-
-  const mutation = useMutation({
-    mutationFn: (type: ProfileType) => setProfileType(type),
-    onSuccess: () => {
-      window.location.href = "/";
-    },
-    onError: () => {
-      toast.error("Couldn't save your choice. Please try again.");
-    },
-  });
+  const pick = (type: ProfileType) => {
+    update({ profileType: type });
+    router.push(
+      type === "company" ? "/setup-profile/step-2" : "/setup-profile/step-3",
+    );
+  };
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -92,9 +68,8 @@ export default function SetupProfilePage() {
               <button
                 key={type}
                 type="button"
-                onClick={() => mutation.mutate(type)}
-                disabled={mutation.isPending}
-                className="flex items-start gap-4 rounded border border-border-2 bg-bg-white p-6 text-left transition-colors hover:border-primary-6 disabled:opacity-60 disabled:cursor-not-allowed"
+                onClick={() => pick(type)}
+                className="flex items-start gap-4 rounded border border-border-2 bg-bg-white p-6 text-left transition-colors hover:border-primary-6"
               >
                 <div className="h-10 w-10 shrink-0 rounded bg-bg-1 flex items-center justify-center">
                   <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />

@@ -15,8 +15,16 @@ export function middleware(request: NextRequest) {
   // Post-signup confirmation screen — the user has just submitted /register
   // and has no cookies yet; they must still reach this page.
   const isCheckEmailPage = request.nextUrl.pathname === "/check-email";
+  const isForgotPasswordPage =
+    request.nextUrl.pathname === "/forgot-password";
+  const isResetPasswordPage = request.nextUrl.pathname === "/reset-password";
   const isPublic =
-    isLoginPage || isRegisterPage || isInvitePage || isCheckEmailPage;
+    isLoginPage ||
+    isRegisterPage ||
+    isInvitePage ||
+    isCheckEmailPage ||
+    isForgotPasswordPage ||
+    isResetPasswordPage;
 
   // If user has any auth token and tries to visit /login or /register, redirect to home
   if ((isLoginPage || isRegisterPage) && (accessToken || refreshToken)) {

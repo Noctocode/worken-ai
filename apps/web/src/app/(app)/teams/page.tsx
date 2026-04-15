@@ -100,7 +100,7 @@ export default function TeamsPage() {
             onChange={(e) => setTeamSearch(e.target.value)}
           />
           <DisabledReasonTooltip
-            disabled={!user?.isPaid}
+            disabled={!user?.canCreateProject}
             reason="Requires a paid plan or an Advanced role in a team."
             className="w-full sm:w-auto"
           >
@@ -108,7 +108,7 @@ export default function TeamsPage() {
               <Button
                 variant="plusAction"
                 className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!user?.isPaid}
+                disabled={!user?.canCreateProject}
               >
                 <Plus className="h-4 w-4 text-white" />
                 Create Team
@@ -175,7 +175,7 @@ export default function TeamsPage() {
                     <p className="mt-3 text-sm text-slate-500">
                       {teamSearch
                         ? "No teams match your search."
-                        : user?.isPaid
+                        : user?.canCreateProject
                           ? "No teams yet. Create your first team to get started."
                           : "You are not a member of any team yet."}
                     </p>
@@ -200,7 +200,7 @@ export default function TeamsPage() {
             onChange={(e) => setUserSearch(e.target.value)}
           />
           <DisabledReasonTooltip
-            disabled={!user?.isPaid}
+            disabled={!user?.canCreateProject}
             reason="Requires a paid plan or an Advanced role in a team."
             className="w-full sm:w-auto"
           >
@@ -208,7 +208,7 @@ export default function TeamsPage() {
               <Button
                 variant="plusAction"
                 className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!user?.isPaid}
+                disabled={!user?.canCreateProject}
               >
                 <Plus className="h-4 w-4 text-white" />
                 Invite User

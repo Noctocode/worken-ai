@@ -39,3 +39,6 @@ coverage
 
 # Misc
 *.log
+
+# Runtime upload storage (local dev; swap for S3 later)
+apps/api/uploads

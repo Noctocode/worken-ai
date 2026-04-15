@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MoreVertical, UserX, Eye } from "lucide-react";
 import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -48,6 +49,10 @@ export function UserRow({ user }: { user: OrgUser }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
+      setConfirmOpen(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove user.");
       setConfirmOpen(false);
     },
   });

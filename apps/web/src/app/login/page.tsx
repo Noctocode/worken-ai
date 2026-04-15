@@ -138,6 +138,14 @@ function LoginContent() {
                 className="h-14 pl-9 pr-3.5 text-base rounded-md border-border-3 placeholder:text-text-3"
               />
             </div>
+            <div className="mt-2 text-left">
+              <Link
+                href="/forgot-password"
+                className="text-sm text-primary-6 hover:text-primary-7 font-medium"
+              >
+                Forgot password?
+              </Link>
+            </div>
             {validationError && (
               <p className="mt-3 text-sm text-danger-6 text-left">
                 {validationError}

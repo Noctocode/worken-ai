@@ -52,6 +52,7 @@ export interface User {
   isPaid: boolean;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
+  onboardingCompleted: boolean;
   canCreateProject: boolean;
 }
 
@@ -125,6 +126,29 @@ export async function resendVerificationEmail(email: string): Promise<void> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function requestPasswordReset(email: string): Promise<void> {
+  const res = await apiFetch("/auth/forgot-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+    skipAuthRedirect: true,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function resetPassword(
+  token: string,
+  password: string,
+): Promise<void> {
+  const res = await apiFetch("/auth/reset-password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, password }),
     skipAuthRedirect: true,
   });
   if (!res.ok) throw await parseAuthError(res);
@@ -697,7 +721,10 @@ export async function updateUserBudget(
 
 export async function removeOrgUser(userId: string): Promise<void> {
   const res = await apiFetch(`/users/${userId}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to remove user");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to remove user");
+  }
 }
 
 // Model Configs
@@ -790,4 +817,62 @@ export async function sendQuestionToCompareModels(
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
+}
+
+// Onboarding
+
+export interface OnboardingProfile {
+  name: string | null;
+  email: string;
+  picture: string | null;
+  profileType: "company" | "personal" | null;
+  companyName: string | null;
+  industry: string | null;
+  teamSize: string | null;
+  infraChoice: "managed" | "on-premise" | null;
+  onboardingCompletedAt: string | null;
+  providers: Array<{ id: string; provider: string; createdAt: string }>;
+  documents: Array<{
+    id: string;
+    filename: string;
+    sizeBytes: number;
+    mimeType: string | null;
+    createdAt: string;
+  }>;
+}
+
+export async function fetchOnboardingProfile(): Promise<OnboardingProfile> {
+  const res = await apiFetch("/onboarding/profile");
+  if (!res.ok) throw new Error("Failed to fetch profile");
+  return res.json();
+}
+
+export interface CompleteOnboardingPayload {
+  profileType: "company" | "personal";
+  fullName?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+  infraChoice: "managed" | "on-premise";
+  apiKeys?: Partial<
+    Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
+  >;
+}
+
+export async function completeOnboarding(
+  payload: CompleteOnboardingPayload,
+  files: File[],
+): Promise<void> {
+  const form = new FormData();
+  form.append("data", JSON.stringify(payload));
+  for (const f of files) form.append("files", f, f.name);
+
+  const res = await apiFetch("/onboarding/complete", {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to complete onboarding");
+  }
 }

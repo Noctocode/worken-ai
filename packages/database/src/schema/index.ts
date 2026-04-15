@@ -22,7 +22,21 @@ export const users = pgTable("users", {
   verificationTokenExpiresAt: timestamp("verification_token_expires_at", {
     withTimezone: true,
   }),
+  passwordResetTokenHash: text("password_reset_token_hash"),
+  passwordResetExpiresAt: timestamp("password_reset_expires_at", {
+    withTimezone: true,
+  }),
   profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
+  // Onboarding fields (populated in a single transaction when the user
+  // completes the /setup-profile wizard). Nullable while onboarding is
+  // incomplete.
+  companyName: text("company_name"),
+  industry: text("industry"),
+  teamSize: text("team_size"),
+  infraChoice: text("infra_choice"), // 'managed' | 'on-premise'
+  onboardingCompletedAt: timestamp("onboarding_completed_at", {
+    withTimezone: true,
+  }),
   isPaid: boolean("is_paid").notNull().default(false),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
@@ -134,6 +148,28 @@ export const guardrails = pgTable("guardrails", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const userLlmCredentials = pgTable("user_llm_credentials", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  provider: text("provider").notNull(), // 'openai' | 'azure' | 'anthropic' | 'private-vpc'
+  apiKeyEncrypted: text("api_key_encrypted").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const knowledgeDocuments = pgTable("knowledge_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  filename: text("filename").notNull(),
+  storagePath: text("storage_path").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  mimeType: text("mime_type"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 export const modelConfigs = pgTable("model_configs", {

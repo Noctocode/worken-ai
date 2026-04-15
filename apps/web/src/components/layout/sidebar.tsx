@@ -333,14 +333,29 @@ export const SidebarContent = ({
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >
-          <Avatar className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}>
-            <AvatarImage src={user?.picture || "/default-avatar.png"} alt={user?.name ?? ""} />
-            <AvatarFallback className={collapsed ? "text-xs font-medium text-text-1" : "bg-primary-1 text-xs font-medium text-primary-6"}>
-              {getInitials(user?.name)}
-            </AvatarFallback>
-          </Avatar>
-          {!collapsed && (
-            <>
+          <Link
+            href="/account"
+            title="My account"
+            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-white ${collapsed ? "p-0" : "flex-1 p-1"}`}
+          >
+            <Avatar
+              className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
+            >
+              <AvatarImage
+                src={user?.picture || "/default-avatar.png"}
+                alt={user?.name ?? ""}
+              />
+              <AvatarFallback
+                className={
+                  collapsed
+                    ? "text-xs font-medium text-text-1"
+                    : "bg-primary-1 text-xs font-medium text-primary-6"
+                }
+              >
+                {getInitials(user?.name)}
+              </AvatarFallback>
+            </Avatar>
+            {!collapsed && (
               <div className="flex-1 overflow-hidden">
                 <div className="flex items-center gap-1.5">
                   <p className="truncate text-sm font-medium text-text-1">
@@ -361,14 +376,16 @@ export const SidebarContent = ({
                   {user?.email ?? ""}
                 </p>
               </div>
-              <button
-                onClick={() => logout()}
-                className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
-                title="Sign out"
-              >
-                <LogOut className="h-4 w-4" />
-              </button>
-            </>
+            )}
+          </Link>
+          {!collapsed && (
+            <button
+              onClick={() => logout()}
+              className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
+              title="Sign out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           )}
         </div>
       </div>

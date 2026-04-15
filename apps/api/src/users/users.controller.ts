@@ -50,6 +50,6 @@ export class UsersController {
         'A paid plan or an Advanced team role is required to remove users.',
       );
     }
-    return this.usersService.remove(id);
+    return this.usersService.remove(id, caller.id);
   }
 }

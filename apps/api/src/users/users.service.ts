@@ -207,7 +207,7 @@ export class UsersService {
     return { monthlyBudgetCents: budgetCents };
   }
 
-  async remove(userId: string) {
+  async remove(userId: string, callerId: string) {
     const [user] = await this.db
       .select({ id: users.id })
       .from(users)
@@ -215,6 +215,24 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    if (userId === callerId) {
+      throw new BadRequestException('You cannot remove yourself');
+    }
+
+    // Team owners can't be deleted because teams.owner_id is NOT NULL FK.
+    // Fail early with a clear message instead of letting the DB throw.
+    const ownedTeams = await this.db
+      .select({ id: teams.id, name: teams.name })
+      .from(teams)
+      .where(eq(teams.ownerId, userId));
+    if (ownedTeams.length > 0) {
+      throw new BadRequestException(
+        `Cannot remove this user — they own ${ownedTeams.length} team${
+          ownedTeams.length === 1 ? '' : 's'
+        } (${ownedTeams.map((t) => t.name).join(', ')}). Transfer ownership first.`,
+      );
     }
 
     // Remove from all teams
