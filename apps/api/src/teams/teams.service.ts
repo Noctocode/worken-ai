@@ -195,13 +195,18 @@ export class TeamsService {
       .from(teams)
       .where(eq(teams.ownerId, userId));
 
-    // Teams where user is accepted member
+    // Teams where user is accepted member — keep the role so we can
+    // derive canManage per team without another query.
     const memberRows = await this.db
-      .select({ teamId: teamMembers.teamId })
+      .select({ teamId: teamMembers.teamId, role: teamMembers.role })
       .from(teamMembers)
       .where(
         and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
       );
+
+    const myRoleByTeam = new Map<string, string>(
+      memberRows.map((r) => [r.teamId, r.role]),
+    );
 
     const memberTeamIds = memberRows
       .map((r) => r.teamId)
@@ -297,12 +302,17 @@ export class TeamsService {
 
     return allTeams.map((t) => {
       const usage = usageMap.get(t.id);
+      const isOwner = t.ownerId === userId;
+      const myRole = myRoleByTeam.get(t.id);
       return {
         ...t,
         memberCount: countMap.get(t.id) ?? 0,
         members: membersMap.get(t.id) ?? [],
         spentCents: usage?.spentCents ?? 0,
         projectedCents: usage?.projectedCents ?? 0,
+        // Matches the backend gate for edit/delete/invite/etc: owner or
+        // advanced member. Everyone else sees read-only controls.
+        canManage: isOwner || myRole === 'advanced',
       };
     });
   }

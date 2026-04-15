@@ -1,18 +1,29 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { MoreVertical, Eye, Pencil, Crown } from "lucide-react";
+import { MoreVertical, Eye, Pencil, Crown, Trash2 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { TeamListItem } from "@/lib/api";
+import { deleteTeam, type TeamListItem } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
@@ -102,12 +113,26 @@ export function TeamRow({
   isOwner: boolean;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const budget = team.monthlyBudgetCents / 100;
   const spent = team.spentCents / 100;
   const projected = team.projectedCents / 100;
   const remaining = budget - spent;
   const extraMembers =
     team.memberCount > 4 ? team.memberCount - 4 : 0;
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deleteTeam(team.id),
+    onSuccess: () => {
+      toast.success(`Deleted "${team.name}".`);
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      setConfirmOpen(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't delete team.");
+    },
+  });
 
   return (
     <tr
@@ -205,8 +230,51 @@ export function TeamRow({
                 </DropdownMenuItem>
               </CreateTeamDialog>
             )}
+            <DropdownMenuItem
+              className="gap-2 text-red-600 focus:text-red-600"
+              disabled={!team.canManage}
+              onSelect={(e) => {
+                e.preventDefault();
+                if (!team.canManage) return;
+                setConfirmOpen(true);
+              }}
+              title={
+                team.canManage ? undefined : "Not available for basic users"
+              }
+            >
+              <Trash2 className="h-4 w-4" />
+              Remove team
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Remove team</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete{" "}
+                <strong>{team.name}</strong>? This action cannot be undone and
+                will remove all members and subteams.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setConfirmOpen(false)}
+                disabled={deleteMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+              >
+                {deleteMutation.isPending ? "Removing..." : "Remove"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </td>
     </tr>
   );

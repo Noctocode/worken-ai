@@ -323,6 +323,7 @@ export interface TeamListItem extends Team {
   members: { name: string | null; picture: string | null }[];
   spentCents: number;
   projectedCents: number;
+  canManage: boolean;
 }
 
 export interface TeamMember {
