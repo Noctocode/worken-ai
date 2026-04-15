@@ -231,7 +231,7 @@ export function TeamRow({
                 View team
               </Link>
             </DropdownMenuItem>
-            {isOwner && (
+            {team.canManage && (
               <CreateTeamDialog team={team}>
                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                   <Pencil className="h-4 w-4" />
