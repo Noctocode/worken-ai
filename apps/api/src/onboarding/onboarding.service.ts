@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
-import { mkdir, writeFile } from 'fs/promises';
+import { copyFile, mkdir, rename, unlink } from 'fs/promises';
 import { randomUUID } from 'crypto';
 import { join, posix as pathPosix } from 'path';
 import {
@@ -67,6 +67,24 @@ export class OnboardingService {
     payload: OnboardingPayload,
     files: Express.Multer.File[],
   ) {
+    try {
+      await this.completeInner(userId, payload, files);
+    } catch (err) {
+      // Multer already wrote every file to the tmp dir before the handler
+      // ran. If validation / the transaction throws after that, cleanup any
+      // leftover tmp files so the disk doesn't leak.
+      await Promise.all(
+        files.map((f) => unlink(f.path).catch(() => undefined)),
+      );
+      throw err;
+    }
+  }
+
+  private async completeInner(
+    userId: string,
+    payload: OnboardingPayload,
+    files: Express.Multer.File[],
+  ) {
     this.validate(payload);
 
     const [current] = await this.db
@@ -93,7 +111,23 @@ export class OnboardingService {
       const safeName = sanitizeFilename(file.originalname);
       const storedName = `${randomUUID()}-${safeName}`;
       const absolutePath = join(userDir, storedName);
-      await writeFile(absolutePath, file.buffer);
+      // Files arrive on disk via multer.diskStorage; move them into the
+      // user's permanent dir. rename is atomic on the same filesystem;
+      // cross-device moves (e.g. /tmp on a different mount) need copy +
+      // unlink as a fallback.
+      try {
+        await rename(file.path, absolutePath);
+      } catch (err: unknown) {
+        const errno = (err as NodeJS.ErrnoException)?.code;
+        if (errno === 'EXDEV') {
+          await copyFile(file.path, absolutePath);
+          await unlink(file.path).catch(() => {
+            /* best-effort cleanup */
+          });
+        } else {
+          throw err;
+        }
+      }
       writtenFiles.push({
         // Preserve the original display name (post-sanitize) so the /account
         // page shows something the user recognises.
