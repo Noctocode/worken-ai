@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { UploadCloud, FolderClosed, Users, Server, Award, FileText, X } from "lucide-react";
@@ -22,23 +22,55 @@ const CATEGORIES: Array<{
   { title: "Certificates", subtitle: "Professional creds", icon: Award },
 ];
 
+const ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
+
+function hasAllowedExtension(name: string) {
+  const lower = name.toLowerCase();
+  return ACCEPTED_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 export default function SetupProfileStep6Page() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { state, files, setFiles, reset } = useOnboarding();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleFiles = (incoming: FileList | null) => {
+  const handleFiles = (incoming: FileList | File[] | null) => {
     if (!incoming || incoming.length === 0) return;
     // Append, but dedupe on name+size so picking the same file twice
-    // doesn't create duplicates.
+    // doesn't create duplicates. Also filter to the same extensions the
+    // backend whitelist accepts so we fail fast in the UI.
     const existingKeys = new Set(files.map((f) => `${f.name}:${f.size}`));
-    const additions = Array.from(incoming).filter(
-      (f) => !existingKeys.has(`${f.name}:${f.size}`),
-    );
-    setFiles([...files, ...additions]);
+    const arr = Array.from(incoming);
+    const rejected = arr.filter((f) => !hasAllowedExtension(f.name));
+    const additions = arr
+      .filter((f) => hasAllowedExtension(f.name))
+      .filter((f) => !existingKeys.has(`${f.name}:${f.size}`));
+    if (rejected.length > 0) {
+      toast.error(
+        `Unsupported file type: ${rejected.map((f) => f.name).join(", ")}. Allowed: PDF, DOC, DOCX, TXT.`,
+      );
+    }
+    if (additions.length > 0) setFiles([...files, ...additions]);
     // Clear the input so selecting the same file again after a remove works.
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    if (!isDragging) setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    handleFiles(e.dataTransfer.files);
   };
 
   const removeFile = (index: number) => {
@@ -111,15 +143,30 @@ export default function SetupProfileStep6Page() {
           </div>
 
           {/* Dropzone */}
-          <button
-            type="button"
+          <div
+            role="button"
+            tabIndex={0}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center justify-center gap-4 rounded border-[1.5px] border-dashed border-border-3 bg-bg-white p-10 text-left transition-colors hover:border-primary-6"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={`flex cursor-pointer items-center justify-center gap-4 rounded border-[1.5px] border-dashed p-10 text-left transition-colors ${
+              isDragging
+                ? "border-primary-6 bg-primary-1/40"
+                : "border-border-3 bg-bg-white hover:border-primary-6"
+            }`}
           >
-            <div className="h-16 w-16 shrink-0 rounded-lg bg-bg-1 flex items-center justify-center">
+            <div className="pointer-events-none flex h-16 w-16 shrink-0 items-center justify-center rounded-lg bg-bg-1">
               <UploadCloud className="h-8 w-8 text-primary-7" strokeWidth={2} />
             </div>
-            <div className="flex flex-col gap-1 items-start">
+            <div className="pointer-events-none flex flex-col items-start gap-1">
               <span className="text-base font-bold text-text-1">
                 Drop files here or click to browse
               </span>
@@ -127,7 +174,7 @@ export default function SetupProfileStep6Page() {
                 Supports PDF, DOC, DOCX, TXT (Max 50MB per file)
               </span>
             </div>
-            <span className="ml-auto inline-flex h-[42px] items-center rounded bg-primary-7 px-6 text-sm font-medium text-text-white">
+            <span className="pointer-events-none ml-auto inline-flex h-[42px] items-center rounded bg-primary-7 px-6 text-sm font-medium text-text-white">
               Select Files
             </span>
             <input
@@ -138,7 +185,7 @@ export default function SetupProfileStep6Page() {
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
-          </button>
+          </div>
 
           {/* Suggested categories */}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
