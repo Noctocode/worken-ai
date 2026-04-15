@@ -1,17 +1,15 @@
 "use client";
 
 import {
-  BarChart2,
+  BookOpen,
   ChevronsLeft,
   ChevronsRight,
   FolderOpen,
   Layers,
-  Library,
   LogOut,
   MessageSquare,
   Moon,
   Plus,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -199,25 +197,14 @@ export const SidebarContent = ({
 
             {/* Intelligence icons */}
             <Button
+              asChild
               variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Observability"
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/resources") ? activeIconClass : inactiveIconClass}`}
+              title="Resources & Learning"
             >
-              <BarChart2 className="size-5 shrink-0" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Guardrails"
-            >
-              <ShieldCheck className="size-5 shrink-0" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Prompt Library"
-            >
-              <Library className="size-5 shrink-0" />
+              <Link href="/resources">
+                <BookOpen className="size-5 shrink-0" />
+              </Link>
             </Button>
           </div>
         ) : (
@@ -278,31 +265,16 @@ export const SidebarContent = ({
 
             {/* Intelligence */}
             <Button
+              asChild
               variant="ghost"
               size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Observability"
+              className={`w-full justify-start gap-3 ${pathname.startsWith("/resources") ? activeClass : inactiveClass}`}
+              title="Resources & Learning"
             >
-              <BarChart2 className="size-5 shrink-0 text-text-3" />
-              <span>Observability</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Guardrails"
-            >
-              <ShieldCheck className="size-5 shrink-0 text-text-3" />
-              <span>Guardrails</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Prompt Library"
-            >
-              <Library className="size-5 shrink-0 text-text-3" />
-              <span>Prompt Library</span>
+              <Link href="/resources">
+                <BookOpen className={`size-5 shrink-0 ${pathname.startsWith("/resources") ? activeIconClass : inactiveIconClass}`} />
+                <span>Resources &amp; Learning</span>
+              </Link>
             </Button>
           </div>
         )}
