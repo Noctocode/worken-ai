@@ -8,7 +8,7 @@ import {
 import { eq } from 'drizzle-orm';
 import { mkdir, writeFile } from 'fs/promises';
 import { randomUUID } from 'crypto';
-import { join } from 'path';
+import { join, posix as pathPosix } from 'path';
 import {
   users,
   userLlmCredentials,
@@ -41,6 +41,19 @@ const VALID_PROVIDERS: Provider[] = [
   'private-vpc',
 ];
 const UPLOADS_ROOT = join(process.cwd(), 'uploads', 'knowledge');
+
+// Defense-in-depth against path traversal: multer's originalname is whatever
+// the client sent (can contain ../, /, \, or NULs). Keep just the last path
+// segment, strip characters disallowed on Windows filesystems + control
+// bytes + leading dots.
+function sanitizeFilename(raw: string): string {
+  const lastSegment = raw.replace(/^.*[\\/]/, '');
+  // eslint-disable-next-line no-control-regex
+  const cleaned = lastSegment
+    .replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
+    .replace(/^\.+/, '');
+  return cleaned || 'file';
+}
 
 @Injectable()
 export class OnboardingService {
@@ -77,12 +90,22 @@ export class OnboardingService {
       mimeType: string | null;
     }> = [];
     for (const file of files) {
-      const storedName = `${randomUUID()}-${file.originalname}`;
+      const safeName = sanitizeFilename(file.originalname);
+      const storedName = `${randomUUID()}-${safeName}`;
       const absolutePath = join(userDir, storedName);
       await writeFile(absolutePath, file.buffer);
       writtenFiles.push({
-        filename: file.originalname,
-        storagePath: join('uploads', 'knowledge', userId, storedName),
+        // Preserve the original display name (post-sanitize) so the /account
+        // page shows something the user recognises.
+        filename: safeName,
+        // POSIX separators in the DB so storage paths are portable between
+        // dev (Windows) and prod (Linux) without per-OS quirks.
+        storagePath: pathPosix.join(
+          'uploads',
+          'knowledge',
+          userId,
+          storedName,
+        ),
         sizeBytes: file.size,
         mimeType: file.mimetype || null,
       });

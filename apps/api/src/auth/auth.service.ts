@@ -486,7 +486,12 @@ export class AuthService {
       isPaid: user.isPaid,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
-      onboardingCompleted: !!user.onboardingCompletedAt,
+      // Back-compat: users who completed the legacy single-step profile-type
+      // flow have profileType set but no onboardingCompletedAt. Treat them
+      // as onboarded so the guard doesn't bounce them through the new
+      // wizard. Can drop once we backfill onboarding_completed_at.
+      onboardingCompleted:
+        !!user.onboardingCompletedAt || !!user.profileType,
       canCreateProject,
     };
   }
