@@ -35,6 +35,17 @@ export class TeamsService {
     monthlyBudgetCents?: number,
     parentTeamId?: string,
   ) {
+    // Subteams inherit the parent's management gate: only owners or
+    // advanced members of the parent can create children.
+    if (parentTeamId) {
+      const parentRole = await this.getUserTeamRole(parentTeamId, userId);
+      if (parentRole !== 'owner' && parentRole !== 'advanced') {
+        throw new ForbiddenException(
+          'Only team owners or advanced members can add subteams',
+        );
+      }
+    }
+
     const budgetCents = monthlyBudgetCents ?? 1000;
     const [team] = await this.db
       .insert(teams)

@@ -421,9 +421,20 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Subteams</p>
-          <AddSubteamDialog parentTeamId={id}>
-            <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
-          </AddSubteamDialog>
+          {canManageTeam ? (
+            <AddSubteamDialog parentTeamId={id}>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
+            </AddSubteamDialog>
+          ) : (
+            <Button
+              variant="plusAction"
+              className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+              title="Only team owners or advanced members can add subteams"
+            >
+              <Plus className="h-4 w-4 text-text-white" />Add Subteam
+            </Button>
+          )}
         </div>
         {subteams.length === 0 ? (
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No subteams yet.</div></div>
@@ -516,12 +527,33 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600"><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <EditSubteamDialog sub={sub} parentTeamId={id}>
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
-                            </EditSubteamDialog>
-                            <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
-                              <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
-                            </DeleteSubteamDialog>
+                            {canManageTeam ? (
+                              <>
+                                <EditSubteamDialog sub={sub} parentTeamId={id}>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                                </EditSubteamDialog>
+                                <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                                </DeleteSubteamDialog>
+                              </>
+                            ) : (
+                              <>
+                                <DropdownMenuItem
+                                  disabled
+                                  onSelect={(e) => e.preventDefault()}
+                                  className="gap-2"
+                                >
+                                  <Pencil className="h-4 w-4" />Edit
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  disabled
+                                  onSelect={(e) => e.preventDefault()}
+                                  className="gap-2 text-red-600 focus:text-red-600"
+                                >
+                                  <Trash2 className="h-4 w-4" />Delete
+                                </DropdownMenuItem>
+                              </>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </td>
