@@ -705,7 +705,14 @@ export interface OrgUserDetail {
   monthlyBudgetCents: number;
   spentCents: number;
   projectedCents: number;
-  teams: { id: string; name: string; role: string; status: string }[];
+  teams: {
+    id: string;
+    memberId: string;
+    name: string;
+    role: string;
+    status: string;
+    canManage: boolean;
+  }[];
   createdAt: string;
 }
 
