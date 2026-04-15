@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { MoreVertical, Eye, Pencil, Crown } from "lucide-react";
 import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { Button } from "@/components/ui/button";
@@ -100,6 +101,7 @@ export function TeamRow({
   team: TeamListItem;
   isOwner: boolean;
 }) {
+  const router = useRouter();
   const budget = team.monthlyBudgetCents / 100;
   const spent = team.spentCents / 100;
   const projected = team.projectedCents / 100;
@@ -108,7 +110,10 @@ export function TeamRow({
     team.memberCount > 4 ? team.memberCount - 4 : 0;
 
   return (
-    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+    <tr
+      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-slate-50/50"
+      onClick={() => router.push(`/teams/${team.id}`)}
+    >
       {/* Team name */}
       <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         <div className="flex items-center gap-2">
@@ -171,7 +176,10 @@ export function TeamRow({
         )}
       </td>
       {/* Actions */}
-      <td className="px-4 align-middle text-right">
+      <td
+        className="px-4 align-middle text-right"
+        onClick={(e) => e.stopPropagation()}
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
