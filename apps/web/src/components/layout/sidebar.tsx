@@ -6,12 +6,10 @@ import {
   ChevronsRight,
   FolderOpen,
   Layers,
-  Library,
   LogOut,
   MessageSquare,
   Moon,
   Plus,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -205,20 +203,6 @@ export const SidebarContent = ({
             >
               <BookOpen className="size-5 shrink-0" />
             </Button>
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Guardrails"
-            >
-              <ShieldCheck className="size-5 shrink-0" />
-            </Button>
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Prompt Library"
-            >
-              <Library className="size-5 shrink-0" />
-            </Button>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
@@ -285,24 +269,6 @@ export const SidebarContent = ({
             >
               <BookOpen className="size-5 shrink-0 text-text-3" />
               <span>Resources &amp; Learning</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Guardrails"
-            >
-              <ShieldCheck className="size-5 shrink-0 text-text-3" />
-              <span>Guardrails</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Prompt Library"
-            >
-              <Library className="size-5 shrink-0 text-text-3" />
-              <span>Prompt Library</span>
             </Button>
           </div>
         )}
