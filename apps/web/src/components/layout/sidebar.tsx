@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  BarChart2,
+  BookOpen,
   ChevronsLeft,
   ChevronsRight,
   FolderOpen,
@@ -201,9 +201,9 @@ export const SidebarContent = ({
             <Button
               variant="ghost"
               className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
-              title="Observability"
+              title="Resources & Learning"
             >
-              <BarChart2 className="size-5 shrink-0" />
+              <BookOpen className="size-5 shrink-0" />
             </Button>
             <Button
               variant="ghost"
@@ -281,10 +281,10 @@ export const SidebarContent = ({
               variant="ghost"
               size="nav"
               className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1"
-              title="Observability"
+              title="Resources & Learning"
             >
-              <BarChart2 className="size-5 shrink-0 text-text-3" />
-              <span>Observability</span>
+              <BookOpen className="size-5 shrink-0 text-text-3" />
+              <span>Resources &amp; Learning</span>
             </Button>
             <Button
               variant="ghost"
