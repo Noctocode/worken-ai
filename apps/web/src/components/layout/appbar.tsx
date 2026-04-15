@@ -39,6 +39,7 @@ import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { deleteTeam, fetchProject, fetchTeam } from "@/lib/api";
+import { CreateTeamDialog } from "@/components/create-team-dialog";
 import { MODEL_LABELS } from "@/lib/models";
 import { useAuth } from "@/components/providers";
 
@@ -151,15 +152,27 @@ export const Appbar = () => {
             disabled={!canManageCurrentTeam}
             reason="Not available for basic users"
           >
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled={!canManageCurrentTeam}
-              title={canManageCurrentTeam ? "Edit team" : undefined}
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
+            {canManageCurrentTeam && teamDetailData ? (
+              <CreateTeamDialog team={teamDetailData}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-success-7 hover:text-success-7/80"
+                  title="Edit team"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </CreateTeamDialog>
+            ) : (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
           </DisabledReasonTooltip>
           <DisabledReasonTooltip
             disabled={!canManageCurrentTeam}
