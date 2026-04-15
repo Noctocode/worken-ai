@@ -91,8 +91,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update the team');
+    const updateCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (updateCallerRole !== 'owner' && updateCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can update the team',
+      );
     }
 
     const updates: Record<string, unknown> = {};
@@ -120,8 +123,11 @@ export class TeamsService {
       .where(eq(teams.id, teamId));
 
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can delete the team');
+    const deleteCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can delete the team',
+      );
     }
 
     // Remove all members first (cascade should handle this, but be explicit)
@@ -582,8 +588,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can remove members');
+    const removeCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (removeCallerRole !== 'owner' && removeCallerRole !== 'advanced') {
+      throw new ForbiddenException(
+        'Only team owners or advanced members can remove members',
+      );
     }
 
     // Prevent removing self (owner)

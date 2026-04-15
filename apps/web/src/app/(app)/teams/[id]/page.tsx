@@ -346,15 +346,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const onTrack = projected <= budget;
   const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // Role editing mirrors the backend gate: team owners and advanced
-  // members of this team; basic members and non-members get a disabled
-  // control.
+  // Role editing / member removal / team rename-delete all mirror the
+  // backend gate: team owners and advanced members of this team; basic
+  // members and non-members get disabled controls.
   const myMembership = team.members.find(
     (m) => m.userId && m.userId === currentUser?.id,
   );
-  const canEditRoles =
+  const canManageTeam =
     !!currentUser &&
     (currentUser.id === team.ownerId || myMembership?.role === "advanced");
+  // Back-compat alias used by the role Select.
+  const canEditRoles = canManageTeam;
 
   const handleBudgetBlur = () => {
     if (budgetInput === null) return;
@@ -596,7 +598,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600" onClick={() => removeMutation.mutate(m.id)}><UserX className="h-4 w-4" />Remove user</DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="gap-2 text-red-600 focus:text-red-600"
+                              disabled={!canManageTeam}
+                              onSelect={(e) => {
+                                if (!canManageTeam) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                removeMutation.mutate(m.id);
+                              }}
+                            >
+                              <UserX className="h-4 w-4" />Remove user
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

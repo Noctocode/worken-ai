@@ -29,6 +29,7 @@ import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { fetchProject, fetchTeam } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
+import { useAuth } from "@/components/providers";
 
 const AI_CHAT_TABS = [
   { value: "all", label: "All" },
@@ -56,6 +57,25 @@ export const Appbar = () => {
     queryFn: () => fetchTeam(_project!.teamId!),
     enabled: isProjectDetail && !!_project?.teamId,
   });
+
+  // Team detail team fetch — reuse the page's query so there's only one HTTP
+  // round-trip. Data drives the Edit/Delete gate in the team header.
+  const isTeamDetail = config.appbarType === "teamDetail";
+  const teamDetailId = isTeamDetail ? (pathname.split("/").pop() ?? "") : "";
+  const { data: teamDetailData } = useQuery({
+    queryKey: ["teams", teamDetailId],
+    queryFn: () => fetchTeam(teamDetailId),
+    enabled: isTeamDetail && !!teamDetailId,
+  });
+  const { user: currentUser } = useAuth();
+  const canManageCurrentTeam = (() => {
+    if (!teamDetailData || !currentUser) return false;
+    if (currentUser.id === teamDetailData.ownerId) return true;
+    const me = teamDetailData.members.find(
+      (m) => m.userId && m.userId === currentUser.id,
+    );
+    return me?.role === "advanced";
+  })();
 
   /* ── Team detail appbar ──────────────────────────────────────────────── */
   if (config.appbarType === "teamDetail") {
@@ -98,14 +118,26 @@ export const Appbar = () => {
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-success-7 hover:text-success-7/80"
+            className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canManageCurrentTeam}
+            title={
+              canManageCurrentTeam
+                ? "Edit team"
+                : "Only team owners or advanced members can edit the team"
+            }
           >
             <Pencil className="h-4 w-4" />
           </Button>
           <Button
             variant="ghost"
             size="icon"
-            className="h-8 w-8 text-success-7 hover:text-success-7/80"
+            className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={!canManageCurrentTeam}
+            title={
+              canManageCurrentTeam
+                ? "Delete team"
+                : "Only team owners or advanced members can delete the team"
+            }
           >
             <Trash2 className="h-4 w-4" />
           </Button>
