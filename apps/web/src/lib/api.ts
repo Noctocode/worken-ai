@@ -356,7 +356,10 @@ export async function fetchTeam(id: string): Promise<TeamWithMembers> {
 
 export async function deleteTeam(id: string): Promise<void> {
   const res = await apiFetch(`/teams/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Failed to delete team");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to delete team");
+  }
 }
 
 export async function updateTeam(

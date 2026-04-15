@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
@@ -17,18 +18,27 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
-import { fetchProject, fetchTeam } from "@/lib/api";
+import { deleteTeam, fetchProject, fetchTeam } from "@/lib/api";
 import { MODEL_LABELS } from "@/lib/models";
 import { useAuth } from "@/components/providers";
 
@@ -77,6 +87,24 @@ export const Appbar = () => {
     );
     return me?.role === "advanced";
   })();
+
+  const [deleteTeamOpen, setDeleteTeamOpen] = useState(false);
+  const queryClient = useQueryClient();
+  const deleteTeamMutation = useMutation({
+    mutationFn: () => deleteTeam(teamDetailId),
+    onSuccess: () => {
+      toast.success(
+        teamDetailData ? `Deleted "${teamDetailData.name}".` : "Team deleted.",
+      );
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["teams", teamDetailId] });
+      setDeleteTeamOpen(false);
+      router.push("/teams");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't delete team.");
+    },
+  });
 
   /* ── Team detail appbar ──────────────────────────────────────────────── */
   if (config.appbarType === "teamDetail") {
@@ -139,12 +167,44 @@ export const Appbar = () => {
               size="icon"
               className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!canManageCurrentTeam}
+              onClick={() => setDeleteTeamOpen(true)}
               title={canManageCurrentTeam ? "Delete team" : undefined}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
           </DisabledReasonTooltip>
         </div>
+
+        {/* Delete team confirmation */}
+        <Dialog open={deleteTeamOpen} onOpenChange={setDeleteTeamOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete team</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete{" "}
+                <strong>{teamDetailData?.name ?? "this team"}</strong>? This
+                action cannot be undone and will remove all members and
+                subteams from this team.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteTeamOpen(false)}
+                disabled={deleteTeamMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteTeamMutation.mutate()}
+                disabled={deleteTeamMutation.isPending}
+              >
+                {deleteTeamMutation.isPending ? "Deleting..." : "Delete"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </header>
     );
   }
