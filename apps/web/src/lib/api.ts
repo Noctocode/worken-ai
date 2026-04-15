@@ -693,6 +693,7 @@ export interface OrgUserDetail {
   name: string | null;
   picture: string | null;
   role: "basic" | "advanced" | "admin";
+  tier: "basic" | "advanced";
   monthlyBudgetCents: number;
   spentCents: number;
   projectedCents: number;

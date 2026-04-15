@@ -9,6 +9,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -142,7 +143,18 @@ export default function UserDetailPage({
           <div className="flex items-center gap-3">
             <UserAvatar name={displayName} picture={user.picture} size={80} />
             <div className="space-y-3">
-              <p className="text-[18px] font-bold text-text-1">{displayName}</p>
+              <div className="flex items-center gap-2">
+                <p className="text-[18px] font-bold text-text-1">{displayName}</p>
+                <Badge
+                  className={
+                    user.tier === "advanced"
+                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0"
+                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0"
+                  }
+                >
+                  {user.tier === "advanced" ? "Advanced" : "Basic"}
+                </Badge>
+              </div>
               <p className="text-[16px] text-text-1">{user.email}</p>
             </div>
           </div>

@@ -100,6 +100,7 @@ export class UsersService {
         picture: users.picture,
         monthlyBudgetCents: users.monthlyBudgetCents,
         openrouterKeyId: users.openrouterKeyId,
+        isPaid: users.isPaid,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -157,12 +158,20 @@ export class UsersService {
       }
     }
 
+    // Same gate used by the sidebar Advanced/Basic badge: isPaid OR
+    // owner-of-any-team OR advanced-member-in-any-team.
+    const isAdvanced =
+      user.isPaid ||
+      isOwner.length > 0 ||
+      membershipRows.some((m) => m.role === 'advanced');
+
     return {
       id: user.id,
       name: user.name,
       email: user.email,
       picture: user.picture,
       role,
+      tier: (isAdvanced ? 'advanced' : 'basic') as 'advanced' | 'basic',
       monthlyBudgetCents: user.monthlyBudgetCents,
       spentCents,
       projectedCents,
