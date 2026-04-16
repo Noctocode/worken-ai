@@ -63,6 +63,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Specificity optimization",
       "Side-by-side comparison",
     ],
+    href: "/resources/prompt-improver",
   },
   {
     title: "Learn Academy",

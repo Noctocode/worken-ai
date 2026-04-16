@@ -43,6 +43,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/resources/prompt-improver": {
+    bg: "bg-bg-1",
+    title: "Prompt Improver",
+    hideSearch: true,
+    hideNotifications: true,
+  },
 };
 
 const DEFAULT_CONFIG: RouteConfig = {
