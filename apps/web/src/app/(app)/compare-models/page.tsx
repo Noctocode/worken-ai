@@ -221,6 +221,11 @@ export default function CompareModelsPage() {
                   evaluation={evaluationA}
                   loading={loading && responseA === null}
                   onCopy={(t) => copyText(t, getModelLabel(modelA))}
+                  onEdit={
+                    submittedQuestion
+                      ? () => setQuestion(submittedQuestion)
+                      : undefined
+                  }
                 />
                 <ResponseCard
                   modelId={modelB}
@@ -228,6 +233,11 @@ export default function CompareModelsPage() {
                   evaluation={evaluationB}
                   loading={loading && responseB === null}
                   onCopy={(t) => copyText(t, getModelLabel(modelB))}
+                  onEdit={
+                    submittedQuestion
+                      ? () => setQuestion(submittedQuestion)
+                      : undefined
+                  }
                 />
               </div>
             )}
@@ -332,15 +342,18 @@ function ResponseCard({
   evaluation,
   loading,
   onCopy,
+  onEdit,
 }: {
   modelId: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
   loading: boolean;
   onCopy: (text: string) => void;
+  onEdit?: () => void;
 }) {
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
+  const provider = getModelProvider(modelId);
 
   return (
     <article className="flex min-w-0 flex-1 basis-[320px] flex-col gap-2.5 rounded bg-bg-1 p-4">
@@ -357,27 +370,64 @@ function ResponseCard({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-            title="Edit prompt"
-            aria-label="Edit prompt"
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </button>
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+              title="Edit prompt"
+              aria-label="Edit prompt"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
           {evaluation?.time !== undefined && (
             <span className="text-[11px] font-medium text-text-3">
               {(evaluation.time / 1000).toFixed(1)}s
             </span>
           )}
-          <button
-            type="button"
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-            title="Model info"
-            aria-label="Model info"
-          >
-            <Info className="h-3.5 w-3.5" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                title="Model info"
+                aria-label="Model info"
+              >
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="flex items-center gap-2">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${tone}`}
+                >
+                  <Bot className="h-3 w-3" strokeWidth={2} />
+                </span>
+                <span className="truncate text-[13px] font-semibold text-text-1">
+                  {label}
+                </span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="flex flex-col gap-1.5 px-2 py-1.5 text-[11px]">
+                <InfoRow label="Provider" value={provider} />
+                <InfoRow label="Model ID" value={modelId} mono />
+                <InfoRow label="Tier" value="Free" />
+                {evaluation?.totalTokens !== undefined && (
+                  <InfoRow label="Tokens" value={String(evaluation.totalTokens)} />
+                )}
+                {evaluation?.totalCost !== undefined && (
+                  <InfoRow
+                    label="Cost"
+                    value={`$${Number(evaluation.totalCost).toFixed(5)}`}
+                  />
+                )}
+                {evaluation?.time !== undefined && (
+                  <InfoRow label="Time" value={`${evaluation.time} ms`} />
+                )}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -425,6 +475,28 @@ function ResponseCard({
         </button>
       </footer>
     </article>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-text-3">{label}</span>
+      <span
+        className={`truncate text-text-1 ${mono ? "font-mono text-[10px]" : "font-medium"}`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
   );
 }
 
