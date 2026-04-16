@@ -5,22 +5,30 @@ import {
   ChevronDown,
   ChevronRight,
   Clipboard,
-  Copy,
   Image as ImageIcon,
   Info,
   Library,
   Paperclip,
   Pencil,
   Plus,
+  Search,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -30,6 +38,14 @@ import {
 } from "@/components/ui/select";
 import { sendQuestionToCompareModels } from "@/lib/api";
 import { MODELS } from "@/lib/models";
+
+function getModelProvider(id: string): string {
+  const slug = id.split("/")[0] ?? "Unknown";
+  return slug
+    .split(/[-_]/)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
 
 // Types for evaluation JSON
 type ModelEvaluation = {
@@ -84,8 +100,9 @@ export default function CompareModelsPage() {
 
   const [railOpen, setRailOpen] = useState(true);
   const [modelsExpanded, setModelsExpanded] = useState(true);
-  const [historyExpanded, setHistoryExpanded] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [addModelOpen, setAddModelOpen] = useState(false);
 
   const hasResults =
     responseA !== null ||
@@ -139,7 +156,7 @@ export default function CompareModelsPage() {
     }
   }
 
-  function newComparison() {
+  const newComparison = useCallback(() => {
     setQuestion("");
     setExpectedOutput("");
     setResponseA(null);
@@ -147,7 +164,14 @@ export default function CompareModelsPage() {
     setEvaluationA(null);
     setEvaluationB(null);
     setSubmittedQuestion(null);
-  }
+  }, []);
+
+  // The appbar hosts the "New Comparison" button and dispatches this event.
+  useEffect(() => {
+    const handler = () => newComparison();
+    window.addEventListener("compare-models:new", handler);
+    return () => window.removeEventListener("compare-models:new", handler);
+  }, [newComparison]);
 
   async function copyText(text: string, label = "response") {
     try {
@@ -159,22 +183,11 @@ export default function CompareModelsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 py-6">
-      {/* Page header action row */}
-      <div className="flex items-center justify-end gap-3">
-        <Button
-          onClick={newComparison}
-          className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
-        >
-          <Plus className="h-4 w-4" />
-          New Comparison
-        </Button>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-col gap-6 py-6">
       {/* Body shell: main column + optional right rail */}
       <div className="flex min-h-0 flex-1 gap-6">
         {/* Main column */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden rounded-2xl border border-border-2 bg-bg-white p-6">
+        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
           {/* Scrollable content area (prompt + responses) */}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             {!hasResults && !loading && (
@@ -249,6 +262,7 @@ export default function CompareModelsPage() {
               setEvaluationB(null);
             }}
             onClose={() => setRailOpen(false)}
+            onAddModel={() => setAddModelOpen(true)}
           />
         ) : (
           <button
@@ -262,6 +276,17 @@ export default function CompareModelsPage() {
           </button>
         )}
       </div>
+
+      <AddModelDialog
+        open={addModelOpen}
+        onOpenChange={setAddModelOpen}
+        currentModelA={modelA}
+        currentModelB={modelB}
+        onAdd={(id) => {
+          setModelB(id);
+          toast.success(`Added ${getModelLabel(id)} to comparison.`);
+        }}
+      />
     </div>
   );
 }
@@ -276,7 +301,7 @@ function PromptBubble({
   onEdit: () => void;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg bg-bg-1 p-4">
+    <div className="flex items-start gap-3 rounded bg-bg-1 p-4">
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[11px] font-semibold text-white">
         U
       </div>
@@ -315,35 +340,33 @@ function ResponseCard({
   const tone = getModelTone(modelId);
 
   return (
-    <article className="flex min-w-0 flex-1 basis-[320px] flex-col gap-3 rounded-lg bg-bg-1 p-4">
+    <article className="flex min-w-0 flex-1 basis-[320px] flex-col gap-2.5 rounded bg-bg-1 p-4">
       {/* Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <span
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tone}`}
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone}`}
           >
-            <Bot className="h-4 w-4" strokeWidth={2} />
+            <Bot className="h-3.5 w-3.5" strokeWidth={2} />
           </span>
-          <span className="truncate text-[14px] font-semibold text-text-1">
+          <span className="truncate text-[14px] font-medium text-text-2">
             {label}
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+            title="Edit prompt"
+            aria-label="Edit prompt"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
           {evaluation?.time !== undefined && (
             <span className="text-[11px] font-medium text-text-3">
               {(evaluation.time / 1000).toFixed(1)}s
             </span>
           )}
-          <button
-            type="button"
-            onClick={() => response && onCopy(response)}
-            disabled={!response}
-            className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Copy response"
-            aria-label="Copy response"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
           <button
             type="button"
             className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
@@ -502,23 +525,29 @@ function Composer({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-col gap-2 rounded-2xl border border-border-2 bg-bg-white p-3 shadow-[0_4px_4px_rgba(0,0,0,0.04)]"
+      className="mx-auto flex w-full max-w-[674px] flex-col gap-2 rounded-2xl border border-[#86909C]/40 bg-bg-white p-2 shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
     >
-      <textarea
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-        placeholder="Ask me anything…"
-        className="min-h-[72px] w-full resize-y rounded-md border-0 bg-bg-white px-2 py-2 text-[14px] text-text-1 placeholder:text-text-3 focus:outline-none"
-        disabled={loading}
-      />
+      <div className="flex items-start gap-2 px-2 pt-2">
+        <Sparkles
+          className="mt-1 h-4 w-4 shrink-0 text-text-3"
+          strokeWidth={2}
+        />
+        <textarea
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask me Anything"
+          className="min-h-[40px] w-full resize-y border-0 bg-transparent text-[14px] text-text-1 placeholder:text-text-3 focus:outline-none"
+          disabled={loading}
+        />
+      </div>
       <textarea
         value={expectedOutput}
         onChange={(e) => setExpectedOutput(e.target.value)}
         placeholder="Expected output (used to score the responses)"
-        className="min-h-[56px] w-full resize-y rounded-md border-t border-border-2 bg-bg-white px-2 py-2 text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
+        className="mx-2 min-h-[40px] w-[calc(100%-1rem)] resize-y border-t border-border-2 bg-transparent px-0 py-2 text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
         disabled={loading}
       />
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 pt-1">
         <div className="flex flex-wrap items-center gap-2">
           <ComposerChip icon={Paperclip} label="Attach File" disabled />
           <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
@@ -573,6 +602,7 @@ function RightRail({
   history,
   onLoadHistory,
   onClose,
+  onAddModel,
 }: {
   modelA: string;
   modelB: string;
@@ -585,11 +615,12 @@ function RightRail({
   history: HistoryEntry[];
   onLoadHistory: (q: string) => void;
   onClose: () => void;
+  onAddModel: () => void;
 }) {
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col gap-4 overflow-y-auto rounded-2xl border border-border-2 bg-bg-white p-4">
+    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto pl-2">
       <header className="flex items-center justify-between">
-        <h2 className="text-[14px] font-bold text-text-1">
+        <h2 className="text-[16px] font-bold text-text-2">
           Comparison Details
         </h2>
         <button
@@ -623,9 +654,8 @@ function RightRail({
         />
         <button
           type="button"
-          disabled
-          className="flex w-full cursor-not-allowed items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-2 bg-bg-white px-3 py-2 text-[12px] font-medium text-text-3"
-          title="Coming soon"
+          onClick={onAddModel}
+          className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-2 bg-bg-white px-3 py-2 text-[12px] font-medium text-text-2 transition-colors hover:border-primary-6 hover:text-primary-6"
         >
           <Plus className="h-3.5 w-3.5" />
           Add Model
@@ -736,6 +766,228 @@ function ModelPill({
           ))}
         </SelectContent>
       </Select>
+    </div>
+  );
+}
+
+/* ─── Add Model dialog ───────────────────────────────────────────────── */
+
+interface ProviderGroup {
+  provider: string;
+  models: typeof MODELS[number][];
+}
+
+function groupModelsByProvider(query: string): ProviderGroup[] {
+  const q = query.trim().toLowerCase();
+  const matched = MODELS.filter((m) => {
+    if (!q) return true;
+    return (
+      m.label.toLowerCase().includes(q) ||
+      m.id.toLowerCase().includes(q) ||
+      getModelProvider(m.id).toLowerCase().includes(q)
+    );
+  });
+
+  const map = new Map<string, typeof MODELS[number][]>();
+  for (const m of matched) {
+    const provider = getModelProvider(m.id);
+    const existing = map.get(provider) ?? [];
+    existing.push(m);
+    map.set(provider, existing);
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([provider, models]) => ({ provider, models }));
+}
+
+function AddModelDialog({
+  open,
+  onOpenChange,
+  currentModelA,
+  currentModelB,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  currentModelA: string;
+  currentModelB: string;
+  onAdd: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string>(currentModelB);
+
+  // Reset selection when the dialog opens to the current "B" slot.
+  useEffect(() => {
+    if (open) {
+      setSelectedId(currentModelB);
+      setQuery("");
+    }
+  }, [open, currentModelB]);
+
+  const groups = useMemo(() => groupModelsByProvider(query), [query]);
+  const selected =
+    MODELS.find((m) => m.id === selectedId) ?? MODELS[0];
+  const tone = getModelTone(selected.id);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-[900px] gap-0 p-0"
+        showCloseButton={false}
+      >
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
+          <DialogTitle className="text-[18px] font-bold text-text-1">
+            Add Model
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 divide-x divide-border-2 sm:grid-cols-2">
+          {/* List column */}
+          <div className="flex max-h-[480px] flex-col gap-3 overflow-hidden p-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search Models"
+                className="h-10 pl-9 placeholder:text-text-3"
+              />
+            </div>
+
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
+              {groups.length === 0 && (
+                <p className="py-8 text-center text-[12px] text-text-3">
+                  No models match your search.
+                </p>
+              )}
+              {groups.map((g) => (
+                <section key={g.provider} className="flex flex-col gap-1.5">
+                  <h3 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                    {g.provider}
+                  </h3>
+                  <ul className="flex flex-col gap-0.5">
+                    {g.models.map((m) => {
+                      const isSelected = m.id === selectedId;
+                      const isOther = m.id === currentModelA;
+                      return (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(m.id)}
+                            disabled={isOther}
+                            className={`flex w-full cursor-pointer flex-col items-start rounded px-3 py-2 text-left transition-colors ${
+                              isSelected
+                                ? "bg-bg-1"
+                                : "hover:bg-bg-1/60"
+                            } disabled:cursor-not-allowed disabled:opacity-50`}
+                            title={
+                              isOther
+                                ? "Already selected as Model A"
+                                : undefined
+                            }
+                          >
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span className="text-[13px] font-medium text-text-1">
+                                {m.label}
+                              </span>
+                              {isOther && (
+                                <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
+                                  In use
+                                </span>
+                              )}
+                            </span>
+                            <span className="truncate text-[11px] text-text-3">
+                              {m.id}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </div>
+
+          {/* Detail column */}
+          <div className="flex flex-col gap-4 p-6">
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone}`}
+              >
+                <Bot className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <span className="text-[15px] font-bold text-text-1">
+                  {selected.label}
+                </span>
+                <span className="truncate text-[11px] text-text-3">
+                  {selected.id}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[13px] leading-[1.5] text-text-2">
+              Free tier model provided via OpenRouter. Used to compare answers
+              against other models in the arena.
+            </p>
+
+            <div className="grid grid-cols-3 gap-2">
+              <SpecChip label="Provider" value={getModelProvider(selected.id)} />
+              <SpecChip label="Tier" value="Free" />
+              <SpecChip
+                label="Status"
+                value={
+                  selected.id === currentModelA || selected.id === currentModelB
+                    ? "Selected"
+                    : "Available"
+                }
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex flex-row items-center justify-end gap-2 border-t border-border-2 px-6 py-4">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="cursor-pointer rounded-full px-5"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              onAdd(selectedId);
+              onOpenChange(false);
+            }}
+            disabled={selectedId === currentModelA}
+            className="cursor-pointer rounded-full bg-primary-6 px-6 hover:bg-primary-7"
+          >
+            Add Model
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SpecChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded bg-bg-1 px-3 py-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-text-3">
+        {label}
+      </span>
+      <span className="truncate text-[12px] font-semibold text-text-1">
+        {value}
+      </span>
     </div>
   );
 }
