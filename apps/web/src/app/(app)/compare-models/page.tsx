@@ -19,7 +19,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -924,12 +924,15 @@ function AddModelDialog({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string>(currentModelB);
 
-  // Reset selection when the dialog opens to the current "B" slot.
+  // Reset selection only on the false→true transition so the user's pick
+  // isn't overwritten if currentModelB changes while the dialog is open.
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (open) {
+    if (open && !wasOpenRef.current) {
       setSelectedId(currentModelB);
       setQuery("");
     }
+    wasOpenRef.current = open;
   }, [open, currentModelB]);
 
   const groups = useMemo(() => groupModelsByProvider(query), [query]);
