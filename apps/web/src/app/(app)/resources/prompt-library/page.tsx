@@ -266,7 +266,7 @@ export default function PromptLibraryPage() {
                   <button
                     type="button"
                     onClick={() => handleCopy(p)}
-                    className="inline-flex h-9 items-center gap-2 rounded bg-primary-6 px-4 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
+                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded bg-primary-6 px-4 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
                   >
                     <Copy className="h-4 w-4" />
                     Copy Prompt
@@ -298,7 +298,7 @@ export default function PromptLibraryPage() {
               <button
                 type="button"
                 onClick={() => toggleExpanded(p.title)}
-                className="inline-flex self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
+                className="inline-flex cursor-pointer self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
               >
                 {expanded.has(p.title) ? "Hide Full Prompt" : "View Full Prompt"}
                 {expanded.has(p.title) ? (
@@ -317,7 +317,7 @@ export default function PromptLibraryPage() {
                     <button
                       type="button"
                       onClick={() => handleCopy(p)}
-                      className="inline-flex items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
+                      className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
                     >
                       <Copy className="h-3.5 w-3.5" />
                       Copy
