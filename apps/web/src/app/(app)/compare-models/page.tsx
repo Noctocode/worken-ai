@@ -2,12 +2,14 @@
 
 import {
   Bot,
+  Check,
   ChevronDown,
   ChevronRight,
   Clipboard,
   Image as ImageIcon,
   Info,
   Library,
+  MoreVertical,
   Paperclip,
   Pencil,
   Plus,
@@ -28,14 +30,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { sendQuestionToCompareModels } from "@/lib/api";
 import { MODELS } from "@/lib/models";
 
@@ -618,19 +621,19 @@ function RightRail({
   onAddModel: () => void;
 }) {
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto pl-2">
+    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
       <header className="flex items-center justify-between">
-        <h2 className="text-[16px] font-bold text-text-2">
+        <h2 className="text-[18px] font-bold leading-[1.3] text-text-2">
           Comparison Details
         </h2>
         <button
           type="button"
           onClick={onClose}
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
           title="Close"
           aria-label="Close"
         >
-          <X className="h-4 w-4" />
+          <X className="h-5 w-5" />
         </button>
       </header>
 
@@ -655,9 +658,9 @@ function RightRail({
         <button
           type="button"
           onClick={onAddModel}
-          className="flex w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-dashed border-border-2 bg-bg-white px-3 py-2 text-[12px] font-medium text-text-2 transition-colors hover:border-primary-6 hover:text-primary-6"
+          className="inline-flex h-8 w-fit cursor-pointer items-center gap-2.5 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
         >
-          <Plus className="h-3.5 w-3.5" />
+          <Plus className="h-4 w-4" />
           Add Model
         </button>
       </RailSection>
@@ -669,29 +672,27 @@ function RightRail({
         onToggle={() => setHistoryExpanded(!historyExpanded)}
       >
         {history.length === 0 ? (
-          <p className="text-[12px] text-text-3">
+          <p className="text-[13px] text-text-3">
             Your recent comparisons will appear here.
           </p>
         ) : (
-          <>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
-              Today
-            </p>
-            <ul className="flex flex-col gap-1">
+          <div className="flex flex-col gap-2">
+            <p className="text-[13px] font-normal text-text-2">Today</p>
+            <ul className="flex flex-col gap-2">
               {history.map((h) => (
                 <li key={h.id}>
                   <button
                     type="button"
                     onClick={() => onLoadHistory(h.question)}
-                    className="line-clamp-2 w-full cursor-pointer rounded px-2 py-1.5 text-left text-[12px] text-text-1 transition-colors hover:bg-bg-1"
+                    className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
                     title={h.question}
                   >
-                    {h.question}
+                    “{h.question}”
                   </button>
                 </li>
               ))}
             </ul>
-          </>
+          </div>
         )}
       </RailSection>
     </aside>
@@ -714,7 +715,7 @@ function RailSection({
       <button
         type="button"
         onClick={onToggle}
-        className="flex cursor-pointer items-center justify-between rounded text-left text-[13px] font-semibold text-text-1 transition-colors hover:text-primary-6"
+        className="flex cursor-pointer items-center justify-between rounded text-left text-[16px] font-medium leading-[1.3] text-text-1 transition-colors hover:text-primary-6"
       >
         {title}
         {expanded ? (
@@ -723,7 +724,7 @@ function RailSection({
           <ChevronRight className="h-4 w-4" />
         )}
       </button>
-      {expanded && <div className="flex flex-col gap-2">{children}</div>}
+      {expanded && <div className="flex flex-col gap-4">{children}</div>}
     </section>
   );
 }
@@ -740,32 +741,67 @@ function ModelPill({
   disabledIds: string[];
 }) {
   const tone = getModelTone(value);
+  const label = getModelLabel(value);
   return (
-    <div className="flex items-center gap-2 rounded-full border border-border-2 bg-bg-white p-1 pr-2">
+    <div className="flex items-center gap-2.5 rounded-[20px] bg-bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_1px_3px_rgba(0,0,0,0.1)]">
+      {/* Decorative active toggle (always on — model is part of the comparison). */}
       <span
-        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tone}`}
+        className="flex h-6 w-11 shrink-0 items-center rounded-full bg-primary-6 px-0.5"
+        aria-hidden="true"
       >
-        <Bot className="h-4 w-4" />
+        <span className="ml-auto block h-5 w-5 rounded-full bg-bg-white" />
       </span>
-      <span className="text-[10px] font-bold uppercase tracking-wide text-text-3">
-        {slot}
+
+      {/* Avatar + name */}
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone}`}
+        title={`Model ${slot}`}
+      >
+        <Bot className="h-3.5 w-3.5" strokeWidth={2} />
       </span>
-      <Select value={value} onValueChange={onChange}>
-        <SelectTrigger className="h-7 min-w-0 flex-1 border-0 bg-transparent px-1 text-[12px] font-medium shadow-none focus:ring-0">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {MODELS.map((m) => (
-            <SelectItem
-              key={m.id}
-              value={m.id}
-              disabled={disabledIds.includes(m.id) && m.id !== value}
-            >
-              {m.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <span className="min-w-0 flex-1 truncate text-[14px] leading-[1.3] text-text-1">
+        {label}
+      </span>
+
+      {/* Swap menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Change model"
+            aria-label="Change model"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
+            Slot {slot}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {MODELS.map((m) => {
+            const isActive = m.id === value;
+            const isOther = disabledIds.includes(m.id) && !isActive;
+            return (
+              <DropdownMenuItem
+                key={m.id}
+                disabled={isOther}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (!isOther) onChange(m.id);
+                }}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="truncate">{m.label}</span>
+                {isActive && (
+                  <Check className="h-3.5 w-3.5 text-primary-6" />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
