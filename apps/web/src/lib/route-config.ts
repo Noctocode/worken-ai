@@ -37,6 +37,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/resources/prompt-builder": {
+    bg: "bg-bg-1",
+    title: "Prompt Builder",
+    hideSearch: true,
+    hideNotifications: true,
+  },
 };
 
 const DEFAULT_CONFIG: RouteConfig = {

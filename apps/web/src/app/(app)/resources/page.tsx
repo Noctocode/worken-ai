@@ -50,6 +50,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Parameter configuration",
       "Real-time preview & testing",
     ],
+    href: "/resources/prompt-builder",
   },
   {
     title: "Prompt Improver",
