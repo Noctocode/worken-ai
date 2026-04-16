@@ -6,85 +6,10 @@ import {
   BookOpen,
   Clock,
   CheckCircle2,
-  Sparkles,
-  FileSearch,
-  Database,
-  Shield,
-  Settings2,
   ListOrdered,
   ArrowLeft,
 } from "lucide-react";
-
-type Difficulty = "Beginner" | "Intermediate" | "Advanced";
-
-interface Module {
-  title: string;
-  description: string;
-  difficulty: Difficulty;
-  icon: typeof Sparkles;
-  progress: number; // 0-100
-  duration: string;
-  lessons: number;
-  lastAt: string;
-}
-
-const MODULES: Module[] = [
-  {
-    title: "Prompt Engineering 101",
-    description:
-      "Master the fundamentals of crafting effective prompts for enterprise AI applications",
-    difficulty: "Beginner",
-    icon: Sparkles,
-    progress: 65,
-    duration: "2h 15m",
-    lessons: 8,
-    lastAt: "2 days ago",
-  },
-  {
-    title: "Advanced Tender Analysis",
-    description:
-      "Learn techniques for analyzing complex RFPs and generating competitive bid strategies",
-    difficulty: "Advanced",
-    icon: FileSearch,
-    progress: 30,
-    duration: "3h 45m",
-    lessons: 12,
-    lastAt: "1 week ago",
-  },
-  {
-    title: "Structured Data Extraction",
-    description:
-      "Extract and structure information from unstructured documents with precision",
-    difficulty: "Intermediate",
-    icon: Database,
-    progress: 100,
-    duration: "2h 30m",
-    lessons: 10,
-    lastAt: "3 days ago",
-  },
-  {
-    title: "AI Safety & Compliance",
-    description:
-      "Ensure your prompts meet enterprise security and regulatory requirements",
-    difficulty: "Intermediate",
-    icon: Shield,
-    progress: 0,
-    duration: "1h 50m",
-    lessons: 6,
-    lastAt: "Never",
-  },
-  {
-    title: "Prompt Optimization Strategies",
-    description:
-      "Advanced techniques for improving prompt quality, cost-efficiency, and performance",
-    difficulty: "Advanced",
-    icon: Settings2,
-    progress: 45,
-    duration: "3h 20m",
-    lessons: 14,
-    lastAt: "5 days ago",
-  },
-];
+import { MODULES, type Difficulty, type Module } from "@/lib/learn-academy-data";
 
 const DIFFICULTY_STYLES: Record<Difficulty, string> = {
   Beginner: "bg-[#C6EBFF] text-text-2",
@@ -156,7 +81,10 @@ function ProgressBar({ value }: { value: number }) {
 function ModuleCard({ module: m }: { module: Module }) {
   const Icon = m.icon;
   return (
-    <article className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6">
+    <Link
+      href={`/resources/learn-academy/${m.slug}`}
+      className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#EBF8FF]">
           <Icon className="h-6 w-6 text-primary-6" strokeWidth={2} />
@@ -192,7 +120,7 @@ function ModuleCard({ module: m }: { module: Module }) {
         </div>
         <span className="text-[11px] text-text-2">Last: {m.lastAt}</span>
       </div>
-    </article>
+    </Link>
   );
 }
 
@@ -228,7 +156,7 @@ export default function LearnAcademyPage() {
       {/* Modules */}
       <section className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {MODULES.map((m) => (
-          <ModuleCard key={m.title} module={m} />
+          <ModuleCard key={m.slug} module={m} />
         ))}
       </section>
     </div>

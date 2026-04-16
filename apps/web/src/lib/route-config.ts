@@ -99,5 +99,15 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
+  // Check /resources/learn-academy/[slug] pattern
+  if (/^\/resources\/learn-academy\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      title: "Learn Academy",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
   return DEFAULT_CONFIG;
 }
