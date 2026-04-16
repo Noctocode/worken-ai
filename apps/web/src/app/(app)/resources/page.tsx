@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   BookOpen,
   FileText,
@@ -21,6 +22,7 @@ interface ResourceCard {
   description: string;
   icon: CardIcon;
   bullets: string[];
+  href?: string;
 }
 
 const RESOURCE_CARDS: ResourceCard[] = [
@@ -35,6 +37,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Category-based organization",
       "Usage examples included",
     ],
+    href: "/resources/prompt-library",
   },
   {
     title: "Prompt Builder",
@@ -47,6 +50,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Parameter configuration",
       "Real-time preview & testing",
     ],
+    href: "/resources/prompt-builder",
   },
   {
     title: "Prompt Improver",
@@ -59,6 +63,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Specificity optimization",
       "Side-by-side comparison",
     ],
+    href: "/resources/prompt-improver",
   },
   {
     title: "Learn Academy",
@@ -71,6 +76,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Best practice frameworks",
       "Interactive exercises",
     ],
+    href: "/resources/learn-academy",
   },
 ];
 
@@ -141,48 +147,65 @@ export default function ResourcesPage() {
 
       {/* Resource tools grid */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {RESOURCE_CARDS.map(({ title, description, icon: Icon, bullets }) => (
-          <div
-            key={title}
-            className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6"
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-1">
-                <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />
+        {RESOURCE_CARDS.map(({ title, description, icon: Icon, bullets, href }) => {
+          const body = (
+            <>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-1">
+                  <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <h3 className="text-[18px] font-bold leading-[1.5] text-text-1">
+                    {title}
+                  </h3>
+                  <p className="text-[13px] leading-[1.625] text-text-2">
+                    {description}
+                  </p>
+                </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <h3 className="text-[18px] font-bold leading-[1.5] text-text-1">
-                  {title}
-                </h3>
-                <p className="text-[13px] leading-[1.625] text-text-2">
-                  {description}
-                </p>
-              </div>
-            </div>
 
-            <ul className="flex flex-col gap-2">
-              {bullets.map((b) => (
-                <li key={b} className="flex items-center gap-2">
-                  <Check
-                    className="h-4 w-4 shrink-0 text-[#23C343]"
-                    strokeWidth={2.5}
-                  />
-                  <span className="text-[12px] leading-[1.5] text-text-2">
-                    {b}
-                  </span>
-                </li>
-              ))}
-            </ul>
+              <ul className="flex flex-col gap-2">
+                {bullets.map((b) => (
+                  <li key={b} className="flex items-center gap-2">
+                    <Check
+                      className="h-4 w-4 shrink-0 text-[#23C343]"
+                      strokeWidth={2.5}
+                    />
+                    <span className="text-[12px] leading-[1.5] text-text-2">
+                      {b}
+                    </span>
+                  </li>
+                ))}
+              </ul>
 
-            <button
-              type="button"
-              className="mt-auto flex items-center gap-2 text-[13px] font-medium text-text-3 transition-colors hover:text-primary-6"
+              <span
+                className={`mt-auto flex items-center gap-2 text-[13px] font-medium transition-colors ${
+                  href ? "text-primary-6" : "text-text-3"
+                }`}
+              >
+                Open Tool
+                <ChevronRight className="h-4 w-4" />
+              </span>
+            </>
+          );
+
+          return href ? (
+            <Link
+              key={title}
+              href={href}
+              className="flex cursor-pointer flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
             >
-              Open Tool
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
+              {body}
+            </Link>
+          ) : (
+            <div
+              key={title}
+              className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6"
+            >
+              {body}
+            </div>
+          );
+        })}
       </div>
 
       {/* Quick Start Guide */}

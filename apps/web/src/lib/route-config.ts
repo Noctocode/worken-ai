@@ -25,6 +25,30 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/resources/prompt-library": {
+    bg: "bg-bg-1",
+    title: "Prompt Library",
+    hideSearch: true,
+    hideNotifications: true,
+  },
+  "/resources/learn-academy": {
+    bg: "bg-bg-1",
+    title: "Learn Academy",
+    hideSearch: true,
+    hideNotifications: true,
+  },
+  "/resources/prompt-builder": {
+    bg: "bg-bg-1",
+    title: "Prompt Builder",
+    hideSearch: true,
+    hideNotifications: true,
+  },
+  "/resources/prompt-improver": {
+    bg: "bg-bg-1",
+    title: "Prompt Improver",
+    hideSearch: true,
+    hideNotifications: true,
+  },
 };
 
 const DEFAULT_CONFIG: RouteConfig = {
@@ -72,6 +96,16 @@ export function getRouteConfig(pathname: string): RouteConfig {
       hideSearch: true,
       hideNotifications: true,
       appbarType: "userDetail",
+    };
+  }
+
+  // Check /resources/learn-academy/[slug] pattern
+  if (/^\/resources\/learn-academy\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      title: "Learn Academy",
+      hideSearch: true,
+      hideNotifications: true,
     };
   }
 
