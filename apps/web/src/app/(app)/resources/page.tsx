@@ -74,6 +74,7 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Best practice frameworks",
       "Interactive exercises",
     ],
+    href: "/resources/learn-academy",
   },
 ];
 
