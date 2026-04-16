@@ -20,6 +20,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -217,13 +224,32 @@ function LivePreview({
           >
             <Copy className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            title="Expand"
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
-          >
-            <Maximize2 className="h-4 w-4" />
-          </button>
+          <Dialog>
+            <DialogTrigger asChild>
+              <button
+                type="button"
+                title="Expand preview"
+                aria-label="Expand preview"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </button>
+            </DialogTrigger>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>Prompt Preview</DialogTitle>
+              </DialogHeader>
+              <div className="max-h-[70vh] overflow-auto rounded border border-border-2 bg-bg-1 p-4">
+                <pre
+                  className={`whitespace-pre-wrap font-mono text-[13px] leading-[1.625] ${
+                    promptDraft ? "text-text-1" : "text-text-3"
+                  }`}
+                >
+                  {promptDraft || "Your prompt will appear here..."}
+                </pre>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 

@@ -38,13 +38,51 @@ const QUALITY_SCORES: QualityScore[] = [
   { label: "Safety", value: 95, tone: "neutral" },
 ];
 
+type ImprovementId = "persona" | "format" | "safety" | "examples";
+
 interface Improvement {
-  id: string;
+  id: ImprovementId;
   title: string;
   description: string;
   category: "Context" | "Structure" | "Safety" | "Clarity";
   applied: boolean;
+  segment: string;
 }
+
+const PERSONA_SEGMENT = `You are an expert procurement analyst with 15 years of experience in government contracting and RFP evaluation.
+
+Your task is to analyze the provided RFP document and provide a comprehensive bid/no-bid recommendation.
+
+## Analysis Requirements:
+1. Review the RFP requirements against our organizational capabilities
+2. Assess the competitive landscape and win probability
+3. Evaluate resource requirements and timeline feasibility
+4. Calculate estimated costs vs. potential revenue
+5. Identify compliance requirements and risks`;
+
+const FORMAT_SEGMENT = `## Output Format:
+Provide your analysis in the following structured JSON format:
+
+{
+  "recommendation": "BID" | "NO_BID" | "CONDITIONAL",
+  "confidence_score": 0-100,
+  "win_probability": 0-100,
+  "key_strengths": ["strength 1", "strength 2", ...],
+  "capability_gaps": ["gap 1", "gap 2", ...],
+  "resource_requirements": { "team_size": number, "estimated_hours": number },
+  "risks": ["risk 1", "risk 2", ...],
+  "next_steps": ["action 1", "action 2", ...]
+}`;
+
+const SAFETY_SEGMENT = `## Safety Guidelines:
+- Base all recommendations on factual information from the RFP
+- Clearly distinguish between facts and assumptions
+- Flag any missing critical information
+- Do not make commitments beyond stated capabilities`;
+
+const EXAMPLES_SEGMENT = `## Examples:
+**Example 1 — Strong fit:** Mid-sized IT services RFP aligned with our core capabilities → recommendation: BID, confidence 85.
+**Example 2 — Poor fit:** Heavy-construction RFP outside our sector → recommendation: NO_BID, confidence 95.`;
 
 const INITIAL_IMPROVEMENTS: Improvement[] = [
   {
@@ -54,6 +92,7 @@ const INITIAL_IMPROVEMENTS: Improvement[] = [
       "Establishing expertise as a senior procurement analyst improves relevance and authoritative tone.",
     category: "Context",
     applied: true,
+    segment: PERSONA_SEGMENT,
   },
   {
     id: "format",
@@ -62,6 +101,7 @@ const INITIAL_IMPROVEMENTS: Improvement[] = [
       "Structured JSON output ensures predictable, machine-readable results for downstream automation.",
     category: "Structure",
     applied: true,
+    segment: FORMAT_SEGMENT,
   },
   {
     id: "safety",
@@ -70,6 +110,7 @@ const INITIAL_IMPROVEMENTS: Improvement[] = [
       "Explicit safety guidelines prevent hallucinations and ensure responsible AI behavior.",
     category: "Safety",
     applied: true,
+    segment: SAFETY_SEGMENT,
   },
   {
     id: "examples",
@@ -78,8 +119,11 @@ const INITIAL_IMPROVEMENTS: Improvement[] = [
       "Adding 2-3 few-shot examples can significantly improve response consistency and accuracy.",
     category: "Clarity",
     applied: false,
+    segment: EXAMPLES_SEGMENT,
   },
 ];
+
+const SEGMENT_ORDER: ImprovementId[] = ["persona", "format", "safety", "examples"];
 
 const CATEGORY_STYLES: Record<Improvement["category"], string> = {
   Context: "bg-[#EBF8FF] text-primary-7",
@@ -98,36 +142,22 @@ const BEST_PRACTICES: string[] = [
 
 const ORIGINAL_PROMPT = `Analyze this RFP and tell me if we should bid on it.`;
 
-const IMPROVED_PROMPT = `You are an expert procurement analyst with 15 years of experience in government contracting and RFP evaluation.
+function composeImprovedPrompt(improvements: Improvement[]): string {
+  const applied = new Map(
+    improvements.filter((i) => i.applied).map((i) => [i.id, i.segment]),
+  );
+  if (applied.size === 0) return ORIGINAL_PROMPT;
 
-Your task is to analyze the provided RFP document and provide a comprehensive bid/no-bid recommendation.
-
-## Analysis Requirements:
-1. Review the RFP requirements against our organizational capabilities
-2. Assess the competitive landscape and win probability
-3. Evaluate resource requirements and timeline feasibility
-4. Calculate estimated costs vs. potential revenue
-5. Identify compliance requirements and risks
-
-## Output Format:
-Provide your analysis in the following structured JSON format:
-
-{
-  "recommendation": "BID" | "NO_BID" | "CONDITIONAL",
-  "confidence_score": 0-100,
-  "win_probability": 0-100,
-  "key_strengths": ["strength 1", "strength 2", ...],
-  "capability_gaps": ["gap 1", "gap 2", ...],
-  "resource_requirements": { "team_size": number, "estimated_hours": number },
-  "risks": ["risk 1", "risk 2", ...],
-  "next_steps": ["action 1", "action 2", ...]
+  const parts: string[] = [];
+  // Persona supplies its own task framing; otherwise keep the original task.
+  parts.push(applied.get("persona") ?? ORIGINAL_PROMPT);
+  for (const id of SEGMENT_ORDER) {
+    if (id === "persona") continue;
+    const segment = applied.get(id);
+    if (segment) parts.push(segment);
+  }
+  return parts.join("\n\n");
 }
-
-## Safety Guidelines:
-- Base all recommendations on factual information from the RFP
-- Clearly distinguish between facts and assumptions
-- Flag any missing critical information
-- Do not make commitments beyond stated capabilities`;
 
 function ScoreRow({ score }: { score: QualityScore }) {
   const colors = SCORE_COLORS[score.tone];
@@ -156,12 +186,16 @@ export default function PromptImproverPage() {
     INITIAL_IMPROVEMENTS,
   );
 
+  const improvedPrompt = useMemo(
+    () => composeImprovedPrompt(improvements),
+    [improvements],
+  );
   const appliedCount = useMemo(
     () => improvements.filter((i) => i.applied).length,
     [improvements],
   );
 
-  const toggleImprovement = (id: string) => {
+  const toggleImprovement = (id: ImprovementId) => {
     setImprovements((prev) =>
       prev.map((i) => (i.id === id ? { ...i, applied: !i.applied } : i)),
     );
@@ -179,7 +213,7 @@ export default function PromptImproverPage() {
 
   const save = async () => {
     try {
-      await navigator.clipboard.writeText(IMPROVED_PROMPT);
+      await navigator.clipboard.writeText(improvedPrompt);
       toast.success("Improved prompt copied to clipboard");
     } catch {
       toast.error("Couldn't copy to clipboard");
@@ -187,7 +221,7 @@ export default function PromptImproverPage() {
   };
 
   const originalChars = ORIGINAL_PROMPT.length;
-  const improvedChars = IMPROVED_PROMPT.length;
+  const improvedChars = improvedPrompt.length;
   const estimatedTokens = Math.round(improvedChars / 4);
   const improvementPct =
     originalChars > 0
@@ -285,7 +319,7 @@ export default function PromptImproverPage() {
             </header>
             <div className="p-5">
               <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap font-mono text-[12px] leading-[1.625] text-text-1">
-                {IMPROVED_PROMPT}
+                {improvedPrompt}
               </pre>
             </div>
           </section>
