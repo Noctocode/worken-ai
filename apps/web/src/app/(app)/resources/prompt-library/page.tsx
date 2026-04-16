@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Search,
   ChevronDown,
@@ -8,6 +9,7 @@ import {
   Copy,
   CheckCircle2,
   FileText,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -212,6 +214,14 @@ export default function PromptLibraryPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
+      <Link
+        href="/resources"
+        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Resources
+      </Link>
+
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
         <div className="relative flex-1">

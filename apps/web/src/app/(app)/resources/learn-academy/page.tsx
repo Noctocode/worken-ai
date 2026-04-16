@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   TrendingUp,
   BookOpen,
@@ -11,6 +12,7 @@ import {
   Shield,
   Settings2,
   ListOrdered,
+  ArrowLeft,
 } from "lucide-react";
 
 type Difficulty = "Beginner" | "Intermediate" | "Advanced";
@@ -197,6 +199,14 @@ function ModuleCard({ module: m }: { module: Module }) {
 export default function LearnAcademyPage() {
   return (
     <div className="flex flex-col gap-6 py-6">
+      <Link
+        href="/resources"
+        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Resources
+      </Link>
+
       {/* Intro card */}
       <section className="flex flex-col gap-2 rounded-lg border border-border-2 bg-bg-white p-6">
         <h2 className="text-xl font-bold text-text-1">

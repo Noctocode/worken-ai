@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Sparkles,
   Check,
@@ -10,6 +11,7 @@ import {
   Lightbulb,
   BarChart3,
   ArrowUp,
+  ArrowLeft,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -194,6 +196,14 @@ export default function PromptImproverPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
+      <Link
+        href="/resources"
+        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Resources
+      </Link>
+
       {/* Intro action row */}
       <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">

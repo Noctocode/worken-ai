@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -12,6 +13,7 @@ import {
   Database,
   Cog,
   ArrowRight,
+  ArrowLeft,
   Trash2,
   MessageSquare,
   Save,
@@ -751,6 +753,14 @@ export default function PromptBuilderPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
+      <Link
+        href="/resources"
+        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Back to Resources
+      </Link>
+
       <Stepper active={step} onSelect={setStep} />
 
       <div className="flex flex-col gap-[30px] lg:flex-row">
