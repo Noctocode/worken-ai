@@ -203,12 +203,17 @@ function MobileStepper({ active }: { active: number }) {
 function BasicInfoStep({
   data,
   onChange,
+  touched,
 }: {
   data: BasicInfo;
   onChange: (d: BasicInfo) => void;
+  touched: boolean;
 }) {
   const update = (field: keyof BasicInfo, value: string) =>
     onChange({ ...data, [field]: value });
+
+  const err = (field: keyof BasicInfo) =>
+    touched && !data[field].trim();
 
   return (
     <div className="flex flex-col gap-6">
@@ -234,8 +239,11 @@ function BasicInfoStep({
             value={data.name}
             onChange={(e) => update("name", e.target.value)}
             placeholder="Enter a clear, descriptive name for this tender"
-            className="h-10"
+            className={`h-10 ${err("name") ? "border-danger-6" : ""}`}
           />
+          {err("name") && (
+            <span className="text-[12px] text-danger-6">Tender Name is required</span>
+          )}
           <span className="text-[12px] text-text-3">
             Example: Enterprise Cloud Migration Services Q2 2026
           </span>
@@ -249,8 +257,11 @@ function BasicInfoStep({
               value={data.rfpNumber}
               onChange={(e) => update("rfpNumber", e.target.value)}
               placeholder="TND-2026-006"
-              className="h-10"
+              className={`h-10 ${err("rfpNumber") ? "border-danger-6" : ""}`}
             />
+            {err("rfpNumber") && (
+              <span className="text-[12px] text-danger-6">RFP Number is required</span>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
@@ -260,7 +271,7 @@ function BasicInfoStep({
               value={data.category}
               onValueChange={(v) => update("category", v)}
             >
-              <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
+              <SelectTrigger className={`w-full cursor-pointer data-[size=default]:h-10 ${err("category") ? "border-danger-6" : ""}`}>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
@@ -271,6 +282,9 @@ function BasicInfoStep({
                 ))}
               </SelectContent>
             </Select>
+            {err("category") && (
+              <span className="text-[12px] text-danger-6">Category is required</span>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1">
@@ -281,8 +295,11 @@ function BasicInfoStep({
             value={data.client}
             onChange={(e) => update("client", e.target.value)}
             placeholder="Federal Aviation Administration"
-            className="h-10"
+            className={`h-10 ${err("client") ? "border-danger-6" : ""}`}
           />
+          {err("client") && (
+            <span className="text-[12px] text-danger-6">Client Name is required</span>
+          )}
         </div>
       </fieldset>
 
@@ -303,9 +320,12 @@ function BasicInfoStep({
                 type="date"
                 value={data.deadline}
                 onChange={(e) => update("deadline", e.target.value)}
-                className="h-10 pl-9"
+                className={`h-10 pl-9 ${err("deadline") ? "border-danger-6" : ""}`}
               />
             </div>
+            {err("deadline") && (
+              <span className="text-[12px] text-danger-6">Deadline is required</span>
+            )}
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
@@ -318,9 +338,12 @@ function BasicInfoStep({
                 onChange={(e) => update("value", formatCurrency(e.target.value))}
                 onBlur={() => update("value", expandShorthand(data.value))}
                 placeholder="2,400,000"
-                className="h-10 pl-9"
+                className={`h-10 pl-9 ${err("value") ? "border-danger-6" : ""}`}
               />
             </div>
+            {err("value") && (
+              <span className="text-[12px] text-danger-6">Contract Value is required</span>
+            )}
             <span className="text-[12px] text-text-3">
               Enter numeric value (e.g., 2,400,000 or 2.4M)
             </span>
@@ -342,7 +365,7 @@ function BasicInfoStep({
             value={data.description}
             onChange={(e) => update("description", e.target.value)}
             placeholder="Provide a comprehensive overview of the tender opportunity, including scope, objectives, and key deliverables..."
-            className="min-h-[120px]"
+            className={`min-h-[120px] ${err("description") ? "border-danger-6" : ""}`}
           />
           <div className="flex items-center justify-between text-[12px] text-text-3">
             <span>
@@ -811,6 +834,7 @@ export default function CreateTenderPage() {
   ]);
   const [selectedTeam, setSelectedTeam] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
+  const [stepTouched, setStepTouched] = useState<Set<number>>(new Set());
 
   const queryClient = useQueryClient();
   const createMutation = useMutation({
@@ -825,7 +849,53 @@ export default function CreateTenderPage() {
     },
   });
 
+  const validateStep = (s: number): string | null => {
+    switch (s) {
+      case 0: {
+        if (!basicInfo.name.trim()) return "Tender Name is required.";
+        if (!basicInfo.rfpNumber.trim()) return "RFP/Tender Number is required.";
+        if (!basicInfo.category) return "Category is required.";
+        if (!basicInfo.client.trim()) return "Client Name is required.";
+        if (!basicInfo.deadline) return "Submission Deadline is required.";
+        if (!basicInfo.value.trim()) return "Contract Value is required.";
+        if (!basicInfo.description.trim()) return "Description is required.";
+        return null;
+      }
+      case 1: {
+        const filled = requirements.filter((r) => r.text.trim());
+        if (filled.length === 0) return "Add at least one requirement.";
+        return null;
+      }
+      case 2:
+        if (selectedTeam.length === 0)
+          return "Assign at least one team member.";
+        return null;
+      case 3:
+        return null;
+      default:
+        return null;
+    }
+  };
+
+  const handleNext = () => {
+    setStepTouched((prev) => new Set(prev).add(step));
+    const error = validateStep(step);
+    if (error) {
+      toast.error(error);
+      return;
+    }
+    setStep((s) => s + 1);
+  };
+
   const handleCreate = () => {
+    for (let s = 0; s <= 3; s++) {
+      const error = validateStep(s);
+      if (error) {
+        toast.error(error);
+        setStep(s);
+        return;
+      }
+    }
     createMutation.mutate({
       name: basicInfo.name,
       code: basicInfo.rfpNumber || undefined,
@@ -854,7 +924,11 @@ export default function CreateTenderPage() {
         <div className="flex min-w-0 flex-1 flex-col rounded-none border-0 bg-bg-white lg:border lg:border-border-2">
           <div className="flex-1 px-4 py-5 lg:p-6">
             {step === 0 && (
-              <BasicInfoStep data={basicInfo} onChange={setBasicInfo} />
+              <BasicInfoStep
+                data={basicInfo}
+                onChange={setBasicInfo}
+                touched={stepTouched.has(0)}
+              />
             )}
             {step === 1 && (
               <RequirementsStep
@@ -880,18 +954,19 @@ export default function CreateTenderPage() {
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-between border-t border-border-2 px-6 py-4">
-            <Button
-              variant="outline"
-              disabled={step === 0}
-              onClick={() => setStep((s) => s - 1)}
-              className="cursor-pointer"
-            >
-              Previous
-            </Button>
+          <div className={`flex items-center border-t border-border-2 px-6 py-4 ${step === 0 ? "justify-end" : "justify-between"}`}>
+            {step > 0 && (
+              <Button
+                variant="outline"
+                onClick={() => setStep((s) => s - 1)}
+                className="cursor-pointer"
+              >
+                Previous
+              </Button>
+            )}
             {step < 4 ? (
               <Button
-                onClick={() => setStep((s) => s + 1)}
+                onClick={handleNext}
                 className="cursor-pointer bg-primary-6 hover:bg-primary-7"
               >
                 Next Step
