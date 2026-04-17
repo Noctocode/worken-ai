@@ -257,7 +257,10 @@ export default function CompareModelsPage() {
             {submittedQuestion && (
               <PromptBubble
                 question={submittedQuestion}
-                onEdit={() => setQuestion(submittedQuestion)}
+                onEdit={() => {
+                      setQuestion(submittedQuestion);
+                      setSubmittedQuestion(null);
+                    }}
               />
             )}
 
