@@ -303,13 +303,20 @@ function BasicInfoStep({
             <label className="text-[13px] text-text-1">
               Submission Deadline <span className="text-danger-6">*</span>
             </label>
-            <div className="relative">
+            <div
+              className="relative cursor-pointer"
+              onClick={() => {
+                const input = document.getElementById("deadline-input") as HTMLInputElement | null;
+                input?.showPicker();
+              }}
+            >
               <Calendar className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
               <Input
+                id="deadline-input"
                 type="date"
                 value={data.deadline}
                 onChange={(e) => update("deadline", e.target.value)}
-                className={`h-[52px] pl-11 text-[16px] ${err("deadline") ? "border-danger-6" : ""}`}
+                className={`pointer-events-none h-[52px] pl-11 text-[16px] ${err("deadline") ? "border-danger-6" : ""}`}
               />
             </div>
             {err("deadline") && (
