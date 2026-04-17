@@ -12,15 +12,17 @@ import {
   Loader2,
   Plus,
   Search,
+  Trash2,
   TrendingUp,
   AlertTriangle,
   Calendar,
   BarChart3,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchTenders, type TenderSummary } from "@/lib/api";
+import { deleteTender, fetchTenders, type TenderSummary } from "@/lib/api";
 
 type TenderStatus = "Active" | "Pending" | "Completed";
 
@@ -120,6 +122,23 @@ export default function TenderAiPage() {
     queryKey: ["tenders"],
     queryFn: fetchTenders,
   });
+
+  const queryClient = useQueryClient();
+  const removeMutation = useMutation({
+    mutationFn: deleteTender,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenders"] });
+      toast.success("Tender deleted.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to delete tender.");
+    },
+  });
+
+  const handleDelete = (id: string, name: string) => {
+    if (!confirm(`Delete "${name}"? This action cannot be undone.`)) return;
+    removeMutation.mutate(id);
+  };
 
   const handleSearch = useCallback((value: string) => {
     setQuery(value);
@@ -265,6 +284,7 @@ export default function TenderAiPage() {
                 <th className="px-5 py-3">Deadline</th>
                 <th className="px-5 py-3">Value</th>
                 <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
@@ -325,12 +345,26 @@ export default function TenderAiPage() {
                       {t.status}
                     </span>
                   </td>
+                  <td className="px-5 py-4">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(t.id, t.name);
+                      }}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-[#F53F3F]"
+                      title="Delete tender"
+                      aria-label={`Delete ${t.name}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {paginated.length === 0 && (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-5 py-10 text-center text-[13px] text-text-3"
                   >
                     No tenders match your search.
@@ -358,11 +392,26 @@ export default function TenderAiPage() {
                   </span>
                   <span className="text-[11px] text-text-3">{t.code}</span>
                 </div>
-                <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
-                >
-                  {t.status}
-                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
+                  >
+                    {t.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleDelete(t.id, t.name);
+                    }}
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-[#F53F3F]"
+                    title="Delete tender"
+                    aria-label={`Delete ${t.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-2">
