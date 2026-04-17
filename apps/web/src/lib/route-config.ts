@@ -1,9 +1,22 @@
+interface AppbarAction {
+  label: string;
+  event: string;
+}
+
+interface AppbarSearch {
+  placeholder: string;
+  event: string;
+}
+
 interface RouteConfig {
   bg: "bg-bg-1" | "bg-bg-white";
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate";
+  appbarAction?: AppbarAction;
+  appbarSearch?: AppbarSearch;
+  appbarExpandControls?: boolean;
 }
 
 const ROUTE_CONFIGS: Record<string, RouteConfig> = {
@@ -54,6 +67,16 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     title: "Model Arena",
     hideSearch: true,
     hideNotifications: true,
+    appbarAction: { label: "New Comparison", event: "compare-models:new" },
+  },
+  "/tender-ai": {
+    bg: "bg-bg-1",
+    title: "Tender AI",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarSearch: { placeholder: "Search", event: "tender-ai:search" },
+    appbarAction: { label: "Create Tender", event: "tender-ai:create" },
+    appbarExpandControls: true,
   },
 };
 
@@ -112,6 +135,26 @@ export function getRouteConfig(pathname: string): RouteConfig {
       title: "Learn Academy",
       hideSearch: true,
       hideNotifications: true,
+    };
+  }
+
+  // Check /tender-ai/create
+  if (pathname === "/tender-ai/create") {
+    return {
+      bg: "bg-bg-1",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "tenderCreate",
+    };
+  }
+
+  // Check /tender-ai/[id] pattern
+  if (/^\/tender-ai\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-white",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "tenderDetail",
     };
   }
 

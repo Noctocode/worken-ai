@@ -172,6 +172,61 @@ export const knowledgeDocuments = pgTable("knowledge_documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const tenders = pgTable("tenders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  organization: text("organization"),
+  description: text("description"),
+  category: text("category"),
+  deadline: timestamp("deadline", { withTimezone: true }),
+  value: text("value"),
+  matchRate: integer("match_rate").default(0),
+  status: text("status").notNull().default("Active"),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const tenderRequirements = pgTable("tender_requirements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenderId: uuid("tender_id")
+    .references(() => tenders.id, { onDelete: "cascade" })
+    .notNull(),
+  code: text("code").notNull(),
+  title: text("title").notNull(),
+  evidence: text("evidence"),
+  source: text("source"),
+  status: text("status").notNull().default("gap"),
+  priority: text("priority").notNull().default("Medium"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tenderDocuments = pgTable("tender_documents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenderId: uuid("tender_id")
+    .references(() => tenders.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  size: text("size"),
+  fileType: text("file_type"),
+  storagePath: text("storage_path"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const tenderTeamMembers = pgTable("tender_team_members", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  tenderId: uuid("tender_id")
+    .references(() => tenders.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: uuid("user_id")
+    .references(() => users.id)
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const modelConfigs = pgTable("model_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: uuid("owner_id")

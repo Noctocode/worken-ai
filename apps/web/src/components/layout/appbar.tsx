@@ -13,7 +13,11 @@ import {
   Trash2,
   Users,
   ChevronDown,
+  Download,
+  FileSpreadsheet,
+  FolderPlus,
   Plus,
+  Share2,
   X,
   CheckCircle,
 } from "lucide-react";
@@ -517,9 +521,108 @@ export const Appbar = () => {
     );
   }
 
+  /* ── Tender create appbar ─────────────────────────────────────────────── */
+  if (config.appbarType === "tenderCreate") {
+    return (
+      <header
+        className={`sticky top-0 z-20 flex py-6 items-center px-6 ${config.bg}`}
+      >
+        <div className="flex items-center gap-3">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
+            </SheetContent>
+          </Sheet>
+
+          <Link
+            href="/tender-ai"
+            className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2 hover:text-primary-6"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Dashboard
+          </Link>
+        </div>
+      </header>
+    );
+  }
+
+  /* ── Tender detail appbar ─────────────────────────────────────────────── */
+  if (config.appbarType === "tenderDetail") {
+    const tenderId = pathname.split("/").pop() ?? "";
+    return (
+      <header
+        className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
+      >
+        <div className="flex items-center gap-3">
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
+              >
+                <Menu className="h-5 w-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="p-0 w-[88px]">
+              <SidebarContent showToggle={false} forceCollapsed />
+            </SheetContent>
+          </Sheet>
+
+          <Link href="/tender-ai">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-text-1 hover:text-text-1"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <Link
+            href="/tender-ai"
+            className="hidden text-[14px] text-text-2 hover:text-primary-6 sm:inline"
+          >
+            Dashboard
+          </Link>
+          <ChevronRight className="hidden h-3.5 w-3.5 text-text-3 sm:inline" />
+          <span className="text-[14px] font-medium text-text-1">
+            Tender Details
+          </span>
+        </div>
+        <div className="hidden items-center gap-2 sm:flex">
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <Download className="h-3.5 w-3.5" />
+            Download PDF
+          </Button>
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Export CSV
+          </Button>
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <FolderPlus className="h-3.5 w-3.5" />
+            Create Project
+          </Button>
+          <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
+            <Share2 className="h-3.5 w-3.5" />
+            Share with Team
+          </Button>
+        </div>
+      </header>
+    );
+  }
+
   /* ── Default appbar ──────────────────────────────────────────────────── */
   return (
-    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between px-6 ${config.bg}`}>
+    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
@@ -573,16 +676,34 @@ export const Appbar = () => {
       </div>
 
       {/* Right Header Controls */}
-      <div className="flex items-center gap-3">
-        {pathname === "/compare-models" && (
+      <div className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}>
+        {config.appbarSearch && (
+          <div className="relative hidden flex-1 sm:block">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+            <Input
+              type="text"
+              placeholder={config.appbarSearch.placeholder}
+              className="h-10 w-full border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
+              onChange={(e) =>
+                window.dispatchEvent(
+                  new CustomEvent(config.appbarSearch!.event, {
+                    detail: e.target.value,
+                  }),
+                )
+              }
+            />
+          </div>
+        )}
+
+        {config.appbarAction && (
           <Button
             onClick={() =>
-              window.dispatchEvent(new CustomEvent("compare-models:new"))
+              window.dispatchEvent(new CustomEvent(config.appbarAction!.event))
             }
-            className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
+            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
           >
             <Plus className="h-4 w-4" />
-            New Comparison
+            {config.appbarAction.label}
           </Button>
         )}
 
