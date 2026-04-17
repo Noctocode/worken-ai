@@ -67,7 +67,7 @@ interface BasicInfo {
 
 function DesktopStepper({ active }: { active: number }) {
   return (
-    <nav className="hidden items-center border border-border-2 bg-bg-white px-6 py-4 lg:flex">
+    <nav className="hidden items-center px-6 py-4 lg:flex">
       {STEPS.map((s, i) => {
         const done = i < active;
         const current = i === active;
@@ -782,7 +782,7 @@ export default function CreateTenderPage() {
   };
 
   return (
-    <div className="flex flex-col gap-0 lg:gap-6 lg:py-6">
+    <div className="flex flex-col gap-0 lg:gap-6 lg:pb-6">
       {/* Mobile stepper (desktop stepper also shown below appbar) */}
       <MobileStepper active={step} />
 
