@@ -251,7 +251,7 @@ function BasicInfoStep({
               value={data.category}
               onValueChange={(v) => update("category", v)}
             >
-              <SelectTrigger className="h-10">
+              <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
