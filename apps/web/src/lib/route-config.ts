@@ -13,7 +13,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate";
   appbarAction?: AppbarAction;
   appbarSearch?: AppbarSearch;
   appbarExpandControls?: boolean;
@@ -144,6 +144,7 @@ export function getRouteConfig(pathname: string): RouteConfig {
       bg: "bg-bg-1",
       hideSearch: true,
       hideNotifications: true,
+      appbarType: "tenderCreate",
     };
   }
 
