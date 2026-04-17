@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clipboard,
+  LayoutGrid,
   Image as ImageIcon,
   Info,
   Library,
@@ -14,6 +15,8 @@ import {
   Pencil,
   Plus,
   Search,
+  Mic,
+  Send,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -678,15 +681,28 @@ function Composer({
             <ComposerChip icon={Paperclip} label="Attach File" disabled />
             <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
             <ComposerChip icon={Library} label="Prompt Library" disabled />
+            <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
           </div>
-          <Button
-            type="submit"
-            disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
-            className="h-8 cursor-pointer gap-2 rounded-lg bg-primary-6 px-6 hover:bg-primary-7"
-          >
-            <Sparkles className="h-4 w-4" />
-            {loading ? "Comparing…" : "Compare"}
-          </Button>
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              disabled
+              className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg bg-bg-white text-primary-6 opacity-50"
+              title="Voice input (coming soon)"
+              aria-label="Voice input"
+            >
+              <Mic className="h-4 w-4" />
+            </button>
+            <button
+              type="submit"
+              disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
+              title={loading ? "Comparing…" : "Compare"}
+              aria-label="Compare"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </form>
