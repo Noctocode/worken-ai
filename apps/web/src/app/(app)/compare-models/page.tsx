@@ -111,11 +111,31 @@ export default function CompareModelsPage() {
   const [loading, setLoading] = useState(false);
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
 
+  const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
   const [modelsExpanded, setModelsExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [addModelOpen, setAddModelOpen] = useState(false);
+
+  const activeModels = useMemo(
+    () => selectedModels.filter((id) => !disabledModels.has(id)),
+    [selectedModels, disabledModels],
+  );
+
+  const toggleModel = (id: string) => {
+    setDisabledModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        const activeCount = selectedModels.filter((m) => !next.has(m)).length;
+        if (activeCount <= MIN_MODELS) return prev;
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   const hasResults = useMemo(
     () =>
@@ -133,14 +153,14 @@ export default function CompareModelsPage() {
 
     try {
       const result = await sendQuestionToCompareModels(
-        selectedModels,
+        activeModels,
         question,
         expectedOutput,
       );
 
       const nextResponses: Record<string, string | null> = {};
       const nextEvaluations: Record<string, ModelEvaluation | null> = {};
-      for (const id of selectedModels) {
+      for (const id of activeModels) {
         nextResponses[id] =
           result.responses.find((r) => r.model === id)?.response.content ??
           null;
@@ -242,7 +262,7 @@ export default function CompareModelsPage() {
 
             {(loading || hasResults) && (
               <div className="flex flex-wrap gap-4">
-                {selectedModels.map((id) => (
+                {activeModels.map((id) => (
                   <ResponseCard
                     key={id}
                     modelId={id}
@@ -268,6 +288,7 @@ export default function CompareModelsPage() {
             expectedOutput={expectedOutput}
             setExpectedOutput={setExpectedOutput}
             loading={loading}
+            activeModelCount={activeModels.length}
             onSubmit={compareModels}
           />
         </section>
@@ -276,6 +297,8 @@ export default function CompareModelsPage() {
         {railOpen ? (
           <RightRail
             selectedModels={selectedModels}
+            disabledModels={disabledModels}
+            onToggleModel={toggleModel}
             onChangeModel={changeModel}
             onRemoveModel={removeModel}
             modelsExpanded={modelsExpanded}
@@ -602,6 +625,7 @@ function Composer({
   expectedOutput,
   setExpectedOutput,
   loading,
+  activeModelCount,
   onSubmit,
 }: {
   question: string;
@@ -609,6 +633,7 @@ function Composer({
   expectedOutput: string;
   setExpectedOutput: (v: string) => void;
   loading: boolean;
+  activeModelCount: number;
   onSubmit: (e: React.FormEvent) => void;
 }) {
   return (
@@ -644,7 +669,7 @@ function Composer({
         </div>
         <Button
           type="submit"
-          disabled={!question.trim() || !expectedOutput.trim() || loading}
+          disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
           className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
         >
           <Sparkles className="h-4 w-4" />
@@ -681,6 +706,8 @@ function ComposerChip({
 
 function RightRail({
   selectedModels,
+  disabledModels,
+  onToggleModel,
   onChangeModel,
   onRemoveModel,
   modelsExpanded,
@@ -693,6 +720,8 @@ function RightRail({
   onAddModel,
 }: {
   selectedModels: string[];
+  disabledModels: Set<string>;
+  onToggleModel: (id: string) => void;
   onChangeModel: (index: number, newId: string) => void;
   onRemoveModel: (index: number) => void;
   modelsExpanded: boolean;
@@ -735,6 +764,8 @@ function RightRail({
             key={modelId}
             slot={slotLabel(idx)}
             value={modelId}
+            enabled={!disabledModels.has(modelId)}
+            onToggle={() => onToggleModel(modelId)}
             onChange={(newId) => onChangeModel(idx, newId)}
             onRemove={canRemove ? () => onRemoveModel(idx) : undefined}
             disabledIds={selectedModels.filter((id) => id !== modelId)}
@@ -823,12 +854,16 @@ function RailSection({
 function ModelPill({
   slot,
   value,
+  enabled,
+  onToggle,
   onChange,
   onRemove,
   disabledIds,
 }: {
   slot: string;
   value: string;
+  enabled: boolean;
+  onToggle: () => void;
   onChange: (v: string) => void;
   onRemove?: () => void;
   disabledIds: string[];
@@ -836,14 +871,28 @@ function ModelPill({
   const tone = getModelTone(value);
   const label = getModelLabel(value);
   return (
-    <div className="flex items-center gap-2.5 rounded-[20px] bg-bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_1px_3px_rgba(0,0,0,0.1)]">
-      {/* Decorative active toggle (always on — model is part of the comparison). */}
-      <span
-        className="flex h-6 w-11 shrink-0 items-center rounded-full bg-primary-6 px-0.5"
-        aria-hidden="true"
+    <div
+      className={`flex items-center gap-2.5 rounded-[20px] bg-bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_1px_3px_rgba(0,0,0,0.1)] transition-opacity ${
+        enabled ? "" : "opacity-50"
+      }`}
+    >
+      {/* Active toggle — controls whether the model is included in the comparison. */}
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
+        onClick={onToggle}
+        className={`flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full px-0.5 transition-colors ${
+          enabled ? "bg-primary-6" : "bg-text-3"
+        }`}
       >
-        <span className="ml-auto block h-5 w-5 rounded-full bg-bg-white" />
-      </span>
+        <span
+          className={`block h-5 w-5 rounded-full bg-bg-white transition-transform ${
+            enabled ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
 
       {/* Avatar + name */}
       <span
