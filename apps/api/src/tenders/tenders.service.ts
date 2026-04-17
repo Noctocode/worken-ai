@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -185,12 +186,17 @@ export class TendersService {
     return updated;
   }
 
-  async remove(id: string) {
-    const [deleted] = await this.db
-      .delete(tenders)
-      .where(eq(tenders.id, id))
-      .returning();
+  async remove(id: string, userId: string) {
+    const [tender] = await this.db
+      .select()
+      .from(tenders)
+      .where(eq(tenders.id, id));
 
-    if (!deleted) throw new NotFoundException('Tender not found');
+    if (!tender) throw new NotFoundException('Tender not found');
+    if (tender.ownerId !== userId) {
+      throw new ForbiddenException('Only the tender owner can delete it');
+    }
+
+    await this.db.delete(tenders).where(eq(tenders.id, id));
   }
 }

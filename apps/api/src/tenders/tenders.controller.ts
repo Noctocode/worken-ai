@@ -63,7 +63,10 @@ export class TendersController {
   }
 
   @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.tendersService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.tendersService.remove(id, user.id);
   }
 }
