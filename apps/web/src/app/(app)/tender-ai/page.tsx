@@ -269,7 +269,16 @@ export default function TenderAiPage() {
                 <tr
                   key={t.id}
                   className="border-b border-border-2 last:border-b-0 cursor-pointer transition-colors hover:bg-bg-1"
+                  role="link"
+                  tabIndex={0}
+                  aria-label={`Open tender ${t.name}`}
                   onClick={() => (window.location.href = `/tender-ai/${t.id}`)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      window.location.href = `/tender-ai/${t.id}`;
+                    }
+                  }}
                 >
                   <td className="px-5 py-4">
                     <div className="flex flex-col">
