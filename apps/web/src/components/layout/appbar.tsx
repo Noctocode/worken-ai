@@ -519,7 +519,7 @@ export const Appbar = () => {
 
   /* ── Default appbar ──────────────────────────────────────────────────── */
   return (
-    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between px-6 ${config.bg}`}>
+    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
         {/* Mobile Menu Trigger */}
         <Sheet>
