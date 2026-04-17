@@ -11,7 +11,6 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
-  FolderPlus,
   Info,
   Share2,
   Sparkles,
@@ -249,8 +248,8 @@ export default function TenderDetailPage({
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Breadcrumb header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Mobile-only breadcrumb + actions (desktop lives in appbar) */}
+      <div className="flex flex-col gap-3 sm:hidden">
         <div className="flex items-center gap-3 text-[14px] text-text-2">
           <Link
             href="/tender-ai"
@@ -281,13 +280,6 @@ export default function TenderDetailPage({
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Export CSV
-          </Button>
-          <Button
-            variant="outline"
-            className="cursor-pointer gap-2 text-[13px]"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-            Create Project
           </Button>
           <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
             <Share2 className="h-3.5 w-3.5" />
