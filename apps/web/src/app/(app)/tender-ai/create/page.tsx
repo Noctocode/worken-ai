@@ -212,7 +212,7 @@ function BasicInfoStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">Basic Information</h2>
         <p className="mt-1 text-[14px] text-text-2">
           Let&apos;s start with the essential details about this tender
@@ -381,7 +381,7 @@ function RequirementsStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
           Tender Requirements
         </h2>
@@ -493,7 +493,7 @@ function TeamStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
           Assign Team Members
         </h2>
@@ -601,7 +601,7 @@ function DocumentsStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">Upload Documents</h2>
         <p className="mt-1 text-[14px] text-text-2">
           Upload the RFP document and any supporting materials.
@@ -718,7 +718,7 @@ function ReviewStep({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
+      <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
           Review &amp; Create Tender
         </h2>
