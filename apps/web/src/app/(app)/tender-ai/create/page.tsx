@@ -216,62 +216,65 @@ function BasicInfoStep({
     touched && !data[field].trim();
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
       <div className="text-center">
-        <h2 className="text-[20px] font-bold text-text-1">Basic Information</h2>
-        <p className="mt-1 text-[14px] text-text-2">
+        <h2 className="text-[26px] font-bold leading-[1.3] text-text-1">
+          Basic Information
+        </h2>
+        <p className="mt-2 text-[14px] leading-[1.3] text-text-2">
           Let&apos;s start with the essential details about this tender
           opportunity.
         </p>
       </div>
 
       {/* Essential Details */}
-      <fieldset className="flex flex-col gap-4">
-        <legend className="flex items-center gap-2 text-[14px] font-semibold text-text-1">
-          <span className="h-2 w-2 rounded-full bg-primary-6" />
-          Essential Details
-        </legend>
-        <div className="flex flex-col gap-1">
-          <label className="text-[13px] font-medium text-text-1">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-primary-6" />
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Essential Details</span>
+        </div>
+        <div className="flex flex-col gap-[7px]">
+          <label className="text-[13px] text-text-1">
             Tender Name <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.name}
             onChange={(e) => update("name", e.target.value)}
             placeholder="Enter a clear, descriptive name for this tender"
-            className={`h-10 ${err("name") ? "border-danger-6" : ""}`}
+            className={`h-[52px] px-4 text-[16px] ${err("name") ? "border-danger-6" : ""}`}
           />
-          {err("name") && (
+          {err("name") ? (
             <span className="text-[12px] text-danger-6">Tender Name is required</span>
+          ) : (
+            <span className="text-[13px] text-text-2">
+              Example: Enterprise Cloud Migration Services Q2 2026
+            </span>
           )}
-          <span className="text-[12px] text-text-3">
-            Example: Enterprise Cloud Migration Services Q2 2026
-          </span>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-[13px] font-medium text-text-1">
+          <div className="flex flex-col gap-[7px]">
+            <label className="text-[13px] text-text-1">
               RFP/Tender Number <span className="text-danger-6">*</span>
             </label>
             <Input
               value={data.rfpNumber}
               onChange={(e) => update("rfpNumber", e.target.value)}
               placeholder="TND-2026-006"
-              className={`h-10 ${err("rfpNumber") ? "border-danger-6" : ""}`}
+              className={`h-[52px] px-4 text-[16px] ${err("rfpNumber") ? "border-danger-6" : ""}`}
             />
             {err("rfpNumber") && (
               <span className="text-[12px] text-danger-6">RFP Number is required</span>
             )}
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[13px] font-medium text-text-1">
+          <div className="flex flex-col gap-[7px]">
+            <label className="text-[13px] text-text-1">
               Category <span className="text-danger-6">*</span>
             </label>
             <Select
               value={data.category}
               onValueChange={(v) => update("category", v)}
             >
-              <SelectTrigger className={`w-full cursor-pointer data-[size=default]:h-10 ${err("category") ? "border-danger-6" : ""}`}>
+              <SelectTrigger className={`w-full cursor-pointer text-[16px] data-[size=default]:h-[52px] ${err("category") ? "border-danger-6" : ""}`}>
                 <SelectValue placeholder="Select category" />
               </SelectTrigger>
               <SelectContent>
@@ -287,94 +290,95 @@ function BasicInfoStep({
             )}
           </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-[13px] font-medium text-text-1">
+        <div className="flex flex-col gap-[7px]">
+          <label className="text-[13px] text-text-1">
             Client Name <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.client}
             onChange={(e) => update("client", e.target.value)}
             placeholder="Federal Aviation Administration"
-            className={`h-10 ${err("client") ? "border-danger-6" : ""}`}
+            className={`h-[52px] px-4 text-[16px] ${err("client") ? "border-danger-6" : ""}`}
           />
           {err("client") && (
             <span className="text-[12px] text-danger-6">Client Name is required</span>
           )}
         </div>
-      </fieldset>
+      </div>
 
       {/* Timeline & Budget */}
-      <fieldset className="flex flex-col gap-4">
-        <legend className="flex items-center gap-2 text-[14px] font-semibold text-text-1">
-          <span className="h-2 w-2 rounded-full bg-primary-6" />
-          Timeline &amp; Budget
-        </legend>
+      <div className="flex flex-col gap-4 border-t border-[#F2F3F5] pt-4">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-primary-6" />
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Timeline &amp; Budget</span>
+        </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <label className="text-[13px] font-medium text-text-1">
+          <div className="flex flex-col gap-[7px]">
+            <label className="text-[13px] text-text-1">
               Submission Deadline <span className="text-danger-6">*</span>
             </label>
             <div className="relative">
-              <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Calendar className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
               <Input
                 type="date"
                 value={data.deadline}
                 onChange={(e) => update("deadline", e.target.value)}
-                className={`h-10 pl-9 ${err("deadline") ? "border-danger-6" : ""}`}
+                className={`h-[52px] pl-11 text-[16px] ${err("deadline") ? "border-danger-6" : ""}`}
               />
             </div>
             {err("deadline") && (
               <span className="text-[12px] text-danger-6">Deadline is required</span>
             )}
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-[13px] font-medium text-text-1">
+          <div className="flex flex-col gap-[7px]">
+            <label className="text-[13px] text-text-1">
               Contract Value <span className="text-danger-6">*</span>
             </label>
             <div className="relative">
-              <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <DollarSign className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
               <Input
                 value={data.value}
                 onChange={(e) => update("value", formatCurrency(e.target.value))}
                 onBlur={() => update("value", expandShorthand(data.value))}
                 placeholder="2,400,000"
-                className={`h-10 pl-9 ${err("value") ? "border-danger-6" : ""}`}
+                className={`h-[52px] pl-11 text-[16px] ${err("value") ? "border-danger-6" : ""}`}
               />
             </div>
-            {err("value") && (
+            {err("value") ? (
               <span className="text-[12px] text-danger-6">Contract Value is required</span>
+            ) : (
+              <span className="text-[13px] text-text-2">
+                Enter numeric value (e.g., 2,400,000 or 2.4M)
+              </span>
             )}
-            <span className="text-[12px] text-text-3">
-              Enter numeric value (e.g., 2,400,000 or 2.4M)
-            </span>
           </div>
         </div>
-      </fieldset>
+      </div>
 
       {/* Description */}
-      <fieldset className="flex flex-col gap-4">
-        <legend className="flex items-center gap-2 text-[14px] font-semibold text-text-1">
-          <span className="h-2 w-2 rounded-full bg-primary-6" />
-          Project Description
-        </legend>
-        <div className="flex flex-col gap-1">
-          <label className="text-[13px] font-medium text-text-1">
+      <div className="flex flex-col gap-4 border-t border-border-2 pt-4">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-primary-6" />
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Project Description</span>
+        </div>
+        <div className="flex flex-col gap-[10px]">
+          <label className="text-[13px] text-text-1">
             Description <span className="text-danger-6">*</span>
           </label>
           <Textarea
             value={data.description}
             onChange={(e) => update("description", e.target.value)}
             placeholder="Provide a comprehensive overview of the tender opportunity, including scope, objectives, and key deliverables..."
-            className={`min-h-[120px] ${err("description") ? "border-danger-6" : ""}`}
+            className={`min-h-[140px] px-4 py-4 text-[16px] ${err("description") ? "border-danger-6" : ""}`}
           />
-          <div className="flex items-center justify-between text-[12px] text-text-3">
+          <div className="flex items-center justify-between text-[13px] text-text-2">
             <span>
               Be specific about scope, deliverables, and success criteria
             </span>
             <span>{data.description.length} characters</span>
           </div>
         </div>
-      </fieldset>
+      </div>
     </div>
   );
 }
