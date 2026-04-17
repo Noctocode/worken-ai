@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -307,7 +308,8 @@ export default function TenderAiPage() {
               {paginated.map((t) => (
                 <tr
                   key={t.id}
-                  className="border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1"
+                  className="border-b border-border-2 last:border-b-0 cursor-pointer transition-colors hover:bg-bg-1"
+                  onClick={() => (window.location.href = `/tender-ai/${t.id}`)}
                 >
                   <td className="px-5 py-4">
                     <div className="flex flex-col">
@@ -370,9 +372,10 @@ export default function TenderAiPage() {
         {/* Mobile cards */}
         <div className="flex flex-col gap-3 px-4 pb-4 md:hidden">
           {paginated.map((t) => (
-            <div
+            <Link
               key={t.id}
-              className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-4"
+              href={`/tender-ai/${t.id}`}
+              className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-4 transition-colors hover:border-primary-6"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
@@ -413,7 +416,7 @@ export default function TenderAiPage() {
                   </span>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
           {paginated.length === 0 && (
             <p className="py-8 text-center text-[13px] text-text-3">

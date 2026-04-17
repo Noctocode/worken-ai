@@ -138,5 +138,14 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
+  // Check /tender-ai/[id] pattern
+  if (/^\/tender-ai\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-white",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
   return DEFAULT_CONFIG;
 }
