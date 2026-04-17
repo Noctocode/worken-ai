@@ -6,14 +6,18 @@ import {
   Calendar,
   Check,
   DollarSign,
+  Eye,
   FileText,
+  ListChecks,
   Loader2,
   Mail,
   Plus,
   Search,
   Sparkles,
   Upload,
+  Users,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -22,13 +26,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { createTender } from "@/lib/api";
 
-const STEPS = [
-  { title: "Basic Information", caption: "Step 1 of 5" },
-  { title: "Requirements", caption: "Step 2 of 5" },
-  { title: "Team Assignment", caption: "Step 3 of 5" },
-  { title: "Documents", caption: "Step 4 of 5" },
-  { title: "Review & Create", caption: "Step 5 of 5" },
-] as const;
+const STEPS: { title: string; caption: string; icon: LucideIcon }[] = [
+  { title: "Basic Information", caption: "Step 1 of 5", icon: FileText },
+  { title: "Requirements", caption: "Step 2 of 5", icon: ListChecks },
+  { title: "Team Assignment", caption: "Step 3 of 5", icon: Users },
+  { title: "Documents", caption: "Step 4 of 5", icon: Upload },
+  { title: "Review & Create", caption: "Step 5 of 5", icon: Eye },
+];
 
 type Priority = "High" | "Medium" | "Low";
 
@@ -71,17 +75,20 @@ function DesktopStepper({ active }: { active: number }) {
       {STEPS.map((s, i) => {
         const done = i < active;
         const current = i === active;
+        const Icon = s.icon;
         return (
           <div key={i} className="flex flex-1 items-center">
             <div className="flex items-center gap-3">
               <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
-                  done || current
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                  done
                     ? "bg-primary-6 text-white"
-                    : "border border-border-2 bg-bg-white text-text-3"
+                    : current
+                      ? "bg-primary-6 text-white"
+                      : "border border-border-2 bg-bg-white text-text-3"
                 }`}
               >
-                {done ? <Check className="h-4 w-4" /> : i + 1}
+                {done ? <Check className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
               </span>
               <div className="flex flex-col">
                 <span
@@ -114,17 +121,18 @@ function MobileStepper({ active }: { active: number }) {
       {STEPS.map((s, i) => {
         const done = i < active;
         const current = i === active;
+        const Icon = s.icon;
         return (
           <div key={i} className="flex flex-1 items-center">
             <div className="flex flex-col items-center gap-1">
               <span
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
                   done || current
                     ? "bg-primary-6 text-white"
                     : "border border-border-2 bg-bg-white text-text-3"
                 }`}
               >
-                {done ? <Check className="h-3 w-3" /> : i + 1}
+                {done ? <Check className="h-3 w-3" /> : <Icon className="h-3 w-3" />}
               </span>
               <span
                 className={`text-center text-[9px] leading-tight ${
