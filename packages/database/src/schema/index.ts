@@ -227,6 +227,29 @@ export const tenderTeamMembers = pgTable("tender_team_members", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const knowledgeFolders = pgTable("knowledge_folders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
+    .notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const knowledgeFiles = pgTable("knowledge_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  folderId: uuid("folder_id")
+    .references(() => knowledgeFolders.id, { onDelete: "cascade" })
+    .notNull(),
+  name: text("name").notNull(),
+  fileType: text("file_type"),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  storagePath: text("storage_path"),
+  uploadedById: uuid("uploaded_by_id").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const modelConfigs = pgTable("model_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: uuid("owner_id")
