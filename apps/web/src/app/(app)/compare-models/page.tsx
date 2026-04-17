@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -759,18 +760,25 @@ function RightRail({
         expanded={modelsExpanded}
         onToggle={() => setModelsExpanded(!modelsExpanded)}
       >
-        {selectedModels.map((modelId, idx) => (
-          <ModelPill
-            key={modelId}
-            slot={slotLabel(idx)}
-            value={modelId}
-            enabled={!disabledModels.has(modelId)}
-            onToggle={() => onToggleModel(modelId)}
-            onChange={(newId) => onChangeModel(idx, newId)}
-            onRemove={canRemove ? () => onRemoveModel(idx) : undefined}
-            disabledIds={selectedModels.filter((id) => id !== modelId)}
-          />
-        ))}
+        {selectedModels.map((modelId, idx) => {
+          const isEnabled = !disabledModels.has(modelId);
+          const activeCount = selectedModels.filter(
+            (id) => !disabledModels.has(id),
+          ).length;
+          return (
+            <ModelPill
+              key={modelId}
+              slot={slotLabel(idx)}
+              value={modelId}
+              enabled={isEnabled}
+              canDisable={!isEnabled || activeCount > MIN_MODELS}
+              onToggle={() => onToggleModel(modelId)}
+              onChange={(newId) => onChangeModel(idx, newId)}
+              onRemove={canRemove ? () => onRemoveModel(idx) : undefined}
+              disabledIds={selectedModels.filter((id) => id !== modelId)}
+            />
+          );
+        })}
         <button
           type="button"
           onClick={onAddModel}
@@ -855,6 +863,7 @@ function ModelPill({
   slot,
   value,
   enabled,
+  canDisable,
   onToggle,
   onChange,
   onRemove,
@@ -863,6 +872,7 @@ function ModelPill({
   slot: string;
   value: string;
   enabled: boolean;
+  canDisable: boolean;
   onToggle: () => void;
   onChange: (v: string) => void;
   onRemove?: () => void;
@@ -870,29 +880,44 @@ function ModelPill({
 }) {
   const tone = getModelTone(value);
   const label = getModelLabel(value);
+
+  const toggleButton = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
+      onClick={canDisable ? onToggle : undefined}
+      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${
+        canDisable ? "cursor-pointer" : "cursor-not-allowed"
+      } ${enabled ? "bg-primary-6" : "bg-text-3"}`}
+    >
+      <span
+        className={`block h-5 w-5 rounded-full bg-bg-white transition-transform ${
+          enabled ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+
   return (
     <div
       className={`flex items-center gap-2.5 rounded-[20px] bg-bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_1px_3px_rgba(0,0,0,0.1)] transition-opacity ${
         enabled ? "" : "opacity-50"
       }`}
     >
-      {/* Active toggle — controls whether the model is included in the comparison. */}
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
-        onClick={onToggle}
-        className={`flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full px-0.5 transition-colors ${
-          enabled ? "bg-primary-6" : "bg-text-3"
-        }`}
-      >
-        <span
-          className={`block h-5 w-5 rounded-full bg-bg-white transition-transform ${
-            enabled ? "translate-x-5" : "translate-x-0"
-          }`}
-        />
-      </button>
+      {canDisable ? (
+        toggleButton
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">{toggleButton}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            At least {MIN_MODELS} models must be active
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* Avatar + name */}
       <span
