@@ -145,6 +145,16 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
+  // Check /knowledge-core/[folderId] pattern
+  if (/^\/knowledge-core\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      title: "Knowledge Core",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
   // Check /tender-ai/create
   if (pathname === "/tender-ai/create") {
     return {

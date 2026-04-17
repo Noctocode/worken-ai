@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FileText,
@@ -148,9 +149,10 @@ export default function KnowledgeCorePage() {
         <h2 className="text-[18px] font-bold text-text-1">Folders</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {filteredFolders.map((folder) => (
-            <div
+            <Link
               key={folder.id}
-              className="flex cursor-pointer flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-[#EBF8FF]"
+              href={`/knowledge-core/${folder.id}`}
+              className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-[#EBF8FF]"
             >
               <div className="flex items-start justify-between">
                 <Folder className="h-8 w-8 text-primary-6" strokeWidth={1.5} />
@@ -170,7 +172,7 @@ export default function KnowledgeCorePage() {
                 </span>
                 <span>{folder.modified}</span>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       </section>
