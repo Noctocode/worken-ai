@@ -595,7 +595,7 @@ export const Appbar = () => {
           </Link>
           <ChevronRight className="hidden h-3.5 w-3.5 text-text-3 sm:inline" />
           <span className="text-[14px] font-medium text-text-1">
-            TND-2026-{tenderId.padStart(3, "0")}
+            Tender Details
           </span>
         </div>
         <div className="hidden items-center gap-2 sm:flex">
