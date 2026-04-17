@@ -89,15 +89,25 @@ function scoreBadgeTone(score: number): string {
   return "bg-[#FDEDED] text-[#D92D20]";
 }
 
+const MIN_MODELS = 2;
+
+function slotLabel(index: number): string {
+  // A, B, C, ... AA after Z. Plenty for our purposes.
+  if (index < 26) return String.fromCharCode(65 + index);
+  return `M${index + 1}`;
+}
+
 export default function CompareModelsPage() {
-  const [modelA, setModelA] = useState<string>(MODELS[0].id);
-  const [modelB, setModelB] = useState<string>(MODELS[1].id);
+  const [selectedModels, setSelectedModels] = useState<string[]>([
+    MODELS[0].id,
+    MODELS[1].id,
+  ]);
   const [question, setQuestion] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
-  const [responseA, setResponseA] = useState<string | null>(null);
-  const [responseB, setResponseB] = useState<string | null>(null);
-  const [evaluationA, setEvaluationA] = useState<ModelEvaluation | null>(null);
-  const [evaluationB, setEvaluationB] = useState<ModelEvaluation | null>(null);
+  const [responses, setResponses] = useState<Record<string, string | null>>({});
+  const [evaluations, setEvaluations] = useState<
+    Record<string, ModelEvaluation | null>
+  >({});
   const [loading, setLoading] = useState(false);
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
 
@@ -107,42 +117,38 @@ export default function CompareModelsPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [addModelOpen, setAddModelOpen] = useState(false);
 
-  const hasResults =
-    responseA !== null ||
-    responseB !== null ||
-    evaluationA !== null ||
-    evaluationB !== null;
+  const hasResults = useMemo(
+    () =>
+      Object.values(responses).some((r) => r !== null) ||
+      Object.values(evaluations).some((e) => e !== null),
+    [responses, evaluations],
+  );
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setResponseA(null);
-    setResponseB(null);
-    setEvaluationA(null);
-    setEvaluationB(null);
+    setResponses({});
+    setEvaluations({});
     setSubmittedQuestion(question);
 
     try {
-      const response = await sendQuestionToCompareModels(
-        [modelA, modelB],
+      const result = await sendQuestionToCompareModels(
+        selectedModels,
         question,
         expectedOutput,
       );
 
-      setResponseA(
-        response.responses.find((r) => r.model === modelA)?.response.content ??
-          null,
-      );
-      setResponseB(
-        response.responses.find((r) => r.model === modelB)?.response.content ??
-          null,
-      );
-      setEvaluationA(
-        response.comparison.find((c) => c.name === modelA) ?? null,
-      );
-      setEvaluationB(
-        response.comparison.find((c) => c.name === modelB) ?? null,
-      );
+      const nextResponses: Record<string, string | null> = {};
+      const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+      for (const id of selectedModels) {
+        nextResponses[id] =
+          result.responses.find((r) => r.model === id)?.response.content ??
+          null;
+        nextEvaluations[id] =
+          result.comparison.find((c) => c.name === id) ?? null;
+      }
+      setResponses(nextResponses);
+      setEvaluations(nextEvaluations);
 
       setHistory((prev) =>
         [
@@ -162,12 +168,33 @@ export default function CompareModelsPage() {
   const newComparison = useCallback(() => {
     setQuestion("");
     setExpectedOutput("");
-    setResponseA(null);
-    setResponseB(null);
-    setEvaluationA(null);
-    setEvaluationB(null);
+    setResponses({});
+    setEvaluations({});
     setSubmittedQuestion(null);
   }, []);
+
+  const changeModel = (index: number, newId: string) => {
+    setSelectedModels((prev) => {
+      if (prev.includes(newId) && prev[index] !== newId) return prev;
+      const next = [...prev];
+      next[index] = newId;
+      return next;
+    });
+  };
+
+  const removeModel = (index: number) => {
+    setSelectedModels((prev) => {
+      if (prev.length <= MIN_MODELS) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const addModel = (id: string) => {
+    setSelectedModels((prev) => {
+      if (prev.includes(id)) return prev;
+      return [...prev, id];
+    });
+  };
 
   // The appbar hosts the "New Comparison" button and dispatches this event.
   useEffect(() => {
@@ -215,30 +242,21 @@ export default function CompareModelsPage() {
 
             {(loading || hasResults) && (
               <div className="flex flex-wrap gap-4">
-                <ResponseCard
-                  modelId={modelA}
-                  response={responseA}
-                  evaluation={evaluationA}
-                  loading={loading && responseA === null}
-                  onCopy={(t) => copyText(t, getModelLabel(modelA))}
-                  onEdit={
-                    submittedQuestion
-                      ? () => setQuestion(submittedQuestion)
-                      : undefined
-                  }
-                />
-                <ResponseCard
-                  modelId={modelB}
-                  response={responseB}
-                  evaluation={evaluationB}
-                  loading={loading && responseB === null}
-                  onCopy={(t) => copyText(t, getModelLabel(modelB))}
-                  onEdit={
-                    submittedQuestion
-                      ? () => setQuestion(submittedQuestion)
-                      : undefined
-                  }
-                />
+                {selectedModels.map((id) => (
+                  <ResponseCard
+                    key={id}
+                    modelId={id}
+                    response={responses[id] ?? null}
+                    evaluation={evaluations[id] ?? null}
+                    loading={loading && (responses[id] ?? null) === null}
+                    onCopy={(t) => copyText(t, getModelLabel(id))}
+                    onEdit={
+                      submittedQuestion
+                        ? () => setQuestion(submittedQuestion)
+                        : undefined
+                    }
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -257,10 +275,9 @@ export default function CompareModelsPage() {
         {/* Right rail */}
         {railOpen ? (
           <RightRail
-            modelA={modelA}
-            modelB={modelB}
-            setModelA={setModelA}
-            setModelB={setModelB}
+            selectedModels={selectedModels}
+            onChangeModel={changeModel}
+            onRemoveModel={removeModel}
             modelsExpanded={modelsExpanded}
             setModelsExpanded={setModelsExpanded}
             historyExpanded={historyExpanded}
@@ -269,10 +286,8 @@ export default function CompareModelsPage() {
             onLoadHistory={(q) => {
               setQuestion(q);
               setSubmittedQuestion(null);
-              setResponseA(null);
-              setResponseB(null);
-              setEvaluationA(null);
-              setEvaluationB(null);
+              setResponses({});
+              setEvaluations({});
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
@@ -293,10 +308,9 @@ export default function CompareModelsPage() {
       <AddModelDialog
         open={addModelOpen}
         onOpenChange={setAddModelOpen}
-        currentModelA={modelA}
-        currentModelB={modelB}
+        selectedModels={selectedModels}
         onAdd={(id) => {
-          setModelB(id);
+          addModel(id);
           toast.success(`Added ${getModelLabel(id)} to comparison.`);
         }}
       />
@@ -666,10 +680,9 @@ function ComposerChip({
 /* ─── Right rail ─────────────────────────────────────────────────────── */
 
 function RightRail({
-  modelA,
-  modelB,
-  setModelA,
-  setModelB,
+  selectedModels,
+  onChangeModel,
+  onRemoveModel,
   modelsExpanded,
   setModelsExpanded,
   historyExpanded,
@@ -679,10 +692,9 @@ function RightRail({
   onClose,
   onAddModel,
 }: {
-  modelA: string;
-  modelB: string;
-  setModelA: (v: string) => void;
-  setModelB: (v: string) => void;
+  selectedModels: string[];
+  onChangeModel: (index: number, newId: string) => void;
+  onRemoveModel: (index: number) => void;
   modelsExpanded: boolean;
   setModelsExpanded: (v: boolean) => void;
   historyExpanded: boolean;
@@ -692,6 +704,9 @@ function RightRail({
   onClose: () => void;
   onAddModel: () => void;
 }) {
+  const canRemove = selectedModels.length > MIN_MODELS;
+  const allModelIds = useMemo(() => MODELS.map((m) => m.id), []);
+  const canAddMore = selectedModels.length < allModelIds.length;
   return (
     <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
       <header className="flex items-center justify-between">
@@ -715,22 +730,26 @@ function RightRail({
         expanded={modelsExpanded}
         onToggle={() => setModelsExpanded(!modelsExpanded)}
       >
-        <ModelPill
-          slot="A"
-          value={modelA}
-          onChange={setModelA}
-          disabledIds={[modelB]}
-        />
-        <ModelPill
-          slot="B"
-          value={modelB}
-          onChange={setModelB}
-          disabledIds={[modelA]}
-        />
+        {selectedModels.map((modelId, idx) => (
+          <ModelPill
+            key={modelId}
+            slot={slotLabel(idx)}
+            value={modelId}
+            onChange={(newId) => onChangeModel(idx, newId)}
+            onRemove={canRemove ? () => onRemoveModel(idx) : undefined}
+            disabledIds={selectedModels.filter((id) => id !== modelId)}
+          />
+        ))}
         <button
           type="button"
           onClick={onAddModel}
-          className="inline-flex h-8 w-fit cursor-pointer items-center gap-2.5 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+          disabled={!canAddMore}
+          className="inline-flex h-8 w-fit cursor-pointer items-center gap-2.5 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+          title={
+            canAddMore
+              ? "Add another model to the comparison"
+              : "All available models are already in the comparison"
+          }
         >
           <Plus className="h-4 w-4" />
           Add Model
@@ -805,11 +824,13 @@ function ModelPill({
   slot,
   value,
   onChange,
+  onRemove,
   disabledIds,
 }: {
   slot: string;
   value: string;
   onChange: (v: string) => void;
+  onRemove?: () => void;
   disabledIds: string[];
 }) {
   const tone = getModelTone(value);
@@ -872,6 +893,20 @@ function ModelPill({
               </DropdownMenuItem>
             );
           })}
+          {onRemove && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onRemove();
+                }}
+                className="text-[#D92D20] focus:text-[#D92D20]"
+              >
+                Remove from comparison
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
@@ -911,34 +946,37 @@ function groupModelsByProvider(query: string): ProviderGroup[] {
 function AddModelDialog({
   open,
   onOpenChange,
-  currentModelA,
-  currentModelB,
+  selectedModels,
   onAdd,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  currentModelA: string;
-  currentModelB: string;
+  selectedModels: string[];
   onAdd: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string>(currentModelB);
+  // Default selection points at the first model not already in the comparison.
+  const firstAvailable = useMemo(
+    () => MODELS.find((m) => !selectedModels.includes(m.id))?.id ?? MODELS[0].id,
+    [selectedModels],
+  );
+  const [selectedId, setSelectedId] = useState<string>(firstAvailable);
 
   // Reset selection only on the false→true transition so the user's pick
-  // isn't overwritten if currentModelB changes while the dialog is open.
+  // isn't overwritten while the dialog is open.
   const wasOpenRef = useRef(false);
   useEffect(() => {
     if (open && !wasOpenRef.current) {
-      setSelectedId(currentModelB);
+      setSelectedId(firstAvailable);
       setQuery("");
     }
     wasOpenRef.current = open;
-  }, [open, currentModelB]);
+  }, [open, firstAvailable]);
 
   const groups = useMemo(() => groupModelsByProvider(query), [query]);
-  const selected =
-    MODELS.find((m) => m.id === selectedId) ?? MODELS[0];
+  const selected = MODELS.find((m) => m.id === selectedId) ?? MODELS[0];
   const tone = getModelTone(selected.id);
+  const alreadyInUse = selectedModels.includes(selected.id);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -987,29 +1025,23 @@ function AddModelDialog({
                   <ul className="flex flex-col gap-0.5">
                     {g.models.map((m) => {
                       const isSelected = m.id === selectedId;
-                      const isOther = m.id === currentModelA;
+                      const inUse = selectedModels.includes(m.id);
                       return (
                         <li key={m.id}>
                           <button
                             type="button"
                             onClick={() => setSelectedId(m.id)}
-                            disabled={isOther}
                             className={`flex w-full cursor-pointer flex-col items-start rounded px-3 py-2 text-left transition-colors ${
                               isSelected
                                 ? "bg-bg-1"
                                 : "hover:bg-bg-1/60"
-                            } disabled:cursor-not-allowed disabled:opacity-50`}
-                            title={
-                              isOther
-                                ? "Already selected as Model A"
-                                : undefined
-                            }
+                            }`}
                           >
                             <span className="flex w-full items-center justify-between gap-2">
                               <span className="text-[13px] font-medium text-text-1">
                                 {m.label}
                               </span>
-                              {isOther && (
+                              {inUse && (
                                 <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
                                   In use
                                 </span>
@@ -1056,11 +1088,7 @@ function AddModelDialog({
               <SpecChip label="Tier" value="Free" />
               <SpecChip
                 label="Status"
-                value={
-                  selected.id === currentModelA || selected.id === currentModelB
-                    ? "Selected"
-                    : "Available"
-                }
+                value={alreadyInUse ? "In use" : "Available"}
               />
             </div>
           </div>
@@ -1079,8 +1107,9 @@ function AddModelDialog({
               onAdd(selectedId);
               onOpenChange(false);
             }}
-            disabled={selectedId === currentModelA}
+            disabled={alreadyInUse}
             className="cursor-pointer rounded-full bg-primary-6 px-6 hover:bg-primary-7"
+            title={alreadyInUse ? "Model is already in the comparison" : undefined}
           >
             Add Model
           </Button>
