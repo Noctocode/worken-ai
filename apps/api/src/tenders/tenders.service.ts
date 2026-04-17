@@ -191,18 +191,29 @@ export class TendersService {
     });
   }
 
-  async update(id: string, dto: UpdateTenderDto) {
+  async update(id: string, dto: UpdateTenderDto, userId: string) {
+    const [tender] = await this.db
+      .select()
+      .from(tenders)
+      .where(eq(tenders.id, id));
+
+    if (!tender) throw new NotFoundException('Tender not found');
+    if (tender.ownerId !== userId) {
+      throw new ForbiddenException('Only the tender owner can update it');
+    }
+
     const [updated] = await this.db
       .update(tenders)
       .set({
         ...dto,
-        deadline: dto.deadline ? new Date(dto.deadline) : undefined,
+        deadline: dto.deadline
+          ? new Date(`${dto.deadline}T12:00:00Z`)
+          : undefined,
         updatedAt: new Date(),
       })
       .where(eq(tenders.id, id))
       .returning();
 
-    if (!updated) throw new NotFoundException('Tender not found');
     return updated;
   }
 

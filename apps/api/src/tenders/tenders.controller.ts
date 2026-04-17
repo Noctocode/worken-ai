@@ -61,8 +61,9 @@ export class TendersController {
       matchRate?: number;
       status?: string;
     },
+    @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.tendersService.update(id, body);
+    return this.tendersService.update(id, body, user.id);
   }
 
   @Delete(':id')
