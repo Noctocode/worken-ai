@@ -19,7 +19,7 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createTender } from "@/lib/api";
+import { createTender, fetchOrgUsers } from "@/lib/api";
 
 const STEPS: { title: string; caption: string; icon: LucideIcon }[] = [
   { title: "Basic Information", caption: "Step 1 of 5", icon: FileText },
@@ -84,20 +84,6 @@ interface Requirement {
   priority: Priority;
 }
 
-interface TeamMember {
-  id: string;
-  name: string;
-  role: string;
-  color: string;
-}
-
-const AVAILABLE_MEMBERS: TeamMember[] = [
-  { id: "1", name: "Sarah Mitchell", role: "Solutions Architect", color: "bg-[#33AFF3]" },
-  { id: "2", name: "James Chen", role: "Cloud Specialist", color: "bg-[#009A29]" },
-  { id: "3", name: "Maria Rodriguez", role: "Compliance Lead", color: "bg-[#FF7D00]" },
-  { id: "4", name: "David Park", role: "Technical Writer", color: "bg-[#F53F3F]" },
-  { id: "5", name: "Dr. Emily Watson", role: "AI Research Lead", color: "bg-[#8B5CF6]" },
-];
 
 interface BasicInfo {
   name: string;
@@ -503,11 +489,17 @@ function TeamStep({
 }) {
   const [search, setSearch] = useState("");
 
-  const filtered = AVAILABLE_MEMBERS.filter((m) => {
+  const { data: orgUsers = [], isLoading: usersLoading } = useQuery({
+    queryKey: ["org-users"],
+    queryFn: fetchOrgUsers,
+  });
+
+  const filtered = orgUsers.filter((m) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
-      m.name.toLowerCase().includes(q) || m.role.toLowerCase().includes(q)
+      (m.name ?? "").toLowerCase().includes(q) ||
+      m.email.toLowerCase().includes(q)
     );
   });
 
@@ -517,6 +509,14 @@ function TeamStep({
         ? selected.filter((s) => s !== id)
         : [...selected, id],
     );
+
+  const getInitials = (name: string | null) =>
+    name
+      ? name
+          .split(" ")
+          .map((w) => w[0])
+          .join("")
+      : "?";
 
   return (
     <div className="flex flex-col gap-6">
@@ -529,11 +529,13 @@ function TeamStep({
         </p>
       </div>
 
-      <fieldset className="flex flex-col gap-4">
-        <legend className="flex items-center gap-2 text-[14px] font-semibold text-text-1">
-          <span className="h-2 w-2 rounded-full bg-primary-6" />
-          Available Team Members
-        </legend>
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <span className="h-5 w-1 rounded-full bg-primary-6" />
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">
+            Available Team Members
+          </span>
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
           <Input
@@ -543,6 +545,11 @@ function TeamStep({
             className="h-10 pl-9"
           />
         </div>
+        {usersLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-text-3" />
+          </div>
+        ) : (
         <div className="flex flex-col gap-2">
           {filtered.map((m) => {
             const isAdded = selected.includes(m.id);
@@ -551,19 +558,22 @@ function TeamStep({
                 key={m.id}
                 className="flex items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-3"
               >
-                <span
-                  className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white ${m.color}`}
-                >
-                  {m.name
-                    .split(" ")
-                    .map((w) => w[0])
-                    .join("")}
-                </span>
+                {m.picture ? (
+                  <img
+                    src={m.picture}
+                    alt={m.name ?? ""}
+                    className="h-9 w-9 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[13px] font-semibold text-white">
+                    {getInitials(m.name)}
+                  </span>
+                )}
                 <div className="flex min-w-0 flex-1 flex-col">
                   <span className="text-[14px] font-medium text-text-1">
-                    {m.name}
+                    {m.name ?? m.email}
                   </span>
-                  <span className="text-[12px] text-text-3">{m.role}</span>
+                  <span className="text-[12px] text-text-3">{m.email}</span>
                 </div>
                 <button
                   type="button"
@@ -590,6 +600,7 @@ function TeamStep({
             );
           })}
         </div>
+        )}
         <button
           type="button"
           className="inline-flex cursor-pointer items-center gap-2 self-start text-[14px] font-medium text-text-2 hover:text-primary-6"
@@ -597,7 +608,7 @@ function TeamStep({
           <Mail className="h-4 w-4" />
           Invite External Team Member
         </button>
-      </fieldset>
+      </div>
     </div>
   );
 }
