@@ -245,10 +245,10 @@ export default function CompareModelsPage() {
               <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
                 <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <h3 className="text-[16px] font-semibold text-text-1">
-                  Compare two models side by side
+                  Compare models side by side
                 </h3>
                 <p className="max-w-[420px] text-[13px] text-text-2">
-                  Pick two models in the right rail, write a prompt and the
+                  Pick models in the right rail, write a prompt and the
                   expected output, then hit Compare.
                 </p>
               </div>
