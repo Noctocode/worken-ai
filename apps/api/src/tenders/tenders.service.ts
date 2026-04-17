@@ -141,7 +141,7 @@ export class TendersService {
         organization: dto.organization?.trim() || null,
         description: dto.description?.trim() || null,
         category: dto.category?.trim() || null,
-        deadline: dto.deadline ? new Date(dto.deadline) : null,
+        deadline: dto.deadline ? new Date(`${dto.deadline}T12:00:00Z`) : null,
         value: dto.value?.trim() || null,
         status: 'Active',
         ownerId: userId,
