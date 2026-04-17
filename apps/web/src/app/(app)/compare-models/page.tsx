@@ -19,6 +19,7 @@ import {
   ThumbsUp,
   X,
 } from "lucide-react";
+import Image from "next/image";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -646,9 +647,12 @@ function Composer({
       className="mx-auto flex w-full max-w-[674px] flex-col gap-2 rounded-2xl border border-[#86909C]/40 bg-bg-white p-2 shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
     >
       <div className="flex items-start gap-2 px-2 pt-2">
-        <Sparkles
-          className="mt-1 h-4 w-4 shrink-0 text-text-3"
-          strokeWidth={2}
+        <Image
+          src="/main-logo.png"
+          alt="WorkenAI"
+          width={20}
+          height={10}
+          className="shrink-0"
         />
         <textarea
           value={question}
