@@ -41,6 +41,8 @@ interface UpdateTenderDto {
   status?: string;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Injectable()
 export class TendersService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -133,50 +135,52 @@ export class TendersService {
       code = `TND-${year}-${String(Number(count) + 1).padStart(3, '0')}`;
     }
 
-    const [tender] = await this.db
-      .insert(tenders)
-      .values({
-        code,
-        name: dto.name.trim(),
-        organization: dto.organization?.trim() || null,
-        description: dto.description?.trim() || null,
-        category: dto.category?.trim() || null,
-        deadline: dto.deadline ? new Date(`${dto.deadline}T12:00:00Z`) : null,
-        value: dto.value?.trim() || null,
-        status: 'Active',
-        ownerId: userId,
-      })
-      .returning();
+    return await this.db.transaction(async (tx) => {
+      const [tender] = await tx
+        .insert(tenders)
+        .values({
+          code,
+          name: dto.name.trim(),
+          organization: dto.organization?.trim() || null,
+          description: dto.description?.trim() || null,
+          category: dto.category?.trim() || null,
+          deadline: dto.deadline
+            ? new Date(`${dto.deadline}T12:00:00Z`)
+            : null,
+          value: dto.value?.trim() || null,
+          status: 'Active',
+          ownerId: userId,
+        })
+        .returning();
 
-    if (dto.requirements?.length) {
-      await this.db.insert(tenderRequirements).values(
-        dto.requirements.map((r, i) => ({
-          tenderId: tender.id,
-          code: `REQ-${String(i + 1).padStart(3, '0')}`,
-          title: r.title,
-          priority: r.priority || 'Medium',
-          status: 'gap' as const,
-        })),
-      );
-    }
-
-    if (dto.teamMemberIds?.length) {
-      const validIds = dto.teamMemberIds.filter((uid) =>
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          uid,
-        ),
-      );
-      if (validIds.length > 0) {
-        await this.db.insert(tenderTeamMembers).values(
-          validIds.map((uid) => ({
+      if (dto.requirements?.length) {
+        await tx.insert(tenderRequirements).values(
+          dto.requirements.map((r, i) => ({
             tenderId: tender.id,
-            userId: uid,
+            code: `REQ-${String(i + 1).padStart(3, '0')}`,
+            title: r.title,
+            priority: r.priority || 'Medium',
+            status: 'gap' as const,
           })),
         );
       }
-    }
 
-    return tender;
+      if (dto.teamMemberIds?.length) {
+        const validIds = dto.teamMemberIds.filter((uid) =>
+          UUID_RE.test(uid),
+        );
+        if (validIds.length > 0) {
+          await tx.insert(tenderTeamMembers).values(
+            validIds.map((uid) => ({
+              tenderId: tender.id,
+              userId: uid,
+            })),
+          );
+        }
+      }
+
+      return tender;
+    });
   }
 
   async update(id: string, dto: UpdateTenderDto) {
