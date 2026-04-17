@@ -159,7 +159,7 @@ export default function TenderAiPage() {
       window.removeEventListener("tender-ai:search", onSearch);
       window.removeEventListener("tender-ai:create", onCreate);
     };
-  }, [handleSearch]);
+  }, [handleSearch, router]);
 
   const stats = useMemo(() => computeStats(tenders), [tenders]);
 
