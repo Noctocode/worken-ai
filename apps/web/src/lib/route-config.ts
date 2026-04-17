@@ -138,6 +138,15 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
+  // Check /tender-ai/create
+  if (pathname === "/tender-ai/create") {
+    return {
+      bg: "bg-bg-1",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
   // Check /tender-ai/[id] pattern
   if (/^\/tender-ai\/[^/]+$/.test(pathname)) {
     return {

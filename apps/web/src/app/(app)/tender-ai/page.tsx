@@ -184,7 +184,7 @@ export default function TenderAiPage() {
     const onSearch = (e: Event) =>
       handleSearch((e as CustomEvent<string>).detail);
     const onCreate = () => {
-      // placeholder — will be wired to a creation flow later
+      window.location.href = "/tender-ai/create";
     };
     window.addEventListener("tender-ai:search", onSearch);
     window.addEventListener("tender-ai:create", onCreate);
@@ -221,9 +221,14 @@ export default function TenderAiPage() {
             className="h-10 pl-9 placeholder:text-text-3"
           />
         </div>
-        <Button className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7">
-          <Plus className="h-4 w-4" />
-          Create Tender
+        <Button
+          asChild
+          className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
+        >
+          <Link href="/tender-ai/create">
+            <Plus className="h-4 w-4" />
+            Create Tender
+          </Link>
         </Button>
       </div>
 
