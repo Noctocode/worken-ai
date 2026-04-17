@@ -23,6 +23,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createTender } from "@/lib/api";
 
@@ -33,6 +40,32 @@ const STEPS: { title: string; caption: string; icon: LucideIcon }[] = [
   { title: "Documents", caption: "Step 4 of 5", icon: Upload },
   { title: "Review & Create", caption: "Step 5 of 5", icon: Eye },
 ];
+
+const CATEGORIES = [
+  "Cloud Services",
+  "IT Infrastructure",
+  "Cybersecurity",
+  "AI & Machine Learning",
+  "Data Analytics",
+  "Software Development",
+  "Consulting",
+  "Managed Services",
+  "Digital Transformation",
+  "Other",
+];
+
+function formatCurrency(raw: string): string {
+  const trimmed = raw.replace(/^\$/, "").trim();
+  if (/[a-zA-Z]/.test(trimmed)) return raw;
+  const cleaned = trimmed.replace(/[^0-9.]/g, "");
+  if (!cleaned) return "";
+  const [whole, dec] = cleaned.split(".");
+  const formatted = Number(whole || "0").toLocaleString("en-US");
+  if (cleaned.includes(".")) {
+    return `${formatted}.${(dec ?? "").slice(0, 2)}`;
+  }
+  return formatted;
+}
 
 type Priority = "High" | "Medium" | "Low";
 
@@ -214,12 +247,21 @@ function BasicInfoStep({
             <label className="text-[13px] font-medium text-text-1">
               Category *
             </label>
-            <Input
+            <Select
               value={data.category}
-              onChange={(e) => update("category", e.target.value)}
-              placeholder="Select category"
-              className="h-10"
-            />
+              onValueChange={(v) => update("category", v)}
+            >
+              <SelectTrigger className="h-10">
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {CATEGORIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <div className="flex flex-col gap-1">
@@ -264,13 +306,13 @@ function BasicInfoStep({
               <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
               <Input
                 value={data.value}
-                onChange={(e) => update("value", e.target.value)}
+                onChange={(e) => update("value", formatCurrency(e.target.value))}
                 placeholder="2,400,000"
                 className="h-10 pl-9"
               />
             </div>
             <span className="text-[12px] text-text-3">
-              Enter numeric value (e.g., 2400000 or $2.4M)
+              Enter numeric value (e.g., 2,400,000 or 2.4M)
             </span>
           </div>
         </div>
