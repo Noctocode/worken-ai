@@ -644,45 +644,50 @@ function Composer({
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto flex w-full max-w-[674px] flex-col gap-2 rounded-2xl border border-[#86909C]/40 bg-bg-white p-2 shadow-[0_4px_4px_rgba(0,0,0,0.15)]"
+      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[#E5E6EB] p-2"
     >
-      <div className="flex items-start gap-2 px-2 pt-2">
-        <Image
-          src="/main-logo.png"
-          alt="WorkenAI"
-          width={20}
-          height={10}
-          className="shrink-0"
-        />
+      <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
+        {/* Input row */}
+        <div className="flex items-start gap-2.5 px-4 py-3">
+          <Image
+            src="/main-logo.png"
+            alt="WorkenAI"
+            width={24}
+            height={23}
+            className="shrink-0"
+          />
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask me Anything"
+            className="min-h-[24px] w-full resize-y border-0 bg-transparent text-[16px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+            disabled={loading}
+          />
+        </div>
+        {/* Expected output (functional addition — not in Figma) */}
         <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Ask me Anything"
-          className="min-h-[40px] w-full resize-y border-0 bg-transparent text-[14px] text-text-1 placeholder:text-text-3 focus:outline-none"
+          value={expectedOutput}
+          onChange={(e) => setExpectedOutput(e.target.value)}
+          placeholder="Expected output (used to score the responses)"
+          className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
-      </div>
-      <textarea
-        value={expectedOutput}
-        onChange={(e) => setExpectedOutput(e.target.value)}
-        placeholder="Expected output (used to score the responses)"
-        className="mx-2 min-h-[40px] w-[calc(100%-1rem)] resize-y border-t border-border-2 bg-transparent px-0 py-2 text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
-        disabled={loading}
-      />
-      <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2 pt-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <ComposerChip icon={Paperclip} label="Attach File" disabled />
-          <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
-          <ComposerChip icon={Library} label="Prompt Library" disabled />
+        {/* Chips + actions row */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <ComposerChip icon={Paperclip} label="Attach File" disabled />
+            <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
+            <ComposerChip icon={Library} label="Prompt Library" disabled />
+          </div>
+          <Button
+            type="submit"
+            disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
+            className="h-8 cursor-pointer gap-2 rounded-lg bg-primary-6 px-6 hover:bg-primary-7"
+          >
+            <Sparkles className="h-4 w-4" />
+            {loading ? "Comparing…" : "Compare"}
+          </Button>
         </div>
-        <Button
-          type="submit"
-          disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
-          className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
-        >
-          <Sparkles className="h-4 w-4" />
-          {loading ? "Comparing…" : "Compare"}
-        </Button>
       </div>
     </form>
   );
@@ -701,10 +706,10 @@ function ComposerChip({
     <button
       type="button"
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-border-2 bg-bg-white px-3 py-1.5 text-[12px] font-medium text-text-2 transition-colors hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
       title={disabled ? "Coming soon" : label}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Icon className="h-4 w-4" />
       {label}
     </button>
   );
