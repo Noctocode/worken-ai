@@ -49,6 +49,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/compare-models": {
+    bg: "bg-bg-1",
+    title: "Model Arena",
+    hideSearch: true,
+    hideNotifications: true,
+  },
 };
 
 const DEFAULT_CONFIG: RouteConfig = {

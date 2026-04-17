@@ -1,17 +1,59 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clipboard,
+  LayoutGrid,
+  Image as ImageIcon,
+  Info,
+  Library,
+  MoreVertical,
+  Paperclip,
+  Pencil,
+  Plus,
+  Search,
+  Mic,
+  Send,
+  Sparkles,
+  ThumbsDown,
+  ThumbsUp,
+  X,
+} from "lucide-react";
+import Image from "next/image";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { sendQuestionToCompareModels } from "@/lib/api";
 import { MODELS } from "@/lib/models";
-import { useState } from "react";
+
+function getModelProvider(id: string): string {
+  const slug = id.split("/")[0] ?? "Unknown";
+  return slug
+    .split(/[-_]/)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(" ");
+}
 
 // Types for evaluation JSON
 type ModelEvaluation = {
@@ -25,281 +67,1194 @@ type ModelEvaluation = {
   time?: number;
 };
 
+interface HistoryEntry {
+  id: string;
+  question: string;
+  ts: string; // human label, e.g. "Today"
+}
+
+const MODEL_COLORS: Record<string, string> = {
+  // simple deterministic palette per model id; falls back to gray.
+  "stepfun/step-3.5-flash:free": "bg-[#10A37F]/10 text-[#10A37F]",
+  "arcee-ai/trinity-large-preview:free": "bg-[#C2410C]/10 text-[#C2410C]",
+  "liquid/lfm-2.5-1.2b-thinking:free": "bg-[#4338CA]/10 text-[#4338CA]",
+};
+
+function getModelLabel(id: string): string {
+  return MODELS.find((m) => m.id === id)?.label ?? id;
+}
+
+function getModelTone(id: string): string {
+  return MODEL_COLORS[id] ?? "bg-bg-1 text-text-2";
+}
+
+function scoreBadgeTone(score: number): string {
+  if (score >= 8) return "bg-[#E8F7EE] text-[#009A29]";
+  if (score >= 5) return "bg-[#FFF3E6] text-[#FF7D00]";
+  return "bg-[#FDEDED] text-[#D92D20]";
+}
+
+const MIN_MODELS = 2;
+
+function slotLabel(index: number): string {
+  // A, B, C, ... AA after Z. Plenty for our purposes.
+  if (index < 26) return String.fromCharCode(65 + index);
+  return `M${index + 1}`;
+}
+
 export default function CompareModelsPage() {
-  const [modelA, setModelA] = useState<string>(MODELS[0].id);
-  const [modelB, setModelB] = useState<string>(MODELS[1].id);
+  const [selectedModels, setSelectedModels] = useState<string[]>([
+    MODELS[0].id,
+    MODELS[1].id,
+  ]);
   const [question, setQuestion] = useState("");
-  const [expectedOutput, setExpectedOutput] = useState(""); // Added for expected output
-  const [responseA, setResponseA] = useState<string | null>(null);
-  const [responseB, setResponseB] = useState<string | null>(null);
-  const [evaluationA, setEvaluationA] = useState<ModelEvaluation | null>(null);
-  const [evaluationB, setEvaluationB] = useState<ModelEvaluation | null>(null);
+  const [expectedOutput, setExpectedOutput] = useState("");
+  const [responses, setResponses] = useState<Record<string, string | null>>({});
+  const [evaluations, setEvaluations] = useState<
+    Record<string, ModelEvaluation | null>
+  >({});
   const [loading, setLoading] = useState(false);
+  const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
+
+  const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
+  const [railOpen, setRailOpen] = useState(true);
+  const [modelsExpanded, setModelsExpanded] = useState(true);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [addModelOpen, setAddModelOpen] = useState(false);
+
+  const activeModels = useMemo(
+    () => selectedModels.filter((id) => !disabledModels.has(id)),
+    [selectedModels, disabledModels],
+  );
+
+  const toggleModel = (id: string) => {
+    setDisabledModels((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        const activeCount = selectedModels.filter((m) => !next.has(m)).length;
+        if (activeCount <= MIN_MODELS) return prev;
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const hasResults = useMemo(
+    () =>
+      Object.values(responses).some((r) => r !== null) ||
+      Object.values(evaluations).some((e) => e !== null),
+    [responses, evaluations],
+  );
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setResponseA(null);
-    setResponseB(null);
-    setEvaluationA(null);
-    setEvaluationB(null);
+    setResponses({});
+    setEvaluations({});
+    setSubmittedQuestion(question);
 
-    const response = await sendQuestionToCompareModels(
-      [modelA, modelB],
-      question,
-      expectedOutput
-    );
-    console.log("response", response);
+    try {
+      const result = await sendQuestionToCompareModels(
+        activeModels,
+        question,
+        expectedOutput,
+      );
 
-    // Simulate parallel responses and evaluations
-    await new Promise((res) => setTimeout(res, 1200));
-    setResponseA(
-      response.responses.find((r) => r.model === modelA)?.response.content ??
-        null
-    );
-    setResponseB(
-      response.responses.find((r) => r.model === modelB)?.response.content ??
-        null
-    );
+      const nextResponses: Record<string, string | null> = {};
+      const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+      for (const id of activeModels) {
+        nextResponses[id] =
+          result.responses.find((r) => r.model === id)?.response.content ??
+          null;
+        nextEvaluations[id] =
+          result.comparison.find((c) => c.name === id) ?? null;
+      }
+      setResponses(nextResponses);
+      setEvaluations(nextEvaluations);
 
-    setEvaluationA(response.comparison.find((c) => c.name === modelA) ?? null);
-    setEvaluationB(response.comparison.find((c) => c.name === modelB) ?? null);
-
-    setLoading(false);
+      setHistory((prev) =>
+        [
+          { id: crypto.randomUUID(), question, ts: "Today" },
+          ...prev,
+        ].slice(0, 10),
+      );
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Couldn't compare models.";
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // Helper for rendering evaluation card
-  function EvaluationBox({
-    evaluation,
-  }: {
-    evaluation: ModelEvaluation | null;
-  }) {
-    if (!evaluation) {
-      return (
-        <div className="text-slate-400 text-center">
-          No evaluation available
-        </div>
-      );
+  const newComparison = useCallback(() => {
+    setQuestion("");
+    setExpectedOutput("");
+    setResponses({});
+    setEvaluations({});
+    setSubmittedQuestion(null);
+  }, []);
+
+  const changeModel = (index: number, newId: string) => {
+    setSelectedModels((prev) => {
+      if (prev.includes(newId) && prev[index] !== newId) return prev;
+      const next = [...prev];
+      next[index] = newId;
+      return next;
+    });
+  };
+
+  const removeModel = (index: number) => {
+    setSelectedModels((prev) => {
+      if (prev.length <= MIN_MODELS) return prev;
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const addModel = (id: string) => {
+    setSelectedModels((prev) => {
+      if (prev.includes(id)) return prev;
+      return [...prev, id];
+    });
+  };
+
+  // The appbar hosts the "New Comparison" button and dispatches this event.
+  useEffect(() => {
+    const handler = () => newComparison();
+    window.addEventListener("compare-models:new", handler);
+    return () => window.removeEventListener("compare-models:new", handler);
+  }, [newComparison]);
+
+  async function copyText(text: string, label = "response") {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`Copied ${label} to clipboard.`);
+    } catch {
+      toast.error("Couldn't copy to clipboard.");
     }
-    return (
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="font-semibold text-blue-700">{evaluation.name}</span>
-          <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 font-bold">
-            Score: {evaluation.score}
-          </span>
-        </div>
-        <div className="flex items-center gap-4 mb-2 text-xs text-slate-500">
-          {evaluation.totalTokens !== undefined && (
-            <span>
-              Tokens:{" "}
-              <span className="font-semibold text-slate-700">
-                {evaluation.totalTokens}
-              </span>
-            </span>
-          )}
-          {evaluation.totalCost !== undefined && (
-            <span>
-              Cost:{" "}
-              <span className="font-semibold text-slate-700">
-                ${Number(evaluation.totalCost).toFixed(5)}
-              </span>
-            </span>
-          )}
-          {evaluation.time !== undefined && (
-            <span>
-              Time:{" "}
-              <span className="font-semibold text-slate-700">
-                {evaluation.time} ms
-              </span>
-            </span>
-          )}
-        </div>
-        <div className="mb-2">
-          <span className="font-medium text-xs text-slate-600">
-            Advantages:
-          </span>
-          <ul className="list-disc list-inside text-sm pl-3 mb-1 text-green-700">
-            {evaluation.advantages.map((adv, idx) => (
-              <li key={idx}>{adv}</li>
-            ))}
-          </ul>
-          <span className="font-medium text-xs text-slate-600">
-            Disadvantages:
-          </span>
-          <ul className="list-disc list-inside text-sm pl-3 mb-1 text-red-700">
-            {evaluation.disadvantages.map((dis, idx) => (
-              <li key={idx}>{dis}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="text-slate-800 text-sm font-normal italic">
-          {evaluation.summary}
-        </div>
-      </div>
-    );
   }
 
   return (
-    <div className="flex flex-col items-start justify-start gap-8 w-full">
-      {/* Title and Subtitle */}
-      <div className="w-full flex flex-col items-start gap-2">
-        <h1 className="text-3xl font-semibold">Compare AI Models</h1>
-        <p className="text-slate-600 text-base">
-          Select two AI models, ask a question, and compare their responses side
-          by side.
-        </p>
+    <div className="flex h-full min-h-0 flex-col gap-6 pb-6">
+      {/* Body shell: main column + optional right rail */}
+      <div className="flex min-h-0 flex-1 gap-6">
+        {/* Main column — white card per Figma */}
+        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden rounded-[20px] bg-bg-white p-6">
+          {/* Scrollable content area (prompt + responses) */}
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            {!hasResults && !loading && !submittedQuestion && (
+              <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+                <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
+                <h3 className="text-[16px] font-semibold text-text-1">
+                  Compare models side by side
+                </h3>
+                <p className="max-w-[420px] text-[13px] text-text-2">
+                  Pick models in the right rail, write a prompt and the
+                  expected output, then hit Compare.
+                </p>
+              </div>
+            )}
+
+            {submittedQuestion && (
+              <PromptBubble
+                question={submittedQuestion}
+                onEdit={() => {
+                      setQuestion(submittedQuestion);
+                      setSubmittedQuestion(null);
+                    }}
+              />
+            )}
+
+            {(loading || hasResults) && (
+              <div className="flex flex-wrap gap-4">
+                {activeModels.map((id) => (
+                  <ResponseCard
+                    key={id}
+                    modelId={id}
+                    response={responses[id] ?? null}
+                    evaluation={evaluations[id] ?? null}
+                    loading={loading && (responses[id] ?? null) === null}
+                    onCopy={(t) => copyText(t, getModelLabel(id))}
+                    onEdit={
+                      submittedQuestion
+                        ? () => setQuestion(submittedQuestion)
+                        : undefined
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Composer (anchored at bottom) */}
+          <Composer
+            question={question}
+            setQuestion={setQuestion}
+            expectedOutput={expectedOutput}
+            setExpectedOutput={setExpectedOutput}
+            loading={loading}
+            activeModelCount={activeModels.length}
+            onSubmit={compareModels}
+          />
+        </section>
+
+        {/* Right rail */}
+        {railOpen ? (
+          <RightRail
+            selectedModels={selectedModels}
+            disabledModels={disabledModels}
+            onToggleModel={toggleModel}
+            onChangeModel={changeModel}
+            onRemoveModel={removeModel}
+            modelsExpanded={modelsExpanded}
+            setModelsExpanded={setModelsExpanded}
+            historyExpanded={historyExpanded}
+            setHistoryExpanded={setHistoryExpanded}
+            history={history}
+            onLoadHistory={(q) => {
+              setQuestion(q);
+              setSubmittedQuestion(null);
+              setResponses({});
+              setEvaluations({});
+            }}
+            onClose={() => setRailOpen(false)}
+            onAddModel={() => setAddModelOpen(true)}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRailOpen(true)}
+            className="self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Open Comparison Details"
+            aria-label="Open Comparison Details"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+          </button>
+        )}
       </div>
 
-      {/* Model Selectors */}
-      <div className="flex flex-row gap-6 w-full justify-center">
-        {/* Model A */}
-        <Card className="flex-1 p-6 flex flex-col gap-2 items-center">
-          <span className="font-bold text-slate-700 mb-2">Model A</span>
-          <Select
-            value={modelA}
-            onValueChange={(value) => setModelA(value as typeof modelA)}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODELS.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Card>
-        {/* Model B */}
-        <Card className="flex-1 p-6 flex flex-col gap-2 items-center">
-          <span className="font-bold text-slate-700 mb-2">Model B</span>
-          <Select
-            value={modelB}
-            onValueChange={(value) => setModelB(value as typeof modelB)}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {MODELS.map((model) => (
-                <SelectItem key={model.id} value={model.id}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Card>
-      </div>
-
-      {/* Chat Box */}
-      <form
-        className="flex flex-col items-center gap-3 w-full"
-        onSubmit={compareModels}
-      >
-        {/* Use a textarea for a bigger question box */}
-        <textarea
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder="Enter your question to compare..."
-          className="w-full flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[200px] resize-y transition-all duration-150"
-          disabled={loading}
-          rows={3}
-        />
-        {/* Expected Output Textarea */}
-        <textarea
-          value={expectedOutput}
-          onChange={(e) => setExpectedOutput(e.target.value)}
-          placeholder="Enter your expected output..."
-          className="w-full flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-h-[120px] resize-y transition-all duration-150"
-          disabled={loading}
-          rows={2}
-        />
-        <Button
-          type="submit"
-          className="min-w-max w-full"
-          disabled={!question.trim() || !expectedOutput.trim() || loading}
-        >
-          {loading ? "Comparing..." : "Compare"}
-        </Button>
-      </form>
-
-      {/* Response Comparison */}
-      {(responseA || responseB) && (
-        <>
-          <div className="flex flex-row gap-6 w-full">
-            <Card className="flex-1 min-h-[140px] p-5 max-w-[50%] overflow-x-scroll bg-slate-50">
-              <div className="text-xs font-semibold mb-2 text-blue-700">
-                {MODELS.find((m) => m.id === modelA)?.label}
-              </div>
-              <div className="prose prose-slate max-w-none text-slate-800">
-                {responseA ? (
-                  <AiResponseRender content={responseA} />
-                ) : (
-                  <span className="text-slate-400">No response</span>
-                )}
-              </div>
-            </Card>
-            <Card className="flex-1 min-h-[140px] p-5 max-w-[50%] bg-slate-50">
-              <div className="text-xs font-semibold mb-2 text-blue-700">
-                {MODELS.find((m) => m.id === modelB)?.label}
-              </div>
-              <div className="prose prose-slate max-w-none text-slate-800">
-                {responseB ? (
-                  <AiResponseRender content={responseB} />
-                ) : (
-                  <span className="text-slate-400">No response</span>
-                )}
-              </div>
-            </Card>
-          </div>
-          {/* Evaluation Comparison */}
-          <div className="flex flex-row gap-6 w-full mt-4">
-            <Card className="flex-1 min-h-[140px] p-5 border-blue-100 bg-white border-2">
-              <EvaluationBox evaluation={evaluationA} />
-            </Card>
-            <Card className="flex-1 min-h-[140px] p-5 border-blue-100 bg-white border-2">
-              <EvaluationBox evaluation={evaluationB} />
-            </Card>
-          </div>
-        </>
-      )}
+      <AddModelDialog
+        open={addModelOpen}
+        onOpenChange={setAddModelOpen}
+        selectedModels={selectedModels}
+        onAdd={(id) => {
+          addModel(id);
+          toast.success(`Added ${getModelLabel(id)} to comparison.`);
+        }}
+      />
     </div>
   );
 }
 
-/**
- * Converts plain AI text output to HTML with basic formatting:
- * - Headings: ### for h3, ## for h2, # for h1
- * - Horizontal rules: --- or ***
- * - Newlines/line breaks as <br>
- * - Escaped HTML correctly to avoid XSS
- * - Trims text and handles code blocks minimally
- */
+/* ─── Prompt bubble ──────────────────────────────────────────────────── */
+
+function PromptBubble({
+  question,
+  onEdit,
+}: {
+  question: string;
+  onEdit: () => void;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded bg-bg-1 p-4">
+      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[11px] font-semibold text-white">
+        U
+      </div>
+      <p className="flex-1 text-[14px] italic leading-[1.5] text-text-1">
+        “{question}”
+      </p>
+      <button
+        type="button"
+        onClick={onEdit}
+        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border-2 bg-bg-white text-text-2 transition-colors hover:text-text-1"
+        title="Edit prompt"
+        aria-label="Edit prompt"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  );
+}
+
+/* ─── Response + evaluation card ─────────────────────────────────────── */
+
+function ResponseCard({
+  modelId,
+  response,
+  evaluation,
+  loading,
+  onCopy,
+  onEdit,
+}: {
+  modelId: string;
+  response: string | null;
+  evaluation: ModelEvaluation | null;
+  loading: boolean;
+  onCopy: (text: string) => void;
+  onEdit?: () => void;
+}) {
+  const label = getModelLabel(modelId);
+  const tone = getModelTone(modelId);
+  const provider = getModelProvider(modelId);
+
+  return (
+    <article className="flex min-w-0 flex-1 basis-[320px] flex-col gap-2.5 rounded bg-bg-1 p-4">
+      {/* Header */}
+      <header className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone}`}
+          >
+            <Bot className="h-3.5 w-3.5" strokeWidth={2} />
+          </span>
+          <span className="truncate text-[14px] font-medium text-text-2">
+            {label}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          {onEdit && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+              title="Edit prompt"
+              aria-label="Edit prompt"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {evaluation?.time !== undefined && (
+            <span className="text-[11px] font-medium text-text-3">
+              {(evaluation.time / 1000).toFixed(1)}s
+            </span>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                title="Model info"
+                aria-label="Model info"
+              >
+                <Info className="h-3.5 w-3.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel className="flex items-center gap-2">
+                <span
+                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${tone}`}
+                >
+                  <Bot className="h-3 w-3" strokeWidth={2} />
+                </span>
+                <span className="truncate text-[13px] font-semibold text-text-1">
+                  {label}
+                </span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <div className="flex flex-col gap-1.5 px-2 py-1.5 text-[11px]">
+                <InfoRow label="Provider" value={provider} />
+                <InfoRow label="Model ID" value={modelId} mono />
+                <InfoRow label="Tier" value="Free" />
+                {evaluation?.totalTokens !== undefined && (
+                  <InfoRow label="Tokens" value={String(evaluation.totalTokens)} />
+                )}
+                {evaluation?.totalCost !== undefined && (
+                  <InfoRow
+                    label="Cost"
+                    value={`$${Number(evaluation.totalCost).toFixed(5)}`}
+                  />
+                )}
+                {evaluation?.time !== undefined && (
+                  <InfoRow label="Time" value={`${evaluation.time} ms`} />
+                )}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      {/* Body */}
+      <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1">
+        {loading ? (
+          <ResponseSkeleton />
+        ) : response ? (
+          <AiResponseRender content={response} />
+        ) : (
+          <span className="text-text-3">No response.</span>
+        )}
+      </div>
+
+      {/* Evaluation */}
+      {evaluation && <EvaluationBlock evaluation={evaluation} />}
+
+      {/* Footer reactions */}
+      <footer className="flex items-center gap-1 border-t border-border-2 pt-2">
+        <button
+          type="button"
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+          title="Helpful"
+          aria-label="Helpful"
+        >
+          <ThumbsUp className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+          title="Not helpful"
+          aria-label="Not helpful"
+        >
+          <ThumbsDown className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={() => response && onCopy(response)}
+          disabled={!response}
+          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Copy"
+          aria-label="Copy"
+        >
+          <Clipboard className="h-3.5 w-3.5" />
+        </button>
+      </footer>
+    </article>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-text-3">{label}</span>
+      <span
+        className={`truncate text-text-1 ${mono ? "font-mono text-[10px]" : "font-medium"}`}
+        title={value}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ResponseSkeleton() {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="h-3 w-3/4 animate-pulse rounded bg-bg-1" />
+      <div className="h-3 w-full animate-pulse rounded bg-bg-1" />
+      <div className="h-3 w-5/6 animate-pulse rounded bg-bg-1" />
+      <div className="h-3 w-2/3 animate-pulse rounded bg-bg-1" />
+    </div>
+  );
+}
+
+function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
+  return (
+    <div className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] font-semibold uppercase tracking-wide text-text-2">
+          Evaluation
+        </span>
+        <span
+          className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-bold ${scoreBadgeTone(evaluation.score)}`}
+        >
+          Score: {evaluation.score}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-2">
+        {evaluation.totalTokens !== undefined && (
+          <span>
+            Tokens:{" "}
+            <span className="font-semibold text-text-1">
+              {evaluation.totalTokens}
+            </span>
+          </span>
+        )}
+        {evaluation.totalCost !== undefined && (
+          <span>
+            Cost:{" "}
+            <span className="font-semibold text-text-1">
+              ${Number(evaluation.totalCost).toFixed(5)}
+            </span>
+          </span>
+        )}
+        {evaluation.time !== undefined && (
+          <span>
+            Time:{" "}
+            <span className="font-semibold text-text-1">
+              {evaluation.time} ms
+            </span>
+          </span>
+        )}
+      </div>
+
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
+          Advantages
+        </p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#009A29]">
+          {evaluation.advantages.map((a, i) => (
+            <li key={i}>{a}</li>
+          ))}
+        </ul>
+      </div>
+      <div>
+        <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
+          Disadvantages
+        </p>
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#D92D20]">
+          {evaluation.disadvantages.map((d, i) => (
+            <li key={i}>{d}</li>
+          ))}
+        </ul>
+      </div>
+
+      <p className="text-[12px] italic leading-[1.5] text-text-1">
+        {evaluation.summary}
+      </p>
+    </div>
+  );
+}
+
+/* ─── Composer ───────────────────────────────────────────────────────── */
+
+function Composer({
+  question,
+  setQuestion,
+  expectedOutput,
+  setExpectedOutput,
+  loading,
+  activeModelCount,
+  onSubmit,
+}: {
+  question: string;
+  setQuestion: (v: string) => void;
+  expectedOutput: string;
+  setExpectedOutput: (v: string) => void;
+  loading: boolean;
+  activeModelCount: number;
+  onSubmit: (e: React.FormEvent) => void;
+}) {
+  return (
+    <form
+      onSubmit={onSubmit}
+      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[#E5E6EB] p-2"
+    >
+      <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
+        {/* Input row */}
+        <div className="flex items-start gap-2.5 px-4 py-3">
+          <Image
+            src="/main-logo.png"
+            alt="WorkenAI"
+            width={24}
+            height={23}
+            className="shrink-0"
+          />
+          <textarea
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Ask me Anything"
+            className="min-h-[24px] w-full resize-y border-0 bg-transparent text-[16px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+            disabled={loading}
+          />
+        </div>
+        {/* Expected output (functional addition — not in Figma) */}
+        <textarea
+          value={expectedOutput}
+          onChange={(e) => setExpectedOutput(e.target.value)}
+          placeholder="Expected output (used to score the responses)"
+          className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+          disabled={loading}
+        />
+        {/* Chips + actions row */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <ComposerChip icon={Paperclip} label="Attach File" disabled />
+            <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
+            <ComposerChip icon={Library} label="Prompt Library" disabled />
+            <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
+          </div>
+          <div className="flex items-center gap-6">
+            <button
+              type="button"
+              disabled
+              className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg bg-bg-white text-primary-6 opacity-50"
+              title="Voice input (coming soon)"
+              aria-label="Voice input"
+            >
+              <Mic className="h-4 w-4" />
+            </button>
+            <button
+              type="submit"
+              disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
+              title={loading ? "Comparing…" : "Compare"}
+              aria-label="Compare"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function ComposerChip({
+  icon: Icon,
+  label,
+  disabled,
+}: {
+  icon: typeof Paperclip;
+  label: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+      title={disabled ? "Coming soon" : label}
+    >
+      <Icon className="h-4 w-4" />
+      {label}
+    </button>
+  );
+}
+
+/* ─── Right rail ─────────────────────────────────────────────────────── */
+
+function RightRail({
+  selectedModels,
+  disabledModels,
+  onToggleModel,
+  onChangeModel,
+  onRemoveModel,
+  modelsExpanded,
+  setModelsExpanded,
+  historyExpanded,
+  setHistoryExpanded,
+  history,
+  onLoadHistory,
+  onClose,
+  onAddModel,
+}: {
+  selectedModels: string[];
+  disabledModels: Set<string>;
+  onToggleModel: (id: string) => void;
+  onChangeModel: (index: number, newId: string) => void;
+  onRemoveModel: (index: number) => void;
+  modelsExpanded: boolean;
+  setModelsExpanded: (v: boolean) => void;
+  historyExpanded: boolean;
+  setHistoryExpanded: (v: boolean) => void;
+  history: HistoryEntry[];
+  onLoadHistory: (q: string) => void;
+  onClose: () => void;
+  onAddModel: () => void;
+}) {
+  const canRemove = selectedModels.length > MIN_MODELS;
+  const allModelIds = useMemo(() => MODELS.map((m) => m.id), []);
+  const canAddMore = selectedModels.length < allModelIds.length;
+  return (
+    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
+      <header className="flex items-center justify-between">
+        <h2 className="text-[18px] font-bold leading-[1.3] text-text-2">
+          Comparison Details
+        </h2>
+        <button
+          type="button"
+          onClick={onClose}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+          title="Close"
+          aria-label="Close"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </header>
+
+      {/* Models section */}
+      <RailSection
+        title="Models"
+        expanded={modelsExpanded}
+        onToggle={() => setModelsExpanded(!modelsExpanded)}
+      >
+        {selectedModels.map((modelId, idx) => {
+          const isEnabled = !disabledModels.has(modelId);
+          const activeCount = selectedModels.filter(
+            (id) => !disabledModels.has(id),
+          ).length;
+          return (
+            <ModelPill
+              key={modelId}
+              slot={slotLabel(idx)}
+              value={modelId}
+              enabled={isEnabled}
+              canDisable={!isEnabled || activeCount > MIN_MODELS}
+              onToggle={() => onToggleModel(modelId)}
+              onChange={(newId) => onChangeModel(idx, newId)}
+              onRemove={canRemove ? () => onRemoveModel(idx) : undefined}
+              disabledIds={selectedModels.filter((id) => id !== modelId)}
+            />
+          );
+        })}
+        <button
+          type="button"
+          onClick={onAddModel}
+          disabled={!canAddMore}
+          className="inline-flex h-8 w-fit cursor-pointer items-center gap-2.5 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+          title={
+            canAddMore
+              ? "Add another model to the comparison"
+              : "All available models are already in the comparison"
+          }
+        >
+          <Plus className="h-4 w-4" />
+          Add Model
+        </button>
+      </RailSection>
+
+      {/* History section */}
+      <RailSection
+        title="History"
+        expanded={historyExpanded}
+        onToggle={() => setHistoryExpanded(!historyExpanded)}
+      >
+        {history.length === 0 ? (
+          <p className="text-[13px] text-text-3">
+            Your recent comparisons will appear here.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-[13px] font-normal text-text-2">Today</p>
+            <ul className="flex flex-col gap-2">
+              {history.map((h) => (
+                <li key={h.id}>
+                  <button
+                    type="button"
+                    onClick={() => onLoadHistory(h.question)}
+                    className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
+                    title={h.question}
+                  >
+                    “{h.question}”
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </RailSection>
+    </aside>
+  );
+}
+
+function RailSection({
+  title,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex cursor-pointer items-center justify-between rounded text-left text-[16px] font-medium leading-[1.3] text-text-1 transition-colors hover:text-primary-6"
+      >
+        {title}
+        {expanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+      </button>
+      {expanded && <div className="flex flex-col gap-4">{children}</div>}
+    </section>
+  );
+}
+
+function ModelPill({
+  slot,
+  value,
+  enabled,
+  canDisable,
+  onToggle,
+  onChange,
+  onRemove,
+  disabledIds,
+}: {
+  slot: string;
+  value: string;
+  enabled: boolean;
+  canDisable: boolean;
+  onToggle: () => void;
+  onChange: (v: string) => void;
+  onRemove?: () => void;
+  disabledIds: string[];
+}) {
+  const tone = getModelTone(value);
+  const label = getModelLabel(value);
+
+  const toggleButton = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={enabled}
+      aria-label={`${enabled ? "Disable" : "Enable"} ${label}`}
+      onClick={canDisable ? onToggle : undefined}
+      className={`flex h-6 w-11 shrink-0 items-center rounded-full px-0.5 transition-colors ${
+        canDisable ? "cursor-pointer" : "cursor-not-allowed"
+      } ${enabled ? "bg-primary-6" : "bg-text-3"}`}
+    >
+      <span
+        className={`block h-5 w-5 rounded-full bg-bg-white transition-transform ${
+          enabled ? "translate-x-5" : "translate-x-0"
+        }`}
+      />
+    </button>
+  );
+
+  return (
+    <div
+      className={`flex items-center gap-2.5 rounded-[20px] bg-bg-white px-4 py-3 shadow-[0_1px_2px_rgba(0,0,0,0.06),_0_1px_3px_rgba(0,0,0,0.1)] transition-opacity ${
+        enabled ? "" : "opacity-50"
+      }`}
+    >
+      {canDisable ? (
+        toggleButton
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex">{toggleButton}</span>
+          </TooltipTrigger>
+          <TooltipContent>
+            At least {MIN_MODELS} models must be active
+          </TooltipContent>
+        </Tooltip>
+      )}
+
+      {/* Avatar + name */}
+      <span
+        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone}`}
+        title={`Model ${slot}`}
+      >
+        <Bot className="h-3.5 w-3.5" strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1 truncate text-[14px] leading-[1.3] text-text-1">
+        {label}
+      </span>
+
+      {/* Swap menu */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Change model"
+            aria-label="Change model"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuLabel className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
+            Slot {slot}
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          {MODELS.map((m) => {
+            const isActive = m.id === value;
+            const isOther = disabledIds.includes(m.id) && !isActive;
+            return (
+              <DropdownMenuItem
+                key={m.id}
+                disabled={isOther}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (!isOther) onChange(m.id);
+                }}
+                className="flex items-center justify-between gap-2"
+              >
+                <span className="truncate">{m.label}</span>
+                {isActive && (
+                  <Check className="h-3.5 w-3.5 text-primary-6" />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
+          {onRemove && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onRemove();
+                }}
+                className="text-[#D92D20] focus:text-[#D92D20]"
+              >
+                Remove from comparison
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/* ─── Add Model dialog ───────────────────────────────────────────────── */
+
+interface ProviderGroup {
+  provider: string;
+  models: typeof MODELS[number][];
+}
+
+function groupModelsByProvider(query: string): ProviderGroup[] {
+  const q = query.trim().toLowerCase();
+  const matched = MODELS.filter((m) => {
+    if (!q) return true;
+    return (
+      m.label.toLowerCase().includes(q) ||
+      m.id.toLowerCase().includes(q) ||
+      getModelProvider(m.id).toLowerCase().includes(q)
+    );
+  });
+
+  const map = new Map<string, typeof MODELS[number][]>();
+  for (const m of matched) {
+    const provider = getModelProvider(m.id);
+    const existing = map.get(provider) ?? [];
+    existing.push(m);
+    map.set(provider, existing);
+  }
+  return Array.from(map.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([provider, models]) => ({ provider, models }));
+}
+
+function AddModelDialog({
+  open,
+  onOpenChange,
+  selectedModels,
+  onAdd,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  selectedModels: string[];
+  onAdd: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  // Default selection points at the first model not already in the comparison.
+  const firstAvailable = useMemo(
+    () => MODELS.find((m) => !selectedModels.includes(m.id))?.id ?? MODELS[0].id,
+    [selectedModels],
+  );
+  const [selectedId, setSelectedId] = useState<string>(firstAvailable);
+
+  // Reset selection only on the false→true transition so the user's pick
+  // isn't overwritten while the dialog is open.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setSelectedId(firstAvailable);
+      setQuery("");
+    }
+    wasOpenRef.current = open;
+  }, [open, firstAvailable]);
+
+  const groups = useMemo(() => groupModelsByProvider(query), [query]);
+  const selected = MODELS.find((m) => m.id === selectedId) ?? MODELS[0];
+  const tone = getModelTone(selected.id);
+  const alreadyInUse = selectedModels.includes(selected.id);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className="max-w-[900px] gap-0 p-0"
+        showCloseButton={false}
+      >
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
+          <DialogTitle className="text-[18px] font-bold text-text-1">
+            Add Model
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 divide-x divide-border-2 sm:grid-cols-2">
+          {/* List column */}
+          <div className="flex max-h-[480px] flex-col gap-3 overflow-hidden p-4">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search Models"
+                className="h-10 pl-9 placeholder:text-text-3"
+              />
+            </div>
+
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto pr-1">
+              {groups.length === 0 && (
+                <p className="py-8 text-center text-[12px] text-text-3">
+                  No models match your search.
+                </p>
+              )}
+              {groups.map((g) => (
+                <section key={g.provider} className="flex flex-col gap-1.5">
+                  <h3 className="px-2 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                    {g.provider}
+                  </h3>
+                  <ul className="flex flex-col gap-0.5">
+                    {g.models.map((m) => {
+                      const isSelected = m.id === selectedId;
+                      const inUse = selectedModels.includes(m.id);
+                      return (
+                        <li key={m.id}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(m.id)}
+                            className={`flex w-full cursor-pointer flex-col items-start rounded px-3 py-2 text-left transition-colors ${
+                              isSelected
+                                ? "bg-bg-1"
+                                : "hover:bg-bg-1/60"
+                            }`}
+                          >
+                            <span className="flex w-full items-center justify-between gap-2">
+                              <span className="text-[13px] font-medium text-text-1">
+                                {m.label}
+                              </span>
+                              {inUse && (
+                                <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
+                                  In use
+                                </span>
+                              )}
+                            </span>
+                            <span className="truncate text-[11px] text-text-3">
+                              {m.id}
+                            </span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          </div>
+
+          {/* Detail column */}
+          <div className="flex flex-col gap-4 p-6">
+            <div className="flex items-center gap-3">
+              <span
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone}`}
+              >
+                <Bot className="h-5 w-5" strokeWidth={2} />
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <span className="text-[15px] font-bold text-text-1">
+                  {selected.label}
+                </span>
+                <span className="truncate text-[11px] text-text-3">
+                  {selected.id}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[13px] leading-[1.5] text-text-2">
+              Free tier model provided via OpenRouter. Used to compare answers
+              against other models in the arena.
+            </p>
+
+            <div className="grid grid-cols-3 gap-2">
+              <SpecChip label="Provider" value={getModelProvider(selected.id)} />
+              <SpecChip label="Tier" value="Free" />
+              <SpecChip
+                label="Status"
+                value={alreadyInUse ? "In use" : "Available"}
+              />
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="flex flex-row items-center justify-end gap-2 border-t border-border-2 px-6 py-4">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="cursor-pointer rounded-full px-5"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => {
+              onAdd(selectedId);
+              onOpenChange(false);
+            }}
+            disabled={alreadyInUse}
+            className="cursor-pointer rounded-full bg-primary-6 px-6 hover:bg-primary-7"
+            title={alreadyInUse ? "Model is already in the comparison" : undefined}
+          >
+            Add Model
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SpecChip({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex flex-col gap-0.5 rounded bg-bg-1 px-3 py-2">
+      <span className="text-[10px] font-medium uppercase tracking-wide text-text-3">
+        {label}
+      </span>
+      <span className="truncate text-[12px] font-semibold text-text-1">
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/* ─── Markdown renderer (kept from previous implementation) ──────────── */
+
 function aiResponseToHtml(raw: string): string {
   if (!raw) return "";
 
-  let lines = raw.split(/\r?\n/);
+  const lines = raw.split(/\r?\n/);
 
-  let htmlLines: string[] = [];
+  const htmlLines: string[] = [];
   let i = 0;
   let inCodeBlock = false;
 
-  // Helper to replace **bold** with <strong>bold</strong>, ensuring no XSS.
   function processBold(text: string): string {
-    // This reg-ex matches pairs of **, non-greedy to support multiple in a line.
-    // It escapes inner text to avoid XSS
     return text.replace(
       /\*\*(.+?)\*\*/g,
-      (_, inner) => `<strong>${escapeHtml(inner)}</strong>`
+      (_, inner) => `<strong>${escapeHtml(inner)}</strong>`,
     );
   }
 
   while (i < lines.length) {
-    let line = lines[i];
+    const line = lines[i];
 
-    // Detect start/end of code block
     if (/^```/.test(line.trim())) {
       if (!inCodeBlock) {
         inCodeBlock = true;
@@ -313,7 +1268,6 @@ function aiResponseToHtml(raw: string): string {
     }
 
     if (inCodeBlock) {
-      // Make sure to escape code
       htmlLines.push(
         line.replace(
           /[&<>"']/g,
@@ -324,30 +1278,26 @@ function aiResponseToHtml(raw: string): string {
               ">": "&gt;",
               '"': "&quot;",
               "'": "&#039;",
-            })[c]!
-        )
+            })[c]!,
+        ),
       );
       i++;
       continue;
     }
 
-    // Table detection: start of markdown table (at least 2 rows starting with |, second is ---)
     if (
-      /^\s*\|(.+\|)+\s*$/.test(line) && // first table row
+      /^\s*\|(.+\|)+\s*$/.test(line) &&
       i + 1 < lines.length &&
       /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(lines[i + 1])
     ) {
-      // Parse the header
       const header = lines[i]
         .trim()
         .replace(/^\|/, "")
         .replace(/\|$/, "")
         .split("|")
         .map((cell) => processBold(escapeHtml(cell.trim())));
-      // Parse column alignments from --- row, but for simplicity we ignore here
-      i += 2; // Skip header and separator
+      i += 2;
 
-      // Parse data rows
       const rows: string[][] = [];
       while (i < lines.length && /^\s*\|(.+\|)+\s*$/.test(lines[i])) {
         const row = lines[i]
@@ -360,7 +1310,6 @@ function aiResponseToHtml(raw: string): string {
         i++;
       }
 
-      // Build the HTML table
       let tableHtml = '<table class="prose-table w-full my-4 border-collapse">';
       tableHtml += "<thead><tr>";
       for (const h of header) {
@@ -379,12 +1328,11 @@ function aiResponseToHtml(raw: string): string {
       continue;
     }
 
-    // Headings: start of line with #, ##, ###
     if (/^###\s+/.test(line)) {
       htmlLines.push(
         `<h3 class="mt-4 mb-1 font-bold text-lg">${processBold(
-          line.replace(/^###\s+/, "")
-        )}</h3>`
+          line.replace(/^###\s+/, ""),
+        )}</h3>`,
       );
       i++;
       continue;
@@ -392,8 +1340,8 @@ function aiResponseToHtml(raw: string): string {
     if (/^##\s+/.test(line)) {
       htmlLines.push(
         `<h2 class="mt-4 mb-2 font-bold text-xl">${processBold(
-          line.replace(/^##\s+/, "")
-        )}</h2>`
+          line.replace(/^##\s+/, ""),
+        )}</h2>`,
       );
       i++;
       continue;
@@ -401,14 +1349,13 @@ function aiResponseToHtml(raw: string): string {
     if (/^#\s+/.test(line)) {
       htmlLines.push(
         `<h1 class="mt-5 mb-2 font-bold text-2xl">${processBold(
-          line.replace(/^#\s+/, "")
-        )}</h1>`
+          line.replace(/^#\s+/, ""),
+        )}</h1>`,
       );
       i++;
       continue;
     }
 
-    // Horizontal rules: --- or ***
     if (/^\s*(---|\*\*\*)\s*$/.test(line)) {
       htmlLines.push("<br />");
       htmlLines.push("<hr />");
@@ -416,13 +1363,11 @@ function aiResponseToHtml(raw: string): string {
       continue;
     }
 
-    // Treat as bullet if line starts with "- " or "* "
     if (/^\s*[-*]\s+/.test(line)) {
-      // Gather consecutive bullets into <ul>
       const items = [];
       while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
         items.push(
-          `<li>${processBold(escapeHtml(lines[i].replace(/^\s*[-*]\s+/, "")))}</li>`
+          `<li>${processBold(escapeHtml(lines[i].replace(/^\s*[-*]\s+/, "")))}</li>`,
         );
         i++;
       }
@@ -430,12 +1375,11 @@ function aiResponseToHtml(raw: string): string {
       continue;
     }
 
-    // Simple numbered list (1. 2. 3.)
     if (/^\s*\d+\.\s+/.test(line)) {
       const items = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
         items.push(
-          `<li>${processBold(escapeHtml(lines[i].replace(/^\s*\d+\.\s+/, "")))}</li>`
+          `<li>${processBold(escapeHtml(lines[i].replace(/^\s*\d+\.\s+/, "")))}</li>`,
         );
         i++;
       }
@@ -443,11 +1387,8 @@ function aiResponseToHtml(raw: string): string {
       continue;
     }
 
-    // Otherwise, treat as paragraph, but preserve <br> for inline newlines within paragraphs
     if (line.trim() !== "") {
       htmlLines.push("<p>" + processBold(escapeHtml(line)) + "</p>");
-    } else {
-      // For blank lines, insert nothing (could insert <br> if preferred)
     }
     i++;
   }

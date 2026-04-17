@@ -573,34 +573,48 @@ export const Appbar = () => {
       </div>
 
       {/* Right Header Controls */}
-      {!config.hideSearch && (
-        <div className="flex items-center gap-3">
-          <div className="relative hidden group sm:block">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
-            <Input
-              type="text"
-              placeholder="Search projects..."
-              className="w-64 border-slate-200 bg-white pl-10 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:ring-offset-0 focus-visible:border-blue-500"
-            />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2">
-              <kbd className="hidden h-5 items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-medium text-slate-400 lg:inline-flex">
-                ⌘K
-              </kbd>
-            </div>
-          </div>
+      <div className="flex items-center gap-3">
+        {pathname === "/compare-models" && (
+          <Button
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("compare-models:new"))
+            }
+            className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
+          >
+            <Plus className="h-4 w-4" />
+            New Comparison
+          </Button>
+        )}
 
-          {!config.hideNotifications && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-            >
-              <Bell className="h-5 w-5" />
-              <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
-            </Button>
-          )}
-        </div>
-      )}
+        {!config.hideSearch && (
+          <>
+            <div className="relative hidden group sm:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
+              <Input
+                type="text"
+                placeholder="Search projects..."
+                className="w-64 border-slate-200 bg-white pl-10 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:ring-offset-0 focus-visible:border-blue-500"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <kbd className="hidden h-5 items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-medium text-slate-400 lg:inline-flex">
+                  ⌘K
+                </kbd>
+              </div>
+            </div>
+
+            {!config.hideNotifications && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
+              </Button>
+            )}
+          </>
+        )}
+      </div>
     </header>
   );
 };
