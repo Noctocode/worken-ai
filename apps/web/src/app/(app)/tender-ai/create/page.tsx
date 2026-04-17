@@ -54,17 +54,26 @@ const CATEGORIES = [
   "Other",
 ];
 
+const SUFFIXES: Record<string, number> = { k: 1_000, m: 1_000_000, b: 1_000_000_000 };
+
 function formatCurrency(raw: string): string {
-  const trimmed = raw.replace(/^\$/, "").trim();
-  if (/[a-zA-Z]/.test(trimmed)) return raw;
-  const cleaned = trimmed.replace(/[^0-9.]/g, "");
+  const cleaned = raw.replace(/[^0-9.kmb]/gi, "");
   if (!cleaned) return "";
+  if (/[kmb]/i.test(cleaned)) return cleaned;
   const [whole, dec] = cleaned.split(".");
   const formatted = Number(whole || "0").toLocaleString("en-US");
   if (cleaned.includes(".")) {
     return `${formatted}.${(dec ?? "").slice(0, 2)}`;
   }
   return formatted;
+}
+
+function expandShorthand(value: string): string {
+  const match = value.match(/^(\d+(?:\.\d+)?)\s*([kmb])$/i);
+  if (!match) return value;
+  const num = parseFloat(match[1]);
+  const multiplier = SUFFIXES[match[2].toLowerCase()] ?? 1;
+  return Math.round(num * multiplier).toLocaleString("en-US");
 }
 
 type Priority = "High" | "Medium" | "Low";
@@ -307,6 +316,7 @@ function BasicInfoStep({
               <Input
                 value={data.value}
                 onChange={(e) => update("value", formatCurrency(e.target.value))}
+                onBlur={() => update("value", expandShorthand(data.value))}
                 placeholder="2,400,000"
                 className="h-10 pl-9"
               />
