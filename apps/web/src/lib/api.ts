@@ -931,7 +931,7 @@ export async function fetchTender(id: string): Promise<TenderDetail> {
 
 export async function createTender(
   data: CreateTenderPayload,
-): Promise<TenderSummary> {
+): Promise<Pick<TenderSummary, "id" | "code" | "name" | "status">> {
   const res = await apiFetch("/tenders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -947,7 +947,7 @@ export async function createTender(
 export async function updateTender(
   id: string,
   data: Partial<CreateTenderPayload & { matchRate: number; status: string }>,
-): Promise<TenderSummary> {
+): Promise<Pick<TenderSummary, "id" | "code" | "name" | "status">> {
   const res = await apiFetch(`/tenders/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
