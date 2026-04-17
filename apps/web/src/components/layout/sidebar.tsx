@@ -167,7 +167,7 @@ export const SidebarContent = ({
 
       {/* Navigation Links */}
       <div className="scrollbar-on-hover min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        <div className={`flex flex-col ${collapsed ? "items-center" : "items-center"} gap-1`}>
+        <div className="flex flex-col items-center gap-1">
           {navGroups.map((group, gi) => (
             <div key={gi} className="contents">
               {gi > 0 && (
