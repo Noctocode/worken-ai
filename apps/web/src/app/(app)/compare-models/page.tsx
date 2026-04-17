@@ -235,7 +235,7 @@ export default function CompareModelsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 py-6">
+    <div className="flex h-full min-h-0 flex-col gap-6 pb-6">
       {/* Body shell: main column + optional right rail */}
       <div className="flex min-h-0 flex-1 gap-6">
         {/* Main column — white card per Figma */}
