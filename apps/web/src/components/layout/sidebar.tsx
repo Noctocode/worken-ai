@@ -61,7 +61,7 @@ export const SidebarContent = ({
       { href: "/teams", label: "Team Management", icon: Users, match: "prefix" },
     ],
     [
-      { href: "/tender-ai", label: "Tender AI", icon: MessageSquare, match: "exact" },
+      { href: "/tender-ai", label: "Tender AI", icon: MessageSquare, match: "prefix" },
     ],
     [
       { href: "/resources", label: "Resources & Learning", icon: BookOpen, match: "prefix" },
