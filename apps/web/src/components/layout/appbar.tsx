@@ -586,6 +586,35 @@ export const Appbar = () => {
           </Button>
         )}
 
+        {pathname === "/tender-ai" && (
+          <>
+            <div className="relative hidden sm:block">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Input
+                type="text"
+                placeholder="Search"
+                className="h-10 w-64 border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
+                onChange={(e) =>
+                  window.dispatchEvent(
+                    new CustomEvent("tender-ai:search", {
+                      detail: e.target.value,
+                    }),
+                  )
+                }
+              />
+            </div>
+            <Button
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("tender-ai:create"))
+              }
+              className="hidden cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 sm:inline-flex"
+            >
+              <Plus className="h-4 w-4" />
+              Create Tender
+            </Button>
+          </>
+        )}
+
         {!config.hideSearch && (
           <>
             <div className="relative hidden group sm:block">

@@ -183,16 +183,17 @@ export const SidebarContent = ({
             {/* Divider */}
             <div className="my-4 w-[40px] border-t border-border-2" />
 
-            {/* Chat */}
-            <DisabledReasonTooltip disabled reason="Coming Soon">
-              <Button
-                variant="ghost"
-                className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled
-              >
+            {/* Tender AI */}
+            <Button
+              asChild
+              variant="ghost"
+              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/tender-ai" ? activeIconClass : inactiveIconClass}`}
+              title="Tender AI"
+            >
+              <Link href="/tender-ai">
                 <MessageSquare className="size-5 shrink-0" />
-              </Button>
-            </DisabledReasonTooltip>
+              </Link>
+            </Button>
 
             {/* Divider */}
             <div className="my-4 w-[40px] border-t border-border-2" />
@@ -251,22 +252,19 @@ export const SidebarContent = ({
             {/* Divider */}
             <div className="my-4 w-full border-t border-border-2" />
 
-            {/* Chat */}
-            <DisabledReasonTooltip
-              disabled
-              reason="Coming Soon"
-              className="w-full"
+            {/* Tender AI */}
+            <Button
+              asChild
+              variant="ghost"
+              size="nav"
+              className={`w-full justify-start gap-3 ${pathname === "/tender-ai" ? activeClass : inactiveClass}`}
+              title="Tender AI"
             >
-              <Button
-                variant="ghost"
-                size="nav"
-                className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled
-              >
-                <MessageSquare className="size-5 shrink-0 text-text-3" />
-                <span>AI Chat</span>
-              </Button>
-            </DisabledReasonTooltip>
+              <Link href="/tender-ai">
+                <MessageSquare className={`size-5 shrink-0 ${pathname === "/tender-ai" ? activeIconClass : inactiveIconClass}`} />
+                <span>Tender AI</span>
+              </Link>
+            </Button>
 
             {/* Divider */}
             <div className="my-4 w-full border-t border-border-2" />
