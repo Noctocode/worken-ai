@@ -51,6 +51,26 @@ export const SidebarContent = ({
   const inactiveClass = "text-text-2 font-normal hover:text-text-1";
   const inactiveIconClass = "text-text-3";
 
+  type NavItem = { href: string; label: string; icon: typeof FolderOpen; match: "exact" | "prefix" };
+  type NavGroup = NavItem[];
+
+  const navGroups: NavGroup[] = [
+    [
+      { href: "/", label: "Ongoing Projects", icon: FolderOpen, match: "exact" },
+      { href: "/compare-models", label: "Compare Models", icon: Layers, match: "exact" },
+      { href: "/teams", label: "Team Management", icon: Users, match: "prefix" },
+    ],
+    [
+      { href: "/tender-ai", label: "Tender AI", icon: MessageSquare, match: "exact" },
+    ],
+    [
+      { href: "/resources", label: "Resources & Learning", icon: BookOpen, match: "prefix" },
+    ],
+  ];
+
+  const isActive = (item: NavItem) =>
+    item.match === "prefix" ? pathname.startsWith(item.href) : pathname === item.href;
+
   const newProjectButton = collapsed ? (
     <Button
       asChild
@@ -147,143 +167,46 @@ export const SidebarContent = ({
 
       {/* Navigation Links */}
       <div className="scrollbar-on-hover min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        {collapsed ? (
-          <div className="flex flex-col items-center gap-1">
-            <Button
-              asChild
-              variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/" ? activeIconClass : inactiveIconClass}`}
-              title="Ongoing Projects"
-            >
-              <Link href="/">
-                <FolderOpen className="size-5 shrink-0" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`}
-              title="Compare Models"
-            >
-              <Link href="/compare-models">
-                <Layers className="size-5 shrink-0" />
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`}
-              title="Team Management"
-            >
-              <Link href="/teams">
-                <Users className="size-5 shrink-0" />
-              </Link>
-            </Button>
-
-            {/* Divider */}
-            <div className="my-4 w-[40px] border-t border-border-2" />
-
-            {/* Tender AI */}
-            <Button
-              asChild
-              variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname === "/tender-ai" ? activeIconClass : inactiveIconClass}`}
-              title="Tender AI"
-            >
-              <Link href="/tender-ai">
-                <MessageSquare className="size-5 shrink-0" />
-              </Link>
-            </Button>
-
-            {/* Divider */}
-            <div className="my-4 w-[40px] border-t border-border-2" />
-
-            {/* Intelligence icons */}
-            <Button
-              asChild
-              variant="ghost"
-              className={`h-[40px] w-[40px] p-0 justify-center ${pathname.startsWith("/resources") ? activeIconClass : inactiveIconClass}`}
-              title="Resources & Learning"
-            >
-              <Link href="/resources">
-                <BookOpen className="size-5 shrink-0" />
-              </Link>
-            </Button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-1">
-            <Button
-              asChild
-              variant="ghost"
-              size="nav"
-              className={`w-full justify-start gap-3 ${pathname === "/" ? activeClass : inactiveClass}`}
-              title="Ongoing Projects"
-            >
-              <Link href="/">
-                <FolderOpen className={`size-5 shrink-0 ${pathname === "/" ? activeIconClass : inactiveIconClass}`} />
-                <span>Ongoing Projects</span>
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="ghost"
-              size="nav"
-              className={`w-full justify-start gap-3 ${pathname === "/compare-models" ? activeClass : inactiveClass}`}
-              title="Compare Models"
-            >
-              <Link href="/compare-models">
-                <Layers className={`size-5 shrink-0 ${pathname === "/compare-models" ? activeIconClass : inactiveIconClass}`} />
-                <span>Compare Models</span>
-              </Link>
-            </Button>
-            <Button
-              asChild
-              variant="ghost"
-              size="nav"
-              className={`w-full justify-start gap-3 ${pathname.startsWith("/teams") ? activeClass : inactiveClass}`}
-              title="Team Management"
-            >
-              <Link href="/teams">
-                <Users className={`size-5 shrink-0 ${pathname.startsWith("/teams") ? activeIconClass : inactiveIconClass}`} />
-                <span>Team Management</span>
-              </Link>
-            </Button>
-
-            {/* Divider */}
-            <div className="my-4 w-full border-t border-border-2" />
-
-            {/* Tender AI */}
-            <Button
-              asChild
-              variant="ghost"
-              size="nav"
-              className={`w-full justify-start gap-3 ${pathname === "/tender-ai" ? activeClass : inactiveClass}`}
-              title="Tender AI"
-            >
-              <Link href="/tender-ai">
-                <MessageSquare className={`size-5 shrink-0 ${pathname === "/tender-ai" ? activeIconClass : inactiveIconClass}`} />
-                <span>Tender AI</span>
-              </Link>
-            </Button>
-
-            {/* Divider */}
-            <div className="my-4 w-full border-t border-border-2" />
-
-            {/* Intelligence */}
-            <Button
-              asChild
-              variant="ghost"
-              size="nav"
-              className={`w-full justify-start gap-3 ${pathname.startsWith("/resources") ? activeClass : inactiveClass}`}
-              title="Resources & Learning"
-            >
-              <Link href="/resources">
-                <BookOpen className={`size-5 shrink-0 ${pathname.startsWith("/resources") ? activeIconClass : inactiveIconClass}`} />
-                <span>Resources &amp; Learning</span>
-              </Link>
-            </Button>
-          </div>
-        )}
+        <div className={`flex flex-col ${collapsed ? "items-center" : "items-center"} gap-1`}>
+          {navGroups.map((group, gi) => (
+            <div key={gi} className="contents">
+              {gi > 0 && (
+                <div className={`my-4 border-t border-border-2 ${collapsed ? "w-[40px]" : "w-full"}`} />
+              )}
+              {group.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item);
+                return collapsed ? (
+                  <Button
+                    key={item.href}
+                    asChild
+                    variant="ghost"
+                    className={`h-[40px] w-[40px] p-0 justify-center ${active ? activeIconClass : inactiveIconClass}`}
+                    title={item.label}
+                  >
+                    <Link href={item.href}>
+                      <Icon className="size-5 shrink-0" />
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button
+                    key={item.href}
+                    asChild
+                    variant="ghost"
+                    size="nav"
+                    className={`w-full justify-start gap-3 ${active ? activeClass : inactiveClass}`}
+                    title={item.label}
+                  >
+                    <Link href={item.href}>
+                      <Icon className={`size-5 shrink-0 ${active ? activeIconClass : inactiveIconClass}`} />
+                      <span>{item.label}</span>
+                    </Link>
+                  </Button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* User Profile */}
