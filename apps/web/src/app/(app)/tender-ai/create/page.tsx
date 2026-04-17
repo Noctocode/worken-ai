@@ -228,7 +228,7 @@ function BasicInfoStep({
         </legend>
         <div className="flex flex-col gap-1">
           <label className="text-[13px] font-medium text-text-1">
-            Tender Name *
+            Tender Name <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.name}
@@ -243,7 +243,7 @@ function BasicInfoStep({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
-              RFP/Tender Number *
+              RFP/Tender Number <span className="text-danger-6">*</span>
             </label>
             <Input
               value={data.rfpNumber}
@@ -254,7 +254,7 @@ function BasicInfoStep({
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
-              Category *
+              Category <span className="text-danger-6">*</span>
             </label>
             <Select
               value={data.category}
@@ -275,7 +275,7 @@ function BasicInfoStep({
         </div>
         <div className="flex flex-col gap-1">
           <label className="text-[13px] font-medium text-text-1">
-            Client Name *
+            Client Name <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.client}
@@ -295,7 +295,7 @@ function BasicInfoStep({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
-              Submission Deadline *
+              Submission Deadline <span className="text-danger-6">*</span>
             </label>
             <div className="relative">
               <Calendar className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
@@ -309,7 +309,7 @@ function BasicInfoStep({
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-[13px] font-medium text-text-1">
-              Contract Value *
+              Contract Value <span className="text-danger-6">*</span>
             </label>
             <div className="relative">
               <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
@@ -336,7 +336,7 @@ function BasicInfoStep({
         </legend>
         <div className="flex flex-col gap-1">
           <label className="text-[13px] font-medium text-text-1">
-            Description *
+            Description <span className="text-danger-6">*</span>
           </label>
           <Textarea
             value={data.description}
