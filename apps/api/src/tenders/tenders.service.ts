@@ -76,6 +76,14 @@ export class TendersService {
       })
       .from(tenders)
       .leftJoin(users, eq(users.id, tenders.ownerId))
+      .where(sql`(
+        ${tenders.ownerId} = ${userId}
+        OR EXISTS (
+          SELECT 1 FROM tender_team_members
+          WHERE tender_team_members.tender_id = ${tenders.id}
+          AND tender_team_members.user_id = ${userId}
+        )
+      )`)
       .orderBy(desc(tenders.createdAt));
 
     return rows.map((r) => ({
