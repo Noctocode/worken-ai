@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
@@ -125,11 +126,13 @@ export default function TenderAiPage() {
     setPage(1);
   }, []);
 
+  const router = useRouter();
+
   useEffect(() => {
     const onSearch = (e: Event) =>
       handleSearch((e as CustomEvent<string>).detail);
     const onCreate = () => {
-      window.location.href = "/tender-ai/create";
+      router.push("/tender-ai/create");
     };
     window.addEventListener("tender-ai:search", onSearch);
     window.addEventListener("tender-ai:create", onCreate);
@@ -272,11 +275,11 @@ export default function TenderAiPage() {
                   role="link"
                   tabIndex={0}
                   aria-label={`Open tender ${t.name}`}
-                  onClick={() => (window.location.href = `/tender-ai/${t.id}`)}
+                  onClick={() => (router.push(`/tender-ai/${t.id}`))}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      window.location.href = `/tender-ai/${t.id}`;
+                      router.push(`/tender-ai/${t.id}`);
                     }
                   }}
                 >
