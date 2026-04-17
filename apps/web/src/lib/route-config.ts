@@ -69,6 +69,13 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
     appbarAction: { label: "New Comparison", event: "compare-models:new" },
   },
+  "/knowledge-core": {
+    bg: "bg-bg-1",
+    title: "Knowledge Core",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarSearch: { placeholder: "Search", event: "knowledge-core:search" },
+  },
   "/tender-ai": {
     bg: "bg-bg-1",
     title: "Tender AI",
