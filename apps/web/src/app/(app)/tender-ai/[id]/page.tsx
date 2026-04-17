@@ -12,10 +12,13 @@ import {
   FileSpreadsheet,
   FileText,
   Info,
+  Loader2,
   Share2,
   Sparkles,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { fetchTender, type TenderDetail as ApiTenderDetail } from "@/lib/api";
 
 type ReqStatus = "met" | "partial" | "gap";
 
@@ -58,6 +61,8 @@ interface TenderDetail {
   met: number;
   partial: number;
   gaps: number;
+  value: string;
+  status: string;
   overview: string;
   requirements: Requirement[];
   documents: Document[];
@@ -72,6 +77,8 @@ const TENDER_DETAIL: TenderDetail = {
   organization: "Federal Aviation Administration",
   deadline: "Due Mar 25, 2026",
   matchRate: 65,
+  value: "$2.4M",
+  status: "Active",
   matchLabel: "Strong match for tender requirements",
   met: 2,
   partial: 1,
@@ -218,9 +225,50 @@ export default function TenderDetailPage({
   const { id } = use(params);
   const [reqFilter, setReqFilter] = useState<ReqFilter>("all");
 
-  // For now all IDs use the same mock detail
+  const { data: apiTender, isLoading } = useQuery<ApiTenderDetail>({
+    queryKey: ["tenders", id],
+    queryFn: () => fetchTender(id),
+    enabled: !!id,
+  });
+
   if (!id) notFound();
-  const tender = TENDER_DETAIL;
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+      </div>
+    );
+  }
+
+  // Use API data if available, fall back to mock for demo
+  const tender = apiTender
+    ? {
+        ...TENDER_DETAIL,
+        id: apiTender.id,
+        code: apiTender.code,
+        name: apiTender.name,
+        organization: apiTender.organization ?? TENDER_DETAIL.organization,
+        description: apiTender.description ?? TENDER_DETAIL.overview,
+        deadline: apiTender.deadline
+          ? `Due ${new Date(apiTender.deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`
+          : TENDER_DETAIL.deadline,
+        matchRate: apiTender.matchRate ?? TENDER_DETAIL.matchRate,
+        value: apiTender.value ?? TENDER_DETAIL.value,
+        status: apiTender.status ?? TENDER_DETAIL.status,
+        overview: apiTender.description ?? TENDER_DETAIL.overview,
+        requirements:
+          apiTender.requirements.length > 0
+            ? apiTender.requirements.map((r) => ({
+                code: r.code,
+                status: r.status as ReqStatus,
+                title: r.title,
+                evidence: r.evidence ?? "",
+                source: r.source ?? "",
+              }))
+            : TENDER_DETAIL.requirements,
+      }
+    : TENDER_DETAIL;
 
   const filteredReqs =
     reqFilter === "all"

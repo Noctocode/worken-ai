@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Filter,
   ArrowUpDown,
+  Loader2,
   Plus,
   Search,
   TrendingUp,
@@ -15,102 +16,12 @@ import {
   Calendar,
   BarChart3,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { fetchTenders, type TenderSummary } from "@/lib/api";
 
 type TenderStatus = "Active" | "Pending" | "Completed";
-
-interface Tender {
-  id: string;
-  code: string;
-  name: string;
-  leadManager: string;
-  matchRate: number;
-  gaps: number;
-  deadline: string;
-  value: string;
-  status: TenderStatus;
-}
-
-const TENDERS: Tender[] = [
-  {
-    id: "1",
-    code: "TND-2026-001",
-    name: "Enterprise Cloud Migration Services",
-    leadManager: "Sarah Mitchell",
-    matchRate: 99,
-    gaps: 1,
-    deadline: "Mar 25, 2026",
-    value: "$2.4M",
-    status: "Active",
-  },
-  {
-    id: "2",
-    code: "TND-2027-015",
-    name: "AI-Powered Supply Chain Optimization",
-    leadManager: "Elena Ramirez",
-    matchRate: 98,
-    gaps: 1,
-    deadline: "Jan 12, 2027",
-    value: "$1.8M",
-    status: "Active",
-  },
-  {
-    id: "3",
-    code: "TND-2026-008",
-    name: "AI-Driven Predictive Maintenance Platform",
-    leadManager: "Kenji Tanaka",
-    matchRate: 65,
-    gaps: 3,
-    deadline: "Dec 01, 2026",
-    value: "$3.1M",
-    status: "Pending",
-  },
-  {
-    id: "4",
-    code: "TND-2027-022",
-    name: "Next-Gen Cybersecurity Threat Detection",
-    leadManager: "Priya Sharma",
-    matchRate: 100,
-    gaps: 0,
-    deadline: "Apr 18, 2027",
-    value: "$4.2M",
-    status: "Active",
-  },
-  {
-    id: "5",
-    code: "TND-2026-011",
-    name: "Smart City Infrastructure Management",
-    leadManager: "Javier Rodriguez",
-    matchRate: 67,
-    gaps: 3,
-    deadline: "Feb 14, 2027",
-    value: "$2.9M",
-    status: "Active",
-  },
-  {
-    id: "6",
-    code: "TND-2027-005",
-    name: "Renewable Energy Grid Optimization",
-    leadManager: "Mei Chen",
-    matchRate: 45,
-    gaps: 5,
-    deadline: "May 03, 2027",
-    value: "$3.5M",
-    status: "Active",
-  },
-  {
-    id: "7",
-    code: "TND-2026-019",
-    name: "AI-Enhanced Personalized Education Platform",
-    leadManager: "Raj Patel",
-    matchRate: 89,
-    gaps: 2,
-    deadline: "Nov 22, 2026",
-    value: "$2.1M",
-    status: "Completed",
-  },
-];
 
 const PAGE_SIZE = 7;
 
@@ -132,6 +43,15 @@ function matchRateBg(rate: number): string {
   return "bg-[#F53F3F]";
 }
 
+function formatDeadline(d: string | null): string {
+  if (!d) return "—";
+  return new Date(d).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 interface StatCard {
   label: string;
   value: string;
@@ -141,39 +61,64 @@ interface StatCard {
   iconBg: string;
 }
 
-const STATS: StatCard[] = [
-  {
-    label: "Active Tenders",
-    value: "4",
-    change: "+12%",
-    icon: BarChart3,
-    iconBg: "bg-[#EBF8FF] text-primary-6",
-  },
-  {
-    label: "Avg Match Rate",
-    value: "86%",
-    change: "+5%",
-    icon: TrendingUp,
-    iconBg: "bg-[#E8FFEA] text-[#009A29]",
-  },
-  {
-    label: "Critical Gaps",
-    value: "1",
-    icon: AlertTriangle,
-    iconBg: "bg-[#FFF3E6] text-[#FF7D00]",
-  },
-  {
-    label: "Upcoming Deadlines",
-    value: "3",
-    sub: "Next 14d",
-    icon: Calendar,
-    iconBg: "bg-[#F2F3F5] text-text-2",
-  },
-];
+function computeStats(tenders: TenderSummary[]): StatCard[] {
+  const active = tenders.filter((t) => t.status === "Active").length;
+  const rates = tenders
+    .map((t) => t.matchRate ?? 0)
+    .filter((r) => r > 0);
+  const avgRate =
+    rates.length > 0
+      ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
+      : 0;
+  const criticalGaps = tenders.filter((t) => t.gapCount >= 3).length;
+  const now = new Date();
+  const in14d = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const upcoming = tenders.filter((t) => {
+    if (!t.deadline) return false;
+    const d = new Date(t.deadline);
+    return d >= now && d <= in14d;
+  }).length;
+
+  return [
+    {
+      label: "Active Tenders",
+      value: String(active),
+      icon: BarChart3,
+      iconBg: "bg-[#EBF8FF] text-primary-6",
+    },
+    {
+      label: "Avg Match Rate",
+      value: `${avgRate}%`,
+      icon: TrendingUp,
+      iconBg: "bg-[#E8FFEA] text-[#009A29]",
+    },
+    {
+      label: "Critical Gaps",
+      value: String(criticalGaps),
+      icon: AlertTriangle,
+      iconBg: "bg-[#FFF3E6] text-[#FF7D00]",
+    },
+    {
+      label: "Upcoming Deadlines",
+      value: String(upcoming),
+      sub: "Next 14d",
+      icon: Calendar,
+      iconBg: "bg-[#F2F3F5] text-text-2",
+    },
+  ];
+}
 
 export default function TenderAiPage() {
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
+
+  const {
+    data: tenders = [],
+    isLoading,
+  } = useQuery({
+    queryKey: ["tenders"],
+    queryFn: fetchTenders,
+  });
 
   const handleSearch = useCallback((value: string) => {
     setQuery(value);
@@ -194,19 +139,29 @@ export default function TenderAiPage() {
     };
   }, [handleSearch]);
 
+  const stats = useMemo(() => computeStats(tenders), [tenders]);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return TENDERS;
-    return TENDERS.filter(
+    if (!q) return tenders;
+    return tenders.filter(
       (t) =>
         t.name.toLowerCase().includes(q) ||
         t.code.toLowerCase().includes(q) ||
-        t.leadManager.toLowerCase().includes(q),
+        (t.ownerName ?? "").toLowerCase().includes(q),
     );
-  }, [query]);
+  }, [query, tenders]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-1 items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 py-6">
@@ -234,7 +189,7 @@ export default function TenderAiPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {STATS.map((s) => {
+        {stats.map((s) => {
           const Icon = s.icon;
           return (
             <div
@@ -322,38 +277,38 @@ export default function TenderAiPage() {
                       <span className="text-[11px] text-text-3">{t.code}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-text-2">{t.leadManager}</td>
+                  <td className="px-5 py-4 text-text-2">{t.ownerName ?? "—"}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-1">
                         <div
-                          className={`h-full rounded-full ${matchRateBg(t.matchRate)}`}
-                          style={{ width: `${t.matchRate}%` }}
+                          className={`h-full rounded-full ${matchRateBg(t.matchRate ?? 0)}`}
+                          style={{ width: `${t.matchRate ?? 0}%` }}
                         />
                       </div>
                       <span
-                        className={`text-[12px] font-semibold ${matchRateColor(t.matchRate)}`}
+                        className={`text-[12px] font-semibold ${matchRateColor(t.matchRate ?? 0)}`}
                       >
-                        {t.matchRate}%
+                        {t.matchRate ?? 0}%
                       </span>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-text-2">
-                    {t.gaps === 0 ? (
+                    {t.gapCount === 0 ? (
                       <span className="text-[#009A29]">0 gaps</span>
                     ) : (
-                      <span className={t.gaps >= 3 ? "text-[#F53F3F]" : "text-[#FF7D00]"}>
-                        {t.gaps} gap{t.gaps !== 1 ? "s" : ""}
+                      <span className={t.gapCount >= 3 ? "text-[#F53F3F]" : "text-[#FF7D00]"}>
+                        {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-text-2">{t.deadline}</td>
+                  <td className="px-5 py-4 text-text-2">{formatDeadline(t.deadline)}</td>
                   <td className="px-5 py-4 font-medium text-text-1">
-                    {t.value}
+                    {t.value ?? "—"}
                   </td>
                   <td className="px-5 py-4">
                     <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status]}`}
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
                     >
                       {t.status}
                     </span>
@@ -392,34 +347,34 @@ export default function TenderAiPage() {
                   <span className="text-[11px] text-text-3">{t.code}</span>
                 </div>
                 <span
-                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status]}`}
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
                 >
                   {t.status}
                 </span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-2">
-                  {t.leadManager}
+                  {t.ownerName ?? "—"}
                 </span>
-                <span className={`text-[13px] font-bold ${matchRateColor(t.matchRate)}`}>
-                  {t.matchRate}%
+                <span className={`text-[13px] font-bold ${matchRateColor(t.matchRate ?? 0)}`}>
+                  {t.matchRate ?? 0}%
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-[12px]">
                 <div className="flex flex-col">
                   <span className="text-text-3">Deadline</span>
-                  <span className="font-medium text-text-1">{t.deadline}</span>
+                  <span className="font-medium text-text-1">{formatDeadline(t.deadline)}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-text-3">Value</span>
-                  <span className="font-medium text-text-1">{t.value}</span>
+                  <span className="font-medium text-text-1">{t.value ?? "—"}</span>
                 </div>
                 <div className="flex flex-col">
                   <span className="text-text-3">Gaps</span>
                   <span
-                    className={`font-medium ${t.gaps >= 3 ? "text-[#F53F3F]" : t.gaps === 0 ? "text-[#009A29]" : "text-[#FF7D00]"}`}
+                    className={`font-medium ${t.gapCount >= 3 ? "text-[#F53F3F]" : t.gapCount === 0 ? "text-[#009A29]" : "text-[#FF7D00]"}`}
                   >
-                    {t.gaps} gap{t.gaps !== 1 ? "s" : ""}
+                    {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
                   </span>
                 </div>
               </div>

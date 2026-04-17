@@ -9,6 +9,7 @@ import {
   Check,
   DollarSign,
   FileText,
+  Loader2,
   Mail,
   Plus,
   Search,
@@ -16,10 +17,12 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { createTender } from "@/lib/api";
 
 const STEPS = [
   { title: "Basic Information", caption: "Step 1 of 5" },
@@ -751,9 +754,33 @@ export default function CreateTenderPage() {
   const [selectedTeam, setSelectedTeam] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
 
+  const queryClient = useQueryClient();
+  const createMutation = useMutation({
+    mutationFn: createTender,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tenders"] });
+      toast.success("Tender created successfully!");
+      router.push("/tender-ai");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to create tender.");
+    },
+  });
+
   const handleCreate = () => {
-    toast.success("Tender created successfully!");
-    router.push("/tender-ai");
+    createMutation.mutate({
+      name: basicInfo.name,
+      code: basicInfo.rfpNumber || undefined,
+      organization: basicInfo.client || undefined,
+      description: basicInfo.description || undefined,
+      category: basicInfo.category || undefined,
+      deadline: basicInfo.deadline || undefined,
+      value: basicInfo.value || undefined,
+      requirements: requirements
+        .filter((r) => r.text.trim())
+        .map((r) => ({ title: r.text, priority: r.priority })),
+      teamMemberIds: selectedTeam,
+    });
   };
 
   return (
@@ -834,9 +861,13 @@ export default function CreateTenderPage() {
             ) : (
               <Button
                 onClick={handleCreate}
-                className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+                disabled={createMutation.isPending}
+                className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
               >
-                Create Tender
+                {createMutation.isPending && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {createMutation.isPending ? "Creating..." : "Create Tender"}
               </Button>
             )}
           </div>

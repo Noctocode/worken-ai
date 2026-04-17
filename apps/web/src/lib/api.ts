@@ -835,6 +835,133 @@ export async function sendQuestionToCompareModels(
   return res.json();
 }
 
+// Tenders
+
+export interface TenderSummary {
+  id: string;
+  code: string;
+  name: string;
+  organization: string | null;
+  description: string | null;
+  category: string | null;
+  deadline: string | null;
+  value: string | null;
+  matchRate: number | null;
+  status: string;
+  ownerId: string;
+  ownerName: string | null;
+  requirementCount: number;
+  gapCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TenderRequirement {
+  id: string;
+  tenderId: string;
+  code: string;
+  title: string;
+  evidence: string | null;
+  source: string | null;
+  status: string;
+  priority: string;
+  createdAt: string;
+}
+
+export interface TenderDocument {
+  id: string;
+  tenderId: string;
+  name: string;
+  size: string | null;
+  fileType: string | null;
+  storagePath: string | null;
+  createdAt: string;
+}
+
+export interface TenderTeamMember {
+  id: string;
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  createdAt: string;
+}
+
+export interface TenderDetail {
+  id: string;
+  code: string;
+  name: string;
+  organization: string | null;
+  description: string | null;
+  category: string | null;
+  deadline: string | null;
+  value: string | null;
+  matchRate: number | null;
+  status: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+  requirements: TenderRequirement[];
+  documents: TenderDocument[];
+  teamMembers: TenderTeamMember[];
+}
+
+export interface CreateTenderPayload {
+  name: string;
+  code?: string;
+  organization?: string;
+  description?: string;
+  category?: string;
+  deadline?: string;
+  value?: string;
+  requirements?: { title: string; priority: string }[];
+  teamMemberIds?: string[];
+}
+
+export async function fetchTenders(): Promise<TenderSummary[]> {
+  const res = await apiFetch("/tenders");
+  if (!res.ok) throw new Error("Failed to fetch tenders");
+  return res.json();
+}
+
+export async function fetchTender(id: string): Promise<TenderDetail> {
+  const res = await apiFetch(`/tenders/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch tender");
+  return res.json();
+}
+
+export async function createTender(
+  data: CreateTenderPayload,
+): Promise<TenderSummary> {
+  const res = await apiFetch("/tenders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Failed to create tender");
+  }
+  return res.json();
+}
+
+export async function updateTender(
+  id: string,
+  data: Partial<CreateTenderPayload & { matchRate: number; status: string }>,
+): Promise<TenderSummary> {
+  const res = await apiFetch(`/tenders/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update tender");
+  return res.json();
+}
+
+export async function deleteTender(id: string): Promise<void> {
+  const res = await apiFetch(`/tenders/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete tender");
+}
+
 // Onboarding
 
 export interface OnboardingProfile {
