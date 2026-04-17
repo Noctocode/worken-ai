@@ -238,8 +238,8 @@ export default function CompareModelsPage() {
     <div className="flex h-full min-h-0 flex-col gap-6 py-6">
       {/* Body shell: main column + optional right rail */}
       <div className="flex min-h-0 flex-1 gap-6">
-        {/* Main column */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
+        {/* Main column — white card per Figma */}
+        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden rounded-[20px] bg-bg-white p-6">
           {/* Scrollable content area (prompt + responses) */}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             {!hasResults && !loading && !submittedQuestion && (
