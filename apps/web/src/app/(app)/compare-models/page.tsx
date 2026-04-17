@@ -241,7 +241,7 @@ export default function CompareModelsPage() {
         <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden">
           {/* Scrollable content area (prompt + responses) */}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-            {!hasResults && !loading && (
+            {!hasResults && !loading && !submittedQuestion && (
               <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
                 <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <h3 className="text-[16px] font-semibold text-text-1">
