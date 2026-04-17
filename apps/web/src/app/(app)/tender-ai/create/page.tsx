@@ -62,9 +62,9 @@ interface BasicInfo {
   description: string;
 }
 
-/* ─── Stepper ────────────────────────────────────────────────────────── */
+/* ─── Steppers ───────────────────────────────────────────────────────── */
 
-function Stepper({ active }: { active: number }) {
+function DesktopStepper({ active }: { active: number }) {
   return (
     <nav className="hidden w-[220px] shrink-0 flex-col gap-0 lg:flex">
       {STEPS.map((s, i) => {
@@ -75,11 +75,9 @@ function Stepper({ active }: { active: number }) {
             <div className="flex flex-col items-center">
               <span
                 className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold ${
-                  done
+                  done || current
                     ? "bg-primary-6 text-white"
-                    : current
-                      ? "bg-primary-6 text-white"
-                      : "border border-border-2 bg-bg-white text-text-3"
+                    : "border border-border-2 bg-bg-white text-text-3"
                 }`}
               >
                 {done ? <Check className="h-4 w-4" /> : i + 1}
@@ -95,13 +93,53 @@ function Stepper({ active }: { active: number }) {
             <div className="flex flex-col pb-8">
               <span
                 className={`text-[14px] font-medium ${
-                  current ? "text-text-1" : done ? "text-text-1" : "text-text-3"
+                  current || done ? "text-text-1" : "text-text-3"
                 }`}
               >
                 {s.title}
               </span>
               <span className="text-[12px] text-text-3">{s.caption}</span>
             </div>
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+function MobileStepper({ active }: { active: number }) {
+  return (
+    <nav className="flex items-center gap-0 border border-[#E0E0E6] bg-bg-white px-4 py-3 lg:hidden">
+      {STEPS.map((s, i) => {
+        const done = i < active;
+        const current = i === active;
+        return (
+          <div key={i} className="flex flex-1 items-center">
+            <div className="flex flex-col items-center gap-1">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ${
+                  done || current
+                    ? "bg-primary-6 text-white"
+                    : "border border-border-2 bg-bg-white text-text-3"
+                }`}
+              >
+                {done ? <Check className="h-3 w-3" /> : i + 1}
+              </span>
+              <span
+                className={`text-center text-[9px] leading-tight ${
+                  current ? "font-medium text-text-1" : "text-text-3"
+                }`}
+              >
+                {s.title}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <span
+                className={`mx-1 h-px flex-1 ${
+                  done ? "bg-primary-6" : "bg-border-2"
+                }`}
+              />
+            )}
           </div>
         );
       })}
@@ -719,23 +757,37 @@ export default function CreateTenderPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 py-6">
-      {/* Back link */}
+    <div className="flex flex-col gap-0 lg:gap-6 lg:py-6">
+      {/* Back link (desktop) */}
       <Link
         href="/tender-ai"
-        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
+        className="hidden w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6 lg:inline-flex"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Dashboard
       </Link>
 
+      {/* Mobile back + stepper */}
+      <div className="flex flex-col lg:hidden">
+        <div className="flex items-center gap-2 px-4 py-3">
+          <Link
+            href="/tender-ai"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md bg-bg-1 text-text-1"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <span className="text-[13px] text-text-2">Back to Dashboard</span>
+        </div>
+        <MobileStepper active={step} />
+      </div>
+
       <div className="flex gap-8">
-        {/* Stepper */}
-        <Stepper active={step} />
+        {/* Desktop stepper */}
+        <DesktopStepper active={step} />
 
         {/* Content card */}
-        <div className="flex min-w-0 flex-1 flex-col rounded border border-border-2 bg-bg-white">
-          <div className="flex-1 p-6">
+        <div className="flex min-w-0 flex-1 flex-col rounded-none border-0 bg-bg-white lg:rounded lg:border lg:border-border-2">
+          <div className="flex-1 px-4 py-5 lg:p-6">
             {step === 0 && (
               <BasicInfoStep data={basicInfo} onChange={setBasicInfo} />
             )}

@@ -375,12 +375,14 @@ export default function TenderAiPage() {
         </div>
 
         {/* Mobile cards */}
-        <div className="flex flex-col gap-3 px-4 pb-4 md:hidden">
-          {paginated.map((t) => (
+        <div className="flex flex-col md:hidden">
+          {paginated.map((t, idx) => (
             <Link
               key={t.id}
               href={`/tender-ai/${t.id}`}
-              className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-4 transition-colors hover:border-primary-6"
+              className={`flex flex-col gap-3 bg-bg-white px-4 py-4 transition-colors hover:bg-bg-1 ${
+                idx > 0 ? "border-t border-border-2" : ""
+              }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
