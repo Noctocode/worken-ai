@@ -83,13 +83,16 @@ export class TendersService {
     }));
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, userId: string) {
     const [tender] = await this.db
       .select()
       .from(tenders)
       .where(eq(tenders.id, id));
 
     if (!tender) throw new NotFoundException('Tender not found');
+    if (tender.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
 
     const requirements = await this.db
       .select()
