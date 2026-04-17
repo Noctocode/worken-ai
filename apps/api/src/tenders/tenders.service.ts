@@ -121,9 +121,14 @@ export class TendersService {
       throw new BadRequestException('Tender name is required');
     }
 
-    const code =
-      dto.code?.trim() ||
-      `TND-${new Date().getFullYear()}-${String(Date.now() % 10000).padStart(3, '0')}`;
+    let code = dto.code?.trim() || '';
+    if (!code) {
+      const year = new Date().getFullYear();
+      const [{ count }] = await this.db
+        .select({ count: sql<number>`count(*)` })
+        .from(tenders);
+      code = `TND-${year}-${String(Number(count) + 1).padStart(3, '0')}`;
+    }
 
     const [tender] = await this.db
       .insert(tenders)
