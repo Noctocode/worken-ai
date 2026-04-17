@@ -635,7 +635,7 @@ function ReviewStep({
         { label: "RFP Number:", value: basicInfo.rfpNumber },
         { label: "Category:", value: basicInfo.category },
         { label: "Deadline:", value: basicInfo.deadline },
-        { label: "Value:", value: basicInfo.value ? `$${basicInfo.value}` : "" },
+        { label: "Value:", value: basicInfo.value ? (basicInfo.value.trim().startsWith("$") ? basicInfo.value : `$${basicInfo.value}`) : "" },
       ],
     },
     {
