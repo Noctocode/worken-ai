@@ -13,6 +13,7 @@ import {
 import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -20,6 +21,7 @@ import type { AuthenticatedUser } from '../auth/types.js';
 import { KnowledgeCoreService } from './knowledge-core.service.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function sanitizeFilename(name: string): string {
   return name.replace(/[/\\:*?"<>|\x00-\x1f]/g, '_');
