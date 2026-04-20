@@ -143,6 +143,28 @@ export class KnowledgeCoreService {
     return inserted;
   }
 
+  async getFileForDownload(fileId: string, userId: string) {
+    const [file] = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        name: knowledgeFiles.name,
+        storagePath: knowledgeFiles.storagePath,
+        ownerId: knowledgeFolders.ownerId,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(eq(knowledgeFiles.id, fileId));
+
+    if (!file) throw new NotFoundException('File not found');
+    if (file.ownerId !== userId) throw new ForbiddenException('Access denied');
+    if (!file.storagePath) throw new NotFoundException('File not on disk');
+
+    return { name: file.name, storagePath: file.storagePath };
+  }
+
   async moveFile(fileId: string, targetFolderId: string, userId: string) {
     const [file] = await this.db
       .select({

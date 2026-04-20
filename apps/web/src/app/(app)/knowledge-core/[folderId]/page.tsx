@@ -4,6 +4,7 @@ import { use, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
+  Download,
   FileText,
   FolderInput,
   Folder,
@@ -319,6 +320,16 @@ export default function FolderDetailPage({
                         </button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem asChild>
+                          <a
+                            href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/knowledge-core/files/${f.id}/download`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Download className="mr-2 h-3.5 w-3.5" />
+                            Download
+                          </a>
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => {
                             setMoveFileId(f.id);

@@ -9,6 +9,7 @@ import {
   Loader2,
   MoreVertical,
   Plus,
+  Download,
   Trash2,
   Upload,
   X,
@@ -383,6 +384,16 @@ export default function KnowledgeCorePage() {
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  <DropdownMenuItem asChild>
+                    <a
+                      href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"}/knowledge-core/files/${file.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download className="mr-2 h-3.5 w-3.5" />
+                      Download
+                    </a>
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
                       setMoveFileId(file.id);

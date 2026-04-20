@@ -6,9 +6,11 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UploadedFiles,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import * as path from 'node:path';
@@ -80,6 +82,16 @@ export class KnowledgeCoreController {
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     return this.service.uploadFiles(folderId, user.id, files);
+  }
+
+  @Get('files/:id/download')
+  async downloadFile(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ) {
+    const file = await this.service.getFileForDownload(id, user.id);
+    res.download(file.storagePath, file.name);
   }
 
   @Patch('files/:id/move')
