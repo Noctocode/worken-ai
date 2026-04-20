@@ -233,7 +233,7 @@ export class KnowledgeCoreService {
 
     if (file.storagePath) {
       try {
-        fs.unlinkSync(path.resolve(process.cwd(), file.storagePath));
+        await fs.promises.unlink(path.resolve(process.cwd(), file.storagePath));
       } catch {
         // File may already be removed from disk
       }
