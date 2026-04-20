@@ -10,6 +10,7 @@ import {
   MoreVertical,
   Plus,
   Download,
+  Search,
   Trash2,
   Upload,
   X,
@@ -247,6 +248,17 @@ export default function KnowledgeCorePage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
+      {/* Mobile search (appbar search is hidden on small screens) */}
+      <div className="relative sm:hidden">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search folders and files..."
+          className="h-10 pl-9 placeholder:text-text-3"
+        />
+      </div>
+
       {/* Upload dropzone */}
       <div
         onDragOver={(e) => e.preventDefault()}
