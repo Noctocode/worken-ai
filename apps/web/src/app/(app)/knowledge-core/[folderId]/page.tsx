@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -153,15 +155,27 @@ export default function FolderDetailPage({
     onError: () => toast.error("Failed to move file."),
   });
 
-  const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+  const deleteFileName =
+    folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
+
+  const handleBrowse = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length > 0) uploadMutation.mutate(files);
+    if (files.length > 0) setStagedFiles(files);
     e.target.value = "";
   };
 
-  const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"?`)) return;
-    deleteMutation.mutate(id);
+  const confirmUpload = () => {
+    if (stagedFiles.length > 0) uploadMutation.mutate(stagedFiles);
+    setStagedFiles([]);
+  };
+
+  const removeStagedFile = (idx: number) =>
+    setStagedFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleDelete = (id: string) => {
+    setDeleteFileId(id);
   };
 
   const filtered = useMemo(() => {
@@ -223,7 +237,7 @@ export default function FolderDetailPage({
             multiple
             accept=".pdf,.docx,.xlsx,.doc,.xls,.png,.jpg,.jpeg"
             className="hidden"
-            onChange={handleUpload}
+            onChange={handleBrowse}
           />
           <Button
             asChild
@@ -316,7 +330,7 @@ export default function FolderDetailPage({
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
-                          onSelect={() => handleDelete(f.id, f.name)}
+                          onSelect={() => handleDelete(f.id)}
                           className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -385,7 +399,7 @@ export default function FolderDetailPage({
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onSelect={() => handleDelete(f.id, f.name)}
+                    onSelect={() => handleDelete(f.id)}
                     className="text-danger-6 focus:text-danger-6"
                   >
                     <Trash2 className="mr-2 h-3.5 w-3.5" />
@@ -445,6 +459,108 @@ export default function FolderDetailPage({
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
               {moveMutation.isPending ? "Moving..." : "Move"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Confirmation Dialog */}
+      <Dialog
+        open={stagedFiles.length > 0}
+        onOpenChange={(open) =>
+          !open && !uploadMutation.isPending && setStagedFiles([])
+        }
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Upload {stagedFiles.length} file
+              {stagedFiles.length !== 1 ? "s" : ""}
+            </DialogTitle>
+            <DialogDescription>
+              These files will be uploaded to{" "}
+              <strong>{folder?.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
+            {stagedFiles.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded border border-border-2 bg-bg-1 px-3 py-2"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[13px] font-medium text-text-1">
+                    {f.name}
+                  </span>
+                  <span className="text-[11px] text-text-3">
+                    {formatBytes(f.size)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeStagedFile(i)}
+                  disabled={uploadMutation.isPending}
+                  className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setStagedFiles([])}
+              disabled={uploadMutation.isPending}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmUpload}
+              disabled={uploadMutation.isPending || stagedFiles.length === 0}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {uploadMutation.isPending ? "Uploading..." : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete File Dialog */}
+      <Dialog
+        open={deleteFileId !== null}
+        onOpenChange={(open) => !open && setDeleteFileId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete File</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{deleteFileName}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteFileId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteFileId) {
+                  deleteMutation.mutate(deleteFileId);
+                  setDeleteFileId(null);
+                }
+              }}
+              disabled={deleteMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
