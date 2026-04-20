@@ -38,13 +38,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -76,7 +69,6 @@ export default function KnowledgeCorePage() {
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
-  const [uploadTargetId, setUploadTargetId] = useState<string>("");
   const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
 
   const handleSearch = useCallback((value: string) => {
@@ -96,6 +88,7 @@ export default function KnowledgeCorePage() {
   const { data: folders = [], isLoading: foldersLoading } = useQuery({
     queryKey: ["knowledge-folders"],
     queryFn: fetchKnowledgeFolders,
+    refetchOnMount: "always",
   });
 
   const deleteFolderName =
@@ -137,18 +130,25 @@ export default function KnowledgeCorePage() {
     setDeleteFolderId(null);
   };
 
+  const getAllFilesFolderId = async (): Promise<string> => {
+    const existing = folders.find((f) => f.name === "All Files");
+    if (existing) return existing.id;
+    const created = await createKnowledgeFolder("All Files");
+    await queryClient.refetchQueries({ queryKey: ["knowledge-folders"] });
+    return created.id;
+  };
+
   const uploadToFolder = async (files: File[]) => {
     if (files.length === 0) return;
-    if (!uploadTargetId) {
-      toast.error("Select a destination folder before uploading.");
-      return;
-    }
     try {
-      await uploadKnowledgeFiles(uploadTargetId, files);
-      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      queryClient.invalidateQueries({ queryKey: ["knowledge-folder", uploadTargetId] });
-      toast.success(`Uploaded ${files.length} file(s).`);
+      const folderId = await getAllFilesFolderId();
+      await uploadKnowledgeFiles(folderId, files);
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
+        queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
+        queryClient.refetchQueries({ queryKey: ["knowledge-folder", folderId] }),
+      ]);
+      toast.success(`Uploaded ${files.length} file(s) to All Files.`);
     } catch {
       toast.error("Failed to upload files.");
     }
@@ -208,32 +208,18 @@ export default function KnowledgeCorePage() {
             Supports PDF, DOCX, XLSX, PNG, JPG up to 50MB per file
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Select value={uploadTargetId} onValueChange={setUploadTargetId}>
-            <SelectTrigger className="w-[200px] cursor-pointer data-[size=default]:h-10">
-              <SelectValue placeholder="Select folder" />
-            </SelectTrigger>
-            <SelectContent>
-              {folders.map((f) => (
-                <SelectItem key={f.id} value={f.id}>
-                  {f.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <label>
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.docx,.xlsx,.doc,.xls,.png,.jpg,.jpeg"
-              className="hidden"
-              onChange={handleBrowse}
-            />
-            <span className="inline-flex cursor-pointer items-center rounded border border-border-2 px-4 py-2 text-[13px] font-medium text-text-1 transition-colors hover:bg-bg-1">
-              Browse Files
-            </span>
-          </label>
-        </div>
+        <label>
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.docx,.xlsx,.doc,.xls,.png,.jpg,.jpeg"
+            className="hidden"
+            onChange={handleBrowse}
+          />
+          <span className="inline-flex cursor-pointer items-center rounded border border-border-2 px-4 py-2 text-[13px] font-medium text-text-1 transition-colors hover:bg-bg-1">
+            Browse Files
+          </span>
+        </label>
       </div>
 
       {/* Folders */}
