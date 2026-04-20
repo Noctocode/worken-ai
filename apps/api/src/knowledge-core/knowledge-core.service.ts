@@ -93,15 +93,36 @@ export class KnowledgeCoreService {
   }
 
   async deleteFolder(id: string, userId: string) {
-    const [folder] = await this.db
-      .select()
-      .from(knowledgeFolders)
-      .where(eq(knowledgeFolders.id, id));
+    await this.db.transaction(async (tx) => {
+      const [folder] = await tx
+        .select()
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, id));
 
-    if (!folder) throw new NotFoundException('Folder not found');
-    if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
+      if (!folder) throw new NotFoundException('Folder not found');
+      if (folder.ownerId !== userId)
+        throw new ForbiddenException('Access denied');
 
-    await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.id, id));
+      const fileRows = await tx
+        .select({ storagePath: knowledgeFiles.storagePath })
+        .from(knowledgeFiles)
+        .where(eq(knowledgeFiles.folderId, id));
+
+      await Promise.allSettled(
+        fileRows.map(async ({ storagePath }) => {
+          if (!storagePath) return;
+          try {
+            await fs.promises.unlink(
+              path.resolve(process.cwd(), storagePath),
+            );
+          } catch {
+            // File may already be removed
+          }
+        }),
+      );
+
+      await tx.delete(knowledgeFolders).where(eq(knowledgeFolders.id, id));
+    });
   }
 
   async uploadFiles(
