@@ -14,8 +14,6 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-const UPLOAD_BASE = path.join(process.cwd(), 'uploads', 'knowledge-core');
-
 @Injectable()
 export class KnowledgeCoreService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
