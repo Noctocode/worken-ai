@@ -795,7 +795,7 @@ function AddGuardrailDialog({
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-border-2 px-6 py-4">
+        <div className="flex items-center justify-between border-t border-border-2 px-6 py-6">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
