@@ -1183,6 +1183,16 @@ export async function assignGuardrailToTeam(
   return res.json();
 }
 
+export async function unassignGuardrailFromTeam(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/unassign`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to remove guardrail from team");
+  return res.json();
+}
+
 export async function applyComplianceTemplate(
   templateId: string,
 ): Promise<{ templateName: string; rulesCreated: number }> {

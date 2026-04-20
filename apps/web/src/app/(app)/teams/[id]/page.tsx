@@ -49,12 +49,12 @@ import {
   fetchGuardrails,
   fetchGuardrailItems,
   assignGuardrailToTeam,
+  unassignGuardrailFromTeam,
   createTeam,
   updateTeam,
   deleteTeam,
   updateTeamBudget,
   toggleGuardrail as apiToggleGuardrail,
-  deleteGuardrail as apiDeleteGuardrail,
   updateMemberRole,
   removeTeamMember,
   type TeamMember,
@@ -364,10 +364,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     mutationFn: ({ guardrailId, isActive }: { guardrailId: string; isActive: boolean }) => apiToggleGuardrail(id, guardrailId, isActive),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
   });
-  const deleteGuardrailMutation = useMutation({
-    mutationFn: (guardrailId: string) => apiDeleteGuardrail(id, guardrailId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
+  const removeGuardrailMutation = useMutation({
+    mutationFn: (guardrailId: string) => unassignGuardrailFromTeam(guardrailId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guardrails", id] });
+      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
+      toast.success("Guardrail removed from team.");
+    },
+    onError: () => toast.error("Failed to remove guardrail."),
   });
+  const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(null);
+  const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
   if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
@@ -778,17 +785,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                className="gap-2 text-red-600 focus:text-red-600"
+                                className="gap-2 text-danger-6 focus:text-danger-6"
                                 disabled={!canManageTeam}
                                 onSelect={(e) => {
                                   if (!canManageTeam) {
                                     e.preventDefault();
                                     return;
                                   }
-                                  deleteGuardrailMutation.mutate(g.id);
+                                  setRemoveGuardrailId(g.id);
                                 }}
                               >
-                                <Trash2 className="h-4 w-4" />Delete
+                                <UserX className="h-4 w-4" />Remove from team
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -803,6 +810,45 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </div>
+
+      {/* Remove Guardrail Dialog */}
+      <Dialog
+        open={removeGuardrailId !== null}
+        onOpenChange={(open) => !open && setRemoveGuardrailId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Guardrail</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove{" "}
+              <strong>{removeGuardrailName}</strong> from this team? The
+              guardrail will not be deleted — it can be reassigned later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setRemoveGuardrailId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (removeGuardrailId) {
+                  removeGuardrailMutation.mutate(removeGuardrailId);
+                  setRemoveGuardrailId(null);
+                }
+              }}
+              disabled={removeGuardrailMutation.isPending}
+              className="cursor-pointer"
+            >
+              {removeGuardrailMutation.isPending ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
