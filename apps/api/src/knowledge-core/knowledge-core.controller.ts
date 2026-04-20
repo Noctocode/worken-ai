@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  Patch,
   Post,
   UploadedFiles,
   UseInterceptors,
@@ -79,6 +80,15 @@ export class KnowledgeCoreController {
     @UploadedFiles() files: Express.Multer.File[],
   ) {
     return this.service.uploadFiles(folderId, user.id, files);
+  }
+
+  @Patch('files/:id/move')
+  moveFile(
+    @Param('id') id: string,
+    @Body() body: { targetFolderId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.moveFile(id, body.targetFolderId, user.id);
   }
 
   @Delete('files/:id')

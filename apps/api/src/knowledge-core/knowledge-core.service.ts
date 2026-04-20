@@ -143,6 +143,48 @@ export class KnowledgeCoreService {
     return inserted;
   }
 
+  async moveFile(fileId: string, targetFolderId: string, userId: string) {
+    const [file] = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        folderId: knowledgeFiles.folderId,
+        ownerId: knowledgeFolders.ownerId,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(eq(knowledgeFiles.id, fileId));
+
+    if (!file) throw new NotFoundException('File not found');
+    if (file.ownerId !== userId) throw new ForbiddenException('Access denied');
+
+    const [targetFolder] = await this.db
+      .select()
+      .from(knowledgeFolders)
+      .where(eq(knowledgeFolders.id, targetFolderId));
+
+    if (!targetFolder) throw new NotFoundException('Target folder not found');
+    if (targetFolder.ownerId !== userId)
+      throw new ForbiddenException('Access denied');
+
+    await this.db
+      .update(knowledgeFiles)
+      .set({ folderId: targetFolderId })
+      .where(eq(knowledgeFiles.id, fileId));
+
+    await this.db
+      .update(knowledgeFolders)
+      .set({ updatedAt: new Date() })
+      .where(eq(knowledgeFolders.id, targetFolderId));
+
+    await this.db
+      .update(knowledgeFolders)
+      .set({ updatedAt: new Date() })
+      .where(eq(knowledgeFolders.id, file.folderId));
+  }
+
   async deleteFile(fileId: string, userId: string) {
     const [file] = await this.db
       .select({

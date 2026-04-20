@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   FileText,
+  FolderInput,
   Folder,
   Loader2,
   MoreVertical,
@@ -15,10 +16,33 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   fetchKnowledgeFolder,
+  fetchKnowledgeFolders,
   uploadKnowledgeFiles,
+  moveKnowledgeFile,
   deleteKnowledgeFile,
 } from "@/lib/api";
 
@@ -99,6 +123,34 @@ export default function FolderDetailPage({
       toast.success("File deleted.");
     },
     onError: () => toast.error("Failed to delete file."),
+  });
+
+  const { data: allFolders = [] } = useQuery({
+    queryKey: ["knowledge-folders"],
+    queryFn: fetchKnowledgeFolders,
+  });
+
+  const [moveFileId, setMoveFileId] = useState<string | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const moveFileName =
+    folder?.files.find((f) => f.id === moveFileId)?.name ?? "";
+
+  const moveMutation = useMutation({
+    mutationFn: () => moveKnowledgeFile(moveFileId!, moveTargetId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", moveTargetId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      setMoveFileId(null);
+      setMoveTargetId("");
+      toast.success("File moved.");
+    },
+    onError: () => toast.error("Failed to move file."),
   });
 
   const handleUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -243,14 +295,35 @@ export default function FolderDetailPage({
                     {formatDateTime(f.createdAt)}
                   </td>
                   <td className="px-5 py-4">
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(f.id, f.name)}
-                      className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-danger-6"
-                      title="Delete file"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setMoveFileId(f.id);
+                            setMoveTargetId("");
+                          }}
+                        >
+                          <FolderInput className="mr-2 h-3.5 w-3.5" />
+                          Move to...
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={() => handleDelete(f.id, f.name)}
+                          className="text-danger-6 focus:text-danger-6"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
@@ -291,13 +364,35 @@ export default function FolderDetailPage({
                   {formatDateTime(f.createdAt)}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleDelete(f.id, f.name)}
-                className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:text-danger-6"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMoveFileId(f.id);
+                      setMoveTargetId("");
+                    }}
+                  >
+                    <FolderInput className="mr-2 h-3.5 w-3.5" />
+                    Move to...
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => handleDelete(f.id, f.name)}
+                    className="text-danger-6 focus:text-danger-6"
+                  >
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
           {filtered.length === 0 && (
@@ -309,6 +404,51 @@ export default function FolderDetailPage({
           )}
         </div>
       </div>
+
+      {/* Move file dialog */}
+      <Dialog
+        open={moveFileId !== null}
+        onOpenChange={(open) => !open && setMoveFileId(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Move File</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-text-2">
+            Move <strong>{moveFileName}</strong> to:
+          </p>
+          <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+            <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
+              <SelectValue placeholder="Select folder" />
+            </SelectTrigger>
+            <SelectContent>
+              {allFolders
+                .filter((f) => f.id !== folderId)
+                .map((f) => (
+                  <SelectItem key={f.id} value={f.id}>
+                    {f.name}
+                  </SelectItem>
+                ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setMoveFileId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => moveMutation.mutate()}
+              disabled={!moveTargetId || moveMutation.isPending}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {moveMutation.isPending ? "Moving..." : "Move"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

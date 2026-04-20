@@ -1047,6 +1047,18 @@ export async function uploadKnowledgeFiles(
   return res.json();
 }
 
+export async function moveKnowledgeFile(
+  fileId: string,
+  targetFolderId: string,
+): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/move`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetFolderId }),
+  });
+  if (!res.ok) throw new Error("Failed to move file");
+}
+
 export async function deleteKnowledgeFile(id: string): Promise<void> {
   const res = await apiFetch(`/knowledge-core/files/${id}`, {
     method: "DELETE",
