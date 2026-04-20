@@ -71,6 +71,14 @@ export class GuardrailsSectionController {
     return this.service.applyTemplate(body.templateId, user.id);
   }
 
+  @Patch(':id/toggle-team')
+  toggleTeamActive(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.toggleTeamActive(id, user.id);
+  }
+
   @Patch(':id/assign')
   assignToTeam(
     @Param('id') id: string,

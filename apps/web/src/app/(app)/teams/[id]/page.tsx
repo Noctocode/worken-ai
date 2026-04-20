@@ -50,11 +50,11 @@ import {
   fetchGuardrailItems,
   assignGuardrailToTeam,
   unassignGuardrailFromTeam,
+  toggleGuardrailTeamActive,
   createTeam,
   updateTeam,
   deleteTeam,
   updateTeamBudget,
-  toggleGuardrail as apiToggleGuardrail,
   updateMemberRole,
   removeTeamMember,
   type TeamMember,
@@ -361,7 +361,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     },
   });
   const toggleMutation = useMutation({
-    mutationFn: ({ guardrailId, isActive }: { guardrailId: string; isActive: boolean }) => apiToggleGuardrail(id, guardrailId, isActive),
+    mutationFn: (guardrailId: string) => toggleGuardrailTeamActive(guardrailId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
   });
   const removeGuardrailMutation = useMutation({
@@ -772,11 +772,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
                           <Switch
-                            checked={g.isActive}
+                            checked={g.teamIsActive ?? g.isActive}
                             disabled={!canManageTeam}
-                            onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })}
+                            onCheckedChange={() => toggleMutation.mutate(g.id)}
                           />
-                          <span className="text-[16px] text-text-1 whitespace-nowrap">{g.isActive ? "Active" : "Inactive"}</span>
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">{(g.teamIsActive ?? g.isActive) ? "Active" : "Inactive"}</span>
                         </div>
                       </td>
                       <td className="px-4 align-middle w-[93px]">

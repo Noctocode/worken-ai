@@ -503,6 +503,7 @@ export interface Guardrail {
   severity: "high" | "medium" | "low";
   triggers: number;
   isActive: boolean;
+  teamIsActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1168,6 +1169,16 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete guardrail");
+}
+
+export async function toggleGuardrailTeamActive(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/toggle-team`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to toggle guardrail");
+  return res.json();
 }
 
 export async function assignGuardrailToTeam(
