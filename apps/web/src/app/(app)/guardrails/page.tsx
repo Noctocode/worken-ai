@@ -619,94 +619,118 @@ function AddGuardrailDialog({
                     <>
                       {/* Name + Entities fields */}
                       <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[13px] font-medium text-text-1">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-[14px] font-semibold text-text-2">
                             Name
                           </label>
                           <Input
                             value={validator.name}
                             disabled
-                            className="h-9 text-[13px]"
+                            className="h-[42px] rounded-lg border-border-2 text-[14px]"
                           />
                         </div>
-                        <div className="flex flex-col gap-1.5">
-                          <label className="text-[13px] font-medium text-text-1">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-[14px] font-semibold text-text-2">
                             Entities
                           </label>
                           <Input
                             value={`${selectedEntities.size} selected`}
                             disabled
-                            className="h-9 text-[13px]"
+                            className="h-[42px] rounded-lg border-border-2 text-[14px]"
                           />
                         </div>
                       </div>
 
-                      {/* Filter checks */}
-                      <div className="flex flex-col gap-3">
-                        <span className="text-[14px] font-medium text-text-1">
-                          Filter checks
-                        </span>
-                        <div className="flex flex-wrap gap-2">
+                      {/* Filter checks — checkbox list */}
+                      <div className="flex flex-col gap-2">
+                        <div className="relative">
+                          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+                          <Input
+                            placeholder="Filter checks"
+                            disabled
+                            className="h-9 rounded-md border-border-2 pl-9 text-[14px] placeholder:text-text-3"
+                          />
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto rounded-md border border-border-2 bg-bg-white">
                           {visibleEntities.map((e) => (
                             <button
                               key={e}
                               type="button"
                               onClick={() => toggleEntity(e)}
-                              className={`cursor-pointer rounded px-3 py-1.5 text-[12px] font-medium transition-colors ${
-                                selectedEntities.has(e)
-                                  ? "bg-primary-6 text-white"
-                                  : "border border-border-2 bg-bg-white text-text-2 hover:border-primary-6"
-                              }`}
+                              className="flex w-full cursor-pointer items-center gap-3 border-b border-border-2 px-3 py-2 text-left last:border-b-0 hover:bg-bg-1"
                             >
-                              {e}
+                              <span
+                                className={`flex h-[13px] w-[13px] shrink-0 items-center justify-center rounded-sm border ${
+                                  selectedEntities.has(e)
+                                    ? "border-primary-6 bg-primary-6"
+                                    : "border-text-3 bg-bg-white"
+                                }`}
+                              >
+                                {selectedEntities.has(e) && (
+                                  <Check className="h-2.5 w-2.5 text-white" strokeWidth={3} />
+                                )}
+                              </span>
+                              <span className="text-[13px] text-text-2">
+                                {e}
+                              </span>
                             </button>
                           ))}
+                          {!showAllEntities && PII_ENTITIES.length > 10 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowAllEntities(true)}
+                              className="w-full cursor-pointer border-t border-border-2 px-3 py-2 text-center text-[13px] text-text-3 hover:text-primary-6"
+                            >
+                              Show all {PII_ENTITIES.length} items
+                            </button>
+                          )}
                         </div>
-                        {!showAllEntities && PII_ENTITIES.length > 10 && (
-                          <button
-                            type="button"
-                            onClick={() => setShowAllEntities(true)}
-                            className="cursor-pointer self-start text-[13px] font-medium text-primary-6 hover:text-primary-7"
-                          >
-                            Show all {PII_ENTITIES.length} items
-                          </button>
-                        )}
                       </div>
                     </>
                   )}
 
-                  {/* Select target */}
-                  <div className="flex flex-col gap-3">
-                    <span className="text-[14px] font-medium text-text-1">
+                  {/* Select target — radio buttons */}
+                  <div className="flex flex-col gap-2 pt-1">
+                    <span className="text-[14px] font-semibold text-text-2">
                       Select target
                     </span>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-6">
                       {(["Input", "Output", "Both"] as const).map((t) => {
                         const val = t.toLowerCase();
+                        const active = target === val;
                         return (
                           <button
                             key={t}
                             type="button"
                             onClick={() => setTarget(val)}
-                            className={`cursor-pointer rounded-lg px-4 py-2 text-[13px] font-medium transition-colors ${
-                              target === val
-                                ? "bg-primary-6 text-white"
-                                : "border border-border-2 bg-bg-white text-text-1 hover:border-primary-6"
-                            }`}
+                            className="flex cursor-pointer items-center gap-2"
                           >
-                            {t}
+                            <span
+                              className={`flex h-[13px] w-[13px] items-center justify-center rounded-full border ${
+                                active
+                                  ? "border-primary-6"
+                                  : "border-text-3"
+                              }`}
+                            >
+                              {active && (
+                                <span className="h-[7px] w-[7px] rounded-full bg-primary-6" />
+                              )}
+                            </span>
+                            <span className="text-[14px] text-text-2">
+                              {t}
+                            </span>
                           </button>
                         );
                       })}
                     </div>
                   </div>
 
-                  {/* on_fail behavior */}
-                  <div className="flex flex-col gap-3">
-                    <span className="text-[14px] font-medium text-text-1">
+                  {/* on_fail behavior — radio cards */}
+                  <div className="flex flex-col gap-2 pt-1">
+                    <span className="text-[14px] font-semibold text-text-2">
                       Select &ldquo;on_fail&rdquo; behavior
                     </span>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex gap-6">
                       {[
                         {
                           id: "fix",
@@ -718,25 +742,39 @@ function AddGuardrailDialog({
                           label: "Exception",
                           desc: "Guardrail will not send the sensitive data to LLMs, instead it will fail the prompt.",
                         },
-                      ].map((opt) => (
-                        <button
-                          key={opt.id}
-                          type="button"
-                          onClick={() => setOnFail(opt.id)}
-                          className={`flex cursor-pointer flex-col gap-1 rounded-lg border p-4 text-left transition-colors ${
-                            onFail === opt.id
-                              ? "border-primary-6 bg-[#EBF8FF]"
-                              : "border-border-2 bg-bg-white hover:border-primary-6"
-                          }`}
-                        >
-                          <span className="text-[14px] font-semibold text-text-1">
-                            {opt.label}
-                          </span>
-                          <p className="text-[12px] leading-[1.5] text-text-2">
-                            {opt.desc}
-                          </p>
-                        </button>
-                      ))}
+                      ].map((opt) => {
+                        const active = onFail === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setOnFail(opt.id)}
+                            className={`flex flex-1 cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-colors ${
+                              active
+                                ? "border-primary-6 bg-[#EBF8FF]"
+                                : "border-border-2 bg-bg-white hover:border-primary-6"
+                            }`}
+                          >
+                            <span
+                              className={`flex h-[13px] w-[13px] items-center justify-center rounded-full border ${
+                                active
+                                  ? "border-primary-6"
+                                  : "border-text-3"
+                              }`}
+                            >
+                              {active && (
+                                <span className="h-[7px] w-[7px] rounded-full bg-primary-6" />
+                              )}
+                            </span>
+                            <span className="text-[16px] font-semibold text-text-2">
+                              {opt.label}
+                            </span>
+                            <p className="text-[12px] leading-[1.4] text-text-2">
+                              {opt.desc}
+                            </p>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
