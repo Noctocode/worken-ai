@@ -119,8 +119,7 @@ export class KnowledgeCoreService {
 
     const values = files.map((file) => {
       const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
-      const fileType =
-        ext === 'DOC' ? 'DOCX' : ext === 'XLS' ? 'XLSX' : ext || 'FILE';
+      const fileType = ext || 'FILE';
       return {
         folderId,
         name: file.originalname,
