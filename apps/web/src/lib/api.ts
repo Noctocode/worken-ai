@@ -1041,7 +1041,7 @@ export async function deleteKnowledgeFolder(id: string): Promise<void> {
 export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
-): Promise<KnowledgeFile[]> {
+): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
