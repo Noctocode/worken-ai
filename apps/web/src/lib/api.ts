@@ -986,7 +986,12 @@ export interface KnowledgeFile {
   createdAt: string;
 }
 
-export interface KnowledgeFolderDetail extends KnowledgeFolder {
+export interface KnowledgeFolderDetail {
+  id: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
   files: KnowledgeFile[];
 }
 
