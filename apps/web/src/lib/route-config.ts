@@ -63,7 +63,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
   },
   "/guardrails": {
-    bg: "bg-bg-1",
+    bg: "bg-bg-white",
     title: "Guardrails",
     hideSearch: true,
     hideNotifications: true,

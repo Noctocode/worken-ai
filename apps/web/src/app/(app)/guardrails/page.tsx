@@ -105,7 +105,7 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <div className="flex flex-1 gap-4 rounded-[20px] bg-bg-white p-6">
+    <div className="flex flex-1 gap-3 rounded-[20px] bg-bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
       >
@@ -138,6 +138,7 @@ function OverviewTab({
 }) {
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState<string>("all");
+  const [timeFilter, setTimeFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const deleteName =
@@ -204,10 +205,10 @@ function OverviewTab({
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-6">
         <h3 className="text-[18px] font-bold text-text-1">All Guardrails</h3>
-        <div className="relative flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
           <Input
             value={query}
             onChange={(e) => {
@@ -215,39 +216,52 @@ function OverviewTab({
               setPage(1);
             }}
             placeholder="Search guardrails..."
-            className="h-9 pl-9 placeholder:text-text-3"
+            className="h-12 rounded-xl border-[#C9CDD4] bg-bg-white pl-12 text-[16px] placeholder:text-text-3"
           />
         </div>
-        <Select
-          value={severity}
-          onValueChange={(v) => {
-            setSeverity(v);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-[160px] cursor-pointer data-[size=default]:h-9">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Severities</SelectItem>
-            <SelectItem value="high">High</SelectItem>
-            <SelectItem value="medium">Medium</SelectItem>
-            <SelectItem value="low">Low</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-4">
+          <Select
+            value={severity}
+            onValueChange={(v) => {
+              setSeverity(v);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-6 text-[16px] data-[size=default]:h-12">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Severities</SelectItem>
+              <SelectItem value="high">High</SelectItem>
+              <SelectItem value="medium">Medium</SelectItem>
+              <SelectItem value="low">Low</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={timeFilter} onValueChange={setTimeFilter}>
+            <SelectTrigger className="cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-6 text-[16px] data-[size=default]:h-12">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="24h">Last 24h</SelectItem>
+              <SelectItem value="7d">Last 7 days</SelectItem>
+              <SelectItem value="30d">Last 30 days</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-[20px] bg-bg-white">
+      <div className="overflow-hidden rounded-[20px]">
         <table className="w-full text-left text-[13px]">
           <thead>
-            <tr className="border-b border-border-2 text-[12px] font-semibold uppercase tracking-wide text-text-3">
-              <th className="px-6 py-3">Name</th>
-              <th className="px-6 py-3">Type</th>
-              <th className="px-6 py-3">Severity</th>
-              <th className="px-6 py-3">Triggers</th>
-              <th className="px-6 py-3">Status</th>
-              <th className="px-6 py-3">Actions</th>
+            <tr className="border-b border-border-2 text-[14px] font-medium text-text-2">
+              <th className="px-4 py-2 font-medium">Name</th>
+              <th className="px-4 py-2 font-medium">Type</th>
+              <th className="px-4 py-2 font-medium">Severity</th>
+              <th className="px-4 py-2 font-medium">Triggers</th>
+              <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -256,7 +270,7 @@ function OverviewTab({
                 key={g.id}
                 className="border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1"
               >
-                <td className="px-6 py-4">
+                <td className="px-4 py-6">
                   <div className="flex flex-col">
                     <span className="font-medium text-text-1">{g.name}</span>
                     {g.teamName && (
@@ -267,7 +281,7 @@ function OverviewTab({
                   </div>
                 </td>
                 <td className="px-6 py-4 text-text-2">{g.type}</td>
-                <td className="px-6 py-4">
+                <td className="px-4 py-6">
                   <span
                     className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${SEVERITY_STYLES[g.severity]}`}
                   >
@@ -277,7 +291,7 @@ function OverviewTab({
                 <td className="px-6 py-4 text-text-2">
                   {g.triggers.toLocaleString()}
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-4 py-6">
                   <button
                     type="button"
                     role="switch"
@@ -294,7 +308,7 @@ function OverviewTab({
                     />
                   </button>
                 </td>
-                <td className="px-6 py-4">
+                <td className="px-4 py-6">
                   <button
                     type="button"
                     onClick={() => setDeleteId(g.id)}
@@ -944,10 +958,10 @@ export default function GuardrailsPage() {
         <button
           type="button"
           onClick={() => setTab("overview")}
-          className={`cursor-pointer border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
+          className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
             tab === "overview"
-              ? "border-primary-6 text-text-1"
-              : "border-transparent text-text-2 hover:text-text-1"
+              ? "border-[#C9CDD4] font-bold text-text-1"
+              : "border-transparent font-normal text-text-2 hover:text-text-1"
           }`}
         >
           Overview
@@ -955,10 +969,10 @@ export default function GuardrailsPage() {
         <button
           type="button"
           onClick={() => setTab("templates")}
-          className={`cursor-pointer border-b-2 px-4 py-3 text-[14px] font-medium transition-colors ${
+          className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
             tab === "templates"
-              ? "border-primary-6 text-text-1"
-              : "border-transparent text-text-2 hover:text-text-1"
+              ? "border-[#C9CDD4] font-bold text-text-1"
+              : "border-transparent font-normal text-text-2 hover:text-text-1"
           }`}
         >
           Compliance templates
