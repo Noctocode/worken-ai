@@ -146,6 +146,11 @@ export const guardrails = pgTable("guardrails", {
   severity: text("severity").notNull().default("medium"),
   triggers: integer("triggers").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  validatorType: text("validator_type"),
+  entities: jsonb("entities").$type<string[]>(),
+  target: text("target").default("both"),
+  onFail: text("on_fail").default("fix"),
+  templateSource: text("template_source"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
