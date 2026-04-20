@@ -11,6 +11,7 @@ import {
   Plus,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -180,29 +181,41 @@ export default function KnowledgeCorePage() {
     return created.id;
   };
 
-  const uploadToFolder = async (files: File[]) => {
-    if (files.length === 0) return;
+  const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const confirmUpload = async () => {
+    if (stagedFiles.length === 0) return;
+    setUploading(true);
     try {
       const folderId = await getAllFilesFolderId();
-      await uploadKnowledgeFiles(folderId, files);
+      await uploadKnowledgeFiles(folderId, stagedFiles);
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-folder", folderId] }),
       ]);
-      toast.success(`Uploaded ${files.length} file(s) to All Files.`);
+      toast.success(`Uploaded ${stagedFiles.length} file(s) to All Files.`);
+      setStagedFiles([]);
     } catch {
       toast.error("Failed to upload files.");
+    } finally {
+      setUploading(false);
     }
   };
 
-  const handleDrop = async (e: React.DragEvent) => {
+  const removeStagedFile = (idx: number) =>
+    setStagedFiles((prev) => prev.filter((_, i) => i !== idx));
+
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    await uploadToFolder(Array.from(e.dataTransfer.files));
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) setStagedFiles(files);
   };
 
-  const handleBrowse = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    await uploadToFolder(Array.from(e.target.files ?? []));
+  const handleBrowse = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) setStagedFiles(files);
     e.target.value = "";
   };
 
@@ -507,6 +520,66 @@ export default function KnowledgeCorePage() {
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
               {moveMutation.isPending ? "Moving..." : "Move"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Confirmation Dialog */}
+      <Dialog
+        open={stagedFiles.length > 0}
+        onOpenChange={(open) => !open && !uploading && setStagedFiles([])}
+      >
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              Upload {stagedFiles.length} file{stagedFiles.length !== 1 ? "s" : ""}
+            </DialogTitle>
+            <DialogDescription>
+              These files will be uploaded to the <strong>All Files</strong> folder.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
+            {stagedFiles.map((f, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-3 rounded border border-border-2 bg-bg-1 px-3 py-2"
+              >
+                <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[13px] font-medium text-text-1">
+                    {f.name}
+                  </span>
+                  <span className="text-[11px] text-text-3">
+                    {formatBytes(f.size)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeStagedFile(i)}
+                  disabled={uploading}
+                  className="flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setStagedFiles([])}
+              disabled={uploading}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmUpload}
+              disabled={uploading || stagedFiles.length === 0}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {uploading ? "Uploading..." : "Upload"}
             </Button>
           </DialogFooter>
         </DialogContent>
