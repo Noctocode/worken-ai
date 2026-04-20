@@ -772,11 +772,25 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
                           <Switch
-                            checked={g.teamIsActive ?? g.isActive}
-                            disabled={!canManageTeam}
-                            onCheckedChange={() => toggleMutation.mutate(g.id)}
+                            checked={g.isActive && (g.teamIsActive ?? true)}
+                            disabled={!canManageTeam || !g.isActive}
+                            onCheckedChange={() => {
+                              if (!g.isActive) {
+                                toast.error(
+                                  "This guardrail is globally deactivated. Reactivate it on the Guardrails page first.",
+                                );
+                                return;
+                              }
+                              toggleMutation.mutate(g.id);
+                            }}
                           />
-                          <span className="text-[16px] text-text-1 whitespace-nowrap">{(g.teamIsActive ?? g.isActive) ? "Active" : "Inactive"}</span>
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">
+                            {!g.isActive
+                              ? "Inactive (global)"
+                              : (g.teamIsActive ?? true)
+                                ? "Active"
+                                : "Inactive"}
+                          </span>
                         </div>
                       </td>
                       <td className="px-4 align-middle w-[93px]">
