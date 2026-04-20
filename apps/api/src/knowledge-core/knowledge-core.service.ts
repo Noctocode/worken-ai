@@ -14,6 +14,8 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
+const UPLOAD_BASE = path.join(process.cwd(), 'uploads', 'knowledge-core');
+
 @Injectable()
 export class KnowledgeCoreService {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
@@ -128,7 +130,10 @@ export class KnowledgeCoreService {
           name: file.originalname,
           fileType,
           sizeBytes: file.size,
-          storagePath: file.path,
+          storagePath: path.posix.join(
+            'uploads/knowledge-core',
+            path.basename(file.path),
+          ),
           uploadedById: userId,
         })
         .returning();
@@ -162,7 +167,10 @@ export class KnowledgeCoreService {
     if (file.ownerId !== userId) throw new ForbiddenException('Access denied');
     if (!file.storagePath) throw new NotFoundException('File not on disk');
 
-    return { name: file.name, storagePath: file.storagePath };
+    return {
+      name: file.name,
+      storagePath: path.resolve(process.cwd(), file.storagePath),
+    };
   }
 
   async moveFile(fileId: string, targetFolderId: string, userId: string) {
@@ -227,7 +235,7 @@ export class KnowledgeCoreService {
 
     if (file.storagePath) {
       try {
-        fs.unlinkSync(file.storagePath);
+        fs.unlinkSync(path.resolve(process.cwd(), file.storagePath));
       } catch {
         // File may already be removed from disk
       }
