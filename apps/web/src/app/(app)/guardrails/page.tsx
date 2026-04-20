@@ -534,29 +534,30 @@ function AddGuardrailDialog({
         className="flex w-[90vw] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded p-0 sm:max-w-[1200px]"
         showCloseButton={false}
       >
-        {/* Header */}
-        <div className="flex flex-col gap-3 bg-bg-white px-6 py-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-[23px] font-bold text-text-1">Add guardrail</h2>
-            <button
-              type="button"
-              onClick={() => onOpenChange(false)}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <p className="text-[14px] leading-[1.5] text-text-2">
-            Guardrails detect and mitigate the presence of specific types of
-            risks. To maintain the integrity and reliability of the model&apos;s
-            inputs and outputs, safeguard user data and align with regulatory
-            standards.
-          </p>
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_280px]">
-          {/* Left: Form */}
-          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto border-r border-border-2 p-6">
+          {/* Left: Header + Form */}
+          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto p-6">
+            {/* Header */}
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[23px] font-bold text-text-1">
+                  Add guardrail
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => onOpenChange(false)}
+                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="text-[14px] leading-[1.5] text-text-2">
+                Guardrails detect and mitigate the presence of specific types
+                of risks. To maintain the integrity and reliability of the
+                model&apos;s inputs and outputs, safeguard user data and align
+                with regulatory standards.
+              </p>
+            </div>
             {/* Guardrail name */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
