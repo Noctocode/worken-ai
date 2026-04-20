@@ -73,8 +73,17 @@ export class KnowledgeCoreController {
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        const allowed = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
-        cb(null, allowed.test(file.originalname));
+        const allowedExt = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
+        const allowedMime =
+          /^(application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel)|image\/(png|jpe?g))$/i;
+        if (
+          !allowedExt.test(file.originalname) ||
+          !allowedMime.test(file.mimetype)
+        ) {
+          cb(new Error(`Unsupported file type: ${file.originalname}`), false);
+          return;
+        }
+        cb(null, true);
       },
     }),
   )
