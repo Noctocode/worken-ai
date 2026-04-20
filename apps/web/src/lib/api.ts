@@ -962,6 +962,123 @@ export async function deleteTender(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete tender");
 }
 
+// Knowledge Core
+
+export interface KnowledgeFolder {
+  id: string;
+  name: string;
+  ownerId: string;
+  fileCount: number;
+  totalBytes: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface KnowledgeFile {
+  id: string;
+  folderId: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  storagePath: string | null;
+  uploadedById: string | null;
+  uploadedByName: string | null;
+  createdAt: string;
+}
+
+export interface KnowledgeFolderDetail {
+  id: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+  files: KnowledgeFile[];
+}
+
+export interface KnowledgeRecentFile {
+  id: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  folderName: string;
+  uploadedByName: string | null;
+  createdAt: string;
+}
+
+export async function fetchKnowledgeFolders(): Promise<KnowledgeFolder[]> {
+  const res = await apiFetch("/knowledge-core/folders");
+  if (!res.ok) throw new Error("Failed to fetch folders");
+  return res.json();
+}
+
+export async function fetchKnowledgeFolder(
+  id: string,
+): Promise<KnowledgeFolderDetail> {
+  const res = await apiFetch(`/knowledge-core/folders/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch folder");
+  return res.json();
+}
+
+export async function createKnowledgeFolder(
+  name: string,
+): Promise<Pick<KnowledgeFolder, "id" | "name" | "ownerId" | "createdAt" | "updatedAt">> {
+  const res = await apiFetch("/knowledge-core/folders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error("Failed to create folder");
+  return res.json();
+}
+
+export async function deleteKnowledgeFolder(id: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/folders/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete folder");
+}
+
+export async function uploadKnowledgeFiles(
+  folderId: string,
+  files: File[],
+): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error("Failed to upload files");
+  return res.json();
+}
+
+export async function moveKnowledgeFile(
+  fileId: string,
+  targetFolderId: string,
+): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/move`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ targetFolderId }),
+  });
+  if (!res.ok) throw new Error("Failed to move file");
+}
+
+export async function deleteKnowledgeFile(id: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/files/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete file");
+}
+
+export async function fetchRecentKnowledgeFiles(): Promise<
+  KnowledgeRecentFile[]
+> {
+  const res = await apiFetch("/knowledge-core/recent");
+  if (!res.ok) throw new Error("Failed to fetch recent files");
+  return res.json();
+}
+
 // Guardrails Section
 
 export interface GuardrailItem {
