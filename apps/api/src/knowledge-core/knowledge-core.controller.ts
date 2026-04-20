@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -80,7 +81,7 @@ export class KnowledgeCoreController {
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
         ) {
-          cb(new Error(`Unsupported file type: ${file.originalname}`), false);
+          cb(new BadRequestException(`Unsupported file type: ${file.originalname}`), false);
           return;
         }
         cb(null, true);
