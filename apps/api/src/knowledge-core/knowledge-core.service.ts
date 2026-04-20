@@ -240,6 +240,11 @@ export class KnowledgeCoreService {
     }
 
     await this.db.delete(knowledgeFiles).where(eq(knowledgeFiles.id, fileId));
+
+    await this.db
+      .update(knowledgeFolders)
+      .set({ updatedAt: new Date() })
+      .where(eq(knowledgeFolders.id, file.folderId));
   }
 
   async recentFiles(userId: string) {
