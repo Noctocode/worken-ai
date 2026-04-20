@@ -8,10 +8,12 @@ import {
   ChevronRight,
   Eye,
   Loader2,
+  Plus,
   Search,
   Shield,
   ShieldCheck,
   Trash2,
+  X,
   Zap,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -493,6 +495,8 @@ function AddGuardrailDialog({
   );
   const [target, setTarget] = useState<string>("both");
   const [onFail, setOnFail] = useState<string>("fix");
+  const [validatorSearch, setValidatorSearch] = useState("");
+  const [showAllEntities, setShowAllEntities] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -502,6 +506,8 @@ function AddGuardrailDialog({
       setSelectedEntities(new Set(PII_ENTITIES));
       setTarget("both");
       setOnFail("fix");
+      setValidatorSearch("");
+      setShowAllEntities(false);
     }
   }, [open, teams]);
 
@@ -515,27 +521,37 @@ function AddGuardrailDialog({
   };
 
   const validator = VALIDATOR_TYPES.find((v) => v.id === validatorType);
+  const filteredValidators = VALIDATOR_TYPES.filter((v) =>
+    v.name.toLowerCase().includes(validatorSearch.toLowerCase()),
+  );
+  const visibleEntities = showAllEntities
+    ? PII_ENTITIES
+    : PII_ENTITIES.slice(0, 10);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl gap-0 p-0">
-        <DialogHeader className="border-b border-border-2 px-6 py-4">
-          <DialogTitle className="text-[18px] font-bold text-text-1">
-            Add guardrail
-          </DialogTitle>
-          <DialogDescription className="text-[13px] text-text-2">
-            Guardrails detect and mitigate the presence of specific types of
-            risks. To maintain the integrity and reliability of the model's
-            inputs and outputs, safeguard user data and align with regulatory
-            standards.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="w-[90vw] max-w-[calc(100%-2rem)] gap-0 overflow-hidden rounded p-0 sm:max-w-[1200px]"
+        showCloseButton={false}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border-2 bg-bg-white px-6 py-5">
+          <h2 className="text-[23px] font-bold text-text-1">Add guardrail</h2>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
 
-        <div className="grid grid-cols-1 divide-x divide-border-2 sm:grid-cols-[1fr_260px]">
-          {/* Form */}
-          <div className="flex flex-col gap-5 p-6">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-medium text-text-1">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_280px]">
+          {/* Left: Form */}
+          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto border-r border-border-2 p-6">
+            {/* Guardrail name */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[14px] font-medium text-text-1">
                 Guardrail name
               </label>
               <Input
@@ -546,8 +562,9 @@ function AddGuardrailDialog({
               />
             </div>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[13px] font-medium text-text-1">
+            {/* Team */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[14px] font-medium text-text-1">
                 Team
               </label>
               <Select value={teamId} onValueChange={setTeamId}>
@@ -564,138 +581,221 @@ function AddGuardrailDialog({
               </Select>
             </div>
 
-            {/* Validator config */}
-            {validator && (
-              <div className="flex flex-col gap-4 rounded-lg border border-border-2 p-4">
-                <div className="flex flex-col gap-1">
-                  <h4 className="text-[14px] font-semibold text-text-1">
-                    {validator.name}
-                  </h4>
-                  <p className="text-[12px] text-text-2">
-                    {validator.description}
-                  </p>
-                </div>
+            {/* Validators section */}
+            <div className="flex flex-col gap-3">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-[16px] font-bold text-text-1">
+                  Validators
+                </h3>
+                <p className="text-[13px] leading-[1.5] text-text-2">
+                  Validators run input/output guards in your application that
+                  detect, quantify and mitigate the presence of specific types
+                  of risks.
+                </p>
+              </div>
 
-                {validatorType === "no_pii" && (
-                  <div className="flex flex-col gap-2">
-                    <span className="text-[12px] font-medium text-text-2">
-                      Filter checks
+              {/* Selected validator config */}
+              {validator && (
+                <div className="flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-5">
+                  <div className="flex flex-col gap-1">
+                    <h4 className="text-[16px] font-bold text-text-1">
+                      {validator.name}
+                    </h4>
+                    <p className="text-[13px] text-text-2">
+                      {validator.description}
+                    </p>
+                  </div>
+
+                  {validatorType === "no_pii" && (
+                    <>
+                      {/* Name + Entities fields */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[13px] font-medium text-text-1">
+                            Name
+                          </label>
+                          <Input
+                            value={validator.name}
+                            disabled
+                            className="h-9 text-[13px]"
+                          />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          <label className="text-[13px] font-medium text-text-1">
+                            Entities
+                          </label>
+                          <Input
+                            value={`${selectedEntities.size} selected`}
+                            disabled
+                            className="h-9 text-[13px]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Filter checks */}
+                      <div className="flex flex-col gap-3">
+                        <span className="text-[14px] font-medium text-text-1">
+                          Filter checks
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          {visibleEntities.map((e) => (
+                            <button
+                              key={e}
+                              type="button"
+                              onClick={() => toggleEntity(e)}
+                              className={`cursor-pointer rounded px-3 py-1.5 text-[12px] font-medium transition-colors ${
+                                selectedEntities.has(e)
+                                  ? "bg-primary-6 text-white"
+                                  : "border border-border-2 bg-bg-white text-text-2 hover:border-primary-6"
+                              }`}
+                            >
+                              {e}
+                            </button>
+                          ))}
+                        </div>
+                        {!showAllEntities && PII_ENTITIES.length > 10 && (
+                          <button
+                            type="button"
+                            onClick={() => setShowAllEntities(true)}
+                            className="cursor-pointer self-start text-[13px] font-medium text-primary-6 hover:text-primary-7"
+                          >
+                            Show all {PII_ENTITIES.length} items
+                          </button>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Select target */}
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[14px] font-medium text-text-1">
+                      Select target
                     </span>
-                    <div className="flex flex-wrap gap-2">
-                      {PII_ENTITIES.map((e) => (
+                    <div className="flex gap-2">
+                      {(["Input", "Output", "Both"] as const).map((t) => {
+                        const val = t.toLowerCase();
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setTarget(val)}
+                            className={`cursor-pointer rounded-lg px-4 py-2 text-[13px] font-medium transition-colors ${
+                              target === val
+                                ? "bg-primary-6 text-white"
+                                : "border border-border-2 bg-bg-white text-text-1 hover:border-primary-6"
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* on_fail behavior */}
+                  <div className="flex flex-col gap-3">
+                    <span className="text-[14px] font-medium text-text-1">
+                      Select &ldquo;on_fail&rdquo; behavior
+                    </span>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        {
+                          id: "fix",
+                          label: "Fix",
+                          desc: "Guardrail will replace sensitive data with labels.",
+                        },
+                        {
+                          id: "exception",
+                          label: "Exception",
+                          desc: "Guardrail will not send the sensitive data to LLMs, instead it will fail the prompt.",
+                        },
+                      ].map((opt) => (
                         <button
-                          key={e}
+                          key={opt.id}
                           type="button"
-                          onClick={() => toggleEntity(e)}
-                          className={`cursor-pointer rounded px-2.5 py-1 text-[11px] font-medium transition-colors ${
-                            selectedEntities.has(e)
-                              ? "bg-primary-6 text-white"
-                              : "border border-border-2 bg-bg-white text-text-2 hover:border-primary-6"
+                          onClick={() => setOnFail(opt.id)}
+                          className={`flex cursor-pointer flex-col gap-1 rounded-lg border p-4 text-left transition-colors ${
+                            onFail === opt.id
+                              ? "border-primary-6 bg-[#EBF8FF]"
+                              : "border-border-2 bg-bg-white hover:border-primary-6"
                           }`}
                         >
-                          {e}
+                          <span className="text-[14px] font-semibold text-text-1">
+                            {opt.label}
+                          </span>
+                          <p className="text-[12px] leading-[1.5] text-text-2">
+                            {opt.desc}
+                          </p>
                         </button>
                       ))}
                     </div>
                   </div>
-                )}
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-[12px] font-medium text-text-2">
-                    Select target
-                  </span>
-                  <div className="flex gap-2">
-                    {["input", "output", "both"].map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setTarget(t)}
-                        className={`cursor-pointer rounded px-3 py-1.5 text-[12px] font-medium capitalize transition-colors ${
-                          target === t
-                            ? "bg-primary-6 text-white"
-                            : "border border-border-2 bg-bg-white text-text-2 hover:border-primary-6"
-                        }`}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
                 </div>
-
-                <div className="flex flex-col gap-2">
-                  <span className="text-[12px] font-medium text-text-2">
-                    Select &apos;on_fail&apos; behavior
-                  </span>
-                  <div className="flex flex-col gap-2">
-                    {[
-                      {
-                        id: "fix",
-                        label: "Fix",
-                        desc: "Guardrail will replace sensitive data with labels.",
-                      },
-                      {
-                        id: "exception",
-                        label: "Exception",
-                        desc: "Guardrail will not send the sensitive data to LLMs, instead it will fail the prompt.",
-                      },
-                    ].map((opt) => (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() => setOnFail(opt.id)}
-                        className={`cursor-pointer rounded-lg border p-3 text-left transition-colors ${
-                          onFail === opt.id
-                            ? "border-primary-6 bg-[#EBF8FF]"
-                            : "border-border-2 bg-bg-white hover:border-primary-6"
-                        }`}
-                      >
-                        <span className="text-[13px] font-semibold text-text-1">
-                          {opt.label}
-                        </span>
-                        <p className="mt-0.5 text-[11px] text-text-2">
-                          {opt.desc}
-                        </p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Validator picker sidebar */}
-          <div className="flex flex-col gap-3 p-4">
-            <span className="text-[12px] font-semibold uppercase tracking-wide text-text-3">
-              Validators
-            </span>
-            <div className="flex flex-col gap-2">
-              {VALIDATOR_TYPES.map((v) => {
-                const active = v.id === validatorType;
+          {/* Right: Validator picker sidebar */}
+          <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto bg-bg-white p-5">
+            <button
+              type="button"
+              className="cursor-pointer self-start text-[13px] font-medium text-primary-6 hover:text-primary-7"
+            >
+              Compliance templates
+            </button>
+
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+              <Input
+                value={validatorSearch}
+                onChange={(e) => setValidatorSearch(e.target.value)}
+                placeholder="Filter validators"
+                className="h-9 pl-9 text-[13px] placeholder:text-text-3"
+              />
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {filteredValidators.map((v) => {
+                const isActive = v.id === validatorType;
                 return (
-                  <button
+                  <div
                     key={v.id}
-                    type="button"
-                    onClick={() => setValidatorType(v.id)}
-                    className={`flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-left transition-colors ${
-                      active
+                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors ${
+                      isActive
                         ? "border-primary-6 bg-[#EBF8FF]"
-                        : "border-border-2 bg-bg-white hover:border-primary-6"
+                        : "border-border-2"
                     }`}
                   >
-                    <span className="text-[13px] font-medium text-text-1">
-                      {v.name}
-                    </span>
-                    <span className="text-[11px] text-text-2">
-                      {v.description}
-                    </span>
-                  </button>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[13px] font-medium text-text-1">
+                        {v.name}
+                      </span>
+                      <span className="text-[11px] leading-[1.4] text-text-2">
+                        {v.description}
+                      </span>
+                    </div>
+                    {isActive ? (
+                      <span className="shrink-0 rounded bg-primary-6/10 px-2 py-0.5 text-[10px] font-medium text-primary-6">
+                        Added
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setValidatorType(v.id)}
+                        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border-2 text-text-3 transition-colors hover:border-primary-6 hover:text-primary-6"
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    )}
+                  </div>
                 );
               })}
             </div>
           </div>
         </div>
 
-        <DialogFooter className="border-t border-border-2 px-6 py-4">
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-border-2 px-6 py-4">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -726,7 +826,7 @@ function AddGuardrailDialog({
           >
             {isPending ? "Adding..." : "Add"}
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
