@@ -484,6 +484,7 @@ function AddGuardrailDialog({
   isPending: boolean;
 }) {
   const [name, setName] = useState("");
+  const [severity, setSeverity] = useState<"high" | "medium" | "low">("high");
   const [validatorType, setValidatorType] = useState("no_pii");
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(PII_ENTITIES),
@@ -497,6 +498,7 @@ function AddGuardrailDialog({
   useEffect(() => {
     if (open) {
       setName("");
+      setSeverity("high");
       setValidatorName("");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
@@ -568,6 +570,23 @@ function AddGuardrailDialog({
                 placeholder="Enter guardrail name"
                 className="h-10"
               />
+            </div>
+
+            {/* Severity */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[14px] font-medium text-text-1">
+                Severity
+              </label>
+              <Select value={severity} onValueChange={(v) => setSeverity(v as "high" | "medium" | "low")}>
+                <SelectTrigger className="cursor-pointer data-[size=default]:h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="medium">Medium</SelectItem>
+                  <SelectItem value="low">Low</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Validators section */}
@@ -829,7 +848,7 @@ function AddGuardrailDialog({
                     : validatorType === "detect_jailbreak"
                       ? "Content Safety"
                       : "Custom",
-                severity: "high",
+                severity,
                 validatorType,
                 entities: Array.from(selectedEntities),
                 target,
