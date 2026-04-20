@@ -50,6 +50,9 @@ export class KnowledgeCoreController {
     @Body() body: { name: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
+      throw new BadRequestException('Folder name is required');
+    }
     return this.service.createFolder(body.name, user.id);
   }
 
