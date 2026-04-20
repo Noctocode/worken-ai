@@ -279,7 +279,7 @@ export default function KnowledgeCorePage() {
       </div>
 
       {/* Folders */}
-      <section className="flex flex-col gap-4">
+      <section>
         <div className="flex items-center justify-between">
           <h2 className="text-[18px] font-bold text-text-1">Folders</h2>
           <Button
@@ -291,7 +291,7 @@ export default function KnowledgeCorePage() {
             New Folder
           </Button>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           {filteredFolders.map((folder) => (
             <Link
               key={folder.id}
@@ -350,7 +350,7 @@ export default function KnowledgeCorePage() {
       </section>
 
       {/* Recent Files */}
-      <section className="flex flex-col gap-4">
+      <section className="flex flex-col gap-6">
         <h2 className="text-[18px] font-bold text-text-1">Recent Files</h2>
         <div className="flex flex-col gap-3">
           {filteredFiles.map((file) => (
