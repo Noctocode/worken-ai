@@ -8,6 +8,7 @@ import {
   Loader2,
   MoreVertical,
   Plus,
+  Trash2,
   Upload,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,10 +27,17 @@ import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Select,
   SelectContent,
@@ -69,6 +77,7 @@ export default function KnowledgeCorePage() {
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [uploadTargetId, setUploadTargetId] = useState<string>("");
+  const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
 
   const handleSearch = useCallback((value: string) => {
     setQuery(value);
@@ -88,6 +97,9 @@ export default function KnowledgeCorePage() {
     queryKey: ["knowledge-folders"],
     queryFn: fetchKnowledgeFolders,
   });
+
+  const deleteFolderName =
+    folders.find((f) => f.id === deleteFolderId)?.name ?? "";
 
   const { data: recentFiles = [], isLoading: filesLoading } = useQuery({
     queryKey: ["knowledge-recent"],
@@ -115,10 +127,14 @@ export default function KnowledgeCorePage() {
     onError: () => toast.error("Failed to delete folder."),
   });
 
-  const handleDeleteFolder = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}" and all its files? This cannot be undone.`))
-      return;
-    deleteMutation.mutate(id);
+  const handleDeleteFolder = (id: string) => {
+    setDeleteFolderId(id);
+  };
+
+  const confirmDeleteFolder = () => {
+    if (!deleteFolderId) return;
+    deleteMutation.mutate(deleteFolderId);
+    setDeleteFolderId(null);
   };
 
   const uploadToFolder = async (files: File[]) => {
@@ -245,17 +261,32 @@ export default function KnowledgeCorePage() {
                   className="h-8 w-8 text-primary-6"
                   strokeWidth={1.5}
                 />
-                <button
-                  type="button"
+                <div
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    handleDeleteFolder(folder.id, folder.name);
                   }}
-                  className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
                 >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onSelect={() => handleDeleteFolder(folder.id)}
+                        className="text-danger-6 focus:text-danger-6"
+                      >
+                        <Trash2 className="mr-2 h-3.5 w-3.5" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               </div>
               <h3 className="text-[16px] font-medium text-text-1">
                 {folder.name}
@@ -342,6 +373,40 @@ export default function KnowledgeCorePage() {
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
               {createMutation.isPending ? "Creating..." : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Folder Dialog */}
+      <Dialog
+        open={deleteFolderId !== null}
+        onOpenChange={(open) => !open && setDeleteFolderId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Folder</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{deleteFolderName}</strong> and all its files? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteFolderId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteFolder}
+              disabled={deleteMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
