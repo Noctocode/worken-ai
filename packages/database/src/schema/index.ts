@@ -138,8 +138,9 @@ export const messages = pgTable("messages", {
 
 export const guardrails = pgTable("guardrails", {
   id: uuid("id").primaryKey().defaultRandom(),
-  teamId: uuid("team_id")
-    .references(() => teams.id, { onDelete: "cascade" })
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+  ownerId: uuid("owner_id")
+    .references(() => users.id)
     .notNull(),
   name: text("name").notNull(),
   type: text("type").notNull(),
@@ -147,7 +148,7 @@ export const guardrails = pgTable("guardrails", {
   triggers: integer("triggers").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   validatorType: text("validator_type"),
-  entities: jsonb("entities").$type<string[]>(),
+  entities: jsonb("entities"),
   target: text("target").default("both"),
   onFail: text("on_fail").default("fix"),
   templateSource: text("template_source"),

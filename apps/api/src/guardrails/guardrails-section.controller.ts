@@ -34,7 +34,6 @@ export class GuardrailsSectionController {
   create(
     @Body()
     body: {
-      teamId: string;
       name: string;
       type: string;
       severity: string;
@@ -66,9 +65,9 @@ export class GuardrailsSectionController {
 
   @Post('apply-template')
   applyTemplate(
-    @Body() body: { templateId: string; teamId: string },
+    @Body() body: { templateId: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.applyTemplate(body.templateId, body.teamId, user.id);
+    return this.service.applyTemplate(body.templateId, user.id);
   }
 }

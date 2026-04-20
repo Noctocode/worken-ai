@@ -43,7 +43,6 @@ import {
   toggleGuardrailItem,
   deleteGuardrailItem,
   applyComplianceTemplate,
-  fetchTeams,
   type GuardrailItem,
   type GuardrailStats,
   type ComplianceTemplateItem,
@@ -468,15 +467,12 @@ function TemplatesTab({
 function AddGuardrailDialog({
   open,
   onOpenChange,
-  teams,
   onSubmit,
   isPending,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  teams: { id: string; name: string }[];
   onSubmit: (data: {
-    teamId: string;
     name: string;
     type: string;
     severity: string;
@@ -488,7 +484,6 @@ function AddGuardrailDialog({
   isPending: boolean;
 }) {
   const [name, setName] = useState("");
-  const [teamId, setTeamId] = useState(teams[0]?.id ?? "");
   const [validatorType, setValidatorType] = useState("no_pii");
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(PII_ENTITIES),
@@ -501,7 +496,6 @@ function AddGuardrailDialog({
   useEffect(() => {
     if (open) {
       setName("");
-      setTeamId(teams[0]?.id ?? "");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
       setTarget("both");
@@ -509,7 +503,7 @@ function AddGuardrailDialog({
       setValidatorSearch("");
       setShowAllEntities(false);
     }
-  }, [open, teams]);
+  }, [open]);
 
   const toggleEntity = (e: string) => {
     setSelectedEntities((prev) => {
@@ -572,25 +566,6 @@ function AddGuardrailDialog({
                 placeholder="Enter guardrail name"
                 className="h-10"
               />
-            </div>
-
-            {/* Team */}
-            <div className="flex flex-col gap-2">
-              <label className="text-[14px] font-medium text-text-1">
-                Team
-              </label>
-              <Select value={teamId} onValueChange={setTeamId}>
-                <SelectTrigger className="cursor-pointer data-[size=default]:h-10">
-                  <SelectValue placeholder="Select team" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teams.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </div>
 
             {/* Validators section */}
@@ -845,7 +820,6 @@ function AddGuardrailDialog({
           <Button
             onClick={() =>
               onSubmit({
-                teamId,
                 name,
                 type:
                   validatorType === "no_pii"
@@ -860,7 +834,7 @@ function AddGuardrailDialog({
                 onFail,
               })
             }
-            disabled={!name.trim() || !teamId || isPending}
+            disabled={!name.trim() || isPending}
             className="cursor-pointer bg-primary-6 hover:bg-primary-7"
           >
             {isPending ? "Adding..." : "Add"}
@@ -876,11 +850,6 @@ function AddGuardrailDialog({
 export default function GuardrailsPage() {
   const [tab, setTab] = useState<Tab>("overview");
   const [addOpen, setAddOpen] = useState(false);
-  const [applyTeamDialogOpen, setApplyTeamDialogOpen] = useState(false);
-  const [pendingTemplateId, setPendingTemplateId] = useState<string | null>(
-    null,
-  );
-  const [applyTeamId, setApplyTeamId] = useState("");
 
   const queryClient = useQueryClient();
 
@@ -897,11 +866,6 @@ export default function GuardrailsPage() {
   const { data: templates = [], isLoading: templatesLoading } = useQuery({
     queryKey: ["guardrails-templates"],
     queryFn: fetchComplianceTemplates,
-  });
-
-  const { data: userTeams = [] } = useQuery({
-    queryKey: ["teams"],
-    queryFn: fetchTeams,
   });
 
   const invalidateAll = () => {
@@ -935,33 +899,15 @@ export default function GuardrailsPage() {
   });
 
   const applyMutation = useMutation({
-    mutationFn: ({
-      templateId,
-      teamId,
-    }: {
-      templateId: string;
-      teamId: string;
-    }) => applyComplianceTemplate(templateId, teamId),
+    mutationFn: (templateId: string) => applyComplianceTemplate(templateId),
     onSuccess: (result) => {
       invalidateAll();
-      setApplyTeamDialogOpen(false);
-      setPendingTemplateId(null);
       toast.success(
         `Applied ${result.templateName}: ${result.rulesCreated} rules created.`,
       );
     },
     onError: () => toast.error("Failed to apply template."),
   });
-
-  const handleApplyTemplate = (templateId: string) => {
-    if (userTeams.length === 1) {
-      applyMutation.mutate({ templateId, teamId: userTeams[0].id });
-    } else {
-      setPendingTemplateId(templateId);
-      setApplyTeamId(userTeams[0]?.id ?? "");
-      setApplyTeamDialogOpen(true);
-    }
-  };
 
   // Appbar "Add Guardrail" button listener
   useEffect(() => {
@@ -1012,7 +958,7 @@ export default function GuardrailsPage() {
         <TemplatesTab
           templates={templates}
           isLoading={templatesLoading}
-          onApply={handleApplyTemplate}
+          onApply={(id) => applyMutation.mutate(id)}
         />
       )}
 
@@ -1020,60 +966,9 @@ export default function GuardrailsPage() {
       <AddGuardrailDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        teams={userTeams.map((t) => ({ id: t.id, name: t.name }))}
         onSubmit={(data) => createMutation.mutate(data)}
         isPending={createMutation.isPending}
       />
-
-      {/* Apply Template — team picker (when user has multiple teams) */}
-      <Dialog
-        open={applyTeamDialogOpen}
-        onOpenChange={(open) => !open && setApplyTeamDialogOpen(false)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Select Team</DialogTitle>
-            <DialogDescription>
-              Choose which team to apply this compliance template to.
-            </DialogDescription>
-          </DialogHeader>
-          <Select value={applyTeamId} onValueChange={setApplyTeamId}>
-            <SelectTrigger className="cursor-pointer data-[size=default]:h-10">
-              <SelectValue placeholder="Select team" />
-            </SelectTrigger>
-            <SelectContent>
-              {userTeams.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setApplyTeamDialogOpen(false)}
-              className="cursor-pointer"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => {
-                if (pendingTemplateId && applyTeamId) {
-                  applyMutation.mutate({
-                    templateId: pendingTemplateId,
-                    teamId: applyTeamId,
-                  });
-                }
-              }}
-              disabled={!applyTeamId || applyMutation.isPending}
-              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
-            >
-              {applyMutation.isPending ? "Applying..." : "Apply"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

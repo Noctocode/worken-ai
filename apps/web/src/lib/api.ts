@@ -1135,7 +1135,6 @@ export async function fetchComplianceTemplates(): Promise<
 }
 
 export async function createGuardrailItem(data: {
-  teamId: string;
   name: string;
   type: string;
   severity: string;
@@ -1173,12 +1172,11 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
 
 export async function applyComplianceTemplate(
   templateId: string,
-  teamId: string,
 ): Promise<{ templateName: string; rulesCreated: number }> {
   const res = await apiFetch("/guardrails-section/apply-template", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ templateId, teamId }),
+    body: JSON.stringify({ templateId }),
   });
   if (!res.ok) throw new Error("Failed to apply template");
   return res.json();

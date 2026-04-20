@@ -987,6 +987,7 @@ export class TeamsService {
       .insert(guardrails)
       .values({
         teamId,
+        ownerId: userId,
         name: data.name,
         type: data.type,
         severity: data.severity,
