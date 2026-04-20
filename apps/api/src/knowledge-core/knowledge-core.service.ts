@@ -117,28 +117,26 @@ export class KnowledgeCoreService {
     if (!folder) throw new NotFoundException('Folder not found');
     if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
 
-    const inserted: (typeof knowledgeFiles.$inferSelect)[] = [];
-    for (const file of files) {
+    const values = files.map((file) => {
       const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
       const fileType =
         ext === 'DOC' ? 'DOCX' : ext === 'XLS' ? 'XLSX' : ext || 'FILE';
+      return {
+        folderId,
+        name: file.originalname,
+        fileType,
+        sizeBytes: file.size,
+        storagePath: path.posix.join(
+          'uploads/knowledge-core',
+          path.basename(file.path),
+        ),
+        uploadedById: userId,
+      };
+    });
 
-      const [row] = await this.db
-        .insert(knowledgeFiles)
-        .values({
-          folderId,
-          name: file.originalname,
-          fileType,
-          sizeBytes: file.size,
-          storagePath: path.posix.join(
-            'uploads/knowledge-core',
-            path.basename(file.path),
-          ),
-          uploadedById: userId,
-        })
-        .returning();
-      inserted.push(row);
-    }
+    const inserted = values.length
+      ? await this.db.insert(knowledgeFiles).values(values).returning()
+      : [];
 
     await this.db
       .update(knowledgeFolders)
