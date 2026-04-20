@@ -26,17 +26,24 @@ export class KnowledgeCoreService {
         ownerId: knowledgeFolders.ownerId,
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
-        fileCount: sql<number>`(
-          SELECT count(*) FROM knowledge_files
-          WHERE knowledge_files.folder_id = ${knowledgeFolders.id}
-        )`.as('file_count'),
-        totalBytes: sql<number>`(
-          SELECT coalesce(sum(size_bytes), 0) FROM knowledge_files
-          WHERE knowledge_files.folder_id = ${knowledgeFolders.id}
-        )`.as('total_bytes'),
+        fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
+        totalBytes: sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
+          'total_bytes',
+        ),
       })
       .from(knowledgeFolders)
+      .leftJoin(
+        knowledgeFiles,
+        eq(knowledgeFiles.folderId, knowledgeFolders.id),
+      )
       .where(eq(knowledgeFolders.ownerId, userId))
+      .groupBy(
+        knowledgeFolders.id,
+        knowledgeFolders.name,
+        knowledgeFolders.ownerId,
+        knowledgeFolders.createdAt,
+        knowledgeFolders.updatedAt,
+      )
       .orderBy(desc(knowledgeFolders.updatedAt));
 
     return rows.map((r) => ({
