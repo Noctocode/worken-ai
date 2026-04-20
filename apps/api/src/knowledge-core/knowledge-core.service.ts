@@ -152,16 +152,25 @@ export class KnowledgeCoreService {
       };
     });
 
-    const inserted = values.length
-      ? await this.db.insert(knowledgeFiles).values(values).returning()
-      : [];
+    try {
+      const inserted = values.length
+        ? await this.db.insert(knowledgeFiles).values(values).returning()
+        : [];
 
-    await this.db
-      .update(knowledgeFolders)
-      .set({ updatedAt: new Date() })
-      .where(eq(knowledgeFolders.id, folderId));
+      await this.db
+        .update(knowledgeFolders)
+        .set({ updatedAt: new Date() })
+        .where(eq(knowledgeFolders.id, folderId));
 
-    return inserted;
+      return inserted;
+    } catch (error) {
+      await Promise.allSettled(
+        files
+          .filter((file) => file.path)
+          .map((file) => fs.promises.unlink(file.path)),
+      );
+      throw error;
+    }
   }
 
   async getFileForDownload(fileId: string, userId: string) {
