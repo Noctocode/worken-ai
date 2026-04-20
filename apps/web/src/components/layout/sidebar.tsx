@@ -4,6 +4,7 @@ import {
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
+  Database,
   FolderOpen,
   Layers,
   LogOut,
@@ -62,6 +63,7 @@ export const SidebarContent = ({
     ],
     [
       { href: "/tender-ai", label: "Tender AI", icon: MessageSquare, match: "prefix" },
+      { href: "/knowledge-core", label: "Knowledge Core", icon: Database, match: "prefix" },
     ],
     [
       { href: "/resources", label: "Resources & Learning", icon: BookOpen, match: "prefix" },

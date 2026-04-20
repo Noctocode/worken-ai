@@ -69,6 +69,13 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
     appbarAction: { label: "New Comparison", event: "compare-models:new" },
   },
+  "/knowledge-core": {
+    bg: "bg-bg-1",
+    title: "Knowledge Core",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarSearch: { placeholder: "Search", event: "knowledge-core:search" },
+  },
   "/tender-ai": {
     bg: "bg-bg-1",
     title: "Tender AI",
@@ -133,6 +140,16 @@ export function getRouteConfig(pathname: string): RouteConfig {
     return {
       bg: "bg-bg-1",
       title: "Learn Academy",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
+
+  // Check /knowledge-core/[folderId] pattern
+  if (/^\/knowledge-core\/[^/]+$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      title: "Knowledge Core",
       hideSearch: true,
       hideNotifications: true,
     };

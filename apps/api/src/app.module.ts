@@ -10,6 +10,7 @@ import { CompareModelsModule } from './compare-models/compare-models.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
+import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
@@ -28,6 +29,7 @@ import { UsersModule } from './users/users.module';
     CompareModelsModule,
     ConversationsModule,
     DocumentsModule,
+    KnowledgeCoreModule,
     ModelsModule,
     OnboardingModule,
     ProjectsModule,
