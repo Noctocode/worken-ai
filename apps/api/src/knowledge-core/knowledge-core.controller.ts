@@ -75,7 +75,7 @@ export class KnowledgeCoreController {
       fileFilter: (_req, file, cb) => {
         const allowedExt = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
         const allowedMime =
-          /^(application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel)|image\/(png|jpe?g))$/i;
+          /^(application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
         if (
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)

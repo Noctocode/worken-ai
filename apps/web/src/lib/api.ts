@@ -1016,7 +1016,7 @@ export async function fetchKnowledgeFolder(
 
 export async function createKnowledgeFolder(
   name: string,
-): Promise<KnowledgeFolder> {
+): Promise<Pick<KnowledgeFolder, "id" | "name" | "ownerId" | "createdAt" | "updatedAt">> {
   const res = await apiFetch("/knowledge-core/folders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
