@@ -237,7 +237,7 @@ export default function KnowledgeCorePage() {
     );
   }, [query, recentFiles]);
 
-  if (foldersLoading && filesLoading) {
+  if (foldersLoading || filesLoading) {
     return (
       <div className="flex flex-1 items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-text-3" />
