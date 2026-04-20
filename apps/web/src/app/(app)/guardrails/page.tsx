@@ -490,12 +490,14 @@ function AddGuardrailDialog({
   );
   const [target, setTarget] = useState<string>("both");
   const [onFail, setOnFail] = useState<string>("fix");
+  const [validatorName, setValidatorName] = useState("");
   const [validatorSearch, setValidatorSearch] = useState("");
   const [showAllEntities, setShowAllEntities] = useState(false);
 
   useEffect(() => {
     if (open) {
       setName("");
+      setValidatorName("");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
       setTarget("both");
@@ -602,9 +604,9 @@ function AddGuardrailDialog({
                             Name
                           </label>
                           <Input
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Enter name"
+                            value={validatorName}
+                            onChange={(e) => setValidatorName(e.target.value)}
+                            placeholder="Enter validator name"
                             className="h-[42px] rounded-lg border-border-2 text-[14px]"
                           />
                         </div>
