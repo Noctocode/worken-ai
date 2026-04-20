@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FileText,
   Folder,
+  FolderInput,
   Loader2,
   MoreVertical,
   Plus,
@@ -19,6 +20,8 @@ import {
   createKnowledgeFolder,
   deleteKnowledgeFolder,
   uploadKnowledgeFiles,
+  moveKnowledgeFile,
+  deleteKnowledgeFile,
   type KnowledgeFolder,
   type KnowledgeRecentFile,
 } from "@/lib/api";
@@ -36,8 +39,16 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -119,6 +130,37 @@ export default function KnowledgeCorePage() {
     },
     onError: () => toast.error("Failed to delete folder."),
   });
+
+  const [moveFileId, setMoveFileId] = useState<string | null>(null);
+  const [moveTargetId, setMoveTargetId] = useState<string>("");
+  const moveFileName =
+    recentFiles.find((f) => f.id === moveFileId)?.name ?? "";
+
+  const moveMutation = useMutation({
+    mutationFn: () => moveKnowledgeFile(moveFileId!, moveTargetId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      setMoveFileId(null);
+      setMoveTargetId("");
+      toast.success("File moved.");
+    },
+    onError: () => toast.error("Failed to move file."),
+  });
+
+  const deleteFileMutation = useMutation({
+    mutationFn: deleteKnowledgeFile,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success("File deleted.");
+    },
+    onError: () => toast.error("Failed to delete file."),
+  });
+
+  const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
+  const deleteFileName =
+    recentFiles.find((f) => f.id === deleteFileId)?.name ?? "";
 
   const handleDeleteFolder = (id: string) => {
     setDeleteFolderId(id);
@@ -300,7 +342,7 @@ export default function KnowledgeCorePage() {
           {filteredFiles.map((file) => (
             <div
               key={file.id}
-              className="flex cursor-pointer items-center gap-4 rounded border border-border-2 bg-bg-white px-4 py-3 transition-colors hover:bg-[#EBF8FF]"
+              className="flex items-center gap-4 rounded border border-border-2 bg-bg-white px-4 py-3 transition-colors hover:bg-[#EBF8FF]"
             >
               <FileText
                 className="h-8 w-8 shrink-0 text-text-3"
@@ -318,6 +360,35 @@ export default function KnowledgeCorePage() {
               <span className="hidden shrink-0 text-[13px] text-text-3 sm:block">
                 {formatDateTime(file.createdAt)}
               </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setMoveFileId(file.id);
+                      setMoveTargetId("");
+                    }}
+                  >
+                    <FolderInput className="mr-2 h-3.5 w-3.5" />
+                    Move to...
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => setDeleteFileId(file.id)}
+                    className="text-danger-6 focus:text-danger-6"
+                  >
+                    <Trash2 className="mr-2 h-3.5 w-3.5" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
           {filteredFiles.length === 0 && !filesLoading && (
@@ -393,6 +464,87 @@ export default function KnowledgeCorePage() {
               className="cursor-pointer"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Move File Dialog */}
+      <Dialog
+        open={moveFileId !== null}
+        onOpenChange={(open) => !open && setMoveFileId(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Move File</DialogTitle>
+          </DialogHeader>
+          <p className="text-[13px] text-text-2">
+            Move <strong>{moveFileName}</strong> to:
+          </p>
+          <Select value={moveTargetId} onValueChange={setMoveTargetId}>
+            <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
+              <SelectValue placeholder="Select folder" />
+            </SelectTrigger>
+            <SelectContent>
+              {folders.map((f) => (
+                <SelectItem key={f.id} value={f.id}>
+                  {f.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setMoveFileId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => moveMutation.mutate()}
+              disabled={!moveTargetId || moveMutation.isPending}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {moveMutation.isPending ? "Moving..." : "Move"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete File Dialog */}
+      <Dialog
+        open={deleteFileId !== null}
+        onOpenChange={(open) => !open && setDeleteFileId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete File</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{deleteFileName}</strong>? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteFileId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteFileId) {
+                  deleteFileMutation.mutate(deleteFileId);
+                  setDeleteFileId(null);
+                }
+              }}
+              disabled={deleteFileMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteFileMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
