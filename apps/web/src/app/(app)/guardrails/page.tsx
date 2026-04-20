@@ -535,10 +535,10 @@ function AddGuardrailDialog({
         showCloseButton={false}
       >
         <div className="grid grid-cols-1 sm:grid-cols-[1fr_280px]">
-          {/* Left: Header + Form */}
-          <div className="flex max-h-[70vh] flex-col gap-6 overflow-y-auto p-6">
-            {/* Header */}
-            <div className="flex flex-col gap-3">
+          {/* Left column */}
+          <div className="flex max-h-[70vh] flex-col">
+            {/* Sticky header */}
+            <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-[23px] font-bold text-text-1">
                   Add guardrail
@@ -558,6 +558,9 @@ function AddGuardrailDialog({
                 with regulatory standards.
               </p>
             </div>
+
+            {/* Scrollable form content */}
+            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6">
             {/* Guardrail name */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
@@ -624,30 +627,23 @@ function AddGuardrailDialog({
                             Name
                           </label>
                           <Input
-                            value={validator.name}
-                            disabled
-                            className="h-[42px] rounded-lg border-border-2 text-[14px]"
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-[14px] font-semibold text-text-2">
-                            Entities
-                          </label>
-                          <Input
-                            value={`${selectedEntities.size} selected`}
-                            disabled
+                            value={name}
+                            onChange={(e) => setName(e.target.value)}
+                            placeholder="Enter name"
                             className="h-[42px] rounded-lg border-border-2 text-[14px]"
                           />
                         </div>
                       </div>
 
-                      {/* Filter checks — checkbox list */}
+                      {/* Entities + Filter checks */}
                       <div className="flex flex-col gap-2">
+                        <label className="text-[14px] font-semibold text-text-2">
+                          Entities
+                        </label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
                           <Input
                             placeholder="Filter checks"
-                            disabled
                             className="h-9 rounded-md border-border-2 pl-9 text-[14px] placeholder:text-text-3"
                           />
                         </div>
@@ -779,6 +775,7 @@ function AddGuardrailDialog({
                   </div>
                 </div>
               )}
+            </div>
             </div>
           </div>
 
