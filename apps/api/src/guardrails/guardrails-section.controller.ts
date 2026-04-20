@@ -70,4 +70,21 @@ export class GuardrailsSectionController {
   ) {
     return this.service.applyTemplate(body.templateId, user.id);
   }
+
+  @Patch(':id/assign')
+  assignToTeam(
+    @Param('id') id: string,
+    @Body() body: { teamId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.assignToTeam(id, body.teamId, user.id);
+  }
+
+  @Patch(':id/unassign')
+  unassignFromTeam(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.unassignFromTeam(id, user.id);
+  }
 }

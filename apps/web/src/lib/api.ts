@@ -1170,6 +1170,19 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete guardrail");
 }
 
+export async function assignGuardrailToTeam(
+  guardrailId: string,
+  teamId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/assign`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
+  });
+  if (!res.ok) throw new Error("Failed to assign guardrail");
+  return res.json();
+}
+
 export async function applyComplianceTemplate(
   templateId: string,
 ): Promise<{ templateName: string; rulesCreated: number }> {

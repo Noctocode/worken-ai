@@ -161,6 +161,46 @@ export class GuardrailsSectionService {
     return { templateName: template.name, rulesCreated: inserted.length };
   }
 
+  async assignToTeam(guardrailId: string, teamId: string, userId: string) {
+    const [rule] = await this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.id, guardrailId));
+
+    if (!rule) throw new NotFoundException('Guardrail not found');
+    if (rule.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const [updated] = await this.db
+      .update(guardrails)
+      .set({ teamId, updatedAt: new Date() })
+      .where(eq(guardrails.id, guardrailId))
+      .returning();
+
+    return updated;
+  }
+
+  async unassignFromTeam(guardrailId: string, userId: string) {
+    const [rule] = await this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.id, guardrailId));
+
+    if (!rule) throw new NotFoundException('Guardrail not found');
+    if (rule.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const [updated] = await this.db
+      .update(guardrails)
+      .set({ teamId: null, updatedAt: new Date() })
+      .where(eq(guardrails.id, guardrailId))
+      .returning();
+
+    return updated;
+  }
+
   getTemplates() {
     return COMPLIANCE_TEMPLATES.map((t) => ({
       id: t.id,

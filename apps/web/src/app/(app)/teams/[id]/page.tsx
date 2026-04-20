@@ -42,15 +42,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import Link from "next/link";
 import {
   fetchTeam,
   fetchSubteams,
   fetchGuardrails,
+  fetchGuardrailItems,
+  assignGuardrailToTeam,
   createTeam,
   updateTeam,
   deleteTeam,
   updateTeamBudget,
-  createGuardrail,
   toggleGuardrail as apiToggleGuardrail,
   deleteGuardrail as apiDeleteGuardrail,
   updateMemberRole,
@@ -247,50 +249,80 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
 
 function AddGuardrailDialog({ teamId, children }: { teamId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState("");
-  const [severity, setSeverity] = useState<"high" | "medium" | "low">("medium");
+  const [selectedId, setSelectedId] = useState("");
   const qc = useQueryClient();
 
+  const { data: allGuardrails = [], isLoading } = useQuery({
+    queryKey: ["guardrails-section"],
+    queryFn: fetchGuardrailItems,
+    enabled: open,
+  });
+
+  const unassigned = allGuardrails.filter((g) => !g.teamId || g.teamId === teamId);
+
   const mutation = useMutation({
-    mutationFn: () => createGuardrail(teamId, { name: name.trim(), type: type.trim(), severity }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["guardrails", teamId] }); setOpen(false); setName(""); setType(""); setSeverity("medium"); },
+    mutationFn: () => assignGuardrailToTeam(selectedId, teamId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["guardrails", teamId] });
+      qc.invalidateQueries({ queryKey: ["guardrails-section"] });
+      setOpen(false);
+      setSelectedId("");
+    },
+    onError: () => toast.error("Failed to assign guardrail."),
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedId(""); }}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Guardrail</DialogTitle>
-          <DialogDescription>Create a new guardrail rule for this team.</DialogDescription>
+          <DialogDescription>
+            Select a guardrail to assign to this team.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && type.trim()) mutation.mutate(); }} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="guardrail-name">Name</Label>
-            <Input id="guardrail-name" placeholder="e.g. Content Safety Filter" value={name} onChange={(e) => setName(e.target.value)} required />
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-text-3" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="guardrail-type">Type</Label>
-            <Input id="guardrail-type" placeholder="e.g. Content Safety" value={type} onChange={(e) => setType(e.target.value)} required />
+        ) : unassigned.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="text-[14px] text-text-3">No guardrails available.</p>
+            <Link
+              href="/guardrails"
+              className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
+            >
+              Create one on the Guardrails page →
+            </Link>
           </div>
-          <div className="space-y-2">
-            <Label>Severity</Label>
-            <Select value={severity} onValueChange={(v) => setSeverity(v as "high" | "medium" | "low")}>
-              <SelectTrigger className="border-border-2 text-text-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Guardrail</Label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger className="border-border-2 text-text-1 cursor-pointer">
+                  <SelectValue placeholder="Select a guardrail" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unassigned.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name} — {g.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => mutation.mutate()}
+                disabled={!selectedId || mutation.isPending}
+                className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+              >
+                {mutation.isPending ? "Assigning..." : "Assign Guardrail"}
+              </Button>
+            </DialogFooter>
           </div>
-          <DialogFooter>
-            <Button type="submit" disabled={mutation.isPending || !name.trim() || !type.trim()}>
-              {mutation.isPending ? "Creating..." : "Create Guardrail"}
-            </Button>
-          </DialogFooter>
-        </form>
+        )}
       </DialogContent>
     </Dialog>
   );
