@@ -736,55 +736,50 @@ function AddGuardrailDialog({
           </div>
 
           {/* Right: Validator picker sidebar */}
-          <div className="flex max-h-[70vh] flex-col gap-4 overflow-y-auto bg-bg-white p-5">
-            <button
-              type="button"
-              className="cursor-pointer self-start text-[13px] font-medium text-primary-6 hover:text-primary-7"
-            >
+          <div className="flex max-h-[70vh] flex-col overflow-y-auto border-l border-border-2 bg-bg-1 px-6 py-8">
+            <h3 className="text-[18px] font-semibold leading-[1.3] text-text-1">
               Compliance templates
-            </button>
+            </h3>
 
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+            <div className="relative mt-5">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
               <Input
                 value={validatorSearch}
                 onChange={(e) => setValidatorSearch(e.target.value)}
-                placeholder="Filter validators"
-                className="h-9 pl-9 text-[13px] placeholder:text-text-3"
+                placeholder=" Filter validators"
+                className="h-9 rounded-md border-[#C9CDD4] bg-bg-white pl-10 text-[14px] placeholder:text-text-2"
               />
             </div>
 
-            <div className="flex flex-col gap-3">
-              {filteredValidators.map((v) => {
-                const isActive = v.id === validatorType;
+            <div className="mt-5 flex flex-col">
+              {filteredValidators.map((v, idx) => {
+                const isLast = idx === filteredValidators.length - 1;
                 return (
                   <div
                     key={v.id}
-                    className={`flex items-start justify-between gap-3 rounded-lg border p-3 transition-colors ${
-                      isActive
-                        ? "border-primary-6 bg-[#EBF8FF]"
-                        : "border-border-2"
+                    className={`flex items-center justify-between gap-3 py-3 ${
+                      !isLast ? "border-b border-border-2" : ""
                     }`}
                   >
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[13px] font-medium text-text-1">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[14px] font-semibold leading-[1.3] text-text-1">
                         {v.name}
                       </span>
-                      <span className="text-[11px] leading-[1.4] text-text-2">
+                      <span className="text-[12px] leading-[1.3] text-text-2">
                         {v.description}
                       </span>
                     </div>
-                    {isActive ? (
-                      <span className="shrink-0 rounded bg-primary-6/10 px-2 py-0.5 text-[10px] font-medium text-primary-6">
+                    {v.id === validatorType ? (
+                      <span className="shrink-0 rounded bg-primary-6/10 px-2 py-0.5 text-[11px] font-medium text-primary-6">
                         Added
                       </span>
                     ) : (
                       <button
                         type="button"
                         onClick={() => setValidatorType(v.id)}
-                        className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border-2 text-text-3 transition-colors hover:border-primary-6 hover:text-primary-6"
+                        className="flex shrink-0 cursor-pointer items-center justify-center rounded px-1 py-1 text-[18px] leading-none text-text-3 transition-colors hover:text-primary-6"
                       >
-                        <Plus className="h-3 w-3" />
+                        +
                       </button>
                     )}
                   </div>
