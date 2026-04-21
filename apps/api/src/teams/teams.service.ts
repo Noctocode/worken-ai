@@ -58,12 +58,12 @@ export class TeamsService {
       })
       .returning() as typeof teams.$inferSelect[];
 
-    // Auto-add owner as accepted editor member
+    // Auto-add owner as accepted member with owner role
     await this.db.insert(teamMembers).values({
       teamId: team.id,
       userId,
       email,
-      role: 'editor',
+      role: 'owner',
       status: 'accepted',
     });
 

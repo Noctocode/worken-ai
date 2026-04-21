@@ -330,7 +330,7 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  role: "editor" | "viewer";
+  role: "owner" | "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
