@@ -102,7 +102,7 @@ export class ProjectsService {
   async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
-      if (!role || role === 'viewer') {
+      if (role !== 'owner' && role !== 'editor') {
         throw new ForbiddenException(
           'Only team owners and editors can create team projects',
         );
