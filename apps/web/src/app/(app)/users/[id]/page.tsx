@@ -105,7 +105,7 @@ export default function UserDetailPage({
     }: {
       teamId: string;
       memberId: string;
-      role: "basic" | "advanced";
+      role: "editor" | "viewer";
     }) => updateMemberRole(teamId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
@@ -256,25 +256,31 @@ export default function UserDetailPage({
                       )}
                     </td>
                     <td className="bg-bg-white px-4 align-middle">
-                      <Select
-                        value={t.role}
-                        disabled={!t.canManage}
-                        onValueChange={(value) =>
-                          roleMutation.mutate({
-                            teamId: t.id,
-                            memberId: t.memberId,
-                            role: value as "basic" | "advanced",
-                          })
-                        }
-                      >
-                        <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="basic">Basic</SelectItem>
-                          <SelectItem value="advanced">Advanced</SelectItem>
-                        </SelectContent>
-                      </Select>
+                      {t.role === "owner" ? (
+                        <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
+                          Team Owner
+                        </span>
+                      ) : (
+                        <Select
+                          value={t.role}
+                          disabled={!t.canManage}
+                          onValueChange={(value) =>
+                            roleMutation.mutate({
+                              teamId: t.id,
+                              memberId: t.memberId,
+                              role: value as "editor" | "viewer",
+                            })
+                          }
+                        >
+                          <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="viewer">Viewer</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
                     </td>
                     <td className="bg-bg-white px-4 align-middle w-[93px]">
                       <div className="flex justify-center">

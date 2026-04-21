@@ -93,7 +93,7 @@ export const Appbar = () => {
         m.userId === currentUser.id &&
         m.status === "accepted",
     );
-    return me?.role === "advanced";
+    return me?.role === "owner" || me?.role === "editor";
   })();
 
   const [deleteTeamOpen, setDeleteTeamOpen] = useState(false);

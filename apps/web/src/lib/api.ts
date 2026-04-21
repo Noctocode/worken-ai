@@ -47,9 +47,10 @@ export async function apiFetch(
 export interface User {
   id: string;
   email: string;
+  role: "admin" | "advanced" | "basic";
+  inviteStatus: "active" | "pending";
   name: string | null;
   picture: string | null;
-  isPaid: boolean;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
   onboardingCompleted: boolean;
@@ -329,7 +330,7 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  role: "basic" | "advanced";
+  role: "owner" | "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
@@ -408,10 +409,26 @@ export interface InviteTeamMemberResult extends TeamMember {
   resent: boolean;
 }
 
+export async function inviteUser(
+  email: string,
+  role: "basic" | "advanced",
+): Promise<{ status: string; email: string; role: string }> {
+  const res = await apiFetch("/users/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to invite user");
+  }
+  return res.json();
+}
+
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "basic" | "advanced",
+  role: "editor" | "viewer",
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
@@ -456,7 +473,7 @@ export async function revokeInvitation(memberId: string): Promise<void> {
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "basic" | "advanced",
+  role: "editor" | "viewer",
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",
@@ -681,6 +698,7 @@ export interface OrgUser {
   name: string | null;
   picture: string | null;
   role: "basic" | "advanced" | "admin";
+  inviteStatus: "active" | "pending";
   status: "pending" | "accepted";
   teams: string[];
   monthlyBudgetCents: number;

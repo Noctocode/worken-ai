@@ -1,6 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { inviteUser, inviteTeamMember } from "@/lib/api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -10,16 +16,46 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { TeamInviteForm } from "@/components/team-invite-form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
-export function InviteMemberDialog({
-  teamId,
+type TeamRole = "editor" | "viewer";
+type OrgRole = "basic" | "advanced";
+
+function TeamInviteDialog({
   children,
+  teamId,
 }: {
-  teamId: string;
   children: React.ReactNode;
+  teamId: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<TeamRole>("viewer");
+  const qc = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => inviteTeamMember(teamId, email.trim(), role),
+    onSuccess: (data) => {
+      toast.success(
+        data.resent
+          ? `Invitation resent to ${data.email}.`
+          : `Invited ${data.email} as ${data.role}.`,
+      );
+      qc.invalidateQueries({ queryKey: ["teams", teamId] });
+      setEmail("");
+      setRole("viewer");
+      setOpen(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to invite member.");
+    },
+  });
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -27,17 +63,152 @@ export function InviteMemberDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Invite Member</DialogTitle>
-          <DialogDescription>
-            Invited users will auto-join when they accept the invitation.
-          </DialogDescription>
+          <DialogDescription>Add a member to this team.</DialogDescription>
         </DialogHeader>
-        <TeamInviteForm
-          mode={{ kind: "fixed", teamId }}
-          submitLabel="Invite Member"
-          onSuccess={() => setOpen(false)}
-        />
-        <DialogFooter />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (email.trim()) mutation.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="invite-email">Email</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="user@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite-role">Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as TeamRole)}>
+              <SelectTrigger id="invite-role" className="w-full cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="editor">
+                  Editor — Can edit projects and content
+                </SelectItem>
+                <SelectItem value="viewer">
+                  Viewer — Read-only access
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="submit"
+              disabled={mutation.isPending || !email.trim()}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {mutation.isPending ? "Inviting..." : "Invite Member"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function OrgInviteDialog({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [role, setRole] = useState<OrgRole>("basic");
+  const qc = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => inviteUser(email.trim(), role),
+    onSuccess: (data) => {
+      toast.success(
+        data.status === "updated"
+          ? `Updated ${data.email} to ${data.role}.`
+          : `Invited ${data.email} as ${data.role}.`,
+      );
+      qc.invalidateQueries({ queryKey: ["org-users"] });
+      setEmail("");
+      setRole("basic");
+      setOpen(false);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Failed to invite user.");
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Invite User</DialogTitle>
+          <DialogDescription>Add a user to the organization.</DialogDescription>
+        </DialogHeader>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (email.trim()) mutation.mutate();
+          }}
+          className="space-y-4"
+        >
+          <div className="space-y-2">
+            <Label htmlFor="invite-email">Email</Label>
+            <Input
+              id="invite-email"
+              type="email"
+              placeholder="user@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite-role">Role</Label>
+            <Select value={role} onValueChange={(v) => setRole(v as OrgRole)}>
+              <SelectTrigger id="invite-role" className="w-full cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="basic">
+                  Basic — View projects and teams
+                </SelectItem>
+                <SelectItem value="advanced">
+                  Advanced — Full access to management
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button
+              type="submit"
+              disabled={mutation.isPending || !email.trim()}
+              className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+            >
+              {mutation.isPending ? "Inviting..." : "Invite User"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function InviteMemberDialog({
+  children,
+  teamId,
+}: {
+  children: React.ReactNode;
+  teamId?: string;
+}) {
+  return teamId ? (
+    <TeamInviteDialog teamId={teamId}>{children}</TeamInviteDialog>
+  ) : (
+    <OrgInviteDialog>{children}</OrgInviteDialog>
   );
 }

@@ -5,7 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import { users, teamMembers, teams } from '@worken/database/schema';
+import {
+  users,
+  teamMembers,
+  teams,
+  projects,
+  conversations,
+  guardrails,
+  tenders,
+  tenderTeamMembers,
+  knowledgeFolders,
+  knowledgeFiles,
+  modelConfigs,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
@@ -23,6 +35,8 @@ export class UsersService {
         name: users.name,
         email: users.email,
         picture: users.picture,
+        role: users.role,
+        inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
         createdAt: users.createdAt,
       })
@@ -64,23 +78,16 @@ export class UsersService {
       userTeams.set(m.userId, entry);
     }
 
-    // Check which users are team owners (they get "admin" role)
-    const ownedTeams = await this.db
-      .select({ ownerId: teams.ownerId })
-      .from(teams);
-    const ownerIds = new Set(ownedTeams.map((t) => t.ownerId));
-
     return allUsers.map((u) => {
       const membership = userTeams.get(u.id);
-      let role = membership?.highestRole ?? 'basic';
-      if (ownerIds.has(u.id)) role = 'admin';
 
       return {
         id: u.id,
         name: u.name,
         email: u.email,
         picture: u.picture,
-        role,
+        role: u.role,
+        inviteStatus: u.inviteStatus,
         status: membership?.status ?? 'accepted',
         teams: membership?.teams ?? [],
         monthlyBudgetCents: u.monthlyBudgetCents,
@@ -98,9 +105,10 @@ export class UsersService {
         name: users.name,
         email: users.email,
         picture: users.picture,
+        role: users.role,
+        inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
         openrouterKeyId: users.openrouterKeyId,
-        isPaid: users.isPaid,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -122,20 +130,6 @@ export class UsersService {
       .from(teamMembers)
       .innerJoin(teams, eq(teamMembers.teamId, teams.id))
       .where(eq(teamMembers.userId, userId));
-
-    // Determine org-level role
-    const isOwner = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId))
-      .limit(1);
-
-    let role: string = 'basic';
-    if (isOwner.length > 0) {
-      role = 'admin';
-    } else if (membershipRows.some((m) => m.role === 'advanced')) {
-      role = 'advanced';
-    }
 
     // Fetch usage data from user's OpenRouter key
     let spentCents = 0;
@@ -159,15 +153,8 @@ export class UsersService {
       }
     }
 
-    // Same gate used by the sidebar Advanced/Basic badge: isPaid OR
-    // owner-of-any-team OR advanced-member-in-any-team.
-    const isAdvanced =
-      user.isPaid ||
-      isOwner.length > 0 ||
-      membershipRows.some((m) => m.role === 'advanced');
-
     // Derive — from the CALLER's perspective — which of these teams they
-    // can manage (owner OR accepted advanced member). Drives the per-team
+    // can manage (owner OR accepted editor). Drives the per-team
     // role select and actions on the user detail page.
     const teamIds = membershipRows.map((m) => m.teamId);
     const callerOwnedTeams =
@@ -205,8 +192,9 @@ export class UsersService {
       name: user.name,
       email: user.email,
       picture: user.picture,
-      role,
-      tier: (isAdvanced ? 'advanced' : 'basic') as 'advanced' | 'basic',
+      role: user.role,
+      inviteStatus: user.inviteStatus,
+      tier: (user.role === 'admin' || user.role === 'advanced' ? 'advanced' : 'basic') as 'advanced' | 'basic',
       monthlyBudgetCents: user.monthlyBudgetCents,
       spentCents,
       projectedCents,
@@ -218,7 +206,7 @@ export class UsersService {
         status: m.status,
         canManage:
           callerOwnedIds.has(m.teamId) ||
-          callerRoleByTeam.get(m.teamId) === 'advanced',
+          callerRoleByTeam.get(m.teamId) === 'editor',
       })),
       createdAt: user.createdAt,
     };
@@ -269,27 +257,38 @@ export class UsersService {
       throw new BadRequestException('You cannot remove yourself');
     }
 
-    // Team owners can't be deleted because teams.owner_id is NOT NULL FK.
-    // Fail early with a clear message instead of letting the DB throw.
-    const ownedTeams = await this.db
-      .select({ id: teams.id, name: teams.name })
-      .from(teams)
-      .where(eq(teams.ownerId, userId));
-    if (ownedTeams.length > 0) {
-      throw new BadRequestException(
-        `Cannot remove this user — they own ${ownedTeams.length} team${
-          ownedTeams.length === 1 ? '' : 's'
-        } (${ownedTeams.map((t) => t.name).join(', ')}). Transfer ownership first.`,
-      );
-    }
+    await this.db.transaction(async (tx) => {
+      const ownedTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.ownerId, userId));
+      const ownedTeamIds = ownedTeams.map((t) => t.id);
 
-    // Remove from all teams
-    await this.db
-      .delete(teamMembers)
-      .where(eq(teamMembers.userId, userId));
+      if (ownedTeamIds.length > 0) {
+        await tx.delete(guardrails).where(inArray(guardrails.teamId, ownedTeamIds));
+        await tx
+          .update(projects)
+          .set({ teamId: null })
+          .where(inArray(projects.teamId, ownedTeamIds));
+        await tx.delete(teamMembers).where(inArray(teamMembers.teamId, ownedTeamIds));
+        await tx.delete(teams).where(inArray(teams.id, ownedTeamIds));
+      }
 
-    // Delete user
-    await this.db.delete(users).where(eq(users.id, userId));
+      await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
+      await tx.delete(tenderTeamMembers).where(eq(tenderTeamMembers.userId, userId));
+      await tx.delete(tenders).where(eq(tenders.ownerId, userId));
+      await tx.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
+      await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+      await tx.delete(conversations).where(eq(conversations.userId, userId));
+      await tx.delete(projects).where(eq(projects.userId, userId));
+
+      await tx
+        .update(knowledgeFiles)
+        .set({ uploadedById: null })
+        .where(eq(knowledgeFiles.uploadedById, userId));
+
+      await tx.delete(users).where(eq(users.id, userId));
+    });
 
     return { success: true };
   }

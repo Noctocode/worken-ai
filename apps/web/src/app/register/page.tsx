@@ -17,7 +17,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  apiFetch,
   fetchInviteDetails,
+  fetchCurrentUserOptional,
   signupWithPassword,
   type InviteDetails,
 } from "@/lib/api";
@@ -43,6 +45,18 @@ function RegisterContent() {
       setEmail(invitedEmail);
     }
   }, [invitedEmail, email]);
+
+  const currentUserQuery = useQuery({
+    queryKey: ["current-user-optional"],
+    queryFn: fetchCurrentUserOptional,
+    enabled: !!invitedEmail,
+    retry: false,
+  });
+
+  const loggedInAsOther =
+    invitedEmail &&
+    currentUserQuery.data &&
+    currentUserQuery.data.email !== invitedEmail;
 
   const inviteQuery = useQuery<InviteDetails>({
     queryKey: ["invite", token],
@@ -127,6 +141,25 @@ function RegisterContent() {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {loggedInAsOther && (
+            <div className="mb-6 rounded-lg border border-[#FF7D00]/30 bg-[#FFF3E6] px-4 py-3 text-left text-sm text-[#995200]">
+              <p>
+                You are currently logged in as{" "}
+                <strong>{currentUserQuery.data!.email}</strong>. This invitation
+                is for <strong>{invitedEmail}</strong>.
+              </p>
+              <button
+                type="button"
+                className="mt-2 font-medium text-[#FF7D00] underline hover:text-[#CC6400]"
+                onClick={async () => {
+                  await apiFetch("/auth/logout", { method: "POST" });
+                  window.location.href = `/register?email=${encodeURIComponent(invitedEmail!)}`;
+                }}
+              >
+                Sign out and continue with {invitedEmail}
+              </button>
+            </div>
+          )}
           <form onSubmit={handleSubmit}>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />

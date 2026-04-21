@@ -68,7 +68,6 @@ export class AuthController {
     const tokens = await this.authService.generateTokens(
       user.id,
       user.email,
-      user.isPaid,
     );
 
     setSessionCookies(res, tokens);
@@ -156,7 +155,6 @@ export class AuthController {
       const tokens = await this.authService.generateTokens(
         user.id,
         user.email,
-        user.isPaid,
       );
       setSessionCookies(res, tokens);
 
@@ -212,7 +210,6 @@ export class AuthController {
       const tokens = await this.authService.generateTokens(
         user.id,
         user.email,
-        user.isPaid,
       );
       setSessionCookies(res, tokens);
       res.redirect(`${frontendUrl}/setup-profile`);
@@ -312,7 +309,6 @@ export class AuthController {
     const tokens = await this.authService.generateTokens(
       user.id,
       user.email,
-      user.isPaid,
     );
     setSessionCookies(res, tokens);
 

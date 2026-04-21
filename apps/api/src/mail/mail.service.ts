@@ -30,6 +30,12 @@ interface TeamInvitationExistingParams {
   token: string;
 }
 
+interface OrgInvitationParams {
+  to: string;
+  inviterName: string;
+  role: string;
+}
+
 @Injectable()
 export class MailService {
   private transporter: Transporter;
@@ -177,6 +183,53 @@ export class MailService {
       from: this.config.get<string>('MAIL_FROM'),
       to,
       subject: 'Reset your WorkenAI password',
+      html,
+    });
+  }
+
+  async sendOrgInvitation({
+    to,
+    inviterName,
+    role,
+  }: OrgInvitationParams) {
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const signupUrl = `${frontendUrl}/register?email=${encodeURIComponent(to)}`;
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[dev] org invitation for ${to}: ${signupUrl}`);
+    }
+
+    const html = `
+      <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
+        <div style="display: flex; align-items: center; gap: 6px; height: 48px; margin-bottom: 30px;">
+          <span style="font-size: 26px; font-weight: 700; color: #1D2129; letter-spacing: -0.01em;">WorkenAI</span>
+        </div>
+        <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
+          <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">You've been invited to WorkenAI</h1>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.6;">
+            <strong>${escapeHtml(inviterName)}</strong> has invited you to join their organization on WorkenAI as a <strong>${escapeHtml(role)}</strong> user.
+          </p>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.6;">
+            Create your account to get started.
+          </p>
+          <div style="margin: 0 0 30px;">
+            <a href="${signupUrl}" style="display: inline-block; background: #178ACA; color: #ffffff; font-size: 16px; font-weight: 400; text-decoration: none; padding: 16px 24px; border-radius: 8px;">Create Account</a>
+          </div>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 8px; line-height: 1.3;">Can't see the button? Copy and paste this link into your browser:</p>
+          <p style="font-size: 16px; font-weight: 400; color: #86909C; margin: 0 0 30px; line-height: 1.3; word-break: break-all;">${signupUrl}</p>
+          <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
+        </div>
+        <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px;">
+          This invitation was sent to ${escapeHtml(to)}. If you weren't expecting this, you can safely ignore it.
+        </p>
+      </div>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.config.get<string>('MAIL_FROM'),
+      to,
+      subject: `${inviterName} invited you to join WorkenAI`,
       html,
     });
   }

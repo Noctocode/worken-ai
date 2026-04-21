@@ -26,7 +26,7 @@ export class ProjectsController {
     @Body() dto: CreateProjectDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.projectsService.create(dto, user.id, user.isPaid);
+    return this.projectsService.create(dto, user.id);
   }
 
   @Delete(':id')

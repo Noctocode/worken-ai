@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, inArray, or } from 'drizzle-orm';
-import { projects, teams } from '@worken/database/schema';
+import { projects, teams, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
 
@@ -99,25 +99,23 @@ export class ProjectsService {
     return project;
   }
 
-  async create(dto: CreateProjectDto, userId: string, isPaid: boolean) {
+  async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
-      // Team project: user must be owner or advanced
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
-      if (!role || role === 'basic') {
+      if (role !== 'owner' && role !== 'editor') {
         throw new ForbiddenException(
-          'Only team owners and advanced members can create team projects',
+          'Only team owners and editors can create team projects',
         );
       }
     } else {
-      // Personal project: user must be paid OR have advanced role in any team
-      if (!isPaid) {
-        const hasAdvanced =
-          await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
-        if (!hasAdvanced) {
-          throw new ForbiddenException(
-            'You need a paid account or advanced team role to create projects',
-          );
-        }
+      const [caller] = await this.db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, userId));
+      if (!caller || caller.role === 'basic') {
+        throw new ForbiddenException(
+          'Only admin or advanced users can create projects',
+        );
       }
     }
 
