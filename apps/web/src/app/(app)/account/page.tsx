@@ -58,15 +58,23 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function buildPermissions(canCreateProject: boolean) {
-  const perms: Array<{ label: string; allowed: boolean }> = [
-    { label: "Create projects", allowed: canCreateProject },
-    { label: "Create teams", allowed: canCreateProject },
-    { label: "Invite users to a team", allowed: canCreateProject },
-    { label: "Remove users from the organization", allowed: canCreateProject },
+function buildPermissions(isAdvanced: boolean) {
+  if (isAdvanced) {
+    return [
+      { label: "Create projects", allowed: true },
+      { label: "Create teams", allowed: true },
+      { label: "Invite users to a team", allowed: true },
+      { label: "Remove users from the organization", allowed: true },
+      { label: "View projects and teams you belong to", allowed: true },
+    ];
+  }
+  return [
     { label: "View projects and teams you belong to", allowed: true },
+    { label: "Create projects", allowed: false },
+    { label: "Create teams", allowed: false },
+    { label: "Invite users to a team", allowed: false },
+    { label: "Remove users from the organization", allowed: false },
   ];
-  return perms;
 }
 
 export default function AccountPage() {
@@ -140,7 +148,7 @@ export default function AccountPage() {
               <p className="max-w-[360px] text-sm text-text-3">
                 {isAdvanced
                   ? "You have full access to team and project management."
-                  : "Ask a team owner to upgrade your role to Advanced, or upgrade to a paid plan."}
+                  : "View projects and teams you belong to. Ask a team owner to upgrade your role to Advanced for full access."}
               </p>
             </div>
 

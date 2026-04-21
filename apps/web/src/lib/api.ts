@@ -49,7 +49,6 @@ export interface User {
   email: string;
   name: string | null;
   picture: string | null;
-  isPaid: boolean;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
   onboardingCompleted: boolean;

@@ -46,11 +46,10 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const canManage =
-      caller.isPaid ||
-      (await this.teamsService.userHasAdvancedRoleInAnyTeam(caller.id));
+      await this.teamsService.userHasAdvancedRoleInAnyTeam(caller.id);
     if (!canManage) {
       throw new ForbiddenException(
-        'A paid plan or an Advanced team role is required to remove users.',
+        'An advanced team role is required to remove users.',
       );
     }
     return this.usersService.remove(id, caller.id);

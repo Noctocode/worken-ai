@@ -99,7 +99,7 @@ export class ProjectsService {
     return project;
   }
 
-  async create(dto: CreateProjectDto, userId: string, isPaid: boolean) {
+  async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       // Team project: user must be owner or advanced
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
@@ -109,15 +109,13 @@ export class ProjectsService {
         );
       }
     } else {
-      // Personal project: user must be paid OR have advanced role in any team
-      if (!isPaid) {
-        const hasAdvanced =
-          await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
-        if (!hasAdvanced) {
-          throw new ForbiddenException(
-            'You need a paid account or advanced team role to create projects',
-          );
-        }
+      // Personal project: user must have advanced role in any team
+      const hasAdvanced =
+        await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
+      if (!hasAdvanced) {
+        throw new ForbiddenException(
+          'You need an advanced team role to create projects',
+        );
       }
     }
 

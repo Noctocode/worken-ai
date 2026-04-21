@@ -37,7 +37,6 @@ export const users = pgTable("users", {
   onboardingCompletedAt: timestamp("onboarding_completed_at", {
     withTimezone: true,
   }),
-  isPaid: boolean("is_paid").notNull().default(false),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),

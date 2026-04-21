@@ -407,9 +407,9 @@ export class AuthService {
     return updated;
   }
 
-  async generateTokens(userId: string, email: string, isPaid: boolean) {
+  async generateTokens(userId: string, email: string) {
     const accessToken = this.jwt.sign(
-      { sub: userId, email, isPaid },
+      { sub: userId, email },
       {
         secret: this.config.getOrThrow('JWT_SECRET'),
         expiresIn: '15m',
@@ -458,7 +458,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.generateTokens(user.id, user.email, user.isPaid);
+    return this.generateTokens(user.id, user.email);
   }
 
   async logout(userId: string) {
@@ -475,15 +475,13 @@ export class AuthService {
     }
 
     const canCreateProject =
-      user.isPaid ||
-      (await this.teamsService.userHasAdvancedRoleInAnyTeam(userId));
+      await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
 
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       picture: user.picture,
-      isPaid: user.isPaid,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
       // Back-compat: users who completed the legacy single-step profile-type

@@ -6,10 +6,8 @@ import {
   Param,
   Patch,
   Post,
-  UseGuards,
 } from '@nestjs/common';
 import { TeamsService } from './teams.service.js';
-import { PaidGuard } from '../auth/paid.guard.js';
 import { Public } from '../auth/public.decorator.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -61,7 +59,6 @@ export class TeamsController {
   }
 
   @Post()
-  @UseGuards(PaidGuard)
   create(
     @Body()
     body: {
