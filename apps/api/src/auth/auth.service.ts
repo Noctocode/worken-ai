@@ -85,6 +85,7 @@ export class AuthService {
           name: emailMatch.name ?? profile.name,
           picture: emailMatch.picture ?? profile.picture,
           emailVerifiedAt: emailMatch.emailVerifiedAt ?? new Date(),
+          inviteStatus: 'active',
           updatedAt: new Date(),
         })
         .where(eq(users.id, emailMatch.id))
@@ -134,6 +135,24 @@ export class AuthService {
       .where(eq(users.email, email));
 
     if (existing) {
+      // Pending invited user — activate their account
+      if (existing.inviteStatus === 'pending') {
+        const passwordHash = await argon2.hash(password);
+        const [activated] = await this.db
+          .update(users)
+          .set({
+            name,
+            passwordHash,
+            inviteStatus: 'active',
+            ...(input.autoVerify ? { emailVerifiedAt: new Date() } : {}),
+          })
+          .where(eq(users.id, existing.id))
+          .returning();
+        return {
+          user: activated,
+          verificationToken: null,
+        };
+      }
       if (existing.passwordHash) {
         throw new ConflictException(
           'An account with this email already exists',

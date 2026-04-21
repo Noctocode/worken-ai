@@ -87,6 +87,28 @@ export function UserRow({ user }: { user: OrgUser }) {
       <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
         {user.email}
       </td>
+      {/* Role */}
+      <td className="px-4 align-middle whitespace-nowrap">
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+          user.role === "admin"
+            ? "bg-[#FFECE8] text-danger-6"
+            : user.role === "advanced"
+              ? "bg-primary-1 text-primary-7"
+              : "bg-bg-3 text-text-2"
+        }`}>
+          {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
+        </span>
+      </td>
+      {/* Status */}
+      <td className="px-4 align-middle whitespace-nowrap">
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
+          user.inviteStatus === "pending"
+            ? "bg-[#FFF3E6] text-[#FF7D00]"
+            : "bg-[#E8FFEA] text-[#009A29]"
+        }`}>
+          {user.inviteStatus === "pending" ? "Pending" : "Active"}
+        </span>
+      </td>
       {/* Teams */}
       <td className="px-4 align-middle">
         <div className="flex flex-wrap gap-1">

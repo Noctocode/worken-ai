@@ -48,6 +48,7 @@ export interface User {
   id: string;
   email: string;
   role: "admin" | "advanced" | "basic";
+  inviteStatus: "active" | "pending";
   name: string | null;
   picture: string | null;
   emailVerified: boolean;
@@ -697,6 +698,7 @@ export interface OrgUser {
   name: string | null;
   picture: string | null;
   role: "basic" | "advanced" | "admin";
+  inviteStatus: "active" | "pending";
   status: "pending" | "accepted";
   teams: string[];
   monthlyBudgetCents: number;

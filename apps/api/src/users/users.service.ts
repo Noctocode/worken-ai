@@ -35,6 +35,8 @@ export class UsersService {
         name: users.name,
         email: users.email,
         picture: users.picture,
+        role: users.role,
+        inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
         createdAt: users.createdAt,
       })
@@ -84,15 +86,14 @@ export class UsersService {
 
     return allUsers.map((u) => {
       const membership = userTeams.get(u.id);
-      let role = membership?.highestRole ?? 'basic';
-      if (ownerIds.has(u.id)) role = 'admin';
 
       return {
         id: u.id,
         name: u.name,
         email: u.email,
         picture: u.picture,
-        role,
+        role: u.role,
+        inviteStatus: u.inviteStatus,
         status: membership?.status ?? 'accepted',
         teams: membership?.teams ?? [],
         monthlyBudgetCents: u.monthlyBudgetCents,

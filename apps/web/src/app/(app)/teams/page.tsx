@@ -234,6 +234,12 @@ export default function TeamsPage() {
                   Email
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Role
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Status
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
                   Teams
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">

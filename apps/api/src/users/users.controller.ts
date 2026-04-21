@@ -80,10 +80,10 @@ export class UsersController {
       return { status: 'updated', email, role: body.role };
     }
 
-    // Create new user with the specified role
+    // Create new user with the specified role and pending status
     const [created] = await this.db
       .insert(users)
-      .values({ email, role: body.role })
+      .values({ email, role: body.role, inviteStatus: 'pending' })
       .returning();
 
     return { status: 'invited', email: created.email, role: created.role };
