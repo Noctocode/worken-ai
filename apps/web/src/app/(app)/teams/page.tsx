@@ -2,6 +2,7 @@
 
 import { Plus, Users, Loader2, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +28,12 @@ import { ApiTab } from "@/components/management/api-tab";
 
 export default function TeamsPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const activeTab = searchParams.get("tab") || "teams";
+  const setActiveTab = (tab: string) => {
+    router.replace(`/teams?tab=${tab}`, { scroll: false });
+  };
   const [teamSearch, setTeamSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
@@ -75,7 +82,7 @@ export default function TeamsPage() {
   );
 
   return (
-    <PageTabs defaultValue="teams">
+    <PageTabs value={activeTab} onValueChange={setActiveTab}>
       <PageTabsList>
         <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
