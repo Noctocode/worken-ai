@@ -257,38 +257,38 @@ export class UsersService {
       throw new BadRequestException('You cannot remove yourself');
     }
 
-    // Delete teams owned by this user (and their dependents)
-    const ownedTeams = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId));
-    for (const t of ownedTeams) {
-      await this.db.delete(guardrails).where(eq(guardrails.teamId, t.id));
-      await this.db
-        .update(projects)
-        .set({ teamId: null })
-        .where(eq(projects.teamId, t.id));
-      await this.db.delete(teamMembers).where(eq(teamMembers.teamId, t.id));
-      await this.db.delete(teams).where(eq(teams.id, t.id));
-    }
+    await this.db.transaction(async (tx) => {
+      const ownedTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.ownerId, userId));
+      const ownedTeamIds = ownedTeams.map((t) => t.id);
 
-    // Remove all user data before deleting (order matters for FK constraints)
-    await this.db.delete(teamMembers).where(eq(teamMembers.userId, userId));
-    await this.db.delete(tenderTeamMembers).where(eq(tenderTeamMembers.userId, userId));
-    await this.db.delete(tenders).where(eq(tenders.ownerId, userId));
-    await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
-    await this.db.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
-    await this.db.delete(conversations).where(eq(conversations.userId, userId));
-    await this.db.delete(projects).where(eq(projects.userId, userId));
+      if (ownedTeamIds.length > 0) {
+        await tx.delete(guardrails).where(inArray(guardrails.teamId, ownedTeamIds));
+        await tx
+          .update(projects)
+          .set({ teamId: null })
+          .where(inArray(projects.teamId, ownedTeamIds));
+        await tx.delete(teamMembers).where(inArray(teamMembers.teamId, ownedTeamIds));
+        await tx.delete(teams).where(inArray(teams.id, ownedTeamIds));
+      }
 
-    // Nullify nullable FK references
-    await this.db
-      .update(knowledgeFiles)
-      .set({ uploadedById: null })
-      .where(eq(knowledgeFiles.uploadedById, userId));
+      await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
+      await tx.delete(tenderTeamMembers).where(eq(tenderTeamMembers.userId, userId));
+      await tx.delete(tenders).where(eq(tenders.ownerId, userId));
+      await tx.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
+      await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+      await tx.delete(conversations).where(eq(conversations.userId, userId));
+      await tx.delete(projects).where(eq(projects.userId, userId));
 
-    // Delete user
-    await this.db.delete(users).where(eq(users.id, userId));
+      await tx
+        .update(knowledgeFiles)
+        .set({ uploadedById: null })
+        .where(eq(knowledgeFiles.uploadedById, userId));
+
+      await tx.delete(users).where(eq(users.id, userId));
+    });
 
     return { success: true };
   }
