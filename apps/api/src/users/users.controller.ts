@@ -69,6 +69,8 @@ export class UsersController {
       .from(users)
       .where(eq(users.email, email));
 
+    const inviterName = callerUser.name || callerUser.email;
+
     if (existing) {
       // Update role if needed
       if (existing.role !== body.role) {
@@ -85,6 +87,12 @@ export class UsersController {
       .insert(users)
       .values({ email, role: body.role, inviteStatus: 'pending' })
       .returning();
+
+    await this.mailService.sendOrgInvitation({
+      to: email,
+      inviterName,
+      role: body.role,
+    });
 
     return { status: 'invited', email: created.email, role: created.role };
   }
