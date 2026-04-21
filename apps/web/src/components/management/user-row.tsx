@@ -41,7 +41,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 export function UserRow({ user }: { user: OrgUser }) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
-  const canRemove = currentUser?.canCreateProject ?? false;
+  const canRemove = currentUser?.role === "admin";
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   const removeMutation = useMutation({
@@ -164,7 +164,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             </DropdownMenuItem>
             <DisabledReasonTooltip
               disabled={!canRemove}
-              reason="Not available for basic users"
+              reason="Only admins can remove users"
             >
               <DropdownMenuItem
                 className="gap-2 text-red-600 focus:text-red-600"

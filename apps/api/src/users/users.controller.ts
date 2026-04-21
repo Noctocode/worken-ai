@@ -102,12 +102,12 @@ export class UsersController {
     @Param('id') id: string,
     @CurrentUser() caller: AuthenticatedUser,
   ) {
-    const canManage =
-      await this.teamsService.userHasAdvancedRoleInAnyTeam(caller.id);
-    if (!canManage) {
-      throw new ForbiddenException(
-        'An advanced team role is required to remove users.',
-      );
+    const [callerUser] = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, caller.id));
+    if (!callerUser || callerUser.role !== 'admin') {
+      throw new ForbiddenException('Only admins can remove users.');
     }
     return this.usersService.remove(id, caller.id);
   }
