@@ -33,14 +33,15 @@ export function InviteMemberDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"basic" | "advanced">("basic");
+  const defaultRole = teamId ? "viewer" : "basic";
+  const [role, setRole] = useState(defaultRole);
   const qc = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: () =>
       teamId
-        ? inviteTeamMember(teamId, email.trim(), role)
-        : inviteUser(email.trim(), role),
+        ? inviteTeamMember(teamId, email.trim(), role as "editor" | "viewer")
+        : inviteUser(email.trim(), role as "basic" | "advanced"),
     onSuccess: (data) => {
       toast.success(
         data.status === "updated"
@@ -49,7 +50,7 @@ export function InviteMemberDialog({
       );
       qc.invalidateQueries({ queryKey: teamId ? ["teams", teamId] : ["org-users"] });
       setEmail("");
-      setRole("basic");
+      setRole(defaultRole);
       setOpen(false);
     },
     onError: (err: Error) => {
@@ -90,18 +91,31 @@ export function InviteMemberDialog({
             <Label htmlFor="invite-role">Role</Label>
             <Select
               value={role}
-              onValueChange={(v) => setRole(v as "basic" | "advanced")}
+              onValueChange={setRole}
             >
               <SelectTrigger id="invite-role" className="w-full cursor-pointer">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="basic">
-                  Basic — View projects and teams
-                </SelectItem>
-                <SelectItem value="advanced">
-                  Advanced — Full access to management
-                </SelectItem>
+                {teamId ? (
+                  <>
+                    <SelectItem value="editor">
+                      Editor — Can edit projects and content
+                    </SelectItem>
+                    <SelectItem value="viewer">
+                      Viewer — Read-only access
+                    </SelectItem>
+                  </>
+                ) : (
+                  <>
+                    <SelectItem value="basic">
+                      Basic — View projects and teams
+                    </SelectItem>
+                    <SelectItem value="advanced">
+                      Advanced — Full access to management
+                    </SelectItem>
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -112,7 +126,7 @@ export function InviteMemberDialog({
               disabled={mutation.isPending || !email.trim()}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {mutation.isPending ? "Inviting..." : "Invite User"}
+              {mutation.isPending ? "Inviting..." : teamId ? "Invite Member" : "Invite User"}
             </Button>
           </DialogFooter>
         </form>

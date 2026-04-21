@@ -330,7 +330,7 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  role: "basic" | "advanced";
+  role: "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
@@ -428,7 +428,7 @@ export async function inviteUser(
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "basic" | "advanced",
+  role: "editor" | "viewer",
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
@@ -473,7 +473,7 @@ export async function revokeInvitation(memberId: string): Promise<void> {
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "basic" | "advanced",
+  role: "editor" | "viewer",
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",

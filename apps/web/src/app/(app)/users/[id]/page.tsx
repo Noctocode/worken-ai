@@ -105,7 +105,7 @@ export default function UserDetailPage({
     }: {
       teamId: string;
       memberId: string;
-      role: "basic" | "advanced";
+      role: "editor" | "viewer";
     }) => updateMemberRole(teamId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
@@ -263,7 +263,7 @@ export default function UserDetailPage({
                           roleMutation.mutate({
                             teamId: t.id,
                             memberId: t.memberId,
-                            role: value as "basic" | "advanced",
+                            role: value as "editor" | "viewer",
                           })
                         }
                       >
@@ -271,8 +271,8 @@ export default function UserDetailPage({
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="basic">Basic</SelectItem>
-                          <SelectItem value="advanced">Advanced</SelectItem>
+                          <SelectItem value="editor">Editor</SelectItem>
+                          <SelectItem value="viewer">Viewer</SelectItem>
                         </SelectContent>
                       </Select>
                     </td>

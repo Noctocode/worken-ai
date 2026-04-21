@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type Role = "basic" | "advanced";
+type Role = "editor" | "viewer";
 
 type Mode =
   | { kind: "fixed"; teamId: string }
@@ -33,7 +33,7 @@ export function TeamInviteForm({
   onSuccess,
 }: TeamInviteFormProps) {
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<Role>("basic");
+  const [role, setRole] = useState<Role>("viewer");
   const [selectedTeamId, setSelectedTeamId] = useState<string>(
     mode.kind === "fixed" ? mode.teamId : "",
   );
@@ -70,7 +70,7 @@ export function TeamInviteForm({
       qc.invalidateQueries({ queryKey: ["org-users"] });
       qc.invalidateQueries({ queryKey: ["team-invitations", selectedTeamId] });
       setEmail("");
-      setRole("basic");
+      setRole("viewer");
       if (mode.kind === "select") setSelectedTeamId("");
       onSuccess?.();
     },
@@ -147,9 +147,9 @@ export function TeamInviteForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="basic">Basic — View team projects</SelectItem>
-            <SelectItem value="advanced">
-              Advanced — Can create projects
+            <SelectItem value="editor">Editor — Can edit projects and content</SelectItem>
+            <SelectItem value="viewer">
+              Viewer — Read-only access
             </SelectItem>
           </SelectContent>
         </Select>

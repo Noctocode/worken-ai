@@ -154,7 +154,7 @@ export class UsersService {
     }
 
     // Derive — from the CALLER's perspective — which of these teams they
-    // can manage (owner OR accepted advanced member). Drives the per-team
+    // can manage (owner OR accepted editor). Drives the per-team
     // role select and actions on the user detail page.
     const teamIds = membershipRows.map((m) => m.teamId);
     const callerOwnedTeams =
@@ -206,7 +206,7 @@ export class UsersService {
         status: m.status,
         canManage:
           callerOwnedIds.has(m.teamId) ||
-          callerRoleByTeam.get(m.teamId) === 'advanced',
+          callerRoleByTeam.get(m.teamId) === 'editor',
       })),
       createdAt: user.createdAt,
     };

@@ -68,7 +68,7 @@ export const teamMembers = pgTable("team_members", {
     .notNull(),
   userId: uuid("user_id").references(() => users.id),
   email: text("email").notNull(),
-  role: text("role").notNull(), // 'basic' | 'advanced'
+  role: text("role").notNull(), // 'editor' | 'viewer'
   status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
   invitationToken: text("invitation_token"),
   invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)

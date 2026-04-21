@@ -163,7 +163,7 @@ export default function CreateProjectPage() {
       if (projectType === "team" && selectedTeamId && selectedMembers.length > 0) {
         await Promise.allSettled(
           selectedMembers.map((m) =>
-            inviteTeamMember(selectedTeamId, m.email, "basic"),
+            inviteTeamMember(selectedTeamId, m.email, "viewer"),
           ),
         );
         queryClient.invalidateQueries({ queryKey: ["teams", selectedTeamId] });

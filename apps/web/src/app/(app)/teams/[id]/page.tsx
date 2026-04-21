@@ -313,7 +313,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
   const roleMutation = useMutation({
-    mutationFn: ({ memberId, role }: { memberId: string; role: "basic" | "advanced" }) => updateMemberRole(id, memberId, role),
+    mutationFn: ({ memberId, role }: { memberId: string; role: "editor" | "viewer" }) => updateMemberRole(id, memberId, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
   const removeMutation = useMutation({
@@ -347,9 +347,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const onTrack = projected <= budget;
   const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // Role editing / member removal / team rename-delete all mirror the
-  // backend gate: team owners and advanced members of this team; basic
-  // members and non-members get disabled controls.
   const myMembership = team.members.find(
     (m) =>
       m.userId &&
@@ -358,7 +355,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   );
   const canManageTeam =
     !!currentUser &&
-    (currentUser.id === team.ownerId || myMembership?.role === "advanced");
+    (currentUser.id === team.ownerId || myMembership?.role === "editor");
   // Back-compat alias used by the role Select.
   const canEditRoles = canManageTeam;
 
@@ -623,13 +620,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     <td className="bg-bg-white px-4 align-middle">
                       <Select
                         value={m.role}
-                        // Backend allows owners + advanced members to update
-                        // roles; anyone else sees the select disabled.
                         disabled={!canEditRoles}
                         onValueChange={(value) =>
                           roleMutation.mutate({
                             memberId: m.id,
-                            role: value as "basic" | "advanced",
+                            role: value as "editor" | "viewer",
                           })
                         }
                       >
@@ -637,8 +632,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="basic">Basic</SelectItem>
-                          <SelectItem value="advanced">Advanced</SelectItem>
+                          <SelectItem value="editor">Editor</SelectItem>
+                          <SelectItem value="viewer">Viewer</SelectItem>
                         </SelectContent>
                       </Select>
                     </td>
