@@ -111,6 +111,8 @@ export class UsersService {
         name: users.name,
         email: users.email,
         picture: users.picture,
+        role: users.role,
+        inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
         openrouterKeyId: users.openrouterKeyId,
         createdAt: users.createdAt,
@@ -135,20 +137,6 @@ export class UsersService {
       .innerJoin(teams, eq(teamMembers.teamId, teams.id))
       .where(eq(teamMembers.userId, userId));
 
-    // Determine org-level role
-    const isOwner = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId))
-      .limit(1);
-
-    let role: string = 'basic';
-    if (isOwner.length > 0) {
-      role = 'admin';
-    } else if (membershipRows.some((m) => m.role === 'advanced')) {
-      role = 'advanced';
-    }
-
     // Fetch usage data from user's OpenRouter key
     let spentCents = 0;
     let projectedCents = 0;
@@ -170,11 +158,6 @@ export class UsersService {
             : usage.usageCents;
       }
     }
-
-    // Advanced if owner of any team OR advanced member in any team.
-    const isAdvanced =
-      isOwner.length > 0 ||
-      membershipRows.some((m) => m.role === 'advanced');
 
     // Derive — from the CALLER's perspective — which of these teams they
     // can manage (owner OR accepted advanced member). Drives the per-team
@@ -215,8 +198,9 @@ export class UsersService {
       name: user.name,
       email: user.email,
       picture: user.picture,
-      role,
-      tier: (isAdvanced ? 'advanced' : 'basic') as 'advanced' | 'basic',
+      role: user.role,
+      inviteStatus: user.inviteStatus,
+      tier: (user.role === 'admin' || user.role === 'advanced' ? 'advanced' : 'basic') as 'advanced' | 'basic',
       monthlyBudgetCents: user.monthlyBudgetCents,
       spentCents,
       projectedCents,
