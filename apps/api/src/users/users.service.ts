@@ -257,18 +257,19 @@ export class UsersService {
       throw new BadRequestException('You cannot remove yourself');
     }
 
-    // Team owners can't be deleted because teams.owner_id is NOT NULL FK.
-    // Fail early with a clear message instead of letting the DB throw.
+    // Delete teams owned by this user (and their dependents)
     const ownedTeams = await this.db
-      .select({ id: teams.id, name: teams.name })
+      .select({ id: teams.id })
       .from(teams)
       .where(eq(teams.ownerId, userId));
-    if (ownedTeams.length > 0) {
-      throw new BadRequestException(
-        `Cannot remove this user — they own ${ownedTeams.length} team${
-          ownedTeams.length === 1 ? '' : 's'
-        } (${ownedTeams.map((t) => t.name).join(', ')}). Transfer ownership first.`,
-      );
+    for (const t of ownedTeams) {
+      await this.db.delete(guardrails).where(eq(guardrails.teamId, t.id));
+      await this.db
+        .update(projects)
+        .set({ teamId: null })
+        .where(eq(projects.teamId, t.id));
+      await this.db.delete(teamMembers).where(eq(teamMembers.teamId, t.id));
+      await this.db.delete(teams).where(eq(teams.id, t.id));
     }
 
     // Remove all user data before deleting (order matters for FK constraints)
