@@ -58,22 +58,15 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function buildPermissions(isAdvanced: boolean) {
-  if (isAdvanced) {
-    return [
-      { label: "Create projects", allowed: true },
-      { label: "Create teams", allowed: true },
-      { label: "Invite users to a team", allowed: true },
-      { label: "Remove users from the organization", allowed: true },
-      { label: "View projects and teams you belong to", allowed: true },
-    ];
-  }
+function buildPermissions(role: "admin" | "advanced" | "basic") {
+  const isAdvanced = role === "admin" || role === "advanced";
+  const isAdmin = role === "admin";
   return [
     { label: "View projects and teams you belong to", allowed: true },
-    { label: "Create projects", allowed: false },
-    { label: "Create teams", allowed: false },
-    { label: "Invite users to a team", allowed: false },
-    { label: "Remove users from the organization", allowed: false },
+    { label: "Create projects", allowed: isAdvanced },
+    { label: "Create teams", allowed: isAdvanced },
+    { label: "Invite users to a team", allowed: isAdvanced },
+    { label: "Remove users from the organization", allowed: isAdmin },
   ];
 }
 
@@ -123,8 +116,9 @@ export default function AccountPage() {
 
       {/* Tier & permissions */}
       {(() => {
-        const isAdvanced = currentUser?.role === "admin" || currentUser?.role === "advanced";
-        const permissions = buildPermissions(isAdvanced);
+        const role = currentUser?.role ?? "basic";
+        const isAdvanced = role === "admin" || role === "advanced";
+        const permissions = buildPermissions(role as "admin" | "advanced" | "basic");
         return (
           <Card className="flex w-full flex-col items-center gap-5 p-8 text-center">
             <div className="flex flex-col items-center gap-3">
