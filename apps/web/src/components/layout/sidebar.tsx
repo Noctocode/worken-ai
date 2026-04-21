@@ -274,16 +274,17 @@ export const SidebarContent = ({
                   <p className="truncate text-sm font-medium text-text-1">
                     {user?.name ?? "Loading..."}
                   </p>
-                  {user &&
-                    (user.canCreateProject ? (
-                      <Badge className="shrink-0 border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                        Advanced
-                      </Badge>
-                    ) : (
-                      <Badge className="shrink-0 border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                        Basic
-                      </Badge>
-                    ))}
+                  {user && (
+                    <Badge className={`shrink-0 border-transparent uppercase tracking-wide text-[10px] px-1.5 py-0 ${
+                      user.role === "admin"
+                        ? "bg-[#FFECE8] text-danger-6"
+                        : user.role === "advanced"
+                          ? "bg-primary-1 text-primary-7"
+                          : "bg-bg-3 text-text-2"
+                    }`}>
+                      {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
+                    </Badge>
+                  )}
                 </div>
                 <p className="truncate text-xs text-text-3">
                   {user?.email ?? ""}

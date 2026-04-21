@@ -85,6 +85,7 @@ export class AuthService {
           name: emailMatch.name ?? profile.name,
           picture: emailMatch.picture ?? profile.picture,
           emailVerifiedAt: emailMatch.emailVerifiedAt ?? new Date(),
+          inviteStatus: 'active',
           updatedAt: new Date(),
         })
         .where(eq(users.id, emailMatch.id))
@@ -134,6 +135,38 @@ export class AuthService {
       .where(eq(users.email, email));
 
     if (existing) {
+      // Pending invited user — activate their account
+      if (existing.inviteStatus === 'pending') {
+        const passwordHash = await argon2.hash(password);
+
+        let verificationToken: string | null = null;
+        const extra: Record<string, unknown> = {};
+        if (input.autoVerify) {
+          extra.emailVerifiedAt = new Date();
+        } else {
+          const { token, hash } = generateVerificationToken();
+          verificationToken = token;
+          extra.verificationTokenHash = hash;
+          extra.verificationTokenExpiresAt = new Date(
+            Date.now() + VERIFICATION_TTL_MS,
+          );
+        }
+
+        const [activated] = await this.db
+          .update(users)
+          .set({
+            name,
+            passwordHash,
+            inviteStatus: 'active',
+            ...extra,
+          })
+          .where(eq(users.id, existing.id))
+          .returning();
+        return {
+          user: activated,
+          verificationToken,
+        };
+      }
       if (existing.passwordHash) {
         throw new ConflictException(
           'An account with this email already exists',
@@ -407,9 +440,9 @@ export class AuthService {
     return updated;
   }
 
-  async generateTokens(userId: string, email: string, isPaid: boolean) {
+  async generateTokens(userId: string, email: string) {
     const accessToken = this.jwt.sign(
-      { sub: userId, email, isPaid },
+      { sub: userId, email },
       {
         secret: this.config.getOrThrow('JWT_SECRET'),
         expiresIn: '15m',
@@ -458,7 +491,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    return this.generateTokens(user.id, user.email, user.isPaid);
+    return this.generateTokens(user.id, user.email);
   }
 
   async logout(userId: string) {
@@ -474,16 +507,16 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const canCreateProject =
-      user.isPaid ||
-      (await this.teamsService.userHasAdvancedRoleInAnyTeam(userId));
+    const userRole = (user.role as string) || 'basic';
+    const canCreateProject = userRole === 'admin' || userRole === 'advanced';
 
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       picture: user.picture,
-      isPaid: user.isPaid,
+      role: userRole,
+      inviteStatus: user.inviteStatus,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
       // Back-compat: users who completed the legacy single-step profile-type

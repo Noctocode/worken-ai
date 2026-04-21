@@ -24,12 +24,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   validate(payload: {
     sub: string;
     email: string;
-    isPaid: boolean;
   }): AuthenticatedUser {
     return {
       id: payload.sub,
       email: payload.email,
-      isPaid: payload.isPaid ?? false,
     };
   }
 }

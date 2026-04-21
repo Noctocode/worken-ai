@@ -26,8 +26,16 @@ export function middleware(request: NextRequest) {
     isForgotPasswordPage ||
     isResetPasswordPage;
 
-  // If user has any auth token and tries to visit /login or /register, redirect to home
-  if ((isLoginPage || isRegisterPage) && (accessToken || refreshToken)) {
+  // If user has any auth token and tries to visit /login or /register, redirect to home.
+  // Exception: /register?email=… is an org invite — let it through so the
+  // page can show a "logged in as different account" notice.
+  const hasInviteEmail =
+    isRegisterPage && request.nextUrl.searchParams.has("email");
+  if (
+    (isLoginPage || isRegisterPage) &&
+    !hasInviteEmail &&
+    (accessToken || refreshToken)
+  ) {
     return NextResponse.redirect(new URL("/", request.url));
   }
 

@@ -13,6 +13,8 @@ import {
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
+  role: text("role").notNull().default("basic"),
+  inviteStatus: text("invite_status").notNull().default("active"),
   name: text("name"),
   picture: text("picture"),
   googleId: text("google_id").unique(),
@@ -37,7 +39,6 @@ export const users = pgTable("users", {
   onboardingCompletedAt: timestamp("onboarding_completed_at", {
     withTimezone: true,
   }),
-  isPaid: boolean("is_paid").notNull().default(false),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
@@ -67,7 +68,7 @@ export const teamMembers = pgTable("team_members", {
     .notNull(),
   userId: uuid("user_id").references(() => users.id),
   email: text("email").notNull(),
-  role: text("role").notNull(), // 'basic' | 'advanced'
+  role: text("role").notNull(), // 'owner' | 'editor' | 'viewer'
   status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
   invitationToken: text("invitation_token"),
   invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)

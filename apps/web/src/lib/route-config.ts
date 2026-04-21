@@ -26,6 +26,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
     appbarType: "aiChat",
   },
+  "/account": {
+    bg: "bg-bg-1",
+    title: "Account",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/teams": {
     bg: "bg-bg-1",
     title: "Management",

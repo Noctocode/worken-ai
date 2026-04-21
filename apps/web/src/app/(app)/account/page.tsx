@@ -58,15 +58,16 @@ function Field({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
-function buildPermissions(canCreateProject: boolean) {
-  const perms: Array<{ label: string; allowed: boolean }> = [
-    { label: "Create projects", allowed: canCreateProject },
-    { label: "Create teams", allowed: canCreateProject },
-    { label: "Invite users to a team", allowed: canCreateProject },
-    { label: "Remove users from the organization", allowed: canCreateProject },
+function buildPermissions(role: "admin" | "advanced" | "basic") {
+  const isAdvanced = role === "admin" || role === "advanced";
+  const isAdmin = role === "admin";
+  return [
     { label: "View projects and teams you belong to", allowed: true },
+    { label: "Create projects", allowed: isAdvanced },
+    { label: "Create teams", allowed: isAdvanced },
+    { label: "Invite users to a team", allowed: isAdvanced },
+    { label: "Remove users from the organization", allowed: isAdmin },
   ];
-  return perms;
 }
 
 export default function AccountPage() {
@@ -115,8 +116,9 @@ export default function AccountPage() {
 
       {/* Tier & permissions */}
       {(() => {
-        const isAdvanced = currentUser?.canCreateProject ?? false;
-        const permissions = buildPermissions(isAdvanced);
+        const role = currentUser?.role ?? "basic";
+        const isAdvanced = role === "admin" || role === "advanced";
+        const permissions = buildPermissions(role as "admin" | "advanced" | "basic");
         return (
           <Card className="flex w-full flex-col items-center gap-5 p-8 text-center">
             <div className="flex flex-col items-center gap-3">
@@ -128,19 +130,21 @@ export default function AccountPage() {
                   Access tier
                 </span>
                 <Badge
-                  className={
-                    isAdvanced
-                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[11px] px-2 py-0.5"
-                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[11px] px-2 py-0.5"
-                  }
+                  className={`border-transparent uppercase tracking-wide text-[11px] px-2 py-0.5 ${
+                    currentUser?.role === "admin"
+                      ? "bg-[#FFECE8] text-danger-6"
+                      : isAdvanced
+                        ? "bg-primary-1 text-primary-7"
+                        : "bg-bg-3 text-text-2"
+                  }`}
                 >
-                  {isAdvanced ? "Advanced" : "Basic"}
+                  {currentUser?.role === "admin" ? "Admin" : isAdvanced ? "Advanced" : "Basic"}
                 </Badge>
               </div>
               <p className="max-w-[360px] text-sm text-text-3">
                 {isAdvanced
                   ? "You have full access to team and project management."
-                  : "Ask a team owner to upgrade your role to Advanced, or upgrade to a paid plan."}
+                  : "You can view projects and teams you belong to. Upgrade to Advanced for full access."}
               </p>
             </div>
 

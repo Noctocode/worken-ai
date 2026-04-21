@@ -2,21 +2,27 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
-  UseGuards,
 } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { users } from '@worken/database/schema';
 import { TeamsService } from './teams.service.js';
-import { PaidGuard } from '../auth/paid.guard.js';
 import { Public } from '../auth/public.decorator.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { DATABASE, type Database } from '../database/database.module.js';
 
 @Controller('teams')
 export class TeamsController {
-  constructor(private readonly teamsService: TeamsService) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly teamsService: TeamsService,
+  ) {}
 
   @Get()
   findAll(@CurrentUser() user: AuthenticatedUser) {
@@ -61,8 +67,7 @@ export class TeamsController {
   }
 
   @Post()
-  @UseGuards(PaidGuard)
-  create(
+  async create(
     @Body()
     body: {
       name: string;
@@ -70,15 +75,23 @@ export class TeamsController {
       monthlyBudget?: number;
       parentTeamId?: string;
     },
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
+    const [callerUser] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, caller.id));
+    if (!callerUser || callerUser.role === 'basic') {
+      throw new ForbiddenException('Only admin or advanced users can create teams.');
+    }
+
     const budgetCents = body.monthlyBudget != null
       ? Math.round(body.monthlyBudget * 100)
       : undefined;
     return this.teamsService.create(
       body.name,
-      user.id,
-      user.email,
+      caller.id,
+      caller.email,
       body.description,
       budgetCents,
       body.parentTeamId,

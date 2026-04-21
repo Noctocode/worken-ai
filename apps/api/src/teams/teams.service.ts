@@ -36,12 +36,12 @@ export class TeamsService {
     parentTeamId?: string,
   ) {
     // Subteams inherit the parent's management gate: only owners or
-    // advanced members of the parent can create children.
+    // editors of the parent can create children.
     if (parentTeamId) {
       const parentRole = await this.getUserTeamRole(parentTeamId, userId);
-      if (parentRole !== 'owner' && parentRole !== 'advanced') {
+      if (parentRole !== 'owner' && parentRole !== 'editor') {
         throw new ForbiddenException(
-          'Only team owners or advanced members can add subteams',
+          'Only team owners or editors can add subteams',
         );
       }
     }
@@ -58,12 +58,12 @@ export class TeamsService {
       })
       .returning() as typeof teams.$inferSelect[];
 
-    // Auto-add owner as accepted advanced member
+    // Auto-add owner as accepted member with owner role
     await this.db.insert(teamMembers).values({
       teamId: team.id,
       userId,
       email,
-      role: 'advanced',
+      role: 'owner',
       status: 'accepted',
     });
 
@@ -103,9 +103,9 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const updateCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (updateCallerRole !== 'owner' && updateCallerRole !== 'advanced') {
+    if (updateCallerRole !== 'owner' && updateCallerRole !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or advanced members can update the team',
+        'Only team owners or editors can update the team',
       );
     }
 
@@ -135,9 +135,9 @@ export class TeamsService {
 
     if (!team) throw new NotFoundException('Team not found');
     const deleteCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'advanced') {
+    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or advanced members can delete the team',
+        'Only team owners or editors can delete the team',
       );
     }
 
@@ -312,7 +312,7 @@ export class TeamsService {
         projectedCents: usage?.projectedCents ?? 0,
         // Matches the backend gate for edit/delete/invite/etc: owner or
         // advanced member. Everyone else sees read-only controls.
-        canManage: isOwner || myRole === 'advanced',
+        canManage: isOwner || myRole === 'editor',
       };
     });
   }
@@ -394,14 +394,14 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'advanced') {
+    if (callerRole !== 'owner' && callerRole !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or advanced members can invite users',
+        'Only team owners or editors can invite users',
       );
     }
 
-    if (role !== 'basic' && role !== 'advanced') {
-      throw new BadRequestException('Role must be basic or advanced');
+    if (role !== 'editor' && role !== 'viewer') {
+      throw new BadRequestException('Role must be editor or viewer');
     }
 
     // Look up inviter name
@@ -604,16 +604,16 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    // Owners and advanced members can update roles; basic/non-members can't.
+    // Owners and editors can update roles; viewers/non-members can't.
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'advanced') {
+    if (callerRole !== 'owner' && callerRole !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or advanced members can update member roles',
+        'Only team owners or editors can update member roles',
       );
     }
 
-    if (role !== 'basic' && role !== 'advanced') {
-      throw new BadRequestException('Role must be basic or advanced');
+    if (role !== 'editor' && role !== 'viewer') {
+      throw new BadRequestException('Role must be editor or viewer');
     }
 
     const [updated] = await this.db
@@ -639,9 +639,9 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const removeCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (removeCallerRole !== 'owner' && removeCallerRole !== 'advanced') {
+    if (removeCallerRole !== 'owner' && removeCallerRole !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or advanced members can remove members',
+        'Only team owners or editors can remove members',
       );
     }
 
@@ -660,7 +660,7 @@ export class TeamsService {
     }
 
     // The team owner is pinned to the member list (teams.owner_id is a
-    // NOT NULL FK) — advanced members mustn't be able to evict them.
+    // NOT NULL FK) — editors mustn't be able to evict them.
     if (member.userId && member.userId === team.ownerId) {
       throw new BadRequestException(
         'Cannot remove the team owner. Transfer ownership first.',
@@ -677,7 +677,7 @@ export class TeamsService {
   async getUserTeamRole(
     teamId: string,
     userId: string,
-  ): Promise<'owner' | 'basic' | 'advanced' | null> {
+  ): Promise<'owner' | 'editor' | 'viewer' | null> {
     const [team] = await this.db
       .select()
       .from(teams)
@@ -698,7 +698,14 @@ export class TeamsService {
       );
 
     if (!member) return null;
-    return member.role as 'basic' | 'advanced';
+    const roleMap: Record<string, 'owner' | 'editor' | 'viewer'> = {
+      owner: 'owner',
+      advanced: 'editor',
+      editor: 'editor',
+      basic: 'viewer',
+      viewer: 'viewer',
+    };
+    return roleMap[member.role] ?? 'viewer';
   }
 
   async getUserTeamIds(userId: string): Promise<string[]> {
@@ -724,31 +731,7 @@ export class TeamsService {
     return [...ids];
   }
 
-  async userHasAdvancedRoleInAnyTeam(userId: string): Promise<boolean> {
-    // Check if owner of any team
-    const [owned] = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId))
-      .limit(1);
 
-    if (owned) return true;
-
-    // Check if advanced member in any team
-    const [advanced] = await this.db
-      .select({ id: teamMembers.id })
-      .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.userId, userId),
-          eq(teamMembers.role, 'advanced'),
-          eq(teamMembers.status, 'accepted'),
-        ),
-      )
-      .limit(1);
-
-    return !!advanced;
-  }
 
   async getInviteByToken(token: string) {
     const [member] = await this.db
@@ -972,9 +955,9 @@ export class TeamsService {
     if (!team) throw new NotFoundException('Team not found');
     {
       const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+      if (callerRole !== 'owner' && callerRole !== 'editor') {
         throw new ForbiddenException(
-          'Only team owners or advanced members can add guardrails',
+          'Only team owners or editors can add guardrails',
         );
       }
     }
@@ -1011,9 +994,9 @@ export class TeamsService {
     if (!team) throw new NotFoundException('Team not found');
     {
       const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+      if (callerRole !== 'owner' && callerRole !== 'editor') {
         throw new ForbiddenException(
-          'Only team owners or advanced members can update guardrails',
+          'Only team owners or editors can update guardrails',
         );
       }
     }
@@ -1043,9 +1026,9 @@ export class TeamsService {
     if (!team) throw new NotFoundException('Team not found');
     {
       const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'advanced') {
+      if (callerRole !== 'owner' && callerRole !== 'editor') {
         throw new ForbiddenException(
-          'Only team owners or advanced members can delete guardrails',
+          'Only team owners or editors can delete guardrails',
         );
       }
     }

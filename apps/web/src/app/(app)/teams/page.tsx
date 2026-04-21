@@ -2,6 +2,7 @@
 
 import { Plus, Users, Loader2, Bot } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,6 +28,14 @@ import { ApiTab } from "@/components/management/api-tab";
 
 export default function TeamsPage() {
   const { user } = useAuth();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
+  const rawTab = searchParams.get("tab");
+  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number]) ? rawTab! : "teams";
+  const setActiveTab = (tab: string) => {
+    router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
+  };
   const [teamSearch, setTeamSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
@@ -75,7 +84,7 @@ export default function TeamsPage() {
   );
 
   return (
-    <PageTabs defaultValue="teams">
+    <PageTabs value={activeTab} onValueChange={setActiveTab}>
       <PageTabsList>
         <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
@@ -225,6 +234,12 @@ export default function TeamsPage() {
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
                   Email
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Role
+                </th>
+                <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
+                  Status
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
                   Teams
