@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, isNull, inArray, or } from 'drizzle-orm';
-import { projects, teams } from '@worken/database/schema';
+import { projects, teams, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
 
@@ -109,12 +109,13 @@ export class ProjectsService {
         );
       }
     } else {
-      // Personal project: user must have advanced role in any team
-      const hasAdvanced =
-        await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
-      if (!hasAdvanced) {
+      const [caller] = await this.db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, userId));
+      if (!caller || caller.role === 'basic') {
         throw new ForbiddenException(
-          'You need an advanced team role to create projects',
+          'Only admin or advanced users can create projects',
         );
       }
     }
