@@ -123,7 +123,7 @@ export default function AccountPage() {
 
       {/* Tier & permissions */}
       {(() => {
-        const isAdvanced = currentUser?.canCreateProject ?? false;
+        const isAdvanced = currentUser?.role === "admin" || currentUser?.role === "advanced";
         const permissions = buildPermissions(isAdvanced);
         return (
           <Card className="flex w-full flex-col items-center gap-5 p-8 text-center">
@@ -136,13 +136,15 @@ export default function AccountPage() {
                   Access tier
                 </span>
                 <Badge
-                  className={
-                    isAdvanced
-                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[11px] px-2 py-0.5"
-                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[11px] px-2 py-0.5"
-                  }
+                  className={`border-transparent uppercase tracking-wide text-[11px] px-2 py-0.5 ${
+                    currentUser?.role === "admin"
+                      ? "bg-[#FFECE8] text-danger-6"
+                      : isAdvanced
+                        ? "bg-primary-1 text-primary-7"
+                        : "bg-bg-3 text-text-2"
+                  }`}
                 >
-                  {isAdvanced ? "Advanced" : "Basic"}
+                  {currentUser?.role === "admin" ? "Admin" : isAdvanced ? "Advanced" : "Basic"}
                 </Badge>
               </div>
               <p className="max-w-[360px] text-sm text-text-3">

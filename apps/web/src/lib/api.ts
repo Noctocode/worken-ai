@@ -47,6 +47,7 @@ export async function apiFetch(
 export interface User {
   id: string;
   email: string;
+  role: "admin" | "advanced" | "basic";
   name: string | null;
   picture: string | null;
   emailVerified: boolean;
@@ -405,6 +406,22 @@ export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> 
 
 export interface InviteTeamMemberResult extends TeamMember {
   resent: boolean;
+}
+
+export async function inviteUser(
+  email: string,
+  role: "basic" | "advanced",
+): Promise<{ status: string; email: string; role: string }> {
+  const res = await apiFetch("/users/invite", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || "Failed to invite user");
+  }
+  return res.json();
 }
 
 export async function inviteTeamMember(

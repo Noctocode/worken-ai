@@ -474,14 +474,15 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const canCreateProject =
-      await this.teamsService.userHasAdvancedRoleInAnyTeam(userId);
+    const userRole = (user.role as string) || 'basic';
+    const canCreateProject = userRole === 'admin' || userRole === 'advanced';
 
     return {
       id: user.id,
       email: user.email,
       name: user.name,
       picture: user.picture,
+      role: userRole,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
       // Back-compat: users who completed the legacy single-step profile-type

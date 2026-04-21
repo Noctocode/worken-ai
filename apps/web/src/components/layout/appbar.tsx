@@ -472,7 +472,7 @@ export const Appbar = () => {
           </Popover.Root>
 
           {_project?.teamId && (
-            <InviteMemberDialog teamId={_project.teamId}>
+            <InviteMemberDialog>
               <Button variant="plusAction" className="rounded-lg w-[174px]">
                 <Plus className="h-4 w-4 text-text-white" />
                 Invite Member
