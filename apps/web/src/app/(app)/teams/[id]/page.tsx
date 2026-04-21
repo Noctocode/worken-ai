@@ -576,7 +576,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Users</p>
           {canManageTeam ? (
-            <InviteMemberDialog>
+            <InviteMemberDialog teamId={id}>
               <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
             </InviteMemberDialog>
           ) : (
