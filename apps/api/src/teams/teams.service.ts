@@ -698,7 +698,14 @@ export class TeamsService {
       );
 
     if (!member) return null;
-    return member.role as 'editor' | 'viewer';
+    const roleMap: Record<string, 'owner' | 'editor' | 'viewer'> = {
+      owner: 'owner',
+      advanced: 'editor',
+      editor: 'editor',
+      basic: 'viewer',
+      viewer: 'viewer',
+    };
+    return roleMap[member.role] ?? 'viewer';
   }
 
   async getUserTeamIds(userId: string): Promise<string[]> {
