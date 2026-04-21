@@ -5,6 +5,7 @@ import {
   Delete,
   ForbiddenException,
   Get,
+  Inject,
   Param,
   Patch,
   Post,
@@ -13,7 +14,6 @@ import { UsersService } from './users.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
-import { Inject } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
