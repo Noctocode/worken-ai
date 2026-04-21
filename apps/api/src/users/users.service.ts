@@ -5,7 +5,19 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
-import { users, teamMembers, teams } from '@worken/database/schema';
+import {
+  users,
+  teamMembers,
+  teams,
+  projects,
+  conversations,
+  guardrails,
+  tenders,
+  tenderTeamMembers,
+  knowledgeFolders,
+  knowledgeFiles,
+  modelConfigs,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
@@ -280,10 +292,29 @@ export class UsersService {
       );
     }
 
-    // Remove from all teams
+    // Remove all user data before deleting (order matters for FK constraints)
+    await this.db.delete(teamMembers).where(eq(teamMembers.userId, userId));
+    await this.db.delete(tenderTeamMembers).where(eq(tenderTeamMembers.userId, userId));
+    await this.db.delete(tenders).where(eq(tenders.ownerId, userId));
+    await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
+    await this.db.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+    await this.db.delete(conversations).where(eq(conversations.userId, userId));
+    await this.db.delete(projects).where(eq(projects.userId, userId));
+
+    // Nullify nullable FK references
     await this.db
-      .delete(teamMembers)
-      .where(eq(teamMembers.userId, userId));
+      .update(knowledgeFiles)
+      .set({ uploadedById: null })
+      .where(eq(knowledgeFiles.uploadedById, userId));
+
+    // Handle guardrails.owner_id (exists in DB from other branch merge)
+    try {
+      await this.db.execute(
+        `DELETE FROM guardrails WHERE owner_id = '${userId}'`,
+      );
+    } catch {
+      // Column may not exist on this branch
+    }
 
     // Delete user
     await this.db.delete(users).where(eq(users.id, userId));
