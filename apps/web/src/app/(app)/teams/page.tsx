@@ -30,9 +30,11 @@ export default function TeamsPage() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const activeTab = searchParams.get("tab") || "teams";
+  const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
+  const rawTab = searchParams.get("tab");
+  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number]) ? rawTab! : "teams";
   const setActiveTab = (tab: string) => {
-    router.replace(`/teams?tab=${tab}`, { scroll: false });
+    router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };
   const [teamSearch, setTeamSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
