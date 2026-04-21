@@ -286,15 +286,6 @@ export class UsersService {
       .set({ uploadedById: null })
       .where(eq(knowledgeFiles.uploadedById, userId));
 
-    // Handle guardrails.owner_id (exists in DB from other branch merge)
-    try {
-      await this.db.execute(
-        `DELETE FROM guardrails WHERE owner_id = '${userId}'`,
-      );
-    } catch {
-      // Column may not exist on this branch
-    }
-
     // Delete user
     await this.db.delete(users).where(eq(users.id, userId));
 
