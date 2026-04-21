@@ -78,12 +78,6 @@ export class UsersService {
       userTeams.set(m.userId, entry);
     }
 
-    // Check which users are team owners (they get "admin" role)
-    const ownedTeams = await this.db
-      .select({ ownerId: teams.ownerId })
-      .from(teams);
-    const ownerIds = new Set(ownedTeams.map((t) => t.ownerId));
-
     return allUsers.map((u) => {
       const membership = userTeams.get(u.id);
 
