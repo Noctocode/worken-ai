@@ -148,7 +148,7 @@ export default function AccountPage() {
               <p className="max-w-[360px] text-sm text-text-3">
                 {isAdvanced
                   ? "You have full access to team and project management."
-                  : "View projects and teams you belong to. Ask a team owner to upgrade your role to Advanced for full access."}
+                  : "You can view projects and teams you belong to. Upgrade to Advanced for full access."}
               </p>
             </div>
 
