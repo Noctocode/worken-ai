@@ -516,6 +516,7 @@ export class AuthService {
       name: user.name,
       picture: user.picture,
       role: userRole,
+      inviteStatus: user.inviteStatus,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
       // Back-compat: users who completed the legacy single-step profile-type
