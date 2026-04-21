@@ -194,7 +194,7 @@ export class MailService {
   }: OrgInvitationParams) {
     const frontendUrl =
       this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-    const signupUrl = `${frontendUrl}/signup?email=${encodeURIComponent(to)}`;
+    const signupUrl = `${frontendUrl}/register?email=${encodeURIComponent(to)}`;
 
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[dev] org invitation for ${to}: ${signupUrl}`);
