@@ -138,19 +138,33 @@ export class AuthService {
       // Pending invited user — activate their account
       if (existing.inviteStatus === 'pending') {
         const passwordHash = await argon2.hash(password);
+
+        let verificationToken: string | null = null;
+        const extra: Record<string, unknown> = {};
+        if (input.autoVerify) {
+          extra.emailVerifiedAt = new Date();
+        } else {
+          const { token, hash } = generateVerificationToken();
+          verificationToken = token;
+          extra.verificationTokenHash = hash;
+          extra.verificationTokenExpiresAt = new Date(
+            Date.now() + VERIFICATION_TTL_MS,
+          );
+        }
+
         const [activated] = await this.db
           .update(users)
           .set({
             name,
             passwordHash,
             inviteStatus: 'active',
-            ...(input.autoVerify ? { emailVerifiedAt: new Date() } : {}),
+            ...extra,
           })
           .where(eq(users.id, existing.id))
           .returning();
         return {
           user: activated,
-          verificationToken: null,
+          verificationToken,
         };
       }
       if (existing.passwordHash) {
