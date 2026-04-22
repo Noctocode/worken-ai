@@ -1,7 +1,7 @@
 export const MODELS = [
   {
-    id: "stepfun/step-3.5-flash:free",
-    label: "Step-3.5 Flash",
+    id: "google/gemma-4-31b-it:free",
+    label: "Gemma 4 31B",
   },
   {
     id: "arcee-ai/trinity-large-preview:free",

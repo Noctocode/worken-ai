@@ -156,7 +156,7 @@ export class CompareModelsController {
         comparison = await this.compareModelsService.compareModelAnswers(
           responses,
           body.expectedOutput,
-          'stepfun/step-3.5-flash:free',
+          'nvidia/nemotron-3-super-120b-a12b:free',
           false,
           apiKey,
         );
