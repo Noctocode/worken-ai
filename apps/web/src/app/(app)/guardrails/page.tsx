@@ -151,6 +151,17 @@ function OverviewTab({
     if (severity !== "all") {
       list = list.filter((g) => g.severity === severity);
     }
+    if (timeFilter !== "all") {
+      const now = Date.now();
+      const cutoff = {
+        "24h": now - 24 * 60 * 60 * 1000,
+        "7d": now - 7 * 24 * 60 * 60 * 1000,
+        "30d": now - 30 * 24 * 60 * 60 * 1000,
+      }[timeFilter];
+      if (cutoff) {
+        list = list.filter((g) => new Date(g.createdAt).getTime() >= cutoff);
+      }
+    }
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -164,7 +175,7 @@ function OverviewTab({
         new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
         a.id.localeCompare(b.id),
     );
-  }, [guardrailsList, query, severity]);
+  }, [guardrailsList, query, severity, timeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated = filtered.slice(
