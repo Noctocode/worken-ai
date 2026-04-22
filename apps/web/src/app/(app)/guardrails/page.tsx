@@ -313,6 +313,7 @@ function OverviewTab({
                     type="button"
                     role="switch"
                     aria-checked={g.isActive}
+                    aria-label={`Toggle ${g.name}`}
                     onClick={() => onToggle(g.id)}
                     className={`flex h-6 w-11 cursor-pointer items-center rounded-full px-0.5 transition-colors ${
                       g.isActive ? "bg-primary-6" : "bg-text-3"
