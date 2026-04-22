@@ -523,7 +523,6 @@ function AddGuardrailDialog({
   );
   const [target, setTarget] = useState<string>("both");
   const [onFail, setOnFail] = useState<string>("fix");
-  const [validatorName, setValidatorName] = useState("");
   const [validatorSearch, setValidatorSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState("");
   const [showAllEntities, setShowAllEntities] = useState(false);
@@ -654,21 +653,6 @@ function AddGuardrailDialog({
 
                   {validatorType === "no_pii" && (
                     <>
-                      {/* Name + Entities fields */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="flex flex-col gap-2">
-                          <label className="text-[14px] font-semibold text-text-2">
-                            Name
-                          </label>
-                          <Input
-                            value={validatorName}
-                            onChange={(e) => setValidatorName(e.target.value)}
-                            placeholder="Enter validator name"
-                            className="h-[42px] rounded-lg border-border-2 text-[14px]"
-                          />
-                        </div>
-                      </div>
-
                       {/* Entities + Filter checks */}
                       <div className="flex flex-col gap-2">
                         <label className="text-[14px] font-semibold text-text-2">
