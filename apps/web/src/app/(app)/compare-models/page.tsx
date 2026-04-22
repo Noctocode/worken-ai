@@ -367,6 +367,15 @@ export default function CompareModelsPage() {
             setHistoryExpanded={setHistoryExpanded}
             history={history}
             onDeleteHistory={(runId) => {
+              const entry = history.find((h) => h.id === runId);
+              if (!entry) return;
+              if (
+                !window.confirm(
+                  `Delete this comparison? "${entry.question}" — this action cannot be undone.`,
+                )
+              ) {
+                return;
+              }
               const previous = history;
               setHistory((prev) => prev.filter((h) => h.id !== runId));
               deleteArenaRun(runId).catch((err) => {
@@ -924,10 +933,7 @@ function RightRail({
                 <p className="text-[13px] font-normal text-text-2">{group.label}</p>
                 <ul className="flex flex-col gap-2">
                   {group.items.map((h) => (
-                    <li
-                      key={h.id}
-                      className="group flex items-start justify-between gap-2"
-                    >
+                    <li key={h.id} className="flex items-start justify-between gap-2">
                       <button
                         type="button"
                         onClick={() => onLoadHistory(h.id)}
@@ -939,7 +945,7 @@ function RightRail({
                       <button
                         type="button"
                         onClick={() => onDeleteHistory(h.id)}
-                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 opacity-0 transition-opacity hover:bg-bg-1 hover:text-[#D92D20] focus:opacity-100 group-hover:opacity-100"
+                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 transition-colors hover:bg-bg-1 hover:text-[#D92D20]"
                         title="Delete this comparison"
                         aria-label="Delete this comparison"
                       >
