@@ -531,7 +531,6 @@ function AddGuardrailDialog({
     if (open) {
       setName("");
       setSeverity("high");
-      setValidatorName("");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
       setTarget("both");
