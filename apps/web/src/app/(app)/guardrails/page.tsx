@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Eye,
   Loader2,
-  Plus,
   Search,
   Shield,
   ShieldCheck,
