@@ -20,6 +20,7 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  Trash2,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -45,6 +46,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
   sendQuestionToCompareModels,
@@ -364,6 +366,16 @@ export default function CompareModelsPage() {
             historyExpanded={historyExpanded}
             setHistoryExpanded={setHistoryExpanded}
             history={history}
+            onDeleteHistory={(runId) => {
+              const previous = history;
+              setHistory((prev) => prev.filter((h) => h.id !== runId));
+              deleteArenaRun(runId).catch((err) => {
+                setHistory(previous);
+                const message =
+                  err instanceof Error ? err.message : "Couldn't delete run.";
+                toast.error(message);
+              });
+            }}
             onLoadHistory={(runId) => {
               fetchArenaRun(runId)
                 .then((run) => {
@@ -815,6 +827,7 @@ function RightRail({
   setHistoryExpanded,
   history,
   onLoadHistory,
+  onDeleteHistory,
   onClose,
   onAddModel,
 }: {
@@ -829,6 +842,7 @@ function RightRail({
   setHistoryExpanded: (v: boolean) => void;
   history: HistoryEntry[];
   onLoadHistory: (runId: string) => void;
+  onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
 }) {
@@ -910,14 +924,26 @@ function RightRail({
                 <p className="text-[13px] font-normal text-text-2">{group.label}</p>
                 <ul className="flex flex-col gap-2">
                   {group.items.map((h) => (
-                    <li key={h.id}>
+                    <li
+                      key={h.id}
+                      className="group flex items-start justify-between gap-2"
+                    >
                       <button
                         type="button"
                         onClick={() => onLoadHistory(h.id)}
-                        className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
+                        className="line-clamp-3 flex-1 cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
                         title={h.question}
                       >
                         “{h.question}”
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteHistory(h.id)}
+                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 opacity-0 transition-opacity hover:bg-bg-1 hover:text-[#D92D20] focus:opacity-100 group-hover:opacity-100"
+                        title="Delete this comparison"
+                        aria-label="Delete this comparison"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </li>
                   ))}

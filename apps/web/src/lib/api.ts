@@ -899,6 +899,11 @@ export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
   return res.json();
 }
 
+export async function deleteArenaRun(id: string): Promise<void> {
+  const res = await apiFetch(`/compare-models/runs/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete arena run");
+}
+
 // Tenders
 
 export interface TenderSummary {

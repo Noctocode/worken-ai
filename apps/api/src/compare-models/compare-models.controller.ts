@@ -3,7 +3,9 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Inject,
   Logger,
   NotFoundException,
@@ -273,5 +275,21 @@ export class CompareModelsController {
       comparison: row.comparison as ComparisonItem[],
       createdAt: row.createdAt,
     };
+  }
+
+  @Delete('runs/:id')
+  @HttpCode(204)
+  async deleteRun(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<void> {
+    const deleted = await this.db
+      .delete(arenaRuns)
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)))
+      .returning({ id: arenaRuns.id });
+
+    if (deleted.length === 0) {
+      throw new NotFoundException('Arena run not found.');
+    }
   }
 }
