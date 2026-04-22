@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
   Check,
@@ -891,7 +892,14 @@ function AddGuardrailDialog({
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 
 export default function GuardrailsPage() {
-  const [tab, setTab] = useState<Tab>("overview");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const VALID_TABS: Tab[] = ["overview", "templates"];
+  const rawTab = searchParams.get("tab");
+  const tab: Tab = VALID_TABS.includes(rawTab as Tab) ? (rawTab as Tab) : "overview";
+  const setTab = (t: Tab) => {
+    router.replace(`/guardrails?tab=${encodeURIComponent(t)}`, { scroll: false });
+  };
   const [addOpen, setAddOpen] = useState(false);
 
   const queryClient = useQueryClient();
