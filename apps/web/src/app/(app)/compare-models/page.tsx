@@ -770,15 +770,15 @@ function Composer({
           <Image
             src="/main-logo.png"
             alt="WorkenAI"
-            width={24}
-            height={23}
+            width={30}
+            height={29}
             className="shrink-0"
           />
           <textarea
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
-            className="min-h-[32px] w-full resize-y border-0 bg-transparent text-[16px] font-normal leading-[32px] text-text-1 placeholder:text-text-2 focus:outline-none"
+            className="min-h-[30px] w-full resize-y border-0 bg-transparent text-[16px] font-normal leading-[30px] text-text-1 placeholder:text-text-2 focus:outline-none"
             disabled={loading}
           />
         </div>
