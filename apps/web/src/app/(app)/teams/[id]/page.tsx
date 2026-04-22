@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import {
   Pencil,
   Plus,
@@ -337,7 +337,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
   const { data: team, isLoading, error } = useQuery({ queryKey: ["teams", id], queryFn: () => fetchTeam(id) });
   const { data: subteams = [] } = useQuery({ queryKey: ["subteams", id], queryFn: () => fetchSubteams(id) });
-  const { data: guardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
+  const { data: rawGuardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
+  const guardrails = useMemo(
+    () => [...rawGuardrails].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [rawGuardrails],
+  );
 
   const [budgetInput, setBudgetInput] = useState<string | null>(null);
   const budgetMutation = useMutation({
