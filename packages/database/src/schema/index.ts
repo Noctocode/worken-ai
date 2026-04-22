@@ -1,5 +1,4 @@
 import {
-  type AnyPgColumn,
   pgTable,
   text,
   timestamp,
@@ -54,7 +53,7 @@ export const teams = pgTable("teams", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
-  parentTeamId: uuid("parent_team_id").references((): AnyPgColumn => teams.id, { onDelete: "set null" }),
+  parentTeamId: uuid("parent_team_id").references(() => teams.id, { onDelete: "set null" }),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
