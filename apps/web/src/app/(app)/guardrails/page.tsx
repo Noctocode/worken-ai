@@ -523,11 +523,11 @@ function AddGuardrailDialog({
   onSubmit: (data: {
     name: string;
     type: string;
-    severity: string;
+    severity: "high" | "medium" | "low";
     validatorType: string;
     entities: string[];
-    target: string;
-    onFail: string;
+    target: "input" | "output" | "both";
+    onFail: "fix" | "exception";
   }) => void;
   isPending: boolean;
 }) {
@@ -537,8 +537,8 @@ function AddGuardrailDialog({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(PII_ENTITIES),
   );
-  const [target, setTarget] = useState<string>("both");
-  const [onFail, setOnFail] = useState<string>("fix");
+  const [target, setTarget] = useState<"input" | "output" | "both">("both");
+  const [onFail, setOnFail] = useState<"fix" | "exception">("fix");
   const [validatorSearch, setValidatorSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState("");
   const [showAllEntities, setShowAllEntities] = useState(false);
@@ -727,7 +727,7 @@ function AddGuardrailDialog({
                     </span>
                     <div className="flex items-center gap-6">
                       {(["Input", "Output", "Both"] as const).map((t) => {
-                        const val = t.toLowerCase();
+                        const val = t.toLowerCase() as "input" | "output" | "both";
                         const active = target === val;
                         return (
                           <button
@@ -779,7 +779,7 @@ function AddGuardrailDialog({
                           <button
                             key={opt.id}
                             type="button"
-                            onClick={() => setOnFail(opt.id)}
+                            onClick={() => setOnFail(opt.id as "fix" | "exception")}
                             className={`flex flex-1 cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-colors ${
                               active
                                 ? "border-primary-6 bg-[#EBF8FF]"

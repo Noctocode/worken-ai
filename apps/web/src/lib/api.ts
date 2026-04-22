@@ -1156,11 +1156,11 @@ export async function fetchComplianceTemplates(): Promise<
 export async function createGuardrailItem(data: {
   name: string;
   type: string;
-  severity: string;
+  severity: "high" | "medium" | "low";
   validatorType?: string;
   entities?: string[];
-  target?: string;
-  onFail?: string;
+  target?: "input" | "output" | "both";
+  onFail?: "fix" | "exception";
 }): Promise<GuardrailItem> {
   const res = await apiFetch("/guardrails-section", {
     method: "POST",
