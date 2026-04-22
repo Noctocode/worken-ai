@@ -44,7 +44,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { sendQuestionToCompareModels } from "@/lib/api";
+import {
+  fetchArenaRun,
+  fetchArenaRuns,
+  sendQuestionToCompareModels,
+  type ArenaRunSummary,
+} from "@/lib/api";
 import { MODELS } from "@/lib/models";
 
 function getModelProvider(id: string): string {
@@ -70,7 +75,33 @@ type ModelEvaluation = {
 interface HistoryEntry {
   id: string;
   question: string;
-  ts: string; // human label, e.g. "Today"
+  createdAt: string;
+}
+
+function formatHistoryDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfToday.getDate() - 1);
+  if (d >= startOfToday) return "Today";
+  if (d >= startOfYesterday) return "Yesterday";
+  return d.toLocaleDateString();
+}
+
+function groupHistoryByDate(entries: HistoryEntry[]): { label: string; items: HistoryEntry[] }[] {
+  const groups = new Map<string, HistoryEntry[]>();
+  for (const entry of entries) {
+    const label = formatHistoryDate(entry.createdAt);
+    const existing = groups.get(label) ?? [];
+    existing.push(entry);
+    groups.set(label, existing);
+  }
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+}
+
+function toHistoryEntry(run: ArenaRunSummary): HistoryEntry {
+  return { id: run.id, question: run.question, createdAt: run.createdAt };
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -149,6 +180,23 @@ export default function CompareModelsPage() {
     [responses, evaluations],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchArenaRuns()
+      .then((runs) => {
+        if (cancelled) return;
+        setHistory(runs.map(toHistoryEntry));
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load history.";
+        toast.error(message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
@@ -175,12 +223,14 @@ export default function CompareModelsPage() {
       setResponses(nextResponses);
       setEvaluations(nextEvaluations);
 
-      setHistory((prev) =>
-        [
-          { id: crypto.randomUUID(), question, ts: "Today" },
-          ...prev,
-        ].slice(0, 10),
-      );
+      if (result.runId) {
+        const newEntry: HistoryEntry = {
+          id: result.runId,
+          question,
+          createdAt: new Date().toISOString(),
+        };
+        setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+      }
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Couldn't compare models.";
@@ -314,11 +364,31 @@ export default function CompareModelsPage() {
             historyExpanded={historyExpanded}
             setHistoryExpanded={setHistoryExpanded}
             history={history}
-            onLoadHistory={(q) => {
-              setQuestion(q);
-              setSubmittedQuestion(null);
-              setResponses({});
-              setEvaluations({});
+            onLoadHistory={(runId) => {
+              fetchArenaRun(runId)
+                .then((run) => {
+                  setQuestion(run.question);
+                  setExpectedOutput(run.expectedOutput);
+                  setSelectedModels(run.models);
+                  setDisabledModels(new Set());
+                  setSubmittedQuestion(run.question);
+                  const nextResponses: Record<string, string | null> = {};
+                  const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+                  for (const id of run.models) {
+                    nextResponses[id] =
+                      run.responses.find((r) => r.model === id)?.response.content ??
+                      null;
+                    nextEvaluations[id] =
+                      run.comparison.find((c) => c.name === id) ?? null;
+                  }
+                  setResponses(nextResponses);
+                  setEvaluations(nextEvaluations);
+                })
+                .catch((err) => {
+                  const message =
+                    err instanceof Error ? err.message : "Couldn't load run.";
+                  toast.error(message);
+                });
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
@@ -758,7 +828,7 @@ function RightRail({
   historyExpanded: boolean;
   setHistoryExpanded: (v: boolean) => void;
   history: HistoryEntry[];
-  onLoadHistory: (q: string) => void;
+  onLoadHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
 }) {
@@ -834,22 +904,26 @@ function RightRail({
             Your recent comparisons will appear here.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-[13px] font-normal text-text-2">Today</p>
-            <ul className="flex flex-col gap-2">
-              {history.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    onClick={() => onLoadHistory(h.question)}
-                    className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
-                    title={h.question}
-                  >
-                    “{h.question}”
-                  </button>
-                </li>
-              ))}
-            </ul>
+          <div className="flex flex-col gap-4">
+            {groupHistoryByDate(history).map((group) => (
+              <div key={group.label} className="flex flex-col gap-2">
+                <p className="text-[13px] font-normal text-text-2">{group.label}</p>
+                <ul className="flex flex-col gap-2">
+                  {group.items.map((h) => (
+                    <li key={h.id}>
+                      <button
+                        type="button"
+                        onClick={() => onLoadHistory(h.id)}
+                        className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
+                        title={h.question}
+                      >
+                        “{h.question}”
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
       </RailSection>

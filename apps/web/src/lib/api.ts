@@ -836,6 +836,7 @@ export interface ModelResponse {
 }
 
 export interface CompareModelsApiResult {
+  runId?: string;
   comparison: ModelComparisonEntry[];
   responses: ModelResponse[];
 }
@@ -867,6 +868,34 @@ export async function sendQuestionToCompareModels(
       }`,
     );
   }
+  return res.json();
+}
+
+export interface ArenaRunSummary {
+  id: string;
+  question: string;
+  createdAt: string;
+}
+
+export interface ArenaRunDetail {
+  id: string;
+  question: string;
+  expectedOutput: string;
+  models: string[];
+  responses: ModelResponse[];
+  comparison: ModelComparisonEntry[];
+  createdAt: string;
+}
+
+export async function fetchArenaRuns(): Promise<ArenaRunSummary[]> {
+  const res = await apiFetch(`/compare-models/runs`);
+  if (!res.ok) throw new Error("Failed to load arena history");
+  return res.json();
+}
+
+export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
+  const res = await apiFetch(`/compare-models/runs/${id}`);
+  if (!res.ok) throw new Error("Failed to load arena run");
   return res.json();
 }
 

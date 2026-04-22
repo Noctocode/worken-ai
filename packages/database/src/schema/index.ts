@@ -137,6 +137,19 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const arenaRuns = pgTable("arena_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  question: text("question").notNull(),
+  expectedOutput: text("expected_output").notNull().default(""),
+  models: jsonb("models").notNull(),
+  responses: jsonb("responses").notNull(),
+  comparison: jsonb("comparison").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const guardrails = pgTable("guardrails", {
   id: uuid("id").primaryKey().defaultRandom(),
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),

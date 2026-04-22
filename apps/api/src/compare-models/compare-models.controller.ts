@@ -3,12 +3,20 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Get,
+  Inject,
   Logger,
+  NotFoundException,
+  Param,
+  ParseUUIDPipe,
   Post,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { and, desc, eq } from 'drizzle-orm';
+import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { DATABASE, type Database } from '../database/database.module.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
@@ -57,6 +65,7 @@ export class CompareModelsController {
   constructor(
     private readonly compareModelsService: CompareModelsService,
     private readonly keyResolverService: KeyResolverService,
+    @Inject(DATABASE) private readonly db: Database,
   ) {}
 
   private normalizeStringArray(value: string[] | string): string[] {
@@ -203,6 +212,66 @@ export class CompareModelsController {
       };
     });
 
-    return { comparison: comparisonWithMetrics, responses };
+    let runId: string | undefined;
+    try {
+      const [row] = await this.db
+        .insert(arenaRuns)
+        .values({
+          userId: user.id,
+          question: body.question,
+          expectedOutput: body.expectedOutput ?? '',
+          models: body.models,
+          responses,
+          comparison: comparisonWithMetrics,
+        })
+        .returning({ id: arenaRuns.id });
+      runId = row?.id;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to persist arena run for user ${user.id}: ${msg}`);
+    }
+
+    return { runId, comparison: comparisonWithMetrics, responses };
+  }
+
+  @Get('runs')
+  async listRuns(@CurrentUser() user: AuthenticatedUser) {
+    const rows = await this.db
+      .select({
+        id: arenaRuns.id,
+        question: arenaRuns.question,
+        createdAt: arenaRuns.createdAt,
+      })
+      .from(arenaRuns)
+      .where(eq(arenaRuns.userId, user.id))
+      .orderBy(desc(arenaRuns.createdAt))
+      .limit(50);
+
+    return rows;
+  }
+
+  @Get('runs/:id')
+  async getRun(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const [row] = await this.db
+      .select()
+      .from(arenaRuns)
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)));
+
+    if (!row) {
+      throw new NotFoundException('Arena run not found.');
+    }
+
+    return {
+      id: row.id,
+      question: row.question,
+      expectedOutput: row.expectedOutput,
+      models: row.models as string[],
+      responses: row.responses as ModelResponse[],
+      comparison: row.comparison as ComparisonItem[],
+      createdAt: row.createdAt,
+    };
   }
 }
