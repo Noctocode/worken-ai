@@ -520,6 +520,7 @@ export interface Guardrail {
   severity: "high" | "medium" | "low";
   triggers: number;
   isActive: boolean;
+  teamIsActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1094,6 +1095,152 @@ export async function fetchRecentKnowledgeFiles(): Promise<
 > {
   const res = await apiFetch("/knowledge-core/recent");
   if (!res.ok) throw new Error("Failed to fetch recent files");
+  return res.json();
+}
+
+// Guardrails Section
+
+export interface GuardrailItem {
+  id: string;
+  teamId: string | null;
+  name: string;
+  type: string;
+  severity: "high" | "medium" | "low";
+  triggers: number;
+  isActive: boolean;
+  validatorType: string | null;
+  entities: string[] | null;
+  target: string | null;
+  onFail: string | null;
+  templateSource: string | null;
+  teamName: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GuardrailStats {
+  activeRules: number;
+  totalTriggers: number;
+  criticalRules: number;
+  coverage: number;
+}
+
+export interface ComplianceTemplateItem {
+  id: string;
+  name: string;
+  ruleCount: number;
+  description: string;
+  features: string[];
+}
+
+export async function fetchGuardrailItems(): Promise<GuardrailItem[]> {
+  const res = await apiFetch("/guardrails-section");
+  if (!res.ok) throw new Error("Failed to fetch guardrails");
+  return res.json();
+}
+
+export async function fetchGuardrailStats(): Promise<GuardrailStats> {
+  const res = await apiFetch("/guardrails-section/stats");
+  if (!res.ok) throw new Error("Failed to fetch stats");
+  return res.json();
+}
+
+export async function fetchComplianceTemplates(): Promise<
+  ComplianceTemplateItem[]
+> {
+  const res = await apiFetch("/guardrails-section/templates");
+  if (!res.ok) throw new Error("Failed to fetch templates");
+  return res.json();
+}
+
+export async function createGuardrailItem(data: {
+  name: string;
+  type: string;
+  severity: "high" | "medium" | "low";
+  validatorType?: string;
+  entities?: string[];
+  target?: "input" | "output" | "both";
+  onFail?: "fix" | "exception";
+}): Promise<GuardrailItem> {
+  const res = await apiFetch("/guardrails-section", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Failed to create guardrail");
+  }
+  return res.json();
+}
+
+export async function toggleGuardrailItem(id: string): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${id}/toggle`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to toggle guardrail");
+  return res.json();
+}
+
+export async function deleteGuardrailItem(id: string): Promise<void> {
+  const res = await apiFetch(`/guardrails-section/${id}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete guardrail");
+}
+
+export async function toggleGuardrailTeamActive(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/toggle-team`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to toggle guardrail");
+  return res.json();
+}
+
+export async function assignGuardrailToTeam(
+  guardrailId: string,
+  teamId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/assign`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
+  });
+  if (!res.ok) throw new Error("Failed to assign guardrail");
+  return res.json();
+}
+
+export async function unassignGuardrailFromTeam(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${guardrailId}/unassign`, {
+    method: "PATCH",
+  });
+  if (!res.ok) throw new Error("Failed to remove guardrail from team");
+  return res.json();
+}
+
+export async function applyComplianceTemplate(
+  templateId: string,
+): Promise<{ templateName: string; rulesCreated: number }> {
+  const res = await apiFetch("/guardrails-section/apply-template", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ templateId }),
+  });
+  if (!res.ok) throw new Error("Failed to apply template");
+  return res.json();
+}
+
+export async function removeComplianceTemplate(
+  templateId: string,
+): Promise<{ templateId: string; rulesRemoved: number }> {
+  const res = await apiFetch(`/guardrails-section/template/${templateId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to disable template");
   return res.json();
 }
 

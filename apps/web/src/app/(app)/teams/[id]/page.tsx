@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
 import {
   Pencil,
   Plus,
@@ -42,17 +42,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import Link from "next/link";
 import {
   fetchTeam,
   fetchSubteams,
   fetchGuardrails,
+  fetchGuardrailItems,
+  assignGuardrailToTeam,
+  unassignGuardrailFromTeam,
+  toggleGuardrailTeamActive,
   createTeam,
   updateTeam,
   deleteTeam,
   updateTeamBudget,
-  createGuardrail,
-  toggleGuardrail as apiToggleGuardrail,
-  deleteGuardrail as apiDeleteGuardrail,
   updateMemberRole,
   removeTeamMember,
   type TeamMember,
@@ -247,50 +249,80 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
 
 function AddGuardrailDialog({ teamId, children }: { teamId: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState("");
-  const [severity, setSeverity] = useState<"high" | "medium" | "low">("medium");
+  const [selectedId, setSelectedId] = useState("");
   const qc = useQueryClient();
 
+  const { data: allGuardrails = [], isLoading } = useQuery({
+    queryKey: ["guardrails-section"],
+    queryFn: fetchGuardrailItems,
+    enabled: open,
+  });
+
+  const unassigned = allGuardrails.filter((g) => !g.teamId);
+
   const mutation = useMutation({
-    mutationFn: () => createGuardrail(teamId, { name: name.trim(), type: type.trim(), severity }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["guardrails", teamId] }); setOpen(false); setName(""); setType(""); setSeverity("medium"); },
+    mutationFn: () => assignGuardrailToTeam(selectedId, teamId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["guardrails", teamId] });
+      qc.invalidateQueries({ queryKey: ["guardrails-section"] });
+      setOpen(false);
+      setSelectedId("");
+    },
+    onError: () => toast.error("Failed to assign guardrail."),
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedId(""); }}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Add Guardrail</DialogTitle>
-          <DialogDescription>Create a new guardrail rule for this team.</DialogDescription>
+          <DialogDescription>
+            Select a guardrail to assign to this team.
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={(e) => { e.preventDefault(); if (name.trim() && type.trim()) mutation.mutate(); }} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="guardrail-name">Name</Label>
-            <Input id="guardrail-name" placeholder="e.g. Content Safety Filter" value={name} onChange={(e) => setName(e.target.value)} required />
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-text-3" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="guardrail-type">Type</Label>
-            <Input id="guardrail-type" placeholder="e.g. Content Safety" value={type} onChange={(e) => setType(e.target.value)} required />
+        ) : unassigned.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="text-[14px] text-text-3">No guardrails available.</p>
+            <Link
+              href="/guardrails"
+              className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
+            >
+              Create one on the Guardrails page →
+            </Link>
           </div>
-          <div className="space-y-2">
-            <Label>Severity</Label>
-            <Select value={severity} onValueChange={(v) => setSeverity(v as "high" | "medium" | "low")}>
-              <SelectTrigger className="border-border-2 text-text-1"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
-              </SelectContent>
-            </Select>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Guardrail</Label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger className="border-border-2 text-text-1 cursor-pointer">
+                  <SelectValue placeholder="Select a guardrail" />
+                </SelectTrigger>
+                <SelectContent>
+                  {unassigned.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name} — {g.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => mutation.mutate()}
+                disabled={!selectedId || mutation.isPending}
+                className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+              >
+                {mutation.isPending ? "Assigning..." : "Assign Guardrail"}
+              </Button>
+            </DialogFooter>
           </div>
-          <DialogFooter>
-            <Button type="submit" disabled={mutation.isPending || !name.trim() || !type.trim()}>
-              {mutation.isPending ? "Creating..." : "Create Guardrail"}
-            </Button>
-          </DialogFooter>
-        </form>
+        )}
       </DialogContent>
     </Dialog>
   );
@@ -305,7 +337,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
   const { data: team, isLoading, error } = useQuery({ queryKey: ["teams", id], queryFn: () => fetchTeam(id) });
   const { data: subteams = [] } = useQuery({ queryKey: ["subteams", id], queryFn: () => fetchSubteams(id) });
-  const { data: guardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
+  const { data: rawGuardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
+  const guardrails = useMemo(
+    () => [...rawGuardrails].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        a.id.localeCompare(b.id),
+    ),
+    [rawGuardrails],
+  );
 
   const [budgetInput, setBudgetInput] = useState<string | null>(null);
   const budgetMutation = useMutation({
@@ -329,13 +369,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     },
   });
   const toggleMutation = useMutation({
-    mutationFn: ({ guardrailId, isActive }: { guardrailId: string; isActive: boolean }) => apiToggleGuardrail(id, guardrailId, isActive),
+    mutationFn: (guardrailId: string) => toggleGuardrailTeamActive(guardrailId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
+    onError: (err: Error) => toast.error(err.message || "Failed to toggle guardrail."),
   });
-  const deleteGuardrailMutation = useMutation({
-    mutationFn: (guardrailId: string) => apiDeleteGuardrail(id, guardrailId),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
+  const removeGuardrailMutation = useMutation({
+    mutationFn: (guardrailId: string) => unassignGuardrailFromTeam(guardrailId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guardrails", id] });
+      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
+      toast.success("Guardrail removed from team.");
+    },
+    onError: () => toast.error("Failed to remove guardrail."),
   });
+  const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(null);
+  const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
   if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
@@ -734,11 +782,25 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       <td className="px-4 align-middle w-[167px]">
                         <div className="flex items-center gap-2.5">
                           <Switch
-                            checked={g.isActive}
-                            disabled={!canManageTeam}
-                            onCheckedChange={(checked) => toggleMutation.mutate({ guardrailId: g.id, isActive: checked })}
+                            checked={g.isActive && (g.teamIsActive ?? true)}
+                            disabled={!canManageTeam || !g.isActive}
+                            onCheckedChange={() => {
+                              if (!g.isActive) {
+                                toast.error(
+                                  "This guardrail is globally deactivated. Reactivate it on the Guardrails page first.",
+                                );
+                                return;
+                              }
+                              toggleMutation.mutate(g.id);
+                            }}
                           />
-                          <span className="text-[16px] text-text-1 whitespace-nowrap">{g.isActive ? "Active" : "Inactive"}</span>
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">
+                            {!g.isActive
+                              ? "Inactive (global)"
+                              : (g.teamIsActive ?? true)
+                                ? "Active"
+                                : "Inactive"}
+                          </span>
                         </div>
                       </td>
                       <td className="px-4 align-middle w-[93px]">
@@ -747,17 +809,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
-                                className="gap-2 text-red-600 focus:text-red-600"
+                                className="gap-2 text-danger-6 focus:text-danger-6"
                                 disabled={!canManageTeam}
                                 onSelect={(e) => {
                                   if (!canManageTeam) {
                                     e.preventDefault();
                                     return;
                                   }
-                                  deleteGuardrailMutation.mutate(g.id);
+                                  setRemoveGuardrailId(g.id);
                                 }}
                               >
-                                <Trash2 className="h-4 w-4" />Delete
+                                <UserX className="h-4 w-4" />Remove from team
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -772,6 +834,45 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </div>
+
+      {/* Remove Guardrail Dialog */}
+      <Dialog
+        open={removeGuardrailId !== null}
+        onOpenChange={(open) => !open && setRemoveGuardrailId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove Guardrail</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove{" "}
+              <strong>{removeGuardrailName}</strong> from this team? The
+              guardrail will not be deleted — it can be reassigned later.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setRemoveGuardrailId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (removeGuardrailId) {
+                  removeGuardrailMutation.mutate(removeGuardrailId);
+                  setRemoveGuardrailId(null);
+                }
+              }}
+              disabled={removeGuardrailMutation.isPending}
+              className="cursor-pointer"
+            >
+              {removeGuardrailMutation.isPending ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
