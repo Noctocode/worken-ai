@@ -1,7 +1,7 @@
 export const MODELS = [
   {
-    id: "google/gemma-4-31b-it:free",
-    label: "Gemma 4 31B",
+    id: "nvidia/nemotron-3-nano-30b-a3b:free",
+    label: "Nemotron 3 Nano 30B",
   },
   {
     id: "arcee-ai/trinity-large-preview:free",
