@@ -890,7 +890,7 @@ function AddGuardrailDialog({
                       : "Custom",
                 severity,
                 validatorType,
-                entities: Array.from(selectedEntities),
+                entities: validatorType === "no_pii" ? Array.from(selectedEntities) : [],
                 target,
                 onFail,
               })
