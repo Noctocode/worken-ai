@@ -552,6 +552,7 @@ function AddGuardrailDialog({
       setTarget("both");
       setOnFail("fix");
       setValidatorSearch("");
+      setEntityFilter("");
       setShowAllEntities(false);
     }
   }, [open]);
