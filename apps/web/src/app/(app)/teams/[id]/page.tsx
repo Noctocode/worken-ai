@@ -258,7 +258,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
     enabled: open,
   });
 
-  const unassigned = allGuardrails.filter((g) => !g.teamId || g.teamId === teamId);
+  const unassigned = allGuardrails.filter((g) => !g.teamId);
 
   const mutation = useMutation({
     mutationFn: () => assignGuardrailToTeam(selectedId, teamId),
