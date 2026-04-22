@@ -8,6 +8,7 @@ import {
 import { eq, desc, sql, or } from 'drizzle-orm';
 import { guardrails, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { TeamsService } from '../teams/teams.service.js';
 import { COMPLIANCE_TEMPLATES } from './compliance-templates.js';
 
 interface CreateGuardrailDto {
@@ -22,7 +23,10 @@ interface CreateGuardrailDto {
 
 @Injectable()
 export class GuardrailsSectionService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly teamsService: TeamsService,
+  ) {}
 
   async findAll(userId: string) {
     return this.db
@@ -170,6 +174,13 @@ export class GuardrailsSectionService {
     if (!rule) throw new NotFoundException('Guardrail not found');
     if (rule.ownerId !== userId) {
       throw new ForbiddenException('Access denied');
+    }
+
+    const teamRole = await this.teamsService.getUserTeamRole(teamId, userId);
+    if (teamRole !== 'owner' && teamRole !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can assign guardrails to a team',
+      );
     }
 
     const [updated] = await this.db
