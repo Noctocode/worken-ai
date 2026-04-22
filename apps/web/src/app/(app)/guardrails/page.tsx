@@ -800,7 +800,7 @@ function AddGuardrailDialog({
           {/* Right: Validator picker sidebar */}
           <div className="flex max-h-[70vh] flex-col overflow-y-auto border-l border-border-2 bg-bg-1 px-6 py-8">
             <h3 className="text-[18px] font-semibold leading-[1.3] text-text-1">
-              Validators
+              Compliance templates
             </h3>
 
             <div className="relative mt-5">
