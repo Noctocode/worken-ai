@@ -155,6 +155,7 @@ export default function CompareModelsPage() {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [addModelOpen, setAddModelOpen] = useState(false);
+  const [loadedRunCreatedAt, setLoadedRunCreatedAt] = useState<string | null>(null);
 
   const activeModels = useMemo(
     () => selectedModels.filter((id) => !disabledModels.has(id)),
@@ -205,6 +206,7 @@ export default function CompareModelsPage() {
     setResponses({});
     setEvaluations({});
     setSubmittedQuestion(question);
+    setLoadedRunCreatedAt(null);
 
     try {
       const result = await sendQuestionToCompareModels(
@@ -248,6 +250,7 @@ export default function CompareModelsPage() {
     setResponses({});
     setEvaluations({});
     setSubmittedQuestion(null);
+    setLoadedRunCreatedAt(null);
   }, []);
 
   const changeModel = (index: number, newId: string) => {
@@ -311,13 +314,33 @@ export default function CompareModelsPage() {
             )}
 
             {submittedQuestion && (
-              <PromptBubble
-                question={submittedQuestion}
-                onEdit={() => {
-                      setQuestion(submittedQuestion);
-                      setSubmittedQuestion(null);
-                    }}
-              />
+              <>
+                {(loadedRunCreatedAt || hasResults) && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-2 bg-bg-1 px-3 py-2">
+                    <span className="text-[13px] text-text-2">
+                      {loadedRunCreatedAt
+                        ? `Viewing past comparison from ${formatHistoryDate(loadedRunCreatedAt)}`
+                        : "Viewing this comparison"}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={newComparison}
+                      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+                    >
+                      <Plus className="h-4 w-4" />
+                      New Comparison
+                    </button>
+                  </div>
+                )}
+                <PromptBubble
+                  question={submittedQuestion}
+                  onEdit={() => {
+                    setQuestion(submittedQuestion);
+                    setSubmittedQuestion(null);
+                    setLoadedRunCreatedAt(null);
+                  }}
+                />
+              </>
             )}
 
             {(loading || hasResults) && (
@@ -393,6 +416,7 @@ export default function CompareModelsPage() {
                   setSelectedModels(run.models);
                   setDisabledModels(new Set());
                   setSubmittedQuestion(run.question);
+                  setLoadedRunCreatedAt(run.createdAt);
                   const nextResponses: Record<string, string | null> = {};
                   const nextEvaluations: Record<string, ModelEvaluation | null> = {};
                   for (const id of run.models) {
