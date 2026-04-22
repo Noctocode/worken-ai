@@ -160,7 +160,9 @@ function OverviewTab({
       );
     }
     return [...list].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        a.id.localeCompare(b.id),
     );
   }, [guardrailsList, query, severity]);
 

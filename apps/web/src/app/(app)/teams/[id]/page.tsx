@@ -339,7 +339,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const { data: subteams = [] } = useQuery({ queryKey: ["subteams", id], queryFn: () => fetchSubteams(id) });
   const { data: rawGuardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
   const guardrails = useMemo(
-    () => [...rawGuardrails].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    () => [...rawGuardrails].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        a.id.localeCompare(b.id),
+    ),
     [rawGuardrails],
   );
 
