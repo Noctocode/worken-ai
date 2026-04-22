@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
+  CheckCircle,
   ChevronLeft,
   ChevronRight,
   Eye,
@@ -436,37 +437,37 @@ function TemplatesTab({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
       {templates.map((t) => (
         <div
           key={t.id}
-          className="flex flex-col gap-4 rounded-[20px] bg-bg-white p-6"
+          className="flex flex-col gap-4 rounded-[20px] border border-[#C9CDD4] bg-white p-6"
         >
-          <div className="flex items-start justify-between">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-[16px] font-bold text-text-1">{t.name}</h3>
-              <span className="text-[12px] font-medium text-primary-6">
+          <div className="flex items-center gap-4">
+            <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
+            <div className="flex flex-col">
+              <h3 className="text-[18px] font-bold text-[#1D2129]">{t.name}</h3>
+              <span className="text-[13px] font-normal text-[#86909C]">
                 {t.ruleCount} rules
               </span>
             </div>
-            <Shield className="h-6 w-6 text-primary-6" />
           </div>
-          <p className="text-[13px] text-text-2">{t.description}</p>
-          <ul className="flex flex-col gap-1.5">
+          <p className="text-[14px] font-normal text-[#86909C]">{t.description}</p>
+          <div className="flex flex-col gap-2.5">
+            <span className="text-[16px] font-normal text-[#1D2129]">Features:</span>
             {t.features.map((f) => (
-              <li
+              <div
                 key={f}
-                className="flex items-center gap-2 text-[12px] text-text-1"
+                className="flex items-center gap-2.5"
               >
-                <Check className="h-3 w-3 shrink-0 text-[#009A29]" />
-                {f}
-              </li>
+                <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                <span className="text-[14px] font-normal text-[#86909C]">{f}</span>
+              </div>
             ))}
-          </ul>
+          </div>
           <Button
             onClick={() => onApply(t.id)}
-            variant="outline"
-            className="mt-auto cursor-pointer"
+            className="mt-auto w-full cursor-pointer rounded-lg bg-[#178ACA] text-[16px] font-normal text-white hover:bg-[#1276AD]"
           >
             Apply
           </Button>
