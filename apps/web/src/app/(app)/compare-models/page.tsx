@@ -778,7 +778,7 @@ function Composer({
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
-            className="min-h-[24px] w-full resize-y border-0 bg-transparent text-[16px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+            className="min-h-[32px] w-full resize-y border-0 bg-transparent text-[16px] font-normal leading-[32px] text-text-1 placeholder:text-text-2 focus:outline-none"
             disabled={loading}
           />
         </div>
