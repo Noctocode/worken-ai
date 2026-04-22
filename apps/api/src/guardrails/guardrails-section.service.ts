@@ -236,7 +236,7 @@ export class GuardrailsSectionService {
     return COMPLIANCE_TEMPLATES.map((t) => ({
       id: t.id,
       name: t.name,
-      ruleCount: t.ruleCount,
+      ruleCount: t.rules.length,
       description: t.description,
       features: t.features,
     }));
