@@ -107,7 +107,7 @@ export class GuardrailsSectionService {
 
   async toggle(id: string, userId: string) {
     const [rule] = await this.db
-      .select()
+      .select({ ownerId: guardrails.ownerId })
       .from(guardrails)
       .where(eq(guardrails.id, id));
 
@@ -118,7 +118,10 @@ export class GuardrailsSectionService {
 
     const [updated] = await this.db
       .update(guardrails)
-      .set({ isActive: !rule.isActive, updatedAt: new Date() })
+      .set({
+        isActive: sql`NOT ${guardrails.isActive}`,
+        updatedAt: new Date(),
+      })
       .where(eq(guardrails.id, id))
       .returning();
 
