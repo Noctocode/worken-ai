@@ -177,6 +177,9 @@ export class GuardrailsSectionService {
     }
 
     const teamRole = await this.teamsService.getUserTeamRole(teamId, userId);
+    if (teamRole === null) {
+      throw new NotFoundException('Team not found');
+    }
     if (teamRole !== 'owner' && teamRole !== 'editor') {
       throw new ForbiddenException(
         'Only team owners or editors can assign guardrails to a team',
