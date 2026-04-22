@@ -151,7 +151,7 @@ export class GuardrailsSectionService {
       type: r.type,
       severity: r.severity,
       validatorType: r.validatorType,
-      entities: r.entities || null,
+      entities: r.entities ?? null,
       target: r.target,
       onFail: r.onFail,
       templateSource: template.id,
