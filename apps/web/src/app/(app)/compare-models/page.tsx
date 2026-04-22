@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -156,6 +157,11 @@ export default function CompareModelsPage() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [loadedRunCreatedAt, setLoadedRunCreatedAt] = useState<string | null>(null);
+  const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
+  const deleteRunQuestion = useMemo(
+    () => history.find((h) => h.id === deleteRunId)?.question ?? "",
+    [history, deleteRunId],
+  );
 
   const activeModels = useMemo(
     () => selectedModels.filter((id) => !disabledModels.has(id)),
@@ -389,25 +395,7 @@ export default function CompareModelsPage() {
             historyExpanded={historyExpanded}
             setHistoryExpanded={setHistoryExpanded}
             history={history}
-            onDeleteHistory={(runId) => {
-              const entry = history.find((h) => h.id === runId);
-              if (!entry) return;
-              if (
-                !window.confirm(
-                  `Delete this comparison? "${entry.question}" — this action cannot be undone.`,
-                )
-              ) {
-                return;
-              }
-              const previous = history;
-              setHistory((prev) => prev.filter((h) => h.id !== runId));
-              deleteArenaRun(runId).catch((err) => {
-                setHistory(previous);
-                const message =
-                  err instanceof Error ? err.message : "Couldn't delete run.";
-                toast.error(message);
-              });
-            }}
+            onDeleteHistory={(runId) => setDeleteRunId(runId)}
             onLoadHistory={(runId) => {
               fetchArenaRun(runId)
                 .then((run) => {
@@ -460,6 +448,50 @@ export default function CompareModelsPage() {
           toast.success(`Added ${getModelLabel(id)} to comparison.`);
         }}
       />
+
+      <Dialog
+        open={deleteRunId !== null}
+        onOpenChange={(open) => !open && setDeleteRunId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Comparison</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>“{deleteRunQuestion}”</strong>? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteRunId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                const runId = deleteRunId;
+                if (!runId) return;
+                const previous = history;
+                setHistory((prev) => prev.filter((h) => h.id !== runId));
+                setDeleteRunId(null);
+                deleteArenaRun(runId).catch((err) => {
+                  setHistory(previous);
+                  const message =
+                    err instanceof Error ? err.message : "Couldn't delete run.";
+                  toast.error(message);
+                });
+              }}
+              className="cursor-pointer"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
