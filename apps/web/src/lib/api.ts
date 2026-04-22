@@ -1102,7 +1102,7 @@ export async function fetchRecentKnowledgeFiles(): Promise<
 
 export interface GuardrailItem {
   id: string;
-  teamId: string;
+  teamId: string | null;
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
