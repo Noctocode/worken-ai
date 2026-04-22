@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, desc, sql, or } from 'drizzle-orm';
+import { and, eq, desc, sql } from 'drizzle-orm';
 import { guardrails, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
