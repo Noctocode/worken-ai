@@ -159,7 +159,9 @@ function OverviewTab({
           g.type.toLowerCase().includes(q),
       );
     }
-    return list;
+    return [...list].sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
   }, [guardrailsList, query, severity]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
