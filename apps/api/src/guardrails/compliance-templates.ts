@@ -11,7 +11,6 @@ export interface TemplateRule {
 export interface ComplianceTemplate {
   id: string;
   name: string;
-  ruleCount: number;
   description: string;
   features: string[];
   rules: TemplateRule[];
@@ -21,7 +20,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
   {
     id: 'hipaa',
     name: 'Healthcare (HIPAA)',
-    ruleCount: 45,
+
     description:
       'Healthcare-specific compliance for HIPAA requirements',
     features: [
@@ -62,7 +61,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
   {
     id: 'sox',
     name: 'Financial Services (SOX)',
-    ruleCount: 30,
+
     description:
       'Compliance standards for Sarbanes-Oxley Act in finance',
     features: [
@@ -94,7 +93,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
   {
     id: 'gdpr',
     name: 'GDPR Data Protection',
-    ruleCount: 50,
+
     description:
       'European Union regulations for data privacy and protection',
     features: [
@@ -142,7 +141,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
   {
     id: 'pci_dss',
     name: 'PCI DSS Compliance',
-    ruleCount: 40,
+
     description:
       'Payment card industry data security standards',
     features: [
