@@ -507,6 +507,7 @@ function AddGuardrailDialog({
   const [onFail, setOnFail] = useState<string>("fix");
   const [validatorName, setValidatorName] = useState("");
   const [validatorSearch, setValidatorSearch] = useState("");
+  const [entityFilter, setEntityFilter] = useState("");
   const [showAllEntities, setShowAllEntities] = useState(false);
 
   useEffect(() => {
@@ -536,9 +537,14 @@ function AddGuardrailDialog({
   const filteredValidators = VALIDATOR_TYPES.filter((v) =>
     v.name.toLowerCase().includes(validatorSearch.toLowerCase()),
   );
+  const filteredEntities = entityFilter
+    ? PII_ENTITIES.filter((e) =>
+        e.toLowerCase().includes(entityFilter.toLowerCase()),
+      )
+    : PII_ENTITIES;
   const visibleEntities = showAllEntities
-    ? PII_ENTITIES
-    : PII_ENTITIES.slice(0, 10);
+    ? filteredEntities
+    : filteredEntities.slice(0, 10);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -654,6 +660,8 @@ function AddGuardrailDialog({
                           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
                           <Input
                             placeholder="Filter checks"
+                            value={entityFilter}
+                            onChange={(e) => setEntityFilter(e.target.value)}
                             className="h-9 rounded-md border-border-2 pl-9 text-[14px] placeholder:text-text-3"
                           />
                         </div>
@@ -681,13 +689,13 @@ function AddGuardrailDialog({
                               </span>
                             </button>
                           ))}
-                          {!showAllEntities && PII_ENTITIES.length > 10 && (
+                          {!showAllEntities && filteredEntities.length > 10 && (
                             <button
                               type="button"
                               onClick={() => setShowAllEntities(true)}
                               className="w-full cursor-pointer border-t border-border-2 px-3 py-2 text-center text-[13px] text-text-3 hover:text-primary-6"
                             >
-                              Show all {PII_ENTITIES.length} items
+                              Show all {filteredEntities.length} items
                             </button>
                           )}
                         </div>
