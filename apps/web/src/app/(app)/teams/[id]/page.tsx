@@ -363,6 +363,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const toggleMutation = useMutation({
     mutationFn: (guardrailId: string) => toggleGuardrailTeamActive(guardrailId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
+    onError: (err: Error) => toast.error(err.message || "Failed to toggle guardrail."),
   });
   const removeGuardrailMutation = useMutation({
     mutationFn: (guardrailId: string) => unassignGuardrailFromTeam(guardrailId),
