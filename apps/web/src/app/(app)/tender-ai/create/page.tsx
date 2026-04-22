@@ -566,6 +566,7 @@ function TeamStep({
                 className="flex items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-3"
               >
                 {m.picture ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={m.picture}
                     alt={m.name ?? ""}
