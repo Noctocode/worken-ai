@@ -557,7 +557,6 @@ export const Appbar = () => {
 
   /* ── Tender detail appbar ─────────────────────────────────────────────── */
   if (config.appbarType === "tenderDetail") {
-    const tenderId = pathname.split("/").pop() ?? "";
     return (
       <header
         className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
