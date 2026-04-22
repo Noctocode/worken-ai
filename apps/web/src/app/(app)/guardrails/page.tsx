@@ -443,14 +443,22 @@ function TemplatesTab({
           key={t.id}
           className="flex flex-col gap-4 rounded-[20px] border border-[#C9CDD4] bg-white p-6"
         >
-          <div className="flex items-center gap-4">
-            <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
-            <div className="flex flex-col">
-              <h3 className="text-[18px] font-bold text-[#1D2129]">{t.name}</h3>
-              <span className="text-[13px] font-normal text-[#86909C]">
-                {t.ruleCount} rules
-              </span>
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-4">
+              <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
+              <div className="flex flex-col">
+                <h3 className="text-[18px] font-bold text-[#1D2129]">{t.name}</h3>
+                <span className="text-[13px] font-normal text-[#86909C]">
+                  {t.ruleCount} rules
+                </span>
+              </div>
             </div>
+            <Button
+              onClick={() => onApply(t.id)}
+              className="cursor-pointer rounded-lg bg-[#178ACA] px-6 py-2 text-[16px] font-normal text-white hover:bg-[#1276AD]"
+            >
+              Apply
+            </Button>
           </div>
           <p className="text-[14px] font-normal text-[#86909C]">{t.description}</p>
           <div className="flex flex-col gap-2.5">
@@ -465,12 +473,6 @@ function TemplatesTab({
               </div>
             ))}
           </div>
-          <Button
-            onClick={() => onApply(t.id)}
-            className="mt-auto w-full cursor-pointer rounded-lg bg-[#178ACA] text-[16px] font-normal text-white hover:bg-[#1276AD]"
-          >
-            Apply
-          </Button>
         </div>
       ))}
     </div>
