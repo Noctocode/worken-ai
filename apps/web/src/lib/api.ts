@@ -850,7 +850,23 @@ export async function sendQuestionToCompareModels(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ models, question, expectedOutput }),
   });
-  if (!res.ok) throw new Error("Failed to create conversation");
+  if (!res.ok) {
+    const body = await res.text();
+    let serverMessage: string | undefined;
+    try {
+      const parsed = JSON.parse(body) as { message?: string | string[] };
+      serverMessage = Array.isArray(parsed.message)
+        ? parsed.message.join("; ")
+        : parsed.message;
+    } catch {
+      serverMessage = body;
+    }
+    throw new Error(
+      `Compare-models request failed (${res.status} ${res.statusText})${
+        serverMessage ? `: ${serverMessage}` : ""
+      }`,
+    );
+  }
   return res.json();
 }
 

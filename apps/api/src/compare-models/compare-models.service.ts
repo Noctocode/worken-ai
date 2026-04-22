@@ -13,12 +13,32 @@ interface OpenRouterUsage {
   cost?: number;
 }
 
+function describeOpenRouterError(model: string, action: string, err: unknown): Error {
+  if (err instanceof OpenAI.APIError) {
+    const body =
+      typeof err.error === 'string'
+        ? err.error
+        : JSON.stringify(err.error ?? {});
+    return new Error(
+      `OpenRouter ${action} failed for model "${model}": ${err.status} ${err.name} — ${err.message}${body && body !== '{}' ? ` | body=${body}` : ''}`,
+    );
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return new Error(`OpenRouter ${action} failed for model "${model}": ${msg}`);
+}
+
 @Injectable()
 export class CompareModelsService {
   private makeClient(apiKey?: string): OpenAI {
+    const resolved = apiKey ?? process.env['OPENROUTER_API_KEY'];
+    if (!resolved) {
+      throw new Error(
+        'No OpenRouter API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
+      );
+    }
     return new OpenAI({
       baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
+      apiKey: resolved,
       defaultHeaders: {
         'HTTP-Referer': process.env['SITE_URL'] || '',
         'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
@@ -43,11 +63,16 @@ export class CompareModelsService {
       });
     }
 
-    const completion = await this.makeClient(apiKey).chat.completions.create({
-      model,
-      messages: [...systemMessages, { role: 'user', content: question }],
-      ...(enableReasoning && { reasoning: { enabled: true } }),
-    });
+    let completion;
+    try {
+      completion = await this.makeClient(apiKey).chat.completions.create({
+        model,
+        messages: [...systemMessages, { role: 'user', content: question }],
+        ...(enableReasoning && { reasoning: { enabled: true } }),
+      });
+    } catch (err) {
+      throw describeOpenRouterError(model, 'chat.completions.create', err);
+    }
 
     // Extract response with reasoning_details
     type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
@@ -123,11 +148,16 @@ export class CompareModelsService {
       { role: 'user', content: JSON.stringify(answers) },
     ] as ChatCompletionMessageParam[];
 
-    const completion = await this.makeClient(apiKey).chat.completions.create({
-      model,
-      messages,
-      ...(enableReasoning && { reasoning: { enabled: true } }),
-    });
+    let completion;
+    try {
+      completion = await this.makeClient(apiKey).chat.completions.create({
+        model,
+        messages,
+        ...(enableReasoning && { reasoning: { enabled: true } }),
+      });
+    } catch (err) {
+      throw describeOpenRouterError(model, 'chat.completions.create (compare)', err);
+    }
 
     // Extract response with reasoning_details
     type ORChatMessage = (typeof completion)['choices'][number]['message'] & {

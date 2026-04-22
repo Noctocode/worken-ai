@@ -10,10 +10,20 @@ export class OpenRouterProvisioningService {
       this.configService.get<string>('OPENROUTER_PROVISIONING_KEY') ?? '';
   }
 
+  private assertProvisioningKey(action: string): void {
+    if (!this.provisioningKey) {
+      throw new Error(
+        `Cannot ${action}: OPENROUTER_PROVISIONING_KEY env var is not set. Add it to .env and restart the API.`,
+      );
+    }
+  }
+
   async createKey(
     name: string,
     creditLimitUsd: number,
   ): Promise<{ key: string; hash: string }> {
+    this.assertProvisioningKey('provision OpenRouter key');
+
     const response = await fetch('https://openrouter.ai/api/v1/keys', {
       method: 'POST',
       headers: {
@@ -30,7 +40,7 @@ export class OpenRouterProvisioningService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `OpenRouter key creation failed: ${response.status} ${text}`,
+        `OpenRouter key creation failed (name="${name}"): ${response.status} ${response.statusText} — ${text}`,
       );
     }
 
@@ -42,6 +52,8 @@ export class OpenRouterProvisioningService {
   }
 
   async updateKey(hash: string, creditLimitUsd: number): Promise<void> {
+    this.assertProvisioningKey('update OpenRouter key');
+
     const response = await fetch(`https://openrouter.ai/api/v1/keys/${hash}`, {
       method: 'PATCH',
       headers: {
@@ -54,7 +66,7 @@ export class OpenRouterProvisioningService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `OpenRouter key update failed: ${response.status} ${text}`,
+        `OpenRouter key update failed (hash=${hash}): ${response.status} ${response.statusText} — ${text}`,
       );
     }
   }
@@ -92,6 +104,8 @@ export class OpenRouterProvisioningService {
   }
 
   async deleteKey(hash: string): Promise<void> {
+    this.assertProvisioningKey('delete OpenRouter key');
+
     const response = await fetch(`https://openrouter.ai/api/v1/keys/${hash}`, {
       method: 'DELETE',
       headers: {
@@ -102,7 +116,7 @@ export class OpenRouterProvisioningService {
     if (!response.ok) {
       const text = await response.text();
       throw new Error(
-        `OpenRouter key deletion failed: ${response.status} ${text}`,
+        `OpenRouter key deletion failed (hash=${hash}): ${response.status} ${response.statusText} — ${text}`,
       );
     }
   }
