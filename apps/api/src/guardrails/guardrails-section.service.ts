@@ -95,8 +95,8 @@ export class GuardrailsSectionService {
         name: dto.name.trim(),
         type: dto.type || 'Custom',
         severity: dto.severity,
-        validatorType: dto.validatorType || null,
-        entities: dto.entities || null,
+        validatorType: dto.validatorType ?? null,
+        entities: dto.entities ?? null,
         target: dto.target || 'both',
         onFail: dto.onFail || 'fix',
       })
