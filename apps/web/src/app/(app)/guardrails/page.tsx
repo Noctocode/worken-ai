@@ -825,7 +825,7 @@ function AddGuardrailDialog({
               <Input
                 value={validatorSearch}
                 onChange={(e) => setValidatorSearch(e.target.value)}
-                placeholder=" Filter validators"
+                placeholder="Filter validators"
                 className="h-9 rounded-md border-[#C9CDD4] bg-bg-white pl-10 text-[14px] placeholder:text-text-2"
               />
             </div>
