@@ -44,6 +44,7 @@ import {
   toggleGuardrailItem,
   deleteGuardrailItem,
   applyComplianceTemplate,
+  removeComplianceTemplate,
   type GuardrailItem,
   type GuardrailStats,
   type ComplianceTemplateItem,
@@ -422,11 +423,15 @@ function OverviewTab({
 function TemplatesTab({
   templates,
   isLoading,
+  appliedTemplateIds,
   onApply,
+  onDisable,
 }: {
   templates: ComplianceTemplateItem[];
   isLoading: boolean;
+  appliedTemplateIds: Set<string>;
   onApply: (templateId: string) => void;
+  onDisable: (templateId: string) => void;
 }) {
   if (isLoading) {
     return (
@@ -453,12 +458,22 @@ function TemplatesTab({
                 </span>
               </div>
             </div>
-            <Button
-              onClick={() => onApply(t.id)}
-              className="cursor-pointer rounded-lg bg-[#178ACA] px-6 py-2 text-[16px] font-normal text-white hover:bg-[#1276AD]"
-            >
-              Apply
-            </Button>
+            {appliedTemplateIds.has(t.id) ? (
+              <Button
+                onClick={() => onDisable(t.id)}
+                variant="outline"
+                className="cursor-pointer rounded-lg border-[#C9CDD4] px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
+              >
+                Disable
+              </Button>
+            ) : (
+              <Button
+                onClick={() => onApply(t.id)}
+                className="cursor-pointer rounded-lg bg-[#178ACA] px-6 py-2 text-[16px] font-normal text-white hover:bg-[#1276AD]"
+              >
+                Apply
+              </Button>
+            )}
           </div>
           <p className="text-[14px] font-normal text-[#86909C]">{t.description}</p>
           <div className="flex flex-col gap-2.5">
@@ -955,6 +970,20 @@ export default function GuardrailsPage() {
     onError: () => toast.error("Failed to apply template."),
   });
 
+  const disableMutation = useMutation({
+    mutationFn: (templateId: string) => removeComplianceTemplate(templateId),
+    onSuccess: (result) => {
+      invalidateAll();
+      toast.success(`Disabled template: ${result.rulesRemoved} rules removed.`);
+    },
+    onError: () => toast.error("Failed to disable template."),
+  });
+
+  const appliedTemplateIds = useMemo(
+    () => new Set(guardrailsList.map((g) => g.templateSource).filter(Boolean) as string[]),
+    [guardrailsList],
+  );
+
   // Appbar "Add Guardrail" button listener
   useEffect(() => {
     const handler = () => setAddOpen(true);
@@ -1004,7 +1033,9 @@ export default function GuardrailsPage() {
         <TemplatesTab
           templates={templates}
           isLoading={templatesLoading}
+          appliedTemplateIds={appliedTemplateIds}
           onApply={(id) => applyMutation.mutate(id)}
+          onDisable={(id) => disableMutation.mutate(id)}
         />
       )}
 

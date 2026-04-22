@@ -1234,6 +1234,16 @@ export async function applyComplianceTemplate(
   return res.json();
 }
 
+export async function removeComplianceTemplate(
+  templateId: string,
+): Promise<{ templateId: string; rulesRemoved: number }> {
+  const res = await apiFetch(`/guardrails-section/template/${templateId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to disable template");
+  return res.json();
+}
+
 // Onboarding
 
 export interface OnboardingProfile {

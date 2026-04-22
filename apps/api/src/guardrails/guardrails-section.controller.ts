@@ -79,6 +79,14 @@ export class GuardrailsSectionController {
     return this.service.toggleTeamActive(id, user.id);
   }
 
+  @Delete('template/:templateId')
+  removeTemplate(
+    @Param('templateId') templateId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.removeTemplate(templateId, user.id);
+  }
+
   @Patch(':id/assign')
   assignToTeam(
     @Param('id') id: string,

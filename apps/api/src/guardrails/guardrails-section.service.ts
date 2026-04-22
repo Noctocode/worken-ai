@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, desc, sql, or } from 'drizzle-orm';
+import { and, eq, desc, sql, or } from 'drizzle-orm';
 import { guardrails, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
@@ -240,5 +240,19 @@ export class GuardrailsSectionService {
       description: t.description,
       features: t.features,
     }));
+  }
+
+  async removeTemplate(templateId: string, userId: string) {
+    const deleted = await this.db
+      .delete(guardrails)
+      .where(
+        and(
+          eq(guardrails.templateSource, templateId),
+          eq(guardrails.ownerId, userId),
+        ),
+      )
+      .returning();
+
+    return { templateId, rulesRemoved: deleted.length };
   }
 }
