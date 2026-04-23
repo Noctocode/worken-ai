@@ -1765,15 +1765,15 @@ function PromptLibraryDialog({
             )}
           </div>
 
-          {prompts.length === 0 && !loading && (
+          <div className="border-t border-border-2 pt-2">
             <a
-              href="/resources/prompt-builder"
-              className="inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded border border-border-2 bg-bg-white text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+              href="/resources/prompt-library"
+              className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
             >
-              <Plus className="h-4 w-4" />
-              Create your first prompt
+              <Library className="h-3.5 w-3.5" />
+              Manage prompts →
             </a>
-          )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
