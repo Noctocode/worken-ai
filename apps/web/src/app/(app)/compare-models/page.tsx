@@ -171,6 +171,9 @@ export default function CompareModelsPage() {
   const [attachedFile, setAttachedFile] = useState<
     { name: string; content: string } | null
   >(null);
+  const [attachedImage, setAttachedImage] = useState<
+    { name: string; content: string } | null
+  >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
@@ -228,9 +231,18 @@ export default function CompareModelsPage() {
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
 
-    const context = attachedFile
-      ? `Attached file "${attachedFile.name}":\n${attachedFile.content}`
-      : undefined;
+    const contextParts: string[] = [];
+    if (attachedFile) {
+      contextParts.push(
+        `Attached file "${attachedFile.name}":\n${attachedFile.content}`,
+      );
+    }
+    if (attachedImage) {
+      contextParts.push(
+        `Attached image "${attachedImage.name}":\n${attachedImage.content}`,
+      );
+    }
+    const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
     try {
       const result = await sendQuestionToCompareModels(
@@ -275,6 +287,7 @@ export default function CompareModelsPage() {
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
     setAttachedFile(null);
+    setAttachedImage(null);
   }, []);
 
   const changeModel = (index: number, newId: string) => {
@@ -387,6 +400,8 @@ export default function CompareModelsPage() {
             onSubmit={compareModels}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
+            attachedImage={attachedImage}
+            setAttachedImage={setAttachedImage}
             onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
           />
         </section>
@@ -844,6 +859,8 @@ function Composer({
   onSubmit,
   attachedFile,
   setAttachedFile,
+  attachedImage,
+  setAttachedImage,
   onOpenPromptLibrary,
 }: {
   question: string;
@@ -855,6 +872,8 @@ function Composer({
   onSubmit: (e: React.FormEvent) => void;
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
+  attachedImage: { name: string; content: string } | null;
+  setAttachedImage: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -887,7 +906,12 @@ function Composer({
     });
   }
 
-  async function ingestFile(file: File, kind: AttachKind, maxBytes: number) {
+  async function ingestFile(
+    file: File,
+    kind: AttachKind,
+    maxBytes: number,
+    setTarget: (f: { name: string; content: string } | null) => void,
+  ) {
     const validationError = validateAttachment(file, kind);
     if (validationError) {
       toast.error(validationError);
@@ -909,7 +933,7 @@ function Composer({
       const toastId = toast.loading(`${verb} ${file.name}…`);
       try {
         const parsed = await parseArenaAttachment(file);
-        setAttachedFile(parsed);
+        setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
         toast.error(humanizeArenaError(err), { id: toastId });
@@ -919,7 +943,7 @@ function Composer({
 
     try {
       const content = await file.text();
-      setAttachedFile({ name: file.name, content });
+      setTarget({ name: file.name, content });
     } catch (err) {
       toast.error(humanizeArenaError(err));
     }
@@ -929,14 +953,14 @@ function Composer({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES);
+    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES, setAttachedFile);
   }
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES);
+    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES, setAttachedImage);
   }
 
   return (
@@ -985,27 +1009,49 @@ function Composer({
           className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
-        {/* Attached-file pill */}
-        {attachedFile && (
-          <div className="flex items-center gap-2 border-t border-border-2 px-4 py-2">
-            <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
-              <Paperclip className="h-3.5 w-3.5 shrink-0" />
-              <span className="max-w-[320px] truncate" title={attachedFile.name}>
-                {attachedFile.name}
+        {/* Attachment pills — one per slot, both can coexist */}
+        {(attachedFile || attachedImage) && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border-2 px-4 py-2">
+            {attachedFile && (
+              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[320px] truncate" title={attachedFile.name}>
+                  {attachedFile.name}
+                </span>
+                <span className="text-[11px] text-text-3">
+                  {(attachedFile.content.length / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachedFile(null)}
+                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                  title="Remove file"
+                  aria-label="Remove file"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </span>
-              <span className="text-[11px] text-text-3">
-                {(attachedFile.content.length / 1024).toFixed(1)} KB
+            )}
+            {attachedImage && (
+              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[320px] truncate" title={attachedImage.name}>
+                  {attachedImage.name}
+                </span>
+                <span className="text-[11px] text-text-3">
+                  {(attachedImage.content.length / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachedImage(null)}
+                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                  title="Remove image"
+                  aria-label="Remove image"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
               </span>
-              <button
-                type="button"
-                onClick={() => setAttachedFile(null)}
-                className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                title="Remove attachment"
-                aria-label="Remove attachment"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </span>
+            )}
           </div>
         )}
         {/* Chips + actions row */}
