@@ -1554,7 +1554,7 @@ function AddModelDialog({
               against other models in the arena.
             </p>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <SpecChip label="Provider" value={getModelProvider(selected.id)} />
               <SpecChip label="Tier" value="Free" />
               <SpecChip
