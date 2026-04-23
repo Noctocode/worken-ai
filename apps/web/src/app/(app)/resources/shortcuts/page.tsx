@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ArrowLeft,
   LayoutGrid,
   MoreVertical,
   Pencil,
   Plus,
+  RotateCcw,
   Search,
   Trash2,
 } from "lucide-react";
@@ -66,6 +68,8 @@ const EMPTY_DRAFT: DraftShortcut = {
 export default function ShortcutsPage() {
   const [items, setItems] = useState<Shortcut[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [editing, setEditing] = useState<Shortcut | null>(null);
@@ -76,14 +80,18 @@ export default function ShortcutsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     fetchShortcuts()
       .then((rows) => {
         if (cancelled) return;
         setItems(rows);
       })
       .catch((err) => {
+        if (cancelled) return;
         const message =
           err instanceof Error ? err.message : "Couldn't load shortcuts.";
+        setLoadError(message);
         toast.error(message);
       })
       .finally(() => {
@@ -92,7 +100,7 @@ export default function ShortcutsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -257,6 +265,27 @@ export default function ShortcutsPage() {
       {loading ? (
         <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
           Loading shortcuts…
+        </div>
+      ) : loadError ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
+          <AlertTriangle
+            className="h-8 w-8 text-[#D92D20]"
+            strokeWidth={1.5}
+          />
+          <h3 className="text-[16px] font-semibold text-text-1">
+            Couldn&apos;t load your shortcuts
+          </h3>
+          <p className="max-w-[480px] text-[13px] text-text-2">
+            {loadError}
+          </p>
+          <button
+            type="button"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-border-2 bg-bg-white px-4 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+          >
+            <RotateCcw className="h-4 w-4" />
+            Retry
+          </button>
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
