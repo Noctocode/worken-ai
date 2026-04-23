@@ -157,6 +157,9 @@ export default function CompareModelsPage() {
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [loadedRunCreatedAt, setLoadedRunCreatedAt] = useState<string | null>(null);
   const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<
+    { name: string; content: string } | null
+  >(null);
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -213,11 +216,16 @@ export default function CompareModelsPage() {
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
 
+    const context = attachedFile
+      ? `Attached file "${attachedFile.name}":\n${attachedFile.content}`
+      : undefined;
+
     try {
       const result = await sendQuestionToCompareModels(
         activeModels,
         question,
         expectedOutput,
+        context,
       );
 
       const nextResponses: Record<string, string | null> = {};
@@ -256,6 +264,7 @@ export default function CompareModelsPage() {
     setEvaluations({});
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
+    setAttachedFile(null);
   }, []);
 
   const changeModel = (index: number, newId: string) => {
@@ -366,6 +375,8 @@ export default function CompareModelsPage() {
             loading={loading}
             activeModelCount={activeModels.length}
             onSubmit={compareModels}
+            attachedFile={attachedFile}
+            setAttachedFile={setAttachedFile}
           />
         </section>
 
@@ -732,6 +743,10 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 
 /* ─── Composer ───────────────────────────────────────────────────────── */
 
+const ATTACH_FILE_ACCEPT =
+  ".txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
+const ATTACH_FILE_MAX_BYTES = 200 * 1024;
+
 function Composer({
   question,
   setQuestion,
@@ -740,6 +755,8 @@ function Composer({
   loading,
   activeModelCount,
   onSubmit,
+  attachedFile,
+  setAttachedFile,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -748,12 +765,41 @@ function Composer({
   loading: boolean;
   activeModelCount: number;
   onSubmit: (e: React.FormEvent) => void;
+  attachedFile: { name: string; content: string } | null;
+  setAttachedFile: (f: { name: string; content: string } | null) => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > ATTACH_FILE_MAX_BYTES) {
+      toast.error(
+        `File is too large (${(file.size / 1024).toFixed(0)}KB). Limit is ${ATTACH_FILE_MAX_BYTES / 1024}KB.`,
+      );
+      return;
+    }
+    try {
+      const content = await file.text();
+      setAttachedFile({ name: file.name, content });
+    } catch {
+      toast.error("Couldn't read the file.");
+    }
+  }
+
   return (
     <form
       onSubmit={onSubmit}
       className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[#E5E6EB] p-2"
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ATTACH_FILE_ACCEPT}
+        onChange={handleFileChange}
+        className="hidden"
+      />
       <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
         {/* Input row */}
         <div className="flex items-start gap-2.5 px-4 py-3">
@@ -780,10 +826,38 @@ function Composer({
           className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
+        {/* Attached-file pill */}
+        {attachedFile && (
+          <div className="flex items-center gap-2 border-t border-border-2 px-4 py-2">
+            <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-[320px] truncate" title={attachedFile.name}>
+                {attachedFile.name}
+              </span>
+              <span className="text-[11px] text-text-3">
+                {(attachedFile.content.length / 1024).toFixed(1)} KB
+              </span>
+              <button
+                type="button"
+                onClick={() => setAttachedFile(null)}
+                className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                title="Remove attachment"
+                aria-label="Remove attachment"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
+        )}
         {/* Chips + actions row */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <ComposerChip icon={Paperclip} label="Attach File" disabled />
+            <ComposerChip
+              icon={Paperclip}
+              label="Attach File"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+            />
             <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
             <ComposerChip icon={Library} label="Prompt Library" disabled />
             <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
@@ -818,17 +892,20 @@ function ComposerChip({
   icon: Icon,
   label,
   disabled,
+  onClick,
 }: {
   icon: typeof Paperclip;
   label: string;
   disabled?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
+      onClick={onClick}
       className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
-      title={disabled ? "Coming soon" : label}
+      title={onClick ? label : "Coming soon"}
     >
       <Icon className="h-4 w-4" />
       {label}

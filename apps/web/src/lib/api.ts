@@ -845,11 +845,12 @@ export async function sendQuestionToCompareModels(
   models: string[],
   question: string,
   expectedOutput: string,
+  context?: string,
 ): Promise<CompareModelsApiResult> {
   const res = await apiFetch(`/compare-models`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ models, question, expectedOutput }),
+    body: JSON.stringify({ models, question, expectedOutput, context }),
   });
   if (!res.ok) {
     const body = await res.text();

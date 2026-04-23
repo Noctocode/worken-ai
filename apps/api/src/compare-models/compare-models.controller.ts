@@ -28,6 +28,7 @@ interface CompareModelsRequestBody {
   models: string[];
   question: string;
   expectedOutput: string;
+  context?: string;
 }
 
 interface ModelResponse {
@@ -139,7 +140,7 @@ export class CompareModelsController {
             body.question,
             model,
             false,
-            undefined,
+            body.context,
             apiKey,
           );
           return {
