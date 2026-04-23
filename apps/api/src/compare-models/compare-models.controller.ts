@@ -13,7 +13,11 @@ import {
   ParseUUIDPipe,
   Post,
   ServiceUnavailableException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { and, desc, eq } from 'drizzle-orm';
 import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -21,6 +25,8 @@ import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
+
+const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
 
 const MAX_COMPARE_ATTEMPTS = 3;
 
@@ -291,6 +297,61 @@ export class CompareModelsController {
 
     if (deleted.length === 0) {
       throw new NotFoundException('Arena run not found.');
+    }
+  }
+
+  @Post('attachments/parse')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      limits: { fileSize: ATTACHMENT_MAX_BYTES },
+    }),
+  )
+  async parseAttachment(
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ): Promise<{ name: string; content: string }> {
+    if (!file) {
+      throw new BadRequestException('No file was uploaded.');
+    }
+
+    const mimetype = file.mimetype;
+    const name = file.originalname;
+    const lowerName = name.toLowerCase();
+
+    try {
+      if (mimetype === 'application/pdf' || lowerName.endsWith('.pdf')) {
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: file.buffer });
+        const result = await parser.getText();
+        return { name, content: result.text };
+      }
+
+      if (
+        mimetype ===
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        lowerName.endsWith('.docx')
+      ) {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        return { name, content: result.value };
+      }
+
+      if (
+        mimetype.startsWith('text/') ||
+        mimetype === 'application/json' ||
+        mimetype === 'application/xml'
+      ) {
+        return { name, content: file.buffer.toString('utf8') };
+      }
+
+      throw new BadRequestException(
+        `Unsupported file type: ${mimetype || 'unknown'}. Supported: PDF, DOCX, text-based files.`,
+      );
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to parse attachment "${name}": ${msg}`);
+      throw new BadRequestException(`Failed to parse "${name}": ${msg}`);
     }
   }
 }

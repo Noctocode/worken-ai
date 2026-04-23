@@ -49,6 +49,7 @@ import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
+  parseArenaAttachment,
   sendQuestionToCompareModels,
   type ArenaRunSummary,
 } from "@/lib/api";
@@ -744,8 +745,19 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 /* ─── Composer ───────────────────────────────────────────────────────── */
 
 const ATTACH_FILE_ACCEPT =
-  ".txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
-const ATTACH_FILE_MAX_BYTES = 200 * 1024;
+  ".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
+const ATTACH_FILE_MAX_BYTES = 5 * 1024 * 1024;
+
+function needsServerParse(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  return (
+    file.type === "application/pdf" ||
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    lower.endsWith(".pdf") ||
+    lower.endsWith(".docx")
+  );
+}
 
 function Composer({
   question,
@@ -775,11 +787,26 @@ function Composer({
     e.target.value = "";
     if (!file) return;
     if (file.size > ATTACH_FILE_MAX_BYTES) {
-      toast.error(
-        `File is too large (${(file.size / 1024).toFixed(0)}KB). Limit is ${ATTACH_FILE_MAX_BYTES / 1024}KB.`,
-      );
+      const limitMb = (ATTACH_FILE_MAX_BYTES / 1024 / 1024).toFixed(0);
+      const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+      toast.error(`File is too large (${sizeMb}MB). Limit is ${limitMb}MB.`);
       return;
     }
+
+    if (needsServerParse(file)) {
+      const toastId = toast.loading(`Parsing ${file.name}…`);
+      try {
+        const parsed = await parseArenaAttachment(file);
+        setAttachedFile(parsed);
+        toast.success(`Attached ${parsed.name}.`, { id: toastId });
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Couldn't parse the file.";
+        toast.error(message, { id: toastId });
+      }
+      return;
+    }
+
     try {
       const content = await file.text();
       setAttachedFile({ name: file.name, content });

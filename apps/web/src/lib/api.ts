@@ -905,6 +905,35 @@ export async function deleteArenaRun(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete arena run");
 }
 
+export async function parseArenaAttachment(
+  file: File,
+): Promise<{ name: string; content: string }> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(`/compare-models/attachments/parse`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    let serverMessage: string | undefined;
+    try {
+      const parsed = JSON.parse(body) as { message?: string | string[] };
+      serverMessage = Array.isArray(parsed.message)
+        ? parsed.message.join("; ")
+        : parsed.message;
+    } catch {
+      serverMessage = body;
+    }
+    throw new Error(
+      `Attachment upload failed (${res.status} ${res.statusText})${
+        serverMessage ? `: ${serverMessage}` : ""
+      }`,
+    );
+  }
+  return res.json();
+}
+
 // Tenders
 
 export interface TenderSummary {
