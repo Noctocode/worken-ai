@@ -746,7 +746,7 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 
 const ATTACH_FILE_ACCEPT =
   ".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
-const ATTACH_FILE_MAX_BYTES = 5 * 1024 * 1024;
+const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
 
 function needsServerParse(file: File): boolean {
   const lower = file.name.toLowerCase();

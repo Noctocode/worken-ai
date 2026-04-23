@@ -26,7 +26,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
-const ATTACHMENT_MAX_BYTES = 5 * 1024 * 1024;
+const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
 
 const MAX_COMPARE_ATTEMPTS = 3;
 
