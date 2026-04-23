@@ -746,6 +746,8 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 const ATTACH_FILE_ACCEPT =
   ".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
 const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
+const ATTACH_IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const ATTACH_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
 
 function needsServerParse(file: File): boolean {
   const lower = file.name.toLowerCase();
@@ -753,9 +755,14 @@ function needsServerParse(file: File): boolean {
     file.type === "application/pdf" ||
     file.type ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.type.startsWith("image/") ||
     lower.endsWith(".pdf") ||
     lower.endsWith(".docx")
   );
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
 }
 
 function Composer({
@@ -780,20 +787,19 @@ function Composer({
   setAttachedFile: (f: { name: string; content: string } | null) => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    if (file.size > ATTACH_FILE_MAX_BYTES) {
-      const limitMb = (ATTACH_FILE_MAX_BYTES / 1024 / 1024).toFixed(0);
+  async function ingestFile(file: File, maxBytes: number) {
+    if (file.size > maxBytes) {
+      const limitMb = (maxBytes / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
       toast.error(`File is too large (${sizeMb}MB). Limit is ${limitMb}MB.`);
       return;
     }
 
     if (needsServerParse(file)) {
-      const toastId = toast.loading(`Parsing ${file.name}…`);
+      const verb = isImageFile(file) ? "Reading" : "Parsing";
+      const toastId = toast.loading(`${verb} ${file.name}…`);
       try {
         const parsed = await parseArenaAttachment(file);
         setAttachedFile(parsed);
@@ -812,6 +818,20 @@ function Composer({
     }
   }
 
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await ingestFile(file, ATTACH_FILE_MAX_BYTES);
+  }
+
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await ingestFile(file, ATTACH_IMAGE_MAX_BYTES);
+  }
+
   return (
     <form
       onSubmit={onSubmit}
@@ -822,6 +842,13 @@ function Composer({
         type="file"
         accept={ATTACH_FILE_ACCEPT}
         onChange={handleFileChange}
+        className="hidden"
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept={ATTACH_IMAGE_ACCEPT}
+        onChange={handleImageChange}
         className="hidden"
       />
       <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
@@ -882,7 +909,12 @@ function Composer({
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
             />
-            <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
+            <ComposerChip
+              icon={ImageIcon}
+              label="Upload Image"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={loading}
+            />
             <ComposerChip icon={Library} label="Prompt Library" disabled />
             <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
           </div>

@@ -46,6 +46,38 @@ export class CompareModelsService {
     });
   }
 
+  async extractTextFromImage(
+    imageBase64DataUrl: string,
+    model: string,
+    apiKey?: string,
+  ): Promise<string> {
+    let completion;
+    try {
+      completion = await this.makeClient(apiKey).chat.completions.create({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Extract ALL text visible in this image, preserving structure and line breaks as best you can. If there is no text, respond with exactly: NO_TEXT_FOUND.',
+              },
+              {
+                type: 'image_url',
+                image_url: { url: imageBase64DataUrl },
+              },
+            ],
+          },
+        ],
+      });
+    } catch (err) {
+      throw describeOpenRouterError(model, 'image OCR', err);
+    }
+
+    return completion.choices[0]?.message?.content?.trim() ?? '';
+  }
+
   async sendQuestion(
     question: string,
     model: string,
