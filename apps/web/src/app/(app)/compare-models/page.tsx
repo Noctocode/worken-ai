@@ -880,6 +880,15 @@ function Composer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
+  // Auto-grow the question textarea to fit its content. Runs on every value
+  // change (typing, pasting, programmatic inserts from shortcuts/library).
+  useEffect(() => {
+    const ta = questionRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [question]);
+
   function handleInsertShortcut(shortcut: Shortcut) {
     const ta = questionRef.current;
     if (!ta) {
@@ -997,7 +1006,8 @@ function Composer({
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
-            className="min-h-[72px] w-full resize-y border-0 bg-transparent text-[14px] font-normal leading-[18px] text-text-1 placeholder:text-text-2 focus:outline-none"
+            rows={1}
+            className="min-h-[30px] w-full resize-none overflow-hidden border-0 bg-transparent text-[14px] font-normal leading-[18px] text-text-1 placeholder:text-[16px] placeholder:leading-[30px] placeholder:text-text-2 focus:outline-none"
             disabled={loading}
           />
         </div>
