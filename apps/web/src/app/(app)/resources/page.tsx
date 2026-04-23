@@ -160,7 +160,7 @@ export default function ResourcesPage() {
       </div>
 
       {/* Resource tools grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {RESOURCE_CARDS.map(({ title, description, icon: Icon, bullets, href }) => {
           const body = (
             <>
