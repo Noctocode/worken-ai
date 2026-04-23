@@ -49,9 +49,11 @@ import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
+  fetchPrompts,
   parseArenaAttachment,
   sendQuestionToCompareModels,
   type ArenaRunSummary,
+  type PromptSummary,
 } from "@/lib/api";
 import { humanizeArenaError } from "@/lib/arena-errors";
 import { MODELS } from "@/lib/models";
@@ -162,6 +164,7 @@ export default function CompareModelsPage() {
   const [attachedFile, setAttachedFile] = useState<
     { name: string; content: string } | null
   >(null);
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -377,6 +380,7 @@ export default function CompareModelsPage() {
             onSubmit={compareModels}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
+            onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
           />
         </section>
 
@@ -444,6 +448,18 @@ export default function CompareModelsPage() {
         onAdd={(id) => {
           addModel(id);
           toast.success(`Added ${getModelLabel(id)} to comparison.`);
+        }}
+      />
+
+      <PromptLibraryDialog
+        open={promptLibraryOpen}
+        onOpenChange={setPromptLibraryOpen}
+        onInsert={(p) => {
+          setQuestion((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${prev.replace(/\s+$/, "")}\n\n${p.body}` : p.body;
+          });
+          toast.success(`Inserted "${p.title}".`);
         }}
       />
 
@@ -821,6 +837,7 @@ function Composer({
   onSubmit,
   attachedFile,
   setAttachedFile,
+  onOpenPromptLibrary,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -831,6 +848,7 @@ function Composer({
   onSubmit: (e: React.FormEvent) => void;
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
+  onOpenPromptLibrary: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -970,7 +988,12 @@ function Composer({
               onClick={() => imageInputRef.current?.click()}
               disabled={loading}
             />
-            <ComposerChip icon={Library} label="Prompt Library" disabled />
+            <ComposerChip
+              icon={Library}
+              label="Prompt Library"
+              onClick={onOpenPromptLibrary}
+              disabled={loading}
+            />
             <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
           </div>
           <div className="flex items-center gap-6">
@@ -1539,6 +1562,144 @@ function SpecChip({ label, value }: { label: string; value: string }) {
         {value}
       </span>
     </div>
+  );
+}
+
+/* ─── Prompt Library dialog ──────────────────────────────────────────── */
+
+function PromptLibraryDialog({
+  open,
+  onOpenChange,
+  onInsert,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onInsert: (p: PromptSummary) => void;
+}) {
+  const [prompts, setPrompts] = useState<PromptSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    setLoading(true);
+    fetchPrompts()
+      .then((rows) => {
+        setPrompts(rows);
+        setLoaded(true);
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load prompts.";
+        toast.error(message);
+      })
+      .finally(() => setLoading(false));
+  }, [open, loaded]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return prompts;
+    return prompts.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        (p.description?.toLowerCase().includes(q) ?? false) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [prompts, query]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[640px] gap-0 p-0" showCloseButton={false}>
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
+          <DialogTitle className="text-[18px] font-bold text-text-1">
+            Insert from Prompt Library
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 p-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your prompts"
+              className="h-10 pl-9 placeholder:text-text-3"
+            />
+          </div>
+
+          <div className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto pr-1">
+            {loading && !loaded ? (
+              <p className="py-8 text-center text-[13px] text-text-3">
+                Loading prompts…
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="py-8 text-center text-[13px] text-text-3">
+                {prompts.length === 0
+                  ? "You haven't saved any prompts yet."
+                  : "No prompts match your search."}
+              </p>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    onInsert(p);
+                    onOpenChange(false);
+                  }}
+                  className="flex cursor-pointer flex-col gap-1 rounded border border-border-2 bg-bg-white px-3 py-2.5 text-left transition-colors hover:border-primary-6 hover:bg-bg-1/50"
+                >
+                  <span className="text-[13px] font-semibold text-text-1">
+                    {p.title}
+                  </span>
+                  {p.description && (
+                    <span className="line-clamp-2 text-[12px] text-text-2">
+                      {p.description}
+                    </span>
+                  )}
+                  {(p.category || p.tags.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {p.category && (
+                        <span className="rounded bg-[#EBF8FF] px-2 py-0.5 text-[10px] font-medium text-text-2">
+                          {p.category}
+                        </span>
+                      )}
+                      {p.tags.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="rounded border border-border-2 bg-bg-white px-2 py-0.5 text-[10px] text-text-2"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+
+          {prompts.length === 0 && !loading && (
+            <a
+              href="/resources/prompt-builder"
+              className="inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 rounded border border-border-2 bg-bg-white text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+            >
+              <Plus className="h-4 w-4" />
+              Create your first prompt
+            </a>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
