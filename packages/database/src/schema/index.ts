@@ -8,6 +8,7 @@ import {
   boolean,
   jsonb,
   integer,
+  real,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -137,6 +138,19 @@ export const messages = pgTable("messages", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const arenaRuns = pgTable("arena_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  question: text("question").notNull(),
+  expectedOutput: text("expected_output").notNull().default(""),
+  models: jsonb("models").notNull(),
+  responses: jsonb("responses").notNull(),
+  comparison: jsonb("comparison").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
 export const guardrails = pgTable("guardrails", {
   id: uuid("id").primaryKey().defaultRandom(),
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
@@ -256,6 +270,38 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   storagePath: text("storage_path"),
   uploadedById: uuid("uploaded_by_id").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const shortcuts = pgTable("shortcuts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  label: text("label").notNull(),
+  body: text("body").notNull(),
+  category: text("category"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const prompts = pgTable("prompts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  title: text("title").notNull(),
+  description: text("description"),
+  body: text("body").notNull(),
+  category: text("category"),
+  tags: text("tags").array().notNull().default([]),
+  variables: jsonb("variables").notNull().default([]),
+  model: text("model"),
+  temperature: real("temperature"),
+  maxTokens: integer("max_tokens"),
+  topP: real("top_p"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const modelConfigs = pgTable("model_configs", {

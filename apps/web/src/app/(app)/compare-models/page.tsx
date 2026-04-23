@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   Bot,
   Check,
   ChevronDown,
@@ -12,18 +13,21 @@ import {
   Library,
   MoreVertical,
   Paperclip,
-  Pencil,
   Plus,
   Search,
   Mic,
   Send,
   Sparkles,
-  ThumbsDown,
-  ThumbsUp,
+  Trash2,
   X,
 } from "lucide-react";
 import Image from "next/image";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -31,6 +35,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -44,7 +49,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { sendQuestionToCompareModels } from "@/lib/api";
+import {
+  deleteArenaRun,
+  fetchArenaRun,
+  fetchArenaRuns,
+  fetchPrompts,
+  fetchShortcuts,
+  parseArenaAttachment,
+  sendQuestionToCompareModels,
+  type ArenaRunSummary,
+  type PromptSummary,
+  type Shortcut,
+} from "@/lib/api";
+import { humanizeArenaError } from "@/lib/arena-errors";
 import { MODELS } from "@/lib/models";
 
 function getModelProvider(id: string): string {
@@ -70,7 +87,33 @@ type ModelEvaluation = {
 interface HistoryEntry {
   id: string;
   question: string;
-  ts: string; // human label, e.g. "Today"
+  createdAt: string;
+}
+
+function formatHistoryDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfYesterday = new Date(startOfToday);
+  startOfYesterday.setDate(startOfToday.getDate() - 1);
+  if (d >= startOfToday) return "Today";
+  if (d >= startOfYesterday) return "Yesterday";
+  return d.toLocaleDateString();
+}
+
+function groupHistoryByDate(entries: HistoryEntry[]): { label: string; items: HistoryEntry[] }[] {
+  const groups = new Map<string, HistoryEntry[]>();
+  for (const entry of entries) {
+    const label = formatHistoryDate(entry.createdAt);
+    const existing = groups.get(label) ?? [];
+    existing.push(entry);
+    groups.set(label, existing);
+  }
+  return Array.from(groups.entries()).map(([label, items]) => ({ label, items }));
+}
+
+function toHistoryEntry(run: ArenaRunSummary): HistoryEntry {
+  return { id: run.id, question: run.question, createdAt: run.createdAt };
 }
 
 const MODEL_COLORS: Record<string, string> = {
@@ -122,6 +165,19 @@ export default function CompareModelsPage() {
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [addModelOpen, setAddModelOpen] = useState(false);
+  const [loadedRunCreatedAt, setLoadedRunCreatedAt] = useState<string | null>(null);
+  const [deleteRunId, setDeleteRunId] = useState<string | null>(null);
+  const [attachedFile, setAttachedFile] = useState<
+    { name: string; content: string } | null
+  >(null);
+  const [attachedImage, setAttachedImage] = useState<
+    { name: string; content: string } | null
+  >(null);
+  const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
+  const deleteRunQuestion = useMemo(
+    () => history.find((h) => h.id === deleteRunId)?.question ?? "",
+    [history, deleteRunId],
+  );
 
   const activeModels = useMemo(
     () => selectedModels.filter((id) => !disabledModels.has(id)),
@@ -149,18 +205,50 @@ export default function CompareModelsPage() {
     [responses, evaluations],
   );
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchArenaRuns()
+      .then((runs) => {
+        if (cancelled) return;
+        setHistory(runs.map(toHistoryEntry));
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load history.";
+        toast.error(message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setResponses({});
     setEvaluations({});
     setSubmittedQuestion(question);
+    setLoadedRunCreatedAt(null);
+
+    const contextParts: string[] = [];
+    if (attachedFile) {
+      contextParts.push(
+        `Attached file "${attachedFile.name}":\n${attachedFile.content}`,
+      );
+    }
+    if (attachedImage) {
+      contextParts.push(
+        `Attached image "${attachedImage.name}":\n${attachedImage.content}`,
+      );
+    }
+    const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
     try {
       const result = await sendQuestionToCompareModels(
         activeModels,
         question,
         expectedOutput,
+        context,
       );
 
       const nextResponses: Record<string, string | null> = {};
@@ -175,16 +263,16 @@ export default function CompareModelsPage() {
       setResponses(nextResponses);
       setEvaluations(nextEvaluations);
 
-      setHistory((prev) =>
-        [
-          { id: crypto.randomUUID(), question, ts: "Today" },
-          ...prev,
-        ].slice(0, 10),
-      );
+      if (result.runId) {
+        const newEntry: HistoryEntry = {
+          id: result.runId,
+          question,
+          createdAt: new Date().toISOString(),
+        };
+        setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+      }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Couldn't compare models.";
-      toast.error(message);
+      toast.error(humanizeArenaError(err));
     } finally {
       setLoading(false);
     }
@@ -196,6 +284,9 @@ export default function CompareModelsPage() {
     setResponses({});
     setEvaluations({});
     setSubmittedQuestion(null);
+    setLoadedRunCreatedAt(null);
+    setAttachedFile(null);
+    setAttachedImage(null);
   }, []);
 
   const changeModel = (index: number, newId: string) => {
@@ -259,13 +350,21 @@ export default function CompareModelsPage() {
             )}
 
             {submittedQuestion && (
-              <PromptBubble
-                question={submittedQuestion}
-                onEdit={() => {
-                      setQuestion(submittedQuestion);
-                      setSubmittedQuestion(null);
-                    }}
-              />
+              <>
+                {(loadedRunCreatedAt || hasResults) && (
+                  <button
+                    type="button"
+                    onClick={newComparison}
+                    className="inline-flex h-8 w-fit cursor-pointer items-center gap-2 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Comparison
+                  </button>
+                )}
+                <PromptBubble
+                  question={submittedQuestion}
+                />
+              </>
             )}
 
             {(loading || hasResults) && (
@@ -278,11 +377,6 @@ export default function CompareModelsPage() {
                     evaluation={evaluations[id] ?? null}
                     loading={loading && (responses[id] ?? null) === null}
                     onCopy={(t) => copyText(t, getModelLabel(id))}
-                    onEdit={
-                      submittedQuestion
-                        ? () => setQuestion(submittedQuestion)
-                        : undefined
-                    }
                   />
                 ))}
               </div>
@@ -298,6 +392,11 @@ export default function CompareModelsPage() {
             loading={loading}
             activeModelCount={activeModels.length}
             onSubmit={compareModels}
+            attachedFile={attachedFile}
+            setAttachedFile={setAttachedFile}
+            attachedImage={attachedImage}
+            setAttachedImage={setAttachedImage}
+            onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
           />
         </section>
 
@@ -314,11 +413,33 @@ export default function CompareModelsPage() {
             historyExpanded={historyExpanded}
             setHistoryExpanded={setHistoryExpanded}
             history={history}
-            onLoadHistory={(q) => {
-              setQuestion(q);
-              setSubmittedQuestion(null);
-              setResponses({});
-              setEvaluations({});
+            onDeleteHistory={(runId) => setDeleteRunId(runId)}
+            onLoadHistory={(runId) => {
+              fetchArenaRun(runId)
+                .then((run) => {
+                  setQuestion(run.question);
+                  setExpectedOutput(run.expectedOutput);
+                  setSelectedModels(run.models);
+                  setDisabledModels(new Set());
+                  setSubmittedQuestion(run.question);
+                  setLoadedRunCreatedAt(run.createdAt);
+                  const nextResponses: Record<string, string | null> = {};
+                  const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+                  for (const id of run.models) {
+                    nextResponses[id] =
+                      run.responses.find((r) => r.model === id)?.response.content ??
+                      null;
+                    nextEvaluations[id] =
+                      run.comparison.find((c) => c.name === id) ?? null;
+                  }
+                  setResponses(nextResponses);
+                  setEvaluations(nextEvaluations);
+                })
+                .catch((err) => {
+                  const message =
+                    err instanceof Error ? err.message : "Couldn't load run.";
+                  toast.error(message);
+                });
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
@@ -345,19 +466,69 @@ export default function CompareModelsPage() {
           toast.success(`Added ${getModelLabel(id)} to comparison.`);
         }}
       />
+
+      <PromptLibraryDialog
+        open={promptLibraryOpen}
+        onOpenChange={setPromptLibraryOpen}
+        onInsert={(p) => {
+          setQuestion((prev) => {
+            const trimmed = prev.trim();
+            return trimmed ? `${prev.replace(/\s+$/, "")}\n\n${p.body}` : p.body;
+          });
+          toast.success(`Inserted "${p.title}".`);
+        }}
+      />
+
+      <Dialog
+        open={deleteRunId !== null}
+        onOpenChange={(open) => !open && setDeleteRunId(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Comparison</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>“{deleteRunQuestion}”</strong>? This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteRunId(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                const runId = deleteRunId;
+                if (!runId) return;
+                const previous = history;
+                setHistory((prev) => prev.filter((h) => h.id !== runId));
+                setDeleteRunId(null);
+                deleteArenaRun(runId).catch((err) => {
+                  setHistory(previous);
+                  const message =
+                    err instanceof Error ? err.message : "Couldn't delete run.";
+                  toast.error(message);
+                });
+              }}
+              className="cursor-pointer"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 /* ─── Prompt bubble ──────────────────────────────────────────────────── */
 
-function PromptBubble({
-  question,
-  onEdit,
-}: {
-  question: string;
-  onEdit: () => void;
-}) {
+function PromptBubble({ question }: { question: string }) {
   return (
     <div className="flex items-start gap-3 rounded bg-bg-1 p-4">
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[11px] font-semibold text-white">
@@ -366,15 +537,6 @@ function PromptBubble({
       <p className="flex-1 text-[14px] italic leading-[1.5] text-text-1">
         “{question}”
       </p>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border-2 bg-bg-white text-text-2 transition-colors hover:text-text-1"
-        title="Edit prompt"
-        aria-label="Edit prompt"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }
@@ -387,14 +549,12 @@ function ResponseCard({
   evaluation,
   loading,
   onCopy,
-  onEdit,
 }: {
   modelId: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
   loading: boolean;
   onCopy: (text: string) => void;
-  onEdit?: () => void;
 }) {
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
@@ -415,17 +575,6 @@ function ResponseCard({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-              title="Edit prompt"
-              aria-label="Edit prompt"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
           {evaluation?.time !== undefined && (
             <span className="text-[11px] font-medium text-text-3">
               {(evaluation.time / 1000).toFixed(1)}s
@@ -490,24 +639,8 @@ function ResponseCard({
       {/* Evaluation */}
       {evaluation && <EvaluationBlock evaluation={evaluation} />}
 
-      {/* Footer reactions */}
-      <footer className="flex items-center gap-1 border-t border-border-2 pt-2">
-        <button
-          type="button"
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-          title="Helpful"
-          aria-label="Helpful"
-        >
-          <ThumbsUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-          title="Not helpful"
-          aria-label="Not helpful"
-        >
-          <ThumbsDown className="h-3.5 w-3.5" />
-        </button>
+      {/* Footer actions */}
+      <footer className="flex items-center justify-end border-t border-border-2 pt-2">
         <button
           type="button"
           onClick={() => response && onCopy(response)}
@@ -627,6 +760,74 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 
 /* ─── Composer ───────────────────────────────────────────────────────── */
 
+const ATTACH_FILE_EXTENSIONS = [
+  ".pdf", ".docx", ".txt", ".md", ".markdown", ".csv", ".json", ".log",
+  ".ts", ".tsx", ".js", ".jsx", ".py", ".html", ".css", ".yml", ".yaml",
+  ".xml", ".sql", ".sh", ".rb", ".go", ".rs", ".java", ".c", ".cpp",
+  ".h", ".hpp", ".toml", ".ini", ".env",
+] as const;
+const ATTACH_FILE_ACCEPT = ATTACH_FILE_EXTENSIONS.join(",");
+const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
+
+const ATTACH_IMAGE_MIMETYPES = [
+  "image/png", "image/jpeg", "image/webp", "image/gif",
+] as const;
+const ATTACH_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
+const ATTACH_IMAGE_ACCEPT = ATTACH_IMAGE_MIMETYPES.join(",");
+const ATTACH_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+
+type AttachKind = "file" | "image";
+
+function fileExtension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1 || dot === name.length - 1) return "";
+  return name.slice(dot).toLowerCase();
+}
+
+function describeFileType(file: File): string {
+  const ext = fileExtension(file.name);
+  if (ext) return ext;
+  if (file.type) return `(${file.type})`;
+  return "(no extension)";
+}
+
+const IMAGE_ALLOWED_LABEL = "PNG, JPG, JPEG, WebP, GIF";
+const FILE_ALLOWED_LABEL =
+  "PDF, DOCX, TXT, MD, MARKDOWN, CSV, JSON, LOG, TS, TSX, JS, JSX, PY, HTML, CSS, YML, YAML, XML, SQL, SH, RB, GO, RS, JAVA, C, CPP, H, HPP, TOML, INI, ENV";
+
+function validateAttachment(file: File, kind: AttachKind): string | null {
+  const ext = fileExtension(file.name);
+
+  if (kind === "image") {
+    // Extension-only check: some systems mis-report MIME (e.g. Windows maps
+    // .jiff → image/jpeg), so trusting MIME would let unsupported formats through.
+    if ((ATTACH_IMAGE_EXTENSIONS as readonly string[]).includes(ext)) return null;
+    return `Image type ${describeFileType(file)} isn't allowed. Only ${IMAGE_ALLOWED_LABEL} are allowed.`;
+  }
+
+  if (!ext) {
+    return `"${file.name}" has no file extension, so we can't tell its type. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+  }
+  if ((ATTACH_FILE_EXTENSIONS as readonly string[]).includes(ext)) return null;
+  return `File type ${ext} isn't allowed. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+}
+
+function needsServerParse(file: File): boolean {
+  const lower = file.name.toLowerCase();
+  return (
+    file.type === "application/pdf" ||
+    file.type ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    file.type.startsWith("image/") ||
+    lower.endsWith(".pdf") ||
+    lower.endsWith(".docx")
+  );
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/");
+}
+
 function Composer({
   question,
   setQuestion,
@@ -635,6 +836,11 @@ function Composer({
   loading,
   activeModelCount,
   onSubmit,
+  attachedFile,
+  setAttachedFile,
+  attachedImage,
+  setAttachedImage,
+  onOpenPromptLibrary,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -643,27 +849,148 @@ function Composer({
   loading: boolean;
   activeModelCount: number;
   onSubmit: (e: React.FormEvent) => void;
+  attachedFile: { name: string; content: string } | null;
+  setAttachedFile: (f: { name: string; content: string } | null) => void;
+  attachedImage: { name: string; content: string } | null;
+  setAttachedImage: (f: { name: string; content: string } | null) => void;
+  onOpenPromptLibrary: () => void;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-grow the question textarea to fit its content. Runs on every value
+  // change (typing, pasting, programmatic inserts from shortcuts/library).
+  useEffect(() => {
+    const ta = questionRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [question]);
+
+  function handleInsertShortcut(shortcut: Shortcut) {
+    const ta = questionRef.current;
+    if (!ta) {
+      const sep = question.trim() ? " " : "";
+      setQuestion(question + sep + shortcut.body);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = question.slice(0, start);
+    const after = question.slice(end);
+    const hasSelection = start !== end;
+    const insert = hasSelection
+      ? shortcut.body
+      : before.length > 0 && !/\s$/.test(before)
+        ? ` ${shortcut.body}`
+        : shortcut.body;
+    const newValue = before + insert + after;
+    const cursor = before.length + insert.length;
+    setQuestion(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(cursor, cursor);
+    });
+  }
+
+  async function ingestFile(
+    file: File,
+    kind: AttachKind,
+    maxBytes: number,
+    setTarget: (f: { name: string; content: string } | null) => void,
+  ) {
+    const validationError = validateAttachment(file, kind);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    if (file.size > maxBytes) {
+      const limitMb = (maxBytes / 1024 / 1024).toFixed(0);
+      const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+      const target = kind === "image" ? "Images are" : "Attachments are";
+      toast.error(
+        `"${file.name}" is too large (${sizeMb} MB). ${target} capped at ${limitMb} MB.`,
+      );
+      return;
+    }
+
+    if (needsServerParse(file)) {
+      const verb = isImageFile(file) ? "Reading" : "Parsing";
+      const toastId = toast.loading(`${verb} ${file.name}…`);
+      try {
+        const parsed = await parseArenaAttachment(file);
+        setTarget(parsed);
+        toast.success(`Attached ${parsed.name}.`, { id: toastId });
+      } catch (err) {
+        toast.error(humanizeArenaError(err), { id: toastId });
+      }
+      return;
+    }
+
+    try {
+      const content = await file.text();
+      setTarget({ name: file.name, content });
+    } catch (err) {
+      toast.error(humanizeArenaError(err));
+    }
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES, setAttachedFile);
+  }
+
+  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES, setAttachedImage);
+  }
+
   return (
     <form
       onSubmit={onSubmit}
       className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[#E5E6EB] p-2"
     >
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ATTACH_FILE_ACCEPT}
+        onChange={handleFileChange}
+        className="hidden"
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept={ATTACH_IMAGE_ACCEPT}
+        onChange={handleImageChange}
+        className="hidden"
+      />
       <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
         {/* Input row */}
         <div className="flex items-start gap-2.5 px-4 py-3">
           <Image
             src="/main-logo.png"
             alt="WorkenAI"
-            width={24}
-            height={23}
+            width={30}
+            height={29}
             className="shrink-0"
           />
           <textarea
+            ref={questionRef}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
-            className="min-h-[24px] w-full resize-y border-0 bg-transparent text-[16px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+            rows={1}
+            className={`min-h-[30px] w-full resize-none overflow-hidden border-0 bg-transparent font-normal text-text-1 placeholder:text-text-2 focus:outline-none ${
+              question
+                ? "text-[14px] leading-[18px]"
+                : "text-[16px] leading-[30px]"
+            }`}
             disabled={loading}
           />
         </div>
@@ -675,13 +1002,76 @@ function Composer({
           className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
+        {/* Attachment pills — one per slot, both can coexist */}
+        {(attachedFile || attachedImage) && (
+          <div className="flex flex-wrap items-center gap-2 border-t border-border-2 px-4 py-2">
+            {attachedFile && (
+              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+                <Paperclip className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[320px] truncate" title={attachedFile.name}>
+                  {attachedFile.name}
+                </span>
+                <span className="text-[11px] text-text-3">
+                  {(attachedFile.content.length / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachedFile(null)}
+                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                  title="Remove file"
+                  aria-label="Remove file"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            )}
+            {attachedImage && (
+              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
+                <span className="max-w-[320px] truncate" title={attachedImage.name}>
+                  {attachedImage.name}
+                </span>
+                <span className="text-[11px] text-text-3">
+                  {(attachedImage.content.length / 1024).toFixed(1)} KB
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAttachedImage(null)}
+                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                  title="Remove image"
+                  aria-label="Remove image"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            )}
+          </div>
+        )}
         {/* Chips + actions row */}
         <div className="flex flex-wrap items-center justify-between gap-2.5 px-4 py-3">
           <div className="flex flex-wrap items-center gap-2.5">
-            <ComposerChip icon={Paperclip} label="Attach File" disabled />
-            <ComposerChip icon={ImageIcon} label="Upload Image" disabled />
-            <ComposerChip icon={Library} label="Prompt Library" disabled />
-            <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
+            <ComposerChip
+              icon={Paperclip}
+              label="Attach File"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+            />
+            <ComposerChip
+              icon={ImageIcon}
+              label="Upload Image"
+              onClick={() => imageInputRef.current?.click()}
+              disabled={loading}
+            />
+            <ComposerChip
+              icon={Library}
+              label="Prompt Library"
+              onClick={onOpenPromptLibrary}
+              disabled={loading}
+            />
+            <ShortcutsPopover
+              disabled={loading}
+              onInsert={handleInsertShortcut}
+            />
           </div>
           <div className="flex items-center gap-6">
             <button
@@ -713,17 +1103,20 @@ function ComposerChip({
   icon: Icon,
   label,
   disabled,
+  onClick,
 }: {
   icon: typeof Paperclip;
   label: string;
   disabled?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
       disabled={disabled}
+      onClick={onClick}
       className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
-      title={disabled ? "Coming soon" : label}
+      title={onClick ? label : "Coming soon"}
     >
       <Icon className="h-4 w-4" />
       {label}
@@ -745,6 +1138,7 @@ function RightRail({
   setHistoryExpanded,
   history,
   onLoadHistory,
+  onDeleteHistory,
   onClose,
   onAddModel,
 }: {
@@ -758,7 +1152,8 @@ function RightRail({
   historyExpanded: boolean;
   setHistoryExpanded: (v: boolean) => void;
   history: HistoryEntry[];
-  onLoadHistory: (q: string) => void;
+  onLoadHistory: (runId: string) => void;
+  onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
 }) {
@@ -834,22 +1229,35 @@ function RightRail({
             Your recent comparisons will appear here.
           </p>
         ) : (
-          <div className="flex flex-col gap-2">
-            <p className="text-[13px] font-normal text-text-2">Today</p>
-            <ul className="flex flex-col gap-2">
-              {history.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    onClick={() => onLoadHistory(h.question)}
-                    className="line-clamp-3 w-full cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
-                    title={h.question}
-                  >
-                    “{h.question}”
-                  </button>
-                </li>
-              ))}
-            </ul>
+          <div className="flex flex-col gap-4">
+            {groupHistoryByDate(history).map((group) => (
+              <div key={group.label} className="flex flex-col gap-2">
+                <p className="text-[13px] font-normal text-text-2">{group.label}</p>
+                <ul className="flex flex-col gap-2">
+                  {group.items.map((h) => (
+                    <li key={h.id} className="flex items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onLoadHistory(h.id)}
+                        className="line-clamp-3 flex-1 cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
+                        title={h.question}
+                      >
+                        “{h.question}”
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onDeleteHistory(h.id)}
+                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 transition-colors hover:bg-bg-1 hover:text-[#D92D20]"
+                        title="Delete this comparison"
+                        aria-label="Delete this comparison"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
       </RailSection>
@@ -1185,7 +1593,7 @@ function AddModelDialog({
               against other models in the arena.
             </p>
 
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               <SpecChip label="Provider" value={getModelProvider(selected.id)} />
               <SpecChip label="Tier" value="Free" />
               <SpecChip
@@ -1231,6 +1639,256 @@ function SpecChip({ label, value }: { label: string; value: string }) {
         {value}
       </span>
     </div>
+  );
+}
+
+/* ─── Prompt Library dialog ──────────────────────────────────────────── */
+
+function PromptLibraryDialog({
+  open,
+  onOpenChange,
+  onInsert,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onInsert: (p: PromptSummary) => void;
+}) {
+  const [prompts, setPrompts] = useState<PromptSummary[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open || loaded) return;
+    setLoading(true);
+    fetchPrompts()
+      .then((rows) => {
+        setPrompts(rows);
+        setLoaded(true);
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load prompts.";
+        toast.error(message);
+      })
+      .finally(() => setLoading(false));
+  }, [open, loaded]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return prompts;
+    return prompts.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        (p.description?.toLowerCase().includes(q) ?? false) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [prompts, query]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[640px] gap-0 p-0" showCloseButton={false}>
+        <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
+          <DialogTitle className="text-[18px] font-bold text-text-1">
+            Insert from Prompt Library
+          </DialogTitle>
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-3 p-4">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search your prompts"
+              className="h-10 pl-9 placeholder:text-text-3"
+            />
+          </div>
+
+          <div className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto pr-1">
+            {loading && !loaded ? (
+              <p className="py-8 text-center text-[13px] text-text-3">
+                Loading prompts…
+              </p>
+            ) : filtered.length === 0 ? (
+              <p className="py-8 text-center text-[13px] text-text-3">
+                {prompts.length === 0
+                  ? "You haven't saved any prompts yet."
+                  : "No prompts match your search."}
+              </p>
+            ) : (
+              filtered.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => {
+                    onInsert(p);
+                    onOpenChange(false);
+                  }}
+                  className="flex cursor-pointer flex-col gap-1 rounded border border-border-2 bg-bg-white px-3 py-2.5 text-left transition-colors hover:border-primary-6 hover:bg-bg-1/50"
+                >
+                  <span className="text-[13px] font-semibold text-text-1">
+                    {p.title}
+                  </span>
+                  {p.description && (
+                    <span className="line-clamp-2 text-[12px] text-text-2">
+                      {p.description}
+                    </span>
+                  )}
+                  {(p.category || p.tags.length > 0) && (
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {p.category && (
+                        <span className="rounded bg-[#EBF8FF] px-2 py-0.5 text-[10px] font-medium text-text-2">
+                          {p.category}
+                        </span>
+                      )}
+                      {p.tags.slice(0, 3).map((t) => (
+                        <span
+                          key={t}
+                          className="rounded border border-border-2 bg-bg-white px-2 py-0.5 text-[10px] text-text-2"
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+
+          <div className="border-t border-border-2 pt-2">
+            <a
+              href="/resources/prompt-library"
+              className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
+            >
+              <Library className="h-3.5 w-3.5" />
+              Manage prompts →
+            </a>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* ─── Shortcuts popover ──────────────────────────────────────────────── */
+
+function ShortcutsPopover({
+  disabled,
+  onInsert,
+}: {
+  disabled?: boolean;
+  onInsert: (s: Shortcut) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<Shortcut[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetchShortcuts()
+      .then((rows) => setItems(rows))
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load shortcuts.";
+        toast.error(message);
+      })
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.body.toLowerCase().includes(q) ||
+        (s.category?.toLowerCase().includes(q) ?? false),
+    );
+  }, [items, query]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Insert a saved shortcut"
+        >
+          <LayoutGrid className="h-4 w-4" />
+          Shortcuts
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="top"
+        sideOffset={8}
+        className="w-[320px] p-0"
+      >
+        <div className="flex items-center gap-2 border-b border-border-2 px-3 py-2">
+          <Search className="h-3.5 w-3.5 text-text-3" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search shortcuts"
+            className="h-7 w-full border-0 bg-transparent text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
+            autoFocus
+          />
+        </div>
+        <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+          {loading ? (
+            <p className="py-6 text-center text-[12px] text-text-3">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-center text-[12px] text-text-3">
+              {items.length === 0
+                ? "No shortcuts saved yet."
+                : "No matches."}
+            </p>
+          ) : (
+            filtered.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onInsert(s);
+                  setOpen(false);
+                }}
+                className="flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-bg-1"
+                title={s.body}
+              >
+                <span className="text-[13px] font-medium text-text-1">
+                  {s.label}
+                </span>
+                <span className="line-clamp-1 text-[11px] text-text-3">
+                  {s.body}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="border-t border-border-2 p-1">
+          <a
+            href="/resources/shortcuts"
+            className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Manage shortcuts →
+          </a>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
