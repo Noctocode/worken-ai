@@ -13,7 +13,6 @@ import {
   Library,
   MoreVertical,
   Paperclip,
-  Pencil,
   Plus,
   Search,
   Mic,
@@ -364,11 +363,6 @@ export default function CompareModelsPage() {
                 )}
                 <PromptBubble
                   question={submittedQuestion}
-                  onEdit={() => {
-                    setQuestion(submittedQuestion);
-                    setSubmittedQuestion(null);
-                    setLoadedRunCreatedAt(null);
-                  }}
                 />
               </>
             )}
@@ -534,13 +528,7 @@ export default function CompareModelsPage() {
 
 /* ─── Prompt bubble ──────────────────────────────────────────────────── */
 
-function PromptBubble({
-  question,
-  onEdit,
-}: {
-  question: string;
-  onEdit: () => void;
-}) {
+function PromptBubble({ question }: { question: string }) {
   return (
     <div className="flex items-start gap-3 rounded bg-bg-1 p-4">
       <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[11px] font-semibold text-white">
@@ -549,15 +537,6 @@ function PromptBubble({
       <p className="flex-1 text-[14px] italic leading-[1.5] text-text-1">
         “{question}”
       </p>
-      <button
-        type="button"
-        onClick={onEdit}
-        className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-border-2 bg-bg-white text-text-2 transition-colors hover:text-text-1"
-        title="Edit prompt"
-        aria-label="Edit prompt"
-      >
-        <Pencil className="h-3.5 w-3.5" />
-      </button>
     </div>
   );
 }
