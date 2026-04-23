@@ -1007,7 +1007,11 @@ function Composer({
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
             rows={1}
-            className="min-h-[30px] w-full resize-none overflow-hidden border-0 bg-transparent text-[14px] font-normal leading-[18px] text-text-1 placeholder:text-[16px] placeholder:leading-[30px] placeholder:text-text-2 focus:outline-none"
+            className={`min-h-[30px] w-full resize-none overflow-hidden border-0 bg-transparent font-normal text-text-1 placeholder:text-text-2 focus:outline-none ${
+              question
+                ? "text-[14px] leading-[18px]"
+                : "text-[16px] leading-[30px]"
+            }`}
             disabled={loading}
           />
         </div>
