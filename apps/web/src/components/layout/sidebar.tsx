@@ -59,7 +59,7 @@ export const SidebarContent = ({
   const navGroups: NavGroup[] = [
     [
       { href: "/", label: "Ongoing Projects", icon: FolderOpen, match: "exact" },
-      { href: "/compare-models", label: "Compare Models", icon: Layers, match: "exact" },
+      { href: "/compare-models", label: "Model Arena", icon: Layers, match: "exact" },
       { href: "/guardrails", label: "Guardrails", icon: Shield, match: "exact" },
       { href: "/teams", label: "Team Management", icon: Users, match: "prefix" },
     ],
