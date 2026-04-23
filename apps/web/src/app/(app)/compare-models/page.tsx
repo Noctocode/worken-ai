@@ -24,6 +24,11 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -50,10 +55,12 @@ import {
   fetchArenaRun,
   fetchArenaRuns,
   fetchPrompts,
+  fetchShortcuts,
   parseArenaAttachment,
   sendQuestionToCompareModels,
   type ArenaRunSummary,
   type PromptSummary,
+  type Shortcut,
 } from "@/lib/api";
 import { humanizeArenaError } from "@/lib/arena-errors";
 import { MODELS } from "@/lib/models";
@@ -852,6 +859,33 @@ function Composer({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const questionRef = useRef<HTMLTextAreaElement>(null);
+
+  function handleInsertShortcut(shortcut: Shortcut) {
+    const ta = questionRef.current;
+    if (!ta) {
+      const sep = question.trim() ? " " : "";
+      setQuestion(question + sep + shortcut.body);
+      return;
+    }
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const before = question.slice(0, start);
+    const after = question.slice(end);
+    const hasSelection = start !== end;
+    const insert = hasSelection
+      ? shortcut.body
+      : before.length > 0 && !/\s$/.test(before)
+        ? ` ${shortcut.body}`
+        : shortcut.body;
+    const newValue = before + insert + after;
+    const cursor = before.length + insert.length;
+    setQuestion(newValue);
+    requestAnimationFrame(() => {
+      ta.focus();
+      ta.setSelectionRange(cursor, cursor);
+    });
+  }
 
   async function ingestFile(file: File, kind: AttachKind, maxBytes: number) {
     const validationError = validateAttachment(file, kind);
@@ -935,6 +969,7 @@ function Composer({
             className="shrink-0"
           />
           <textarea
+            ref={questionRef}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Ask me Anything"
@@ -994,7 +1029,10 @@ function Composer({
               onClick={onOpenPromptLibrary}
               disabled={loading}
             />
-            <ComposerChip icon={LayoutGrid} label="Shortcuts" disabled />
+            <ShortcutsPopover
+              disabled={loading}
+              onInsert={handleInsertShortcut}
+            />
           </div>
           <div className="flex items-center gap-6">
             <button
@@ -1700,6 +1738,118 @@ function PromptLibraryDialog({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ─── Shortcuts popover ──────────────────────────────────────────────── */
+
+function ShortcutsPopover({
+  disabled,
+  onInsert,
+}: {
+  disabled?: boolean;
+  onInsert: (s: Shortcut) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [items, setItems] = useState<Shortcut[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    fetchShortcuts()
+      .then((rows) => setItems(rows))
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load shortcuts.";
+        toast.error(message);
+      })
+      .finally(() => setLoading(false));
+  }, [open]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return items;
+    return items.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.body.toLowerCase().includes(q) ||
+        (s.category?.toLowerCase().includes(q) ?? false),
+    );
+  }, [items, query]);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={disabled}
+          className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+          title="Insert a saved shortcut"
+        >
+          <LayoutGrid className="h-4 w-4" />
+          Shortcuts
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        side="top"
+        sideOffset={8}
+        className="w-[320px] p-0"
+      >
+        <div className="flex items-center gap-2 border-b border-border-2 px-3 py-2">
+          <Search className="h-3.5 w-3.5 text-text-3" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search shortcuts"
+            className="h-7 w-full border-0 bg-transparent text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
+            autoFocus
+          />
+        </div>
+        <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
+          {loading ? (
+            <p className="py-6 text-center text-[12px] text-text-3">Loading…</p>
+          ) : filtered.length === 0 ? (
+            <p className="py-6 text-center text-[12px] text-text-3">
+              {items.length === 0
+                ? "No shortcuts saved yet."
+                : "No matches."}
+            </p>
+          ) : (
+            filtered.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => {
+                  onInsert(s);
+                  setOpen(false);
+                }}
+                className="flex cursor-pointer flex-col gap-0.5 rounded px-2 py-1.5 text-left transition-colors hover:bg-bg-1"
+                title={s.body}
+              >
+                <span className="text-[13px] font-medium text-text-1">
+                  {s.label}
+                </span>
+                <span className="line-clamp-1 text-[11px] text-text-3">
+                  {s.body}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+        <div className="border-t border-border-2 p-1">
+          <a
+            href="/resources/shortcuts"
+            className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
+          >
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Manage shortcuts →
+          </a>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

@@ -1038,6 +1038,72 @@ export async function deletePrompt(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete prompt");
 }
 
+// Shortcuts
+
+export const SHORTCUT_BODY_MAX = 500;
+
+export interface Shortcut {
+  id: string;
+  userId: string;
+  label: string;
+  body: string;
+  category: string | null;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShortcutInput {
+  label: string;
+  body: string;
+  category?: string | null;
+  description?: string | null;
+}
+
+export async function fetchShortcuts(): Promise<Shortcut[]> {
+  const res = await apiFetch(`/shortcuts`);
+  if (!res.ok) throw new Error("Failed to load shortcuts");
+  return res.json();
+}
+
+export async function fetchShortcut(id: string): Promise<Shortcut> {
+  const res = await apiFetch(`/shortcuts/${id}`);
+  if (!res.ok) throw new Error("Failed to load shortcut");
+  return res.json();
+}
+
+export async function createShortcut(input: ShortcutInput): Promise<Shortcut> {
+  const res = await apiFetch(`/shortcuts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to create shortcut"));
+  }
+  return res.json();
+}
+
+export async function updateShortcut(
+  id: string,
+  input: Partial<ShortcutInput>,
+): Promise<Shortcut> {
+  const res = await apiFetch(`/shortcuts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to update shortcut"));
+  }
+  return res.json();
+}
+
+export async function deleteShortcut(id: string): Promise<void> {
+  const res = await apiFetch(`/shortcuts/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete shortcut");
+}
+
 // Tenders
 
 export interface TenderSummary {

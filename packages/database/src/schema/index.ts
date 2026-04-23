@@ -272,6 +272,19 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const shortcuts = pgTable("shortcuts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  label: text("label").notNull(),
+  body: text("body").notNull(),
+  category: text("category"),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const prompts = pgTable("prompts", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
