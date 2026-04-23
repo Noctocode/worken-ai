@@ -19,8 +19,6 @@ import {
   Mic,
   Send,
   Sparkles,
-  ThumbsDown,
-  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -353,11 +351,6 @@ export default function CompareModelsPage() {
                     evaluation={evaluations[id] ?? null}
                     loading={loading && (responses[id] ?? null) === null}
                     onCopy={(t) => copyText(t, getModelLabel(id))}
-                    onEdit={
-                      submittedQuestion
-                        ? () => setQuestion(submittedQuestion)
-                        : undefined
-                    }
                   />
                 ))}
               </div>
@@ -528,14 +521,12 @@ function ResponseCard({
   evaluation,
   loading,
   onCopy,
-  onEdit,
 }: {
   modelId: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
   loading: boolean;
   onCopy: (text: string) => void;
-  onEdit?: () => void;
 }) {
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
@@ -556,17 +547,6 @@ function ResponseCard({
           </span>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {onEdit && (
-            <button
-              type="button"
-              onClick={onEdit}
-              className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-              title="Edit prompt"
-              aria-label="Edit prompt"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
-          )}
           {evaluation?.time !== undefined && (
             <span className="text-[11px] font-medium text-text-3">
               {(evaluation.time / 1000).toFixed(1)}s
@@ -631,24 +611,8 @@ function ResponseCard({
       {/* Evaluation */}
       {evaluation && <EvaluationBlock evaluation={evaluation} />}
 
-      {/* Footer reactions */}
-      <footer className="flex items-center gap-1 border-t border-border-2 pt-2">
-        <button
-          type="button"
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-          title="Helpful"
-          aria-label="Helpful"
-        >
-          <ThumbsUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-          title="Not helpful"
-          aria-label="Not helpful"
-        >
-          <ThumbsDown className="h-3.5 w-3.5" />
-        </button>
+      {/* Footer actions */}
+      <footer className="flex items-center justify-end border-t border-border-2 pt-2">
         <button
           type="button"
           onClick={() => response && onCopy(response)}
