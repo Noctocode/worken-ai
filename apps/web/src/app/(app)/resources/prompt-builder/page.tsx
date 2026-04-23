@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Search,
   Plus,
@@ -36,6 +36,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  createPrompt,
+  fetchPrompt,
+  updatePrompt,
+  type PromptInput,
+} from "@/lib/api";
 
 type TemplateIcon = typeof FileText;
 
@@ -640,17 +646,34 @@ function ConfigureParametersStep({
 
 /* ─── Step 4: Preview & Test ─────────────────────────────────────────── */
 
+interface SaveDetails {
+  title: string;
+  description: string;
+  category: string;
+  tagsInput: string;
+}
+
 function PreviewTestStep({
   prompt,
   params,
+  details,
+  setDetails,
+  saving,
+  editing,
   onBack,
   onSave,
 }: {
   prompt: string;
   params: Params;
+  details: SaveDetails;
+  setDetails: (d: SaveDetails) => void;
+  saving: boolean;
+  editing: boolean;
   onBack: () => void;
   onSave: () => void;
 }) {
+  const canSave = details.title.trim().length > 0 && prompt.trim().length > 0 && !saving;
+
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-6">
       <div className="flex flex-col gap-2">
@@ -677,10 +700,63 @@ function PreviewTestStep({
         </div>
       </section>
 
+      <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-5">
+        <h3 className="text-sm font-semibold text-text-1">Save Details</h3>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-2">
+            Title <span className="text-[#D92D20]">*</span>
+          </label>
+          <Input
+            value={details.title}
+            onChange={(e) => setDetails({ ...details, title: e.target.value })}
+            className="h-10 rounded border-border-2 text-[13px]"
+            placeholder="e.g. RFP Bid/No-Bid Analysis"
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-medium text-text-2">Description</label>
+          <Input
+            value={details.description}
+            onChange={(e) =>
+              setDetails({ ...details, description: e.target.value })
+            }
+            className="h-10 rounded border-border-2 text-[13px]"
+            placeholder="One-line summary shown on the library card"
+          />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-text-2">Category</label>
+            <Input
+              value={details.category}
+              onChange={(e) =>
+                setDetails({ ...details, category: e.target.value })
+              }
+              className="h-10 rounded border-border-2 text-[13px]"
+              placeholder="e.g. Strategic Analysis"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-text-2">
+              Tags (comma-separated)
+            </label>
+            <Input
+              value={details.tagsInput}
+              onChange={(e) =>
+                setDetails({ ...details, tagsInput: e.target.value })
+              }
+              className="h-10 rounded border-border-2 text-[13px]"
+              placeholder="RFP, Decision Making"
+            />
+          </div>
+        </div>
+      </section>
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Button
           variant="outline"
           onClick={onBack}
+          disabled={saving}
           className="h-10 rounded border-border-2 text-sm text-text-2"
         >
           Back
@@ -696,10 +772,17 @@ function PreviewTestStep({
           </Button>
           <Button
             onClick={onSave}
-            className="h-10 gap-2 rounded bg-primary-7 text-sm text-text-white hover:bg-primary-7/90"
+            disabled={!canSave}
+            className="h-10 gap-2 rounded bg-primary-7 text-sm text-text-white hover:bg-primary-7/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Save className="h-4 w-4" />
-            Save Prompt
+            {saving
+              ? editing
+                ? "Updating…"
+                : "Saving…"
+              : editing
+                ? "Update Prompt"
+                : "Save Prompt"}
           </Button>
         </div>
       </div>
@@ -739,8 +822,19 @@ function StepNav({
 /* ─── Page ───────────────────────────────────────────────────────────── */
 
 export default function PromptBuilderPage() {
+  return (
+    <Suspense fallback={<div className="py-6 text-sm text-text-3">Loading…</div>}>
+      <PromptBuilderInner />
+    </Suspense>
+  );
+}
+
+function PromptBuilderInner() {
   const router = useRouter();
-  const [step, setStep] = useState(0);
+  const searchParams = useSearchParams();
+  const editId = searchParams.get("id");
+
+  const [step, setStep] = useState(editId ? 1 : 0);
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
   const [variables, setVariables] = useState<Variable[]>(DEFAULT_VARIABLES);
   const [params, setParams] = useState<Params>({
@@ -749,15 +843,113 @@ export default function PromptBuilderPage() {
     maxTokens: 2000,
     topP: 1,
   });
+  const [details, setDetails] = useState<SaveDetails>({
+    title: "",
+    description: "",
+    category: "",
+    tagsInput: "",
+  });
+  const [loading, setLoading] = useState(Boolean(editId));
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = () => {
-    toast.success("Prompt saved.");
-    router.push("/resources/prompt-library");
+  useEffect(() => {
+    if (!editId) return;
+    let cancelled = false;
+    fetchPrompt(editId)
+      .then((p) => {
+        if (cancelled) return;
+        setPrompt(p.body);
+        setVariables(
+          (p.variables ?? []).map((v) => ({
+            id: crypto.randomUUID(),
+            name: v.name,
+            defaultValue: v.default ?? "",
+            description: v.description ?? "",
+          })),
+        );
+        setParams({
+          model: p.model ?? "gpt-4",
+          temperature: p.temperature ?? 0.7,
+          maxTokens: p.maxTokens ?? 2000,
+          topP: p.topP ?? 1,
+        });
+        setDetails({
+          title: p.title,
+          description: p.description ?? "",
+          category: p.category ?? "",
+          tagsInput: p.tags.join(", "),
+        });
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load prompt.";
+        toast.error(message);
+        router.push("/resources/prompt-library");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editId, router]);
+
+  const handleSave = async () => {
+    const title = details.title.trim();
+    const body = prompt.trim();
+    if (!title) {
+      toast.error("Please give your prompt a title.");
+      return;
+    }
+    if (!body) {
+      toast.error("The prompt body can't be empty.");
+      return;
+    }
+
+    const tags = details.tagsInput
+      .split(",")
+      .map((t) => t.trim())
+      .filter(Boolean);
+
+    const payload: PromptInput = {
+      title,
+      description: details.description.trim() || null,
+      body: prompt,
+      category: details.category.trim() || null,
+      tags,
+      variables: variables
+        .map((v) => ({
+          name: v.name.trim(),
+          description: v.description.trim() || undefined,
+          default: v.defaultValue || undefined,
+        }))
+        .filter((v) => v.name),
+      model: params.model,
+      temperature: params.temperature,
+      maxTokens: params.maxTokens,
+      topP: params.topP,
+    };
+
+    setSaving(true);
+    try {
+      if (editId) {
+        await updatePrompt(editId, payload);
+        toast.success("Prompt updated.");
+      } else {
+        await createPrompt(payload);
+        toast.success("Prompt saved.");
+      }
+      router.push("/resources/prompt-library");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Couldn't save prompt.";
+      toast.error(message);
+      setSaving(false);
+    }
   };
 
   const handlePickTemplate = (template: Template) => {
     setPrompt(template.prompt);
-    // Derive variables from {{name}} placeholders in the template.
     const matches = Array.from(template.prompt.matchAll(/{{\s*(\w+)\s*}}/g));
     const names = Array.from(new Set(matches.map((m) => m[1])));
     setVariables(
@@ -768,6 +960,12 @@ export default function PromptBuilderPage() {
         description: "",
       })),
     );
+    setDetails((d) => ({
+      ...d,
+      title: d.title || template.title,
+      description: d.description || template.description,
+      category: d.category || template.category,
+    }));
     setStep(1);
   };
 
@@ -777,20 +975,26 @@ export default function PromptBuilderPage() {
     setStep(1);
   };
 
+  if (loading) {
+    return (
+      <div className="py-6 text-sm text-text-3">Loading prompt…</div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
-        href="/resources"
+        href="/resources/prompt-library"
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Resources
+        Back to Prompt Library
       </Link>
 
       <Stepper active={step} onSelect={setStep} />
 
       <div className="flex flex-col gap-[30px] lg:flex-row">
-        {step === 0 && (
+        {step === 0 && !editId && (
           <SelectTemplateStep
             onPick={handlePickTemplate}
             onScratch={handleScratch}
@@ -802,7 +1006,7 @@ export default function PromptBuilderPage() {
             setPrompt={setPrompt}
             variables={variables}
             setVariables={setVariables}
-            onBack={() => setStep(0)}
+            onBack={() => (editId ? router.push("/resources/prompt-library") : setStep(0))}
             onContinue={() => setStep(2)}
           />
         )}
@@ -818,14 +1022,18 @@ export default function PromptBuilderPage() {
           <PreviewTestStep
             prompt={prompt}
             params={params}
+            details={details}
+            setDetails={setDetails}
+            saving={saving}
+            editing={Boolean(editId)}
             onBack={() => setStep(2)}
             onSave={handleSave}
           />
         )}
 
         <LivePreview
-          promptDraft={step === 0 ? "" : prompt}
-          variables={step === 0 ? [] : variables}
+          promptDraft={step === 0 && !editId ? "" : prompt}
+          variables={step === 0 && !editId ? [] : variables}
           model={params.model}
         />
       </div>
