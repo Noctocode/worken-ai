@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   Bot,
   Check,
   ChevronDown,
@@ -322,21 +323,14 @@ export default function CompareModelsPage() {
             {submittedQuestion && (
               <>
                 {(loadedRunCreatedAt || hasResults) && (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border-2 bg-bg-1 px-3 py-2">
-                    <span className="text-[13px] text-text-2">
-                      {loadedRunCreatedAt
-                        ? `Viewing past comparison from ${formatHistoryDate(loadedRunCreatedAt)}`
-                        : "Viewing this comparison"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={newComparison}
-                      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
-                    >
-                      <Plus className="h-4 w-4" />
-                      New Comparison
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={newComparison}
+                    className="inline-flex h-8 w-fit cursor-pointer items-center gap-2 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                    Back to Comparison
+                  </button>
                 )}
                 <PromptBubble
                   question={submittedQuestion}
