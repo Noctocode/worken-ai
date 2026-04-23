@@ -1,11 +1,11 @@
 export const MODELS = [
   {
-    id: "nvidia/nemotron-3-nano-30b-a3b:free",
-    label: "Nemotron 3 Nano 30B",
+    id: "minimax/minimax-m2.5:free",
+    label: "MiniMax M2.5",
   },
   {
-    id: "arcee-ai/trinity-large-preview:free",
-    label: "Trinity Large Preview",
+    id: "inclusionai/ling-2.6-flash:free",
+    label: "Ling 2.6 Flash",
   },
   {
     id: "liquid/lfm-2.5-1.2b-thinking:free",
