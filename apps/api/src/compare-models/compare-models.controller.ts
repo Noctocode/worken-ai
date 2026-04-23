@@ -318,40 +318,46 @@ export class CompareModelsController {
     const name = file.originalname;
     const lowerName = name.toLowerCase();
 
+    let content: string;
+
     try {
       if (mimetype === 'application/pdf' || lowerName.endsWith('.pdf')) {
         const { PDFParse } = await import('pdf-parse');
         const parser = new PDFParse({ data: file.buffer });
         const result = await parser.getText();
-        return { name, content: result.text };
-      }
-
-      if (
+        content = result.text;
+      } else if (
         mimetype ===
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         lowerName.endsWith('.docx')
       ) {
         const mammoth = await import('mammoth');
         const result = await mammoth.extractRawText({ buffer: file.buffer });
-        return { name, content: result.value };
-      }
-
-      if (
+        content = result.value;
+      } else if (
         mimetype.startsWith('text/') ||
         mimetype === 'application/json' ||
         mimetype === 'application/xml'
       ) {
-        return { name, content: file.buffer.toString('utf8') };
+        content = file.buffer.toString('utf8');
+      } else {
+        throw new BadRequestException(
+          `Unsupported file type: ${mimetype || 'unknown'}. Supported: PDF, DOCX, text-based files.`,
+        );
       }
-
-      throw new BadRequestException(
-        `Unsupported file type: ${mimetype || 'unknown'}. Supported: PDF, DOCX, text-based files.`,
-      );
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to parse attachment "${name}": ${msg}`);
       throw new BadRequestException(`Failed to parse "${name}": ${msg}`);
     }
+
+    if (!content.trim()) {
+      throw new BadRequestException(
+        `No text could be extracted from "${name}". The file may be scanned, image-only or empty.`,
+      );
+    }
+
+    return { name, content };
   }
 }

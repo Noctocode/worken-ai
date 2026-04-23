@@ -53,6 +53,7 @@ import {
   sendQuestionToCompareModels,
   type ArenaRunSummary,
 } from "@/lib/api";
+import { humanizeArenaError } from "@/lib/arena-errors";
 import { MODELS } from "@/lib/models";
 
 function getModelProvider(id: string): string {
@@ -250,9 +251,7 @@ export default function CompareModelsPage() {
         setHistory((prev) => [newEntry, ...prev].slice(0, 50));
       }
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Couldn't compare models.";
-      toast.error(message);
+      toast.error(humanizeArenaError(err));
     } finally {
       setLoading(false);
     }
@@ -800,9 +799,7 @@ function Composer({
         setAttachedFile(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Couldn't parse the file.";
-        toast.error(message, { id: toastId });
+        toast.error(humanizeArenaError(err), { id: toastId });
       }
       return;
     }
@@ -810,8 +807,8 @@ function Composer({
     try {
       const content = await file.text();
       setAttachedFile({ name: file.name, content });
-    } catch {
-      toast.error("Couldn't read the file.");
+    } catch (err) {
+      toast.error(humanizeArenaError(err));
     }
   }
 
