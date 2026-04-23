@@ -6,6 +6,7 @@ import {
   FileText,
   Sparkles,
   CheckCircle2,
+  LayoutGrid,
   Library,
   Wrench,
   Wand2,
@@ -77,6 +78,19 @@ const RESOURCE_CARDS: ResourceCard[] = [
       "Interactive exercises",
     ],
     href: "/resources/learn-academy",
+  },
+  {
+    title: "Shortcuts",
+    description:
+      "Save short text snippets and macros to drop into the composer in one click.",
+    icon: LayoutGrid,
+    bullets: [
+      "Reusable text fragments",
+      "Quick popover from the composer",
+      "Optional category filter",
+      "Up to 500 characters per shortcut",
+    ],
+    href: "/resources/shortcuts",
   },
 ];
 
