@@ -221,13 +221,6 @@ export default function ShortcutsPage() {
         Back to Resources
       </Link>
 
-      <div className="flex flex-col gap-1">
-        <h1 className="text-[22px] font-bold text-text-1">Shortcuts</h1>
-        <p className="text-[13px] text-text-2">
-          Short text snippets you can drop into the composer in one click.
-        </p>
-      </div>
-
       {/* Toolbar */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
         <div className="relative flex-1">

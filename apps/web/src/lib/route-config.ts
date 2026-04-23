@@ -68,6 +68,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/resources/shortcuts": {
+    bg: "bg-bg-1",
+    title: "Shortcuts",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/guardrails": {
     bg: "bg-bg-white",
     title: "Guardrails",
