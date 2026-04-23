@@ -934,6 +934,110 @@ export async function parseArenaAttachment(
   return res.json();
 }
 
+// Prompts
+
+export interface PromptVariable {
+  name: string;
+  description?: string;
+  default?: string;
+}
+
+export interface PromptSummary {
+  id: string;
+  title: string;
+  description: string | null;
+  body: string;
+  category: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Prompt {
+  id: string;
+  userId: string;
+  title: string;
+  description: string | null;
+  body: string;
+  category: string | null;
+  tags: string[];
+  variables: PromptVariable[];
+  model: string | null;
+  temperature: number | null;
+  maxTokens: number | null;
+  topP: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PromptInput {
+  title: string;
+  description?: string | null;
+  body: string;
+  category?: string | null;
+  tags?: string[];
+  variables?: PromptVariable[];
+  model?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  topP?: number | null;
+}
+
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const body = await res.text();
+    const parsed = JSON.parse(body) as { message?: string | string[] };
+    const msg = Array.isArray(parsed.message) ? parsed.message.join("; ") : parsed.message;
+    return msg || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function fetchPrompts(): Promise<PromptSummary[]> {
+  const res = await apiFetch(`/prompts`);
+  if (!res.ok) throw new Error("Failed to load prompts");
+  return res.json();
+}
+
+export async function fetchPrompt(id: string): Promise<Prompt> {
+  const res = await apiFetch(`/prompts/${id}`);
+  if (!res.ok) throw new Error("Failed to load prompt");
+  return res.json();
+}
+
+export async function createPrompt(input: PromptInput): Promise<Prompt> {
+  const res = await apiFetch(`/prompts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to create prompt"));
+  }
+  return res.json();
+}
+
+export async function updatePrompt(
+  id: string,
+  input: Partial<PromptInput>,
+): Promise<Prompt> {
+  const res = await apiFetch(`/prompts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to update prompt"));
+  }
+  return res.json();
+}
+
+export async function deletePrompt(id: string): Promise<void> {
+  const res = await apiFetch(`/prompts/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete prompt");
+}
+
 // Tenders
 
 export interface TenderSummary {

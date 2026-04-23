@@ -1,15 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   Search,
   ChevronDown,
   ChevronUp,
   Copy,
-  CheckCircle2,
   FileText,
   ArrowLeft,
+  MoreVertical,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -20,195 +25,114 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
-interface Prompt {
-  title: string;
-  description: string;
-  accuracy: number;
-  category: string;
-  tags: string[];
-  example: string;
-  promptText: string;
-}
-
-const PROMPTS: Prompt[] = [
-  {
-    title: "RFP Bid/No-Bid Analysis",
-    description:
-      "Comprehensive evaluation framework for RFP opportunities with scoring and recommendation",
-    accuracy: 95,
-    category: "Strategic Analysis",
-    tags: ["RFP", "Decision Making", "Strategic"],
-    example: "Upload RFP document → Get structured bid recommendation",
-    promptText: `You are an expert procurement analyst with 15 years of experience in government contracting and RFP evaluation.
-
-Your task is to analyze the provided RFP document and provide a comprehensive bid/no-bid recommendation.
-
-## Analysis Requirements:
-1. Review the RFP requirements against our organizational capabilities
-2. Assess the competitive landscape and win probability
-3. Evaluate resource requirements and timeline feasibility
-4. Calculate estimated costs vs. potential revenue
-5. Identify compliance requirements and risks
-
-## Output Format:
-Provide your analysis in the following structured JSON format:
-
-{
-  "recommendation": "BID" | "NO_BID" | "CONDITIONAL",
-  "confidence_score": 0-100,
-  "win_probability": 0-100,
-  "key_strengths": ["strength 1", "strength 2", ...],
-  "capability_gaps": ["gap 1", "gap 2", ...],
-  "resource_requirements": {
-    "team_size": number,
-    "estimated_hours": number,
-    "critical_skills": ["skill 1", "skill 2", ...]
-  },
-  "timeline_analysis": {
-    "submission_deadline": "YYYY-MM-DD",
-    "preparation_time_needed": "X weeks",
-    "feasibility": "HIGH" | "MEDIUM" | "LOW"
-  },
-  "financial_summary": {
-    "estimated_cost": number,
-    "contract_value": number,
-    "expected_margin": number
-  },
-  "risks": ["risk 1", "risk 2", ...],
-  "next_steps": ["action 1", "action 2", ...]
-}
-
-## Safety Guidelines:
-- Base all recommendations on factual information from the RFP
-- Clearly distinguish between facts and assumptions
-- Flag any missing critical information
-- Do not make commitments beyond stated capabilities
-- Escalate high-risk decisions for human review`,
-  },
-  {
-    title: "Vendor Proposal Comparison",
-    description:
-      "Side-by-side analysis of multiple vendor proposals with scoring matrix",
-    accuracy: 92,
-    category: "Vendor Management",
-    tags: ["Vendor", "Comparison", "Evaluation"],
-    example: "Upload 2-5 vendor proposals → Get comparison matrix",
-    promptText:
-      "You are a senior procurement analyst. Compare the attached vendor proposals side by side...",
-  },
-  {
-    title: "Structured Data Extraction",
-    description:
-      "Extract and structure data from unstructured documents into JSON/CSV format",
-    accuracy: 90,
-    category: "Data Processing",
-    tags: ["Data", "Extraction", "Automation"],
-    example: "Upload document → Get structured data output",
-    promptText:
-      "Extract the following fields from the supplied document and return JSON matching the schema...",
-  },
-  {
-    title: "Legal Document Summarization",
-    description:
-      "Extract key legal terms, obligations, and risks from contracts and agreements",
-    accuracy: 88,
-    category: "Legal & Compliance",
-    tags: ["Legal", "Contracts", "Compliance"],
-    example: "Paste contract text → Get structured legal summary",
-    promptText:
-      "You are a legal analyst. Summarize the attached contract covering key obligations, risks, and deadlines...",
-  },
-  {
-    title: "Cost Breakdown Analysis",
-    description:
-      "Detailed financial analysis of quotes, proposals, and pricing structures",
-    accuracy: 85,
-    category: "Financial Analysis",
-    tags: ["Finance", "Pricing", "TCO"],
-    example: "Paste pricing document → Get TCO analysis",
-    promptText:
-      "You are a financial analyst. Produce a total cost of ownership breakdown for the attached pricing document...",
-  },
-  {
-    title: "Risk Identification & Mitigation",
-    description:
-      "Identify potential risks in proposals, contracts, and procurement decisions",
-    accuracy: 82,
-    category: "Strategic Analysis",
-    tags: ["Risk", "Mitigation", "Strategic"],
-    example: "Upload proposal → Get risk matrix",
-    promptText:
-      "Identify and categorize risks in the attached proposal, then suggest mitigations prioritized by impact...",
-  },
-  {
-    title: "Compliance & Risk Assessment",
-    description:
-      "Verify regulatory compliance and identify potential risks in documents",
-    accuracy: 78,
-    category: "Legal & Compliance",
-    tags: ["Compliance", "Risk", "Regulatory"],
-    example: "Upload compliance document → Get risk assessment",
-    promptText:
-      "You are a compliance officer. Check the attached document against the listed regulations...",
-  },
-  {
-    title: "Project Timeline Assessment",
-    description:
-      "Evaluate project schedules, identify dependencies, and assess feasibility",
-    accuracy: 72,
-    category: "Strategic Analysis",
-    tags: ["Timeline", "Project Management", "Planning"],
-    example: "Paste project plan → Get timeline analysis",
-    promptText:
-      "Analyze the attached project plan for critical path, dependencies, and schedule risks...",
-  },
-];
-
-const ALL_CATEGORIES = Array.from(new Set(PROMPTS.map((p) => p.category)));
-
-function AccuracyPill({ value }: { value: number }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded bg-bg-white border border-border-2 px-2 py-1 text-[11px] font-medium text-text-2">
-      <CheckCircle2 className="h-3 w-3 text-primary-6" strokeWidth={2.5} />
-      {value}%
-    </span>
-  );
-}
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  deletePrompt,
+  fetchPrompts,
+  type PromptSummary,
+} from "@/lib/api";
 
 export default function PromptLibraryPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [prompts, setPrompts] = useState<PromptSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deleteTarget, setDeleteTarget] = useState<PromptSummary | null>(null);
 
-  const toggleExpanded = (title: string) => {
+  useEffect(() => {
+    let cancelled = false;
+    fetchPrompts()
+      .then((rows) => {
+        if (cancelled) return;
+        setPrompts(rows);
+      })
+      .catch((err) => {
+        const message =
+          err instanceof Error ? err.message : "Couldn't load prompts.";
+        toast.error(message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of prompts) {
+      if (p.category) set.add(p.category);
+    }
+    return Array.from(set).sort();
+  }, [prompts]);
+
+  const toggleExpanded = (id: string) => {
     setExpanded((prev) => {
       const next = new Set(prev);
-      if (next.has(title)) next.delete(title);
-      else next.add(title);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   };
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return PROMPTS.filter((p) => {
+    return prompts.filter((p) => {
       if (category !== "all" && p.category !== category) return false;
       if (!q) return true;
       return (
         p.title.toLowerCase().includes(q) ||
-        p.description.toLowerCase().includes(q) ||
+        (p.description?.toLowerCase().includes(q) ?? false) ||
         p.tags.some((t) => t.toLowerCase().includes(q))
       );
     });
-  }, [query, category]);
+  }, [prompts, query, category]);
 
-  const handleCopy = async (prompt: Prompt) => {
+  const handleCopy = async (prompt: PromptSummary) => {
     try {
-      await navigator.clipboard.writeText(prompt.promptText);
+      await navigator.clipboard.writeText(prompt.body);
       toast.success(`Copied "${prompt.title}" to clipboard.`);
     } catch {
       toast.error("Couldn't copy to clipboard.");
+    }
+  };
+
+  const handleEdit = (prompt: PromptSummary) => {
+    router.push(`/resources/prompt-builder?id=${prompt.id}`);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const target = deleteTarget;
+    const previous = prompts;
+    setPrompts((prev) => prev.filter((p) => p.id !== target.id));
+    setDeleteTarget(null);
+    try {
+      await deletePrompt(target.id);
+      toast.success(`Deleted "${target.title}".`);
+    } catch (err) {
+      setPrompts(previous);
+      const message =
+        err instanceof Error ? err.message : "Couldn't delete prompt.";
+      toast.error(message);
     }
   };
 
@@ -239,115 +163,210 @@ export default function PromptLibraryPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All</SelectItem>
-            {ALL_CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <Link
+          href="/resources/prompt-builder"
+          className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
+        >
+          <Plus className="h-4 w-4" />
+          New Prompt
+        </Link>
       </div>
 
-      {/* List */}
-      <div className="flex flex-col gap-4">
-        {filtered.map((p) => (
-          <article
-            key={p.title}
-            className="flex gap-4 rounded-lg border border-border-2 bg-bg-white p-5"
+      {/* Empty / loading states */}
+      {loading ? (
+        <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
+          Loading prompts…
+        </div>
+      ) : prompts.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
+          <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
+          <h3 className="text-[16px] font-semibold text-text-1">
+            No prompts yet
+          </h3>
+          <p className="max-w-[420px] text-[13px] text-text-2">
+            Save reusable prompt templates here so you can drop them into Model
+            Arena or other chats in one click.
+          </p>
+          <Link
+            href="/resources/prompt-builder"
+            className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
           >
-            {/* Thumbnail tile */}
-            <div className="hidden shrink-0 items-center justify-center self-stretch rounded-lg bg-[#3C7EFF]/20 sm:flex sm:w-[96px]">
-              <FileText className="h-8 w-8 text-primary-7" strokeWidth={2} />
-            </div>
-
-            {/* Content */}
-            <div className="flex min-w-0 flex-1 flex-col gap-3">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex min-w-0 flex-col gap-1">
-                  <h3 className="text-base font-bold leading-snug text-text-1">
-                    {p.title}
-                  </h3>
-                  <p className="text-[13px] leading-snug text-text-2">
-                    {p.description}
-                  </p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <AccuracyPill value={p.accuracy} />
-                  <button
-                    type="button"
-                    onClick={() => handleCopy(p)}
-                    className="inline-flex h-9 cursor-pointer items-center gap-2 rounded bg-primary-6 px-4 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
-                  >
-                    <Copy className="h-4 w-4" />
-                    Copy Prompt
-                  </button>
-                </div>
+            <Plus className="h-4 w-4" />
+            Create your first prompt
+          </Link>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {filtered.map((p) => (
+            <article
+              key={p.id}
+              className="flex gap-4 rounded-lg border border-border-2 bg-bg-white p-5"
+            >
+              {/* Thumbnail tile */}
+              <div className="hidden shrink-0 items-center justify-center self-stretch rounded-lg bg-[#3C7EFF]/20 sm:flex sm:w-[96px]">
+                <FileText className="h-8 w-8 text-primary-7" strokeWidth={2} />
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded bg-[#EBF8FF] px-2.5 py-1 text-[11px] font-medium text-text-2">
-                  {p.category}
-                </span>
-                {p.tags.map((t) => (
-                  <span
-                    key={t}
-                    className="rounded border border-border-2 bg-bg-white px-2.5 py-1 text-[11px] font-normal text-text-2"
-                  >
-                    {t}
-                  </span>
-                ))}
-              </div>
-
-              <div className="flex items-center gap-1.5">
-                <span className="inline-block h-1 w-1 rounded-full bg-primary-7" />
-                <span className="text-[12px] text-text-2">
-                  Example: {p.example}
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => toggleExpanded(p.title)}
-                className="inline-flex cursor-pointer self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
-              >
-                {expanded.has(p.title) ? "Hide Full Prompt" : "View Full Prompt"}
-                {expanded.has(p.title) ? (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                )}
-              </button>
-
-              {expanded.has(p.title) && (
-                <div className="mt-1 flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <h4 className="text-[13px] font-semibold text-text-1">
-                      Full Prompt Template
-                    </h4>
+              {/* Content */}
+              <div className="flex min-w-0 flex-1 flex-col gap-3">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex min-w-0 flex-col gap-1">
+                    <h3 className="text-base font-bold leading-snug text-text-1">
+                      {p.title}
+                    </h3>
+                    {p.description && (
+                      <p className="text-[13px] leading-snug text-text-2">
+                        {p.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
                     <button
                       type="button"
                       onClick={() => handleCopy(p)}
-                      className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
+                      className="inline-flex h-9 cursor-pointer items-center gap-2 rounded bg-primary-6 px-4 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
                     >
-                      <Copy className="h-3.5 w-3.5" />
-                      Copy
+                      <Copy className="h-4 w-4" />
+                      Copy Prompt
                     </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-9 w-9 cursor-pointer items-center justify-center rounded border border-border-2 bg-bg-white text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+                          aria-label="More actions"
+                          title="More actions"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-40">
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            handleEdit(p);
+                          }}
+                        >
+                          <Pencil className="mr-2 h-3.5 w-3.5" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            setDeleteTarget(p);
+                          }}
+                          className="text-[#D92D20] focus:text-[#D92D20]"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
-                  <pre className="max-h-[400px] overflow-auto rounded bg-bg-1 p-3 font-mono text-[12px] leading-[1.625] text-text-1 whitespace-pre-wrap">
-                    {p.promptText}
-                  </pre>
                 </div>
-              )}
-            </div>
-          </article>
-        ))}
 
-        {filtered.length === 0 && (
-          <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
-            No prompts match your search.
-          </div>
-        )}
-      </div>
+                {(p.category || p.tags.length > 0) && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {p.category && (
+                      <span className="rounded bg-[#EBF8FF] px-2.5 py-1 text-[11px] font-medium text-text-2">
+                        {p.category}
+                      </span>
+                    )}
+                    {p.tags.map((t) => (
+                      <span
+                        key={t}
+                        className="rounded border border-border-2 bg-bg-white px-2.5 py-1 text-[11px] font-normal text-text-2"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => toggleExpanded(p.id)}
+                  className="inline-flex cursor-pointer self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
+                >
+                  {expanded.has(p.id) ? "Hide Full Prompt" : "View Full Prompt"}
+                  {expanded.has(p.id) ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </button>
+
+                {expanded.has(p.id) && (
+                  <div className="mt-1 flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <h4 className="text-[13px] font-semibold text-text-1">
+                        Full Prompt Template
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(p)}
+                        className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy
+                      </button>
+                    </div>
+                    <pre className="max-h-[400px] overflow-auto rounded bg-bg-1 p-3 font-mono text-[12px] leading-[1.625] text-text-1 whitespace-pre-wrap">
+                      {p.body}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            </article>
+          ))}
+
+          {filtered.length === 0 && (
+            <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
+              No prompts match your search.
+            </div>
+          )}
+        </div>
+      )}
+
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete prompt</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>&ldquo;{deleteTarget?.title}&rdquo;</strong>? This action
+              cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDelete}
+              className="cursor-pointer"
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
