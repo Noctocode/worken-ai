@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Clipboard,
   LayoutGrid,
-  Image as ImageIcon,
   Info,
   Library,
   MoreVertical,
@@ -772,17 +771,17 @@ const ATTACH_FILE_EXTENSIONS = [
   ".xml", ".sql", ".sh", ".rb", ".go", ".rs", ".java", ".c", ".cpp",
   ".h", ".hpp", ".toml", ".ini", ".env",
 ] as const;
-const ATTACH_FILE_ACCEPT = ATTACH_FILE_EXTENSIONS.join(",");
-const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
-
-const ATTACH_IMAGE_MIMETYPES = [
-  "image/png", "image/jpeg", "image/webp", "image/gif",
-] as const;
 const ATTACH_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
-const ATTACH_IMAGE_ACCEPT = ATTACH_IMAGE_MIMETYPES.join(",");
-const ATTACH_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+const ATTACH_ALL_EXTENSIONS = [
+  ...ATTACH_FILE_EXTENSIONS,
+  ...ATTACH_IMAGE_EXTENSIONS,
+] as const;
+const ATTACH_ACCEPT = ATTACH_ALL_EXTENSIONS.join(",");
+const ATTACH_MAX_BYTES = 30 * 1024 * 1024;
 
-type AttachKind = "file" | "image";
+const IMAGE_ALLOWED_LABEL = "PNG, JPG, JPEG, WebP, GIF";
+const FILE_ALLOWED_LABEL =
+  "PDF, DOCX, TXT, MD, MARKDOWN, CSV, JSON, LOG, TS, TSX, JS, JSX, PY, HTML, CSS, YML, YAML, XML, SQL, SH, RB, GO, RS, JAVA, C, CPP, H, HPP, TOML, INI, ENV";
 
 function fileExtension(name: string): string {
   const dot = name.lastIndexOf(".");
@@ -797,25 +796,22 @@ function describeFileType(file: File): string {
   return "(no extension)";
 }
 
-const IMAGE_ALLOWED_LABEL = "PNG, JPG, JPEG, WebP, GIF";
-const FILE_ALLOWED_LABEL =
-  "PDF, DOCX, TXT, MD, MARKDOWN, CSV, JSON, LOG, TS, TSX, JS, JSX, PY, HTML, CSS, YML, YAML, XML, SQL, SH, RB, GO, RS, JAVA, C, CPP, H, HPP, TOML, INI, ENV";
-
-function validateAttachment(file: File, kind: AttachKind): string | null {
+function validateAttachment(file: File): string | null {
   const ext = fileExtension(file.name);
-
-  if (kind === "image") {
-    // Extension-only check: some systems mis-report MIME (e.g. Windows maps
-    // .jiff → image/jpeg), so trusting MIME would let unsupported formats through.
-    if ((ATTACH_IMAGE_EXTENSIONS as readonly string[]).includes(ext)) return null;
-    return `Image type ${describeFileType(file)} isn't allowed. Only ${IMAGE_ALLOWED_LABEL} are allowed.`;
-  }
-
   if (!ext) {
-    return `"${file.name}" has no file extension, so we can't tell its type. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+    return `"${file.name}" has no file extension, so we can't tell its type. Allowed: ${FILE_ALLOWED_LABEL}, and images (${IMAGE_ALLOWED_LABEL}).`;
   }
-  if ((ATTACH_FILE_EXTENSIONS as readonly string[]).includes(ext)) return null;
-  return `File type ${ext} isn't allowed. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+  if ((ATTACH_ALL_EXTENSIONS as readonly string[]).includes(ext)) return null;
+  return `File type ${describeFileType(file)} isn't allowed. Allowed: ${FILE_ALLOWED_LABEL}, and images (${IMAGE_ALLOWED_LABEL}).`;
+}
+
+function isImageFile(file: File): boolean {
+  return (
+    file.type.startsWith("image/") ||
+    (ATTACH_IMAGE_EXTENSIONS as readonly string[]).includes(
+      fileExtension(file.name),
+    )
+  );
 }
 
 function needsServerParse(file: File): boolean {
@@ -824,14 +820,10 @@ function needsServerParse(file: File): boolean {
     file.type === "application/pdf" ||
     file.type ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.type.startsWith("image/") ||
     lower.endsWith(".pdf") ||
-    lower.endsWith(".docx")
+    lower.endsWith(".docx") ||
+    isImageFile(file)
   );
-}
-
-function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
 }
 
 function Composer({
@@ -858,7 +850,6 @@ function Composer({
   onOpenPromptLibrary: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
   function handleInsertShortcut(shortcut: Shortcut) {
@@ -887,19 +878,18 @@ function Composer({
     });
   }
 
-  async function ingestFile(file: File, kind: AttachKind, maxBytes: number) {
-    const validationError = validateAttachment(file, kind);
+  async function ingestFile(file: File) {
+    const validationError = validateAttachment(file);
     if (validationError) {
       toast.error(validationError);
       return;
     }
 
-    if (file.size > maxBytes) {
-      const limitMb = (maxBytes / 1024 / 1024).toFixed(0);
+    if (file.size > ATTACH_MAX_BYTES) {
+      const limitMb = (ATTACH_MAX_BYTES / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
-      const target = kind === "image" ? "Images are" : "Attachments are";
       toast.error(
-        `"${file.name}" is too large (${sizeMb} MB). ${target} capped at ${limitMb} MB.`,
+        `"${file.name}" is too large (${sizeMb} MB). Attachments are capped at ${limitMb} MB.`,
       );
       return;
     }
@@ -929,14 +919,7 @@ function Composer({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES);
-  }
-
-  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES);
+    await ingestFile(file);
   }
 
   return (
@@ -947,15 +930,8 @@ function Composer({
       <input
         ref={fileInputRef}
         type="file"
-        accept={ATTACH_FILE_ACCEPT}
+        accept={ATTACH_ACCEPT}
         onChange={handleFileChange}
-        className="hidden"
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept={ATTACH_IMAGE_ACCEPT}
-        onChange={handleImageChange}
         className="hidden"
       />
       <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
@@ -1015,12 +991,6 @@ function Composer({
               icon={Paperclip}
               label="Attach File"
               onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-            />
-            <ComposerChip
-              icon={ImageIcon}
-              label="Upload Image"
-              onClick={() => imageInputRef.current?.click()}
               disabled={loading}
             />
             <ComposerChip
