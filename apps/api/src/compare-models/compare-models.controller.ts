@@ -376,8 +376,13 @@ export class CompareModelsController {
         ) {
           content = file.buffer.toString('utf8');
         } else {
+          const dot = lowerName.lastIndexOf('.');
+          const ext = dot !== -1 && dot < lowerName.length - 1 ? lowerName.slice(dot) : '';
+          const detail = ext
+            ? `"${ext}" (${mimetype || 'no MIME type'})`
+            : `"${mimetype || 'unknown type'}"`;
           throw new BadRequestException(
-            `Unsupported file type: ${mimetype || 'unknown'}. Supported: PDF, DOCX, images, text-based files.`,
+            `Unsupported file type ${detail}. Only PDF, DOCX, images (PNG, JPG, JPEG, WebP, GIF), and text-based files (TXT, MD, CSV, JSON, code) are allowed.`,
           );
         }
       } catch (err) {

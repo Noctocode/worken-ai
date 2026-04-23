@@ -74,6 +74,16 @@ export function humanizeArenaError(err: unknown): string {
     return withModel((m) => `${m}'s provider had a hiccup. Please try again.`);
   }
 
+  const unsupportedIdx = lower.indexOf("unsupported file type");
+  if (unsupportedIdx !== -1) {
+    const sentence = raw.slice(unsupportedIdx).split(/\r?\n/)[0].trim();
+    return sentence || "That file type isn't allowed. Allowed: PDF, DOCX, TXT, MD, CSV, JSON, and common code/text files.";
+  }
+
+  if (/file is too large/i.test(raw) || /\b413\b/.test(raw)) {
+    return "That file is too large. Attachments are capped at 30 MB.";
+  }
+
   if (
     /attachment upload failed/i.test(raw) ||
     /failed to parse/i.test(raw) ||
@@ -81,14 +91,6 @@ export function humanizeArenaError(err: unknown): string {
     /no text (could|was) (be )?extracted/i.test(raw)
   ) {
     return "We couldn't read that attachment. The file may be scanned, image-only or corrupted.";
-  }
-
-  if (/file is too large/i.test(raw) || /\b413\b/.test(raw)) {
-    return "That file is too large. Attachments are capped at 30 MB.";
-  }
-
-  if (/unsupported file type/i.test(raw)) {
-    return "That file type isn't supported. Try PDF, DOCX, or a text-based file.";
   }
 
   return "Something went wrong. Please try again.";

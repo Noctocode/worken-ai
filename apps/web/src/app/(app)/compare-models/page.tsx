@@ -743,11 +743,57 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 
 /* ─── Composer ───────────────────────────────────────────────────────── */
 
-const ATTACH_FILE_ACCEPT =
-  ".pdf,.docx,.txt,.md,.markdown,.csv,.json,.log,.ts,.tsx,.js,.jsx,.py,.html,.css,.yml,.yaml,.xml,.sql,.sh,.rb,.go,.rs,.java,.c,.cpp,.h,.hpp,.toml,.ini,.env";
+const ATTACH_FILE_EXTENSIONS = [
+  ".pdf", ".docx", ".txt", ".md", ".markdown", ".csv", ".json", ".log",
+  ".ts", ".tsx", ".js", ".jsx", ".py", ".html", ".css", ".yml", ".yaml",
+  ".xml", ".sql", ".sh", ".rb", ".go", ".rs", ".java", ".c", ".cpp",
+  ".h", ".hpp", ".toml", ".ini", ".env",
+] as const;
+const ATTACH_FILE_ACCEPT = ATTACH_FILE_EXTENSIONS.join(",");
 const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
-const ATTACH_IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+
+const ATTACH_IMAGE_MIMETYPES = [
+  "image/png", "image/jpeg", "image/webp", "image/gif",
+] as const;
+const ATTACH_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
+const ATTACH_IMAGE_ACCEPT = ATTACH_IMAGE_MIMETYPES.join(",");
 const ATTACH_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
+
+type AttachKind = "file" | "image";
+
+function fileExtension(name: string): string {
+  const dot = name.lastIndexOf(".");
+  if (dot === -1 || dot === name.length - 1) return "";
+  return name.slice(dot).toLowerCase();
+}
+
+function describeFileType(file: File): string {
+  const ext = fileExtension(file.name);
+  if (ext) return ext;
+  if (file.type) return `(${file.type})`;
+  return "(no extension)";
+}
+
+const IMAGE_ALLOWED_LABEL = "PNG, JPG, JPEG, WebP, GIF";
+const FILE_ALLOWED_LABEL =
+  "PDF, DOCX, TXT, MD, MARKDOWN, CSV, JSON, LOG, TS, TSX, JS, JSX, PY, HTML, CSS, YML, YAML, XML, SQL, SH, RB, GO, RS, JAVA, C, CPP, H, HPP, TOML, INI, ENV";
+
+function validateAttachment(file: File, kind: AttachKind): string | null {
+  const ext = fileExtension(file.name);
+
+  if (kind === "image") {
+    // Extension-only check: some systems mis-report MIME (e.g. Windows maps
+    // .jiff → image/jpeg), so trusting MIME would let unsupported formats through.
+    if ((ATTACH_IMAGE_EXTENSIONS as readonly string[]).includes(ext)) return null;
+    return `Image type ${describeFileType(file)} isn't allowed. Only ${IMAGE_ALLOWED_LABEL} are allowed.`;
+  }
+
+  if (!ext) {
+    return `"${file.name}" has no file extension, so we can't tell its type. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+  }
+  if ((ATTACH_FILE_EXTENSIONS as readonly string[]).includes(ext)) return null;
+  return `File type ${ext} isn't allowed. Only ${FILE_ALLOWED_LABEL} are allowed.`;
+}
 
 function needsServerParse(file: File): boolean {
   const lower = file.name.toLowerCase();
@@ -789,11 +835,20 @@ function Composer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
 
-  async function ingestFile(file: File, maxBytes: number) {
+  async function ingestFile(file: File, kind: AttachKind, maxBytes: number) {
+    const validationError = validateAttachment(file, kind);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     if (file.size > maxBytes) {
       const limitMb = (maxBytes / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
-      toast.error(`File is too large (${sizeMb}MB). Limit is ${limitMb}MB.`);
+      const target = kind === "image" ? "Images are" : "Attachments are";
+      toast.error(
+        `"${file.name}" is too large (${sizeMb} MB). ${target} capped at ${limitMb} MB.`,
+      );
       return;
     }
 
@@ -822,14 +877,14 @@ function Composer({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, ATTACH_FILE_MAX_BYTES);
+    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES);
   }
 
   async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, ATTACH_IMAGE_MAX_BYTES);
+    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES);
   }
 
   return (
