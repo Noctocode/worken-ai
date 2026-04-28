@@ -413,7 +413,10 @@ function BudgetControls() {
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1 p-3">
+        {/* Per Figma 4648:60824: in dark mode the alert callouts go neutral
+            (page bg + gray border) — the icon alone carries the severity.
+            In light mode they keep their tinted amber/green backgrounds. */}
+        <div className="flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1 dark:border-border-4 dark:bg-bg-1 p-3">
           <AlertTriangle className="h-4 w-4 text-warning-5 shrink-0 mt-0.5" />
           <div>
             <p className="text-[13px] font-bold text-text-heading leading-[18px]">Overage Warnings</p>
@@ -423,10 +426,10 @@ function BudgetControls() {
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-lg border border-success-4 bg-success-5 p-3">
+        <div className="flex items-start gap-3 rounded-lg border border-success-4 bg-success-5 dark:border-text-5 dark:bg-success-1 p-3">
           <Lightbulb className="h-4 w-4 text-success-8 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-bold text-success-8 leading-[18px]">Optimization Suggestion</p>
+            <p className="text-[13px] font-bold text-success-8 dark:text-text-1 leading-[18px]">Optimization Suggestion</p>
             <p className="text-[12px] text-text-4 leading-[18px]">
               Switching to BYOK could save approximately $2,200/month based on your usage patterns
             </p>
