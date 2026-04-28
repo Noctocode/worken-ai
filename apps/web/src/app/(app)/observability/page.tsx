@@ -8,7 +8,6 @@ import {
   ArrowUpRight,
   Clock,
   DollarSign,
-  Download,
   Search,
   ShieldAlert,
   Users,
@@ -51,13 +50,6 @@ import {
   type ObservabilityTeamAnalytics,
   type ObservabilityTokenUsage,
 } from "@/lib/api";
-
-const RANGE_OPTIONS: { value: ObservabilityRange; label: string }[] = [
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-];
 
 const EVENT_TYPE_OPTIONS = [
   { value: "all", label: "All events" },
@@ -190,6 +182,22 @@ export default function ObservabilityPage() {
   const [forbidden, setForbidden] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // The time range dropdown + Export CSV button now live in the appbar
+  // (Figma frame 116:3959 puts them on the right edge of the page header).
+  // They communicate via plain CustomEvents — same pattern as Guardrails'
+  // "Add Guardrail" or Compare Models' "New Comparison".
+  useEffect(() => {
+    const onRangeChange = (e: Event) => {
+      const next = (e as CustomEvent<string>).detail as ObservabilityRange;
+      if (next === "24h" || next === "7d" || next === "30d" || next === "90d") {
+        setRange(next);
+      }
+    };
+    window.addEventListener("observability:range-change", onRangeChange);
+    return () =>
+      window.removeEventListener("observability:range-change", onRangeChange);
+  }, []);
+
   // Top-level data: refetch when range changes
   useEffect(() => {
     let cancelled = false;
@@ -273,6 +281,15 @@ export default function ObservabilityPage() {
     downloadCsv(`observability-${range}-${ts}.csv`, csv);
   };
 
+  // Appbar's Export CSV button dispatches this event.
+  useEffect(() => {
+    const onExport = () => handleExport();
+    window.addEventListener("observability:export", onExport);
+    return () => window.removeEventListener("observability:export", onExport);
+    // handleExport closes over `events` and `range`; re-bind when they change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, range]);
+
   const totalPages = useMemo(() => {
     if (!events) return 1;
     return Math.max(1, Math.ceil(events.total / events.pageSize));
@@ -294,29 +311,11 @@ export default function ObservabilityPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Header / time range */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-col gap-1">
-          <p className="text-[13px] text-text-2">
-            Real-time audit trail of all AI interactions and spend across the org.
-          </p>
-        </div>
-        <Select
-          value={range}
-          onValueChange={(v) => setRange(v as ObservabilityRange)}
-        >
-          <SelectTrigger className="h-10 w-[200px] rounded-md border-border-2 text-sm">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {RANGE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Header — the time range dropdown and Export CSV live in the
+          appbar (see ObservabilityAppbarSlot). */}
+      <p className="text-[13px] text-text-2">
+        Real-time audit trail of all AI interactions and spend across the org.
+      </p>
 
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -499,22 +498,11 @@ export default function ObservabilityPage() {
 
       {/* Detailed Prompt History */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-col gap-0.5">
-            <h2 className="text-[16px] font-bold text-text-1">Detailed Prompt History</h2>
-            <p className="text-[12px] text-text-2">
-              Real-time audit trail of every AI call and guardrail trigger.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleExport}
-            disabled={!events?.events?.length}
-            className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </button>
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-[16px] font-bold text-text-1">Detailed Prompt History</h2>
+          <p className="text-[12px] text-text-2">
+            Real-time audit trail of every AI call and guardrail trigger.
+          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">

@@ -13,7 +13,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
   appbarAction?: AppbarAction;
   appbarSearch?: AppbarSearch;
   appbarExpandControls?: boolean;
@@ -86,6 +86,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     title: "Observability",
     hideSearch: true,
     hideNotifications: true,
+    appbarType: "observability",
   },
   "/compare-models": {
     bg: "bg-bg-1",

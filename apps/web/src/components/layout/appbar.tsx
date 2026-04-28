@@ -28,6 +28,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -676,6 +683,8 @@ export const Appbar = () => {
 
       {/* Right Header Controls */}
       <div className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}>
+        {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
+
         {config.appbarSearch && (
           <div className="relative hidden flex-1 sm:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
@@ -738,3 +747,55 @@ export const Appbar = () => {
     </header>
   );
 };
+
+/* ─── Observability appbar slot ────────────────────────────────────────
+   Two controls live here per Figma frame 116:3959 — the time range
+   dropdown and the Export CSV button. The page (/observability) listens
+   for the events emitted below to keep its state in sync. The default
+   range "7d" matches the page's initial useState value, so they boot in
+   sync without any extra plumbing. */
+
+const OBSERVABILITY_RANGES = [
+  { value: "24h", label: "Last 24 hours" },
+  { value: "7d", label: "Last 7 days" },
+  { value: "30d", label: "Last 30 days" },
+  { value: "90d", label: "Last 90 days" },
+] as const;
+
+function ObservabilityAppbarSlot() {
+  const [range, setRange] = useState<string>("7d");
+  return (
+    <>
+      <Select
+        value={range}
+        onValueChange={(value) => {
+          setRange(value);
+          window.dispatchEvent(
+            new CustomEvent("observability:range-change", { detail: value }),
+          );
+        }}
+      >
+        <SelectTrigger className="h-10 w-[180px] rounded-md border-border-2 bg-bg-white text-sm">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {OBSERVABILITY_RANGES.map((opt) => (
+            <SelectItem key={opt.value} value={opt.value}>
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="outline"
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent("observability:export"))
+        }
+        className="shrink-0 cursor-pointer gap-2 border-border-2 bg-bg-white"
+      >
+        <Download className="h-4 w-4" />
+        Export CSV
+      </Button>
+    </>
+  );
+}
