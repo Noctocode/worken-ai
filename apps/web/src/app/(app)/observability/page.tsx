@@ -27,6 +27,12 @@ import {
 
 import { Input } from "@/components/ui/input";
 import {
+  PageTabs,
+  PageTabsContent,
+  PageTabsList,
+  PageTabsTrigger,
+} from "@/components/ui/page-tabs";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -310,13 +316,13 @@ export default function ObservabilityPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 py-6">
-      {/* Header — the time range dropdown and Export CSV live in the
-          appbar (see ObservabilityAppbarSlot). */}
-      <p className="text-[13px] text-text-2">
-        Real-time audit trail of all AI interactions and spend across the org.
-      </p>
+    <PageTabs defaultValue="metrics" className="py-6 gap-6">
+      <PageTabsList>
+        <PageTabsTrigger value="metrics">Metrics</PageTabsTrigger>
+        <PageTabsTrigger value="logs">Logs</PageTabsTrigger>
+      </PageTabsList>
 
+      <PageTabsContent value="metrics" className="flex flex-col gap-6">
       {/* KPI cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
@@ -495,7 +501,9 @@ export default function ObservabilityPage() {
           </div>
         )}
       </section>
+      </PageTabsContent>
 
+      <PageTabsContent value="logs" className="flex flex-col gap-6">
       {/* Detailed Prompt History */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
         <div className="flex flex-col gap-0.5">
@@ -629,7 +637,8 @@ export default function ObservabilityPage() {
           {error}
         </div>
       )}
-    </div>
+      </PageTabsContent>
+    </PageTabs>
   );
 }
 
