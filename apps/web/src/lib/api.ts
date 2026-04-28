@@ -1551,3 +1551,152 @@ export async function completeOnboarding(
     throw new Error(err.message || "Failed to complete onboarding");
   }
 }
+
+// ─── Observability ────────────────────────────────────────────────────
+
+export type ObservabilityRange = "24h" | "7d" | "30d" | "90d";
+export type ObservabilityGranularity = "hour" | "day" | "week";
+
+export class ForbiddenError extends Error {
+  status = 403;
+  constructor(message = "Forbidden") {
+    super(message);
+    this.name = "ForbiddenError";
+  }
+}
+
+async function fetchObservability<T>(path: string): Promise<T> {
+  const res = await apiFetch(path);
+  if (res.status === 403) {
+    throw new ForbiddenError(
+      "Observability is admin-only. Ask an admin to grant access.",
+    );
+  }
+  if (!res.ok) throw new Error(`Failed to load ${path}`);
+  return res.json();
+}
+
+export interface ObservabilitySummaryBucket {
+  totalCost: number;
+  totalTokens: number;
+  avgLatencyMs: number;
+  activeUsers: number;
+  callCount: number;
+}
+
+export interface ObservabilitySummary {
+  range: ObservabilityRange;
+  current: ObservabilitySummaryBucket;
+  previous: ObservabilitySummaryBucket;
+}
+
+export function fetchObservabilitySummary(
+  range: ObservabilityRange,
+): Promise<ObservabilitySummary> {
+  return fetchObservability(`/observability/summary?range=${range}`);
+}
+
+export interface ObservabilityTokenBucket {
+  bucket: string; // ISO timestamp
+  tokens: number;
+  cost: number;
+  calls: number;
+}
+
+export interface ObservabilityTokenUsage {
+  range: ObservabilityRange;
+  granularity: ObservabilityGranularity;
+  series: ObservabilityTokenBucket[];
+}
+
+export function fetchObservabilityTokenUsage(
+  range: ObservabilityRange,
+): Promise<ObservabilityTokenUsage> {
+  return fetchObservability(`/observability/token-usage?range=${range}`);
+}
+
+export interface ObservabilityProviderRow {
+  provider: string;
+  cost: number;
+  tokens: number;
+  calls: number;
+}
+
+export interface ObservabilityCostByProvider {
+  range: ObservabilityRange;
+  providers: ObservabilityProviderRow[];
+}
+
+export function fetchObservabilityCostByProvider(
+  range: ObservabilityRange,
+): Promise<ObservabilityCostByProvider> {
+  return fetchObservability(`/observability/cost-by-provider?range=${range}`);
+}
+
+export interface ObservabilityEvent {
+  id: string;
+  createdAt: string;
+  eventType: string;
+  model: string | null;
+  provider: string | null;
+  totalTokens: number | null;
+  costUsd: number | null;
+  latencyMs: number | null;
+  success: boolean;
+  errorMessage: string | null;
+  promptPreview: string | null;
+  userId: string;
+  userName: string | null;
+  userEmail: string | null;
+  teamId: string | null;
+  teamName: string | null;
+}
+
+export interface ObservabilityEvents {
+  range: ObservabilityRange;
+  total: number;
+  page: number;
+  pageSize: number;
+  events: ObservabilityEvent[];
+}
+
+export interface ObservabilityEventsQuery {
+  range: ObservabilityRange;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  eventType?: string;
+}
+
+export function fetchObservabilityEvents(
+  query: ObservabilityEventsQuery,
+): Promise<ObservabilityEvents> {
+  const params = new URLSearchParams({ range: query.range });
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.page) params.set("page", String(query.page));
+  if (query.pageSize) params.set("pageSize", String(query.pageSize));
+  if (query.eventType) params.set("eventType", query.eventType);
+  return fetchObservability(`/observability/events?${params.toString()}`);
+}
+
+export interface ObservabilityGuardrailTrigger {
+  guardrailId: string | null;
+  guardrailName: string | null;
+  severity: string | null;
+  count: number;
+  lastTriggeredAt: string;
+}
+
+export interface ObservabilityGuardrailActivity {
+  range: ObservabilityRange;
+  totalTriggers: number;
+  triggers: ObservabilityGuardrailTrigger[];
+}
+
+export function fetchObservabilityGuardrailActivity(
+  range: ObservabilityRange,
+): Promise<ObservabilityGuardrailActivity> {
+  return fetchObservability(
+    `/observability/guardrail-activity?range=${range}`,
+  );
+}

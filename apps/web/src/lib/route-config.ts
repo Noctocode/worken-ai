@@ -81,6 +81,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
     appbarAction: { label: "Add Guardrail", event: "guardrails:add" },
   },
+  "/observability": {
+    bg: "bg-bg-1",
+    title: "Observability",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/compare-models": {
     bg: "bg-bg-1",
     title: "Model Arena",
