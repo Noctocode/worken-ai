@@ -26,18 +26,30 @@ BEGIN
     RETURN;
   END IF;
 
-  WITH unpacked AS (
+  WITH primary_team AS (
+    -- Mirrors getPrimaryTeamId(): oldest accepted membership per user.
+    SELECT DISTINCT ON (user_id)
+      user_id,
+      team_id
+    FROM team_members
+    WHERE status = 'accepted'
+    ORDER BY user_id, created_at ASC
+  ),
+  unpacked AS (
     SELECT
       r.user_id,
+      pt.team_id AS team_id,
       r.id AS arena_run_id,
       r.created_at,
       r.question,
       jsonb_array_elements(r.responses) AS resp
     FROM arena_runs r
+    LEFT JOIN primary_team pt ON pt.user_id = r.user_id
   ),
   rows AS (
     SELECT
       user_id,
+      team_id,
       arena_run_id,
       created_at,
       question,
@@ -67,7 +79,7 @@ BEGIN
   )
   SELECT
     user_id,
-    NULL::uuid,
+    team_id,
     'arena_call',
     model,
     -- Coarse provider derivation: take the slug before the first slash.

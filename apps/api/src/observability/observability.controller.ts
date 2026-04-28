@@ -123,6 +123,17 @@ export class ObservabilityController {
     return { range: key, providers };
   }
 
+  @Get('team-analytics')
+  async teamAnalytics(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Query('range') range?: string,
+  ) {
+    await this.assertAdmin(caller);
+    const { key, from, to } = parseRange(range);
+    const teams = await this.observabilityService.teamAnalytics(from, to);
+    return { range: key, teams };
+  }
+
   @Get('events')
   async events(
     @CurrentUser() caller: AuthenticatedUser,

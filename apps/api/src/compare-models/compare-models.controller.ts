@@ -168,6 +168,11 @@ export class CompareModelsController {
       throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
     }
 
+    // Resolve once per request — observability events get tagged with the
+    // user's primary team so the dashboard's team-analytics rollup is
+    // populated. NULL means personal use (user has no accepted memberships).
+    const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+
     let responses: ModelResponse[];
     try {
       responses = await Promise.all(
@@ -184,6 +189,7 @@ export class CompareModelsController {
             const latencyMs = Date.now() - start;
             void this.observabilityService.recordLLMCall({
               userId: user.id,
+              teamId,
               eventType: 'arena_call',
               model,
               totalTokens: response.totalTokens,
@@ -205,6 +211,7 @@ export class CompareModelsController {
             const msg = err instanceof Error ? err.message : String(err);
             void this.observabilityService.recordLLMCall({
               userId: user.id,
+              teamId,
               eventType: 'arena_call',
               model,
               latencyMs,
@@ -241,6 +248,7 @@ export class CompareModelsController {
         );
         void this.observabilityService.recordLLMCall({
           userId: user.id,
+          teamId,
           eventType: 'evaluator_call',
           model: EVALUATOR_MODEL,
           latencyMs: Date.now() - evalStart,
@@ -251,6 +259,7 @@ export class CompareModelsController {
         const msg = err instanceof Error ? err.message : String(err);
         void this.observabilityService.recordLLMCall({
           userId: user.id,
+          teamId,
           eventType: 'evaluator_call',
           model: EVALUATOR_MODEL,
           latencyMs: Date.now() - evalStart,
@@ -413,6 +422,7 @@ export class CompareModelsController {
         );
       }
 
+      const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
       const dataUrl = `data:${mimetype};base64,${file.buffer.toString('base64')}`;
       let extracted: string;
       const ocrStart = Date.now();
@@ -424,6 +434,7 @@ export class CompareModelsController {
         );
         void this.observabilityService.recordLLMCall({
           userId: user.id,
+          teamId,
           eventType: 'arena_attachment_ocr',
           model: OCR_MODEL,
           latencyMs: Date.now() - ocrStart,
@@ -434,6 +445,7 @@ export class CompareModelsController {
         const msg = err instanceof Error ? err.message : String(err);
         void this.observabilityService.recordLLMCall({
           userId: user.id,
+          teamId,
           eventType: 'arena_attachment_ocr',
           model: OCR_MODEL,
           latencyMs: Date.now() - ocrStart,

@@ -39,6 +39,7 @@ import {
   fetchObservabilityEvents,
   fetchObservabilityGuardrailActivity,
   fetchObservabilitySummary,
+  fetchObservabilityTeamAnalytics,
   fetchObservabilityTokenUsage,
   ForbiddenError,
   type ObservabilityCostByProvider,
@@ -47,6 +48,7 @@ import {
   type ObservabilityGuardrailActivity,
   type ObservabilityRange,
   type ObservabilitySummary,
+  type ObservabilityTeamAnalytics,
   type ObservabilityTokenUsage,
 } from "@/lib/api";
 
@@ -178,6 +180,8 @@ export default function ObservabilityPage() {
   const [tokenUsage, setTokenUsage] = useState<ObservabilityTokenUsage | null>(null);
   const [costByProvider, setCostByProvider] =
     useState<ObservabilityCostByProvider | null>(null);
+  const [teamAnalytics, setTeamAnalytics] =
+    useState<ObservabilityTeamAnalytics | null>(null);
   const [events, setEvents] = useState<ObservabilityEvents | null>(null);
   const [guardrails, setGuardrails] =
     useState<ObservabilityGuardrailActivity | null>(null);
@@ -196,13 +200,15 @@ export default function ObservabilityPage() {
       fetchObservabilitySummary(range),
       fetchObservabilityTokenUsage(range),
       fetchObservabilityCostByProvider(range),
+      fetchObservabilityTeamAnalytics(range),
       fetchObservabilityGuardrailActivity(range),
     ])
-      .then(([s, t, c, g]) => {
+      .then(([s, t, c, ta, g]) => {
         if (cancelled) return;
         setSummary(s);
         setTokenUsage(t);
         setCostByProvider(c);
+        setTeamAnalytics(ta);
         setGuardrails(g);
       })
       .catch((err) => {
@@ -432,6 +438,64 @@ export default function ObservabilityPage() {
           )}
         </ChartCard>
       </div>
+
+      {/* Team Analytics Drilldown */}
+      <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-[16px] font-bold text-text-1">Team Analytics Drilldown</h2>
+          <p className="text-[12px] text-text-2">
+            Performance and usage comparison across teams. &quot;Personal&quot; collects
+            events from users without an accepted team membership.
+          </p>
+        </div>
+        {teamAnalytics?.teams?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px]">
+              <thead>
+                <tr className="border-b border-border-2">
+                  <Th>Team</Th>
+                  <Th align="right">Calls</Th>
+                  <Th align="right">Tokens</Th>
+                  <Th align="right">Cost</Th>
+                  <Th align="right">Avg Latency</Th>
+                  <Th align="right">Active Users</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {teamAnalytics.teams.map((t, i) => (
+                  <tr
+                    key={`${t.teamId ?? "personal"}-${i}`}
+                    className="border-b border-border-2 last:border-b-0 hover:bg-bg-1/40"
+                  >
+                    <td className="px-3 py-2 text-[13px] text-text-1">
+                      {t.teamName}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] text-text-1">
+                      {t.calls.toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] text-text-1">
+                      {formatTokens(t.tokens)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] text-text-1">
+                      {formatUsd(t.cost)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] text-text-1">
+                      {formatLatency(t.avgLatencyMs)}
+                    </td>
+                    <td className="px-3 py-2 text-right text-[12px] text-text-1">
+                      {t.activeUsers}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="rounded-md border border-dashed border-border-2 bg-bg-1/40 px-4 py-6 text-center text-[13px] text-text-3">
+            {loading ? "Loading…" : "No team activity in this range yet."}
+          </div>
+        )}
+      </section>
 
       {/* Detailed Prompt History */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">

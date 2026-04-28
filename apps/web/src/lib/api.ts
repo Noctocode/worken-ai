@@ -1633,6 +1633,27 @@ export function fetchObservabilityCostByProvider(
   return fetchObservability(`/observability/cost-by-provider?range=${range}`);
 }
 
+export interface ObservabilityTeamRow {
+  teamId: string | null;
+  teamName: string;
+  cost: number;
+  tokens: number;
+  avgLatencyMs: number;
+  calls: number;
+  activeUsers: number;
+}
+
+export interface ObservabilityTeamAnalytics {
+  range: ObservabilityRange;
+  teams: ObservabilityTeamRow[];
+}
+
+export function fetchObservabilityTeamAnalytics(
+  range: ObservabilityRange,
+): Promise<ObservabilityTeamAnalytics> {
+  return fetchObservability(`/observability/team-analytics?range=${range}`);
+}
+
 export interface ObservabilityEvent {
   id: string;
   createdAt: string;

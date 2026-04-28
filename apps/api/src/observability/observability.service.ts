@@ -1,6 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
-import { observabilityEvents, teams, users } from '@worken/database/schema';
+import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import {
+  observabilityEvents,
+  teamMembers,
+  teams,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 
 /**
@@ -68,6 +73,39 @@ export class ObservabilityService {
   private readonly logger = new Logger(ObservabilityService.name);
 
   constructor(@Inject(DATABASE) private readonly db: Database) {}
+
+  // ─── Team association helper ──────────────────────────────────────────
+
+  /**
+   * Pick a user's "primary" team for event scoping.
+   * Rule: oldest accepted membership wins. Returns null when the user has
+   * none (personal use). Per-call: cached one query per request, but we
+   * keep it simple and let callers cache across a request if needed.
+   */
+  async getPrimaryTeamId(userId: string): Promise<string | null> {
+    try {
+      const [row] = await this.db
+        .select({ teamId: teamMembers.teamId })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.status, 'accepted'),
+          ),
+        )
+        .orderBy(asc(teamMembers.createdAt))
+        .limit(1);
+      return row?.teamId ?? null;
+    } catch (err) {
+      // Defensive — if the lookup fails for any reason, never break the
+      // user-facing call path. The event just gets a NULL team.
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `getPrimaryTeamId failed for user ${userId}: ${msg}`,
+      );
+      return null;
+    }
+  }
 
   // ─── Aggregation queries (used by Phase 2 controller) ──────────────────
 
@@ -151,6 +189,39 @@ export class ObservabilityService {
       cost: Number(r.cost ?? 0),
       tokens: Number(r.tokens ?? 0),
       calls: Number(r.calls ?? 0),
+    }));
+  }
+
+  async teamAnalytics(from: Date, to: Date) {
+    const rows = await this.db
+      .select({
+        teamId: observabilityEvents.teamId,
+        teamName: teams.name,
+        cost: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)::text`,
+        tokens: sql<number>`coalesce(sum(${observabilityEvents.totalTokens}), 0)::int`,
+        avgLatencyMs: sql<number>`coalesce(avg(${observabilityEvents.latencyMs}), 0)::int`,
+        calls: sql<number>`count(*)::int`,
+        activeUsers: sql<number>`count(distinct ${observabilityEvents.userId})::int`,
+      })
+      .from(observabilityEvents)
+      .leftJoin(teams, eq(teams.id, observabilityEvents.teamId))
+      .where(
+        and(
+          gte(observabilityEvents.createdAt, from),
+          lte(observabilityEvents.createdAt, to),
+        ),
+      )
+      .groupBy(observabilityEvents.teamId, teams.name)
+      .orderBy(sql`sum(${observabilityEvents.costUsd}) desc nulls last`);
+
+    return rows.map((r) => ({
+      teamId: r.teamId,
+      teamName: r.teamName ?? (r.teamId ? "(unknown team)" : "Personal"),
+      cost: Number(r.cost ?? 0),
+      tokens: Number(r.tokens ?? 0),
+      avgLatencyMs: Number(r.avgLatencyMs ?? 0),
+      calls: Number(r.calls ?? 0),
+      activeUsers: Number(r.activeUsers ?? 0),
     }));
   }
 
