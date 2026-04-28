@@ -233,10 +233,13 @@ export class CompareModelsController {
     }
 
     if (comparisonItems.length === 0) {
-      throw new BadGatewayException(
-        `Evaluator failed to produce valid JSON after ${MAX_COMPARE_ATTEMPTS} attempts.${
+      this.logger.error(
+        `Evaluator failed to produce valid JSON for user ${user.id} after ${MAX_COMPARE_ATTEMPTS} attempts.${
           lastParseError ? ` Last parse error: ${lastParseError}.` : ''
         } Last raw content preview: ${lastRawContent.slice(0, 200)}`,
+      );
+      throw new BadGatewayException(
+        `Evaluator failed to produce valid JSON after ${MAX_COMPARE_ATTEMPTS} attempts.`,
       );
     }
 
