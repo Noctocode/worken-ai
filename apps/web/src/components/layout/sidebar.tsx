@@ -276,7 +276,7 @@ export const SidebarContent = ({
           <Link
             href="/account"
             title="My account"
-            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent ${collapsed ? "p-0" : "flex-1 p-1"}`}
+            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent ${collapsed ? "" : "flex-1"}`}
           >
             <Avatar
               className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
@@ -304,7 +304,7 @@ export const SidebarContent = ({
                   {user && (
                     <Badge className={`shrink-0 border-transparent uppercase tracking-wide text-[10px] px-1.5 py-0 ${
                       user.role === "admin"
-                        ? "bg-[#FFECE8] text-danger-6"
+                        ? "bg-danger-1 text-danger-6"
                         : user.role === "advanced"
                           ? "bg-primary-1 text-primary-7"
                           : "bg-bg-3 text-text-2"
