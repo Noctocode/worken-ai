@@ -16,6 +16,8 @@ import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { PromptsModule } from './prompts/prompts.module';
+import { ShortcutsModule } from './shortcuts/shortcuts.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
 import { UsersModule } from './users/users.module';
@@ -35,6 +37,8 @@ import { UsersModule } from './users/users.module';
     ModelsModule,
     OnboardingModule,
     ProjectsModule,
+    PromptsModule,
+    ShortcutsModule,
     TeamsModule,
     TendersModule,
     UsersModule,
