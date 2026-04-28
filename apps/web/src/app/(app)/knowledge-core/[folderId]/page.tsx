@@ -50,14 +50,14 @@ import {
 } from "@/lib/api";
 
 const TYPE_STYLES: Record<string, string> = {
-  PDF: "bg-[#FFECE8] text-danger-6",
-  DOCX: "bg-[#EBF8FF] text-[#0369A1]",
-  DOC: "bg-[#EBF8FF] text-[#0369A1]",
-  XLSX: "bg-[#E8FFEA] text-[#009A29]",
-  XLS: "bg-[#E8FFEA] text-[#009A29]",
-  PNG: "bg-[#FFF3E6] text-[#FF7D00]",
-  JPG: "bg-[#FFF3E6] text-[#FF7D00]",
-  JPEG: "bg-[#FFF3E6] text-[#FF7D00]",
+  PDF: "bg-danger-1 text-danger-6",
+  DOCX: "bg-primary-1 text-primary-7",
+  DOC: "bg-primary-1 text-primary-7",
+  XLSX: "bg-success-1 text-success-7",
+  XLS: "bg-success-1 text-success-7",
+  PNG: "bg-warning-1 text-warning-6",
+  JPG: "bg-warning-1 text-warning-6",
+  JPEG: "bg-warning-1 text-warning-6",
 };
 
 function formatBytes(bytes: number): string {
