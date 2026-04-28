@@ -853,8 +853,13 @@ function PromptBuilderInner() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!editId) return;
+    if (!editId) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
+    setLoading(true);
+    setStep(1);
     fetchPrompt(editId)
       .then((p) => {
         if (cancelled) return;
