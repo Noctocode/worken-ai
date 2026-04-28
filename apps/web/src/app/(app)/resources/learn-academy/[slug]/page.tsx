@@ -35,12 +35,12 @@ function VideoPlayer({ lesson, lessonIndex, totalLessons }: {
       <div className="relative flex aspect-video w-full items-center justify-center bg-black">
         <button
           type="button"
-          className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-[#0369A1] text-white transition-transform hover:scale-105"
+          className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-primary-7 text-white transition-transform hover:scale-105"
           aria-label="Play lesson"
         >
           <Play className="h-8 w-8 fill-current" strokeWidth={0} />
         </button>
-        <div className="absolute inset-x-0 bottom-0 h-4 bg-white/10" />
+        <div className="absolute inset-x-0 bottom-0 h-4 bg-bg-white/10" />
       </div>
       <div className="flex flex-col gap-2 p-6">
         <h2 className="text-[18px] font-bold leading-[1.5] text-text-1">
@@ -86,7 +86,7 @@ function ChapterMarkers({
                 onClick={() => onSelect(c.time)}
                 className={`flex w-full cursor-pointer items-start gap-3 rounded px-3 py-2.5 text-left transition-colors ${
                   active
-                    ? "bg-[#EBF8FF]"
+                    ? "bg-primary-1"
                     : "hover:bg-bg-1"
                 }`}
               >
@@ -118,7 +118,7 @@ function Transcript({ lesson }: { lesson: Lesson }) {
         {lesson.transcript.map((p) => (
           <p
             key={p.time}
-            className="font-mono text-[12px] leading-[1.625] text-[#1E293B]"
+            className="font-mono text-[12px] leading-[1.625] text-text-1"
           >
             [{p.time}] {p.text}
           </p>
@@ -215,7 +215,7 @@ export default function LessonDetailPage({
             <h3 className="text-[15px] font-semibold text-text-1">
               Interactive Exercise
             </h3>
-            <Button className="cursor-pointer bg-[#0369A1] hover:bg-[#0369A1]/90">
+            <Button className="cursor-pointer bg-primary-7 hover:bg-primary-7/90">
               Try Exercise
             </Button>
           </section>

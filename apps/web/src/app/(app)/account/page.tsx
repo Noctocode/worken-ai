@@ -132,7 +132,7 @@ export default function AccountPage() {
                 <Badge
                   className={`border-transparent uppercase tracking-wide text-[11px] px-2 py-0.5 ${
                     currentUser?.role === "admin"
-                      ? "bg-[#FFECE8] text-danger-6"
+                      ? "bg-danger-1 text-danger-6"
                       : isAdvanced
                         ? "bg-primary-1 text-primary-7"
                         : "bg-bg-3 text-text-2"
@@ -156,11 +156,11 @@ export default function AccountPage() {
                 >
                   <span
                     className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
-                      p.allowed ? "bg-[#23C343]/15" : "bg-bg-3"
+                      p.allowed ? "bg-success-7/15" : "bg-bg-3"
                     }`}
                   >
                     {p.allowed ? (
-                      <Check className="h-3.5 w-3.5 text-[#23C343]" strokeWidth={3} />
+                      <Check className="h-3.5 w-3.5 text-success-7" strokeWidth={3} />
                     ) : (
                       <X className="h-3.5 w-3.5 text-text-3" strokeWidth={3} />
                     )}

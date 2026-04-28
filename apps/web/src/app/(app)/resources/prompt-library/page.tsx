@@ -210,7 +210,7 @@ export default function PromptLibraryPage() {
               className="flex gap-4 rounded-lg border border-border-2 bg-bg-white p-5"
             >
               {/* Thumbnail tile */}
-              <div className="hidden shrink-0 items-center justify-center self-stretch rounded-lg bg-[#3C7EFF]/20 sm:flex sm:w-[96px]">
+              <div className="hidden shrink-0 items-center justify-center self-stretch rounded-lg bg-primary-5/20 sm:flex sm:w-[96px]">
                 <FileText className="h-8 w-8 text-primary-7" strokeWidth={2} />
               </div>
 
@@ -263,7 +263,7 @@ export default function PromptLibraryPage() {
                             e.preventDefault();
                             setDeleteTarget(p);
                           }}
-                          className="text-[#D92D20] focus:text-[#D92D20]"
+                          className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
                           Delete
@@ -276,7 +276,7 @@ export default function PromptLibraryPage() {
                 {(p.category || p.tags.length > 0) && (
                   <div className="flex flex-wrap items-center gap-2">
                     {p.category && (
-                      <span className="rounded bg-[#EBF8FF] px-2.5 py-1 text-[11px] font-medium text-text-2">
+                      <span className="rounded bg-primary-1 px-2.5 py-1 text-[11px] font-medium text-text-2">
                         {p.category}
                       </span>
                     )}

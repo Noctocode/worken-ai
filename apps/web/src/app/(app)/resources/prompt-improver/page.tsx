@@ -26,8 +26,8 @@ interface QualityScore {
 
 const SCORE_COLORS: Record<ScoreTone, { bar: string; text: string }> = {
   primary: { bar: "bg-primary-6", text: "text-primary-6" },
-  success: { bar: "bg-[#009A29]", text: "text-[#009A29]" },
-  warning: { bar: "bg-[#FF7D00]", text: "text-[#FF7D00]" },
+  success: { bar: "bg-success-7", text: "text-success-7" },
+  warning: { bar: "bg-warning-6", text: "text-warning-6" },
   neutral: { bar: "bg-text-1", text: "text-text-1" },
 };
 
@@ -126,9 +126,9 @@ const INITIAL_IMPROVEMENTS: Improvement[] = [
 const SEGMENT_ORDER: ImprovementId[] = ["persona", "format", "safety", "examples"];
 
 const CATEGORY_STYLES: Record<Improvement["category"], string> = {
-  Context: "bg-[#EBF8FF] text-primary-7",
-  Structure: "bg-[#E8F7EE] text-[#009A29]",
-  Safety: "bg-[#FFF3E6] text-[#FF7D00]",
+  Context: "bg-primary-1 text-primary-7",
+  Structure: "bg-success-1 text-success-7",
+  Safety: "bg-warning-1 text-warning-6",
   Clarity: "bg-bg-1 text-text-2",
 };
 
@@ -241,7 +241,7 @@ export default function PromptImproverPage() {
       {/* Intro action row */}
       <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 md:flex-row md:items-center md:justify-between">
         <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#EBF8FF]">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-1">
             <Sparkles className="h-5 w-5 text-primary-6" strokeWidth={2} />
           </div>
           <div className="flex flex-col gap-1">
@@ -302,8 +302,8 @@ export default function PromptImproverPage() {
           </section>
 
           {/* AI-Improved Version */}
-          <section className="overflow-hidden rounded-lg border-2 border-[#86909C] bg-[#EBF8FF]">
-            <header className="flex items-center justify-between gap-3 border-b border-[#86909C]/40 px-5 py-3">
+          <section className="overflow-hidden rounded-lg border-2 border-border-4 bg-primary-1">
+            <header className="flex items-center justify-between gap-3 border-b border-border-4/40 px-5 py-3">
               <div className="flex items-center gap-2">
                 <Sparkles
                   className="h-4 w-4 text-primary-6"
@@ -327,8 +327,8 @@ export default function PromptImproverPage() {
           {/* Action bar */}
           <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
-              <Check className="h-4 w-4 text-[#0F52BA]" strokeWidth={2.5} />
-              <span className="text-[13px] font-medium text-[#0F52BA]">
+              <Check className="h-4 w-4 text-primary-8" strokeWidth={2.5} />
+              <span className="text-[13px] font-medium text-primary-8">
                 {appliedCount} of {improvements.length} improvements applied
               </span>
             </div>
@@ -358,7 +358,7 @@ export default function PromptImproverPage() {
           <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6">
             <div className="flex items-center gap-2">
               <Lightbulb
-                className="h-5 w-5 text-[#FF7D00]"
+                className="h-5 w-5 text-warning-6"
                 strokeWidth={2}
               />
               <h3 className="text-[16px] font-bold leading-[1.5] text-text-1">
@@ -373,7 +373,7 @@ export default function PromptImproverPage() {
                     onClick={() => toggleImprovement(imp.id)}
                     className={`flex w-full cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left transition-colors ${
                       imp.applied
-                        ? "border-[#009A29]/30 bg-[#E8F7EE]"
+                        ? "border-success-7/30 bg-success-1"
                         : "border-border-2 bg-bg-white hover:border-primary-6"
                     }`}
                   >
@@ -382,7 +382,7 @@ export default function PromptImproverPage() {
                         <div
                           className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full ${
                             imp.applied
-                              ? "bg-[#009A29]"
+                              ? "bg-success-7"
                               : "border border-border-2 bg-bg-white"
                           }`}
                         >
@@ -413,7 +413,7 @@ export default function PromptImproverPage() {
           </section>
 
           {/* Enterprise Best Practices */}
-          <section className="flex flex-col gap-3 rounded-lg border border-[#86909C]/40 bg-[#EBF8FF] p-6">
+          <section className="flex flex-col gap-3 rounded-lg border border-border-4/40 bg-primary-1 p-6">
             <div className="flex items-center gap-2">
               <Info className="h-5 w-5 text-primary-6" strokeWidth={2} />
               <h3 className="text-[14px] font-bold leading-[1.5] text-text-1">
@@ -459,7 +459,7 @@ export default function PromptImproverPage() {
               </div>
               <div className="flex items-center justify-between border-t border-border-2 pt-2.5">
                 <dt className="text-text-2">Improvement in Success</dt>
-                <dd className="inline-flex items-center gap-1 font-bold text-[#009A29]">
+                <dd className="inline-flex items-center gap-1 font-bold text-success-7">
                   <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />+
                   {improvementPct}%
                 </dd>

@@ -53,7 +53,7 @@ function UserAvatar({ name, picture, size = 80 }: { name: string; picture: strin
   }
   return (
     <div
-      className="flex items-center justify-center rounded-full bg-slate-200 text-[18px] font-semibold text-slate-500 border border-border-2"
+      className="flex items-center justify-center rounded-full bg-bg-3 text-[18px] font-semibold text-text-3 border border-border-2"
       style={{ width: size, height: size }}
     >
       {getInitials(name)}
@@ -291,7 +291,7 @@ export default function UserDetailPage({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                            <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
                               <Trash2 className="h-4 w-4" />
                               Remove from team
                             </DropdownMenuItem>
