@@ -803,7 +803,10 @@ function ObservabilityAppbarSlot() {
         onClick={() =>
           window.dispatchEvent(new CustomEvent("observability:export"))
         }
-        className="shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white text-text-1"
+        // Project Button defaults to h-12 (size=default in this fork), so
+        // the Time Range Select at h-9 looked shorter. Pin h-9 + matching
+        // px-3 / text-sm so the two controls read as a pair.
+        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1"
       >
         <Download className="h-4 w-4" />
         Export CSV
