@@ -154,19 +154,17 @@ export const SidebarContent = ({
               height={14}
               className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-100" : "opacity-0 absolute"}`}
             />
+            {/* One full-logo Image at a time so the browser only fetches the
+                wordmark variant the user actually sees. Pre-mount we don't
+                know the theme, so render the light logo as a stable
+                fallback (matches SSR output and gracefully shows on first
+                paint for first-time dark visitors). */}
             <Image
-              src="/full-logo.png"
+              src={isDark ? "/full-logo-dark-mode.png" : "/full-logo.png"}
               alt="WorkenAI"
               width={140}
               height={32}
-              className={`shrink-0 transition-opacity duration-300 dark:hidden ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
-            />
-            <Image
-              src="/full-logo-dark-mode.png"
-              alt="WorkenAI"
-              width={140}
-              height={32}
-              className={`hidden shrink-0 transition-opacity duration-300 dark:block ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
+              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
             />
           </Link>
         </div>
