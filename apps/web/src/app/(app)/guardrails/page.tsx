@@ -54,9 +54,9 @@ type Tab = "overview" | "templates";
 type Severity = "high" | "medium" | "low";
 
 const SEVERITY_STYLES: Record<Severity, string> = {
-  high: "bg-[#FFECE8] text-danger-6",
-  medium: "bg-[#FFF3E6] text-[#FF7D00]",
-  low: "bg-[#E8FFEA] text-[#009A29]",
+  high: "bg-danger-1 text-danger-6",
+  medium: "bg-warning-1 text-warning-6",
+  low: "bg-success-1 text-success-7",
 };
 
 const PAGE_SIZE = 10;
@@ -199,25 +199,25 @@ function OverviewTab({
           label="Active Rules"
           value={String(stats?.activeRules ?? 0)}
           icon={ShieldCheck}
-          iconBg="bg-[#EBF8FF] text-primary-6"
+          iconBg="bg-primary-1 text-primary-6"
         />
         <StatCard
           label="Total Triggers"
           value={(stats?.totalTriggers ?? 0).toLocaleString()}
           icon={Zap}
-          iconBg="bg-[#FFF3E6] text-[#FF7D00]"
+          iconBg="bg-warning-1 text-warning-6"
         />
         <StatCard
           label="Critical Rules"
           value={String(stats?.criticalRules ?? 0)}
           icon={AlertTriangle}
-          iconBg="bg-[#FFECE8] text-danger-6"
+          iconBg="bg-danger-1 text-danger-6"
         />
         <StatCard
           label="Coverage"
           value={`${stats?.coverage ?? 0}%`}
           icon={Eye}
-          iconBg="bg-[#E8FFEA] text-[#009A29]"
+          iconBg="bg-success-1 text-success-7"
         />
       </div>
 
@@ -233,7 +233,7 @@ function OverviewTab({
               setPage(1);
             }}
             placeholder="Search guardrails..."
-            className="h-12 rounded-xl border-[#C9CDD4] bg-bg-white pl-12 text-[16px] placeholder:text-text-3"
+            className="h-12 rounded-xl border-border-3 bg-bg-white pl-12 text-[16px] placeholder:text-text-3"
           />
         </div>
         <div className="flex items-center gap-4">
@@ -330,7 +330,7 @@ function OverviewTab({
                   <button
                     type="button"
                     onClick={() => setDeleteId(g.id)}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-danger-6"
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
                     title="Delete"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -462,14 +462,14 @@ function TemplatesTab({
       {templates.map((t) => (
         <div
           key={t.id}
-          className="flex flex-col gap-4 rounded-[20px] border border-[#C9CDD4] bg-white p-6"
+          className="flex flex-col gap-4 rounded-[20px] border border-border-3 bg-bg-white p-6"
         >
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-4">
               <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
               <div className="flex flex-col">
-                <h3 className="text-[18px] font-bold text-[#1D2129]">{t.name}</h3>
-                <span className="text-[13px] font-normal text-[#86909C]">
+                <h3 className="text-[18px] font-bold text-text-1">{t.name}</h3>
+                <span className="text-[13px] font-normal text-text-3">
                   {t.ruleCount} rules
                 </span>
               </div>
@@ -478,29 +478,29 @@ function TemplatesTab({
               <Button
                 onClick={() => onDisable(t.id)}
                 variant="outline"
-                className="cursor-pointer rounded-lg border-[#C9CDD4] px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
+                className="cursor-pointer rounded-lg border-border-3 px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
               >
                 Disable
               </Button>
             ) : (
               <Button
                 onClick={() => onApply(t.id)}
-                className="cursor-pointer rounded-lg bg-[#178ACA] px-6 py-2 text-[16px] font-normal text-white hover:bg-[#1276AD]"
+                className="cursor-pointer rounded-lg bg-primary-6 px-6 py-2 text-[16px] font-normal text-white hover:bg-primary-7"
               >
                 Apply
               </Button>
             )}
           </div>
-          <p className="text-[14px] font-normal text-[#86909C]">{t.description}</p>
+          <p className="text-[14px] font-normal text-text-3">{t.description}</p>
           <div className="flex flex-col gap-2.5">
-            <span className="text-[16px] font-normal text-[#1D2129]">Features:</span>
+            <span className="text-[16px] font-normal text-text-1">Features:</span>
             {t.features.map((f) => (
               <div
                 key={f}
                 className="flex items-center gap-2.5"
               >
                 <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary-6" />
-                <span className="text-[14px] font-normal text-[#86909C]">{f}</span>
+                <span className="text-[14px] font-normal text-text-3">{f}</span>
               </div>
             ))}
           </div>
@@ -783,7 +783,7 @@ function AddGuardrailDialog({
                             onClick={() => setOnFail(opt.id as "fix" | "exception")}
                             className={`flex flex-1 cursor-pointer flex-col gap-2 rounded-lg border p-4 text-left transition-colors ${
                               active
-                                ? "border-primary-6 bg-[#EBF8FF]"
+                                ? "border-primary-6 bg-primary-1"
                                 : "border-border-2 bg-bg-white hover:border-primary-6"
                             }`}
                           >
@@ -827,7 +827,7 @@ function AddGuardrailDialog({
                 value={validatorSearch}
                 onChange={(e) => setValidatorSearch(e.target.value)}
                 placeholder="Filter validators"
-                className="h-9 rounded-md border-[#C9CDD4] bg-bg-white pl-10 text-[14px] placeholder:text-text-2"
+                className="h-9 rounded-md border-border-3 bg-bg-white pl-10 text-[14px] placeholder:text-text-2"
               />
             </div>
 
@@ -1007,7 +1007,7 @@ export default function GuardrailsPage() {
           onClick={() => setTab("overview")}
           className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
             tab === "overview"
-              ? "border-[#C9CDD4] font-bold text-text-1"
+              ? "border-border-3 font-bold text-text-1"
               : "border-transparent font-normal text-text-2 hover:text-text-1"
           }`}
         >
@@ -1018,7 +1018,7 @@ export default function GuardrailsPage() {
           onClick={() => setTab("templates")}
           className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
             tab === "templates"
-              ? "border-[#C9CDD4] font-bold text-text-1"
+              ? "border-border-3 font-bold text-text-1"
               : "border-transparent font-normal text-text-2 hover:text-text-1"
           }`}
         >
