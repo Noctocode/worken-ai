@@ -756,11 +756,14 @@ export const Appbar = () => {
    range "7d" matches the page's initial useState value, so they boot in
    sync without any extra plumbing. */
 
+// Labels include the "Time Range: " prefix so we can lean on the stock
+// SelectValue rendering — wrapping a custom <span> inside the trigger
+// was eating the click target on first paint.
 const OBSERVABILITY_RANGES = [
-  { value: "24h", label: "Last 24 hours" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
+  { value: "24h", label: "Time Range: Last 24 hours" },
+  { value: "7d", label: "Time Range: Last 7 days" },
+  { value: "30d", label: "Time Range: Last 30 days" },
+  { value: "90d", label: "Time Range: Last 90 days" },
 ] as const;
 
 function ObservabilityAppbarSlot() {
@@ -776,19 +779,9 @@ function ObservabilityAppbarSlot() {
           );
         }}
       >
-        <SelectTrigger
-          // Sized to match the project's other appbar action buttons
-          // (Add Guardrail / New Comparison): shadcn default h-9 + px-4
-          // for visual unity. Figma frame 116:3963's literal 16/24 padding
-          // and 16 px text rendered ~14 px taller than every other appbar
-          // chip — visually inconsistent.
-          className="h-9 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm text-text-1"
-        >
+        <SelectTrigger className="h-9 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm text-text-1">
           <Calendar className="h-4 w-4 shrink-0" />
-          <span className="flex-1 text-left">
-            Time Range:{" "}
-            {OBSERVABILITY_RANGES.find((o) => o.value === range)?.label}
-          </span>
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
           {OBSERVABILITY_RANGES.map((opt) => (
