@@ -39,38 +39,41 @@ interface TeamCostEntry {
 // inactive: bg #F8FAFC, icon #0F52BA, no border
 
 function PlanIcon({ type, active }: { type: PlanIconType; active: boolean }) {
-  const bg = active ? "bg-primary-8" : "bg-bg-2";
-  const color = active ? "#FFFFFF" : "#0F52BA";
+  // Active: white icon on brand bg. Inactive: brand-colored icon on muted bg.
+  // Both rely on currentColor so the inactive state retones in dark mode.
+  const containerClass = active
+    ? "bg-primary-8 text-white"
+    : "bg-bg-2 text-primary-8";
 
   const icons: Record<PlanIconType, React.ReactNode> = {
     "user-seat": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M10 10a3 3 0 100-6 3 3 0 000 6zM4 16c0-2.21 2.69-4 6-4s6 1.79 6 4v1H4v-1z" fill={color} />
+        <path d="M10 10a3 3 0 100-6 3 3 0 000 6zM4 16c0-2.21 2.69-4 6-4s6 1.79 6 4v1H4v-1z" fill="currentColor" />
       </svg>
     ),
     "team-org": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="7" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="10" cy="8" r="2.5" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M5.5 16c0-2.49 2.01-4.5 4.5-4.5s4.5 2.01 4.5 4.5" stroke={color} strokeWidth="1.5" fill="none" />
+        <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <circle cx="10" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M5.5 16c0-2.49 2.01-4.5 4.5-4.5s4.5 2.01 4.5 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
       </svg>
     ),
     "per-tender": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="3" y="4" width="14" height="12" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M7 8h6M7 11h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
     byok: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="4" y="8" width="12" height="8" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M7 8V5a3 3 0 016 0v3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4" y="8" width="12" height="8" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M7 8V5a3 3 0 016 0v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
   };
 
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${bg} p-2.5`}>
+    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg p-2.5 ${containerClass}`}>
       {icons[type]}
     </div>
   );
@@ -286,19 +289,19 @@ function TokenUsageChart() {
             <svg
               viewBox="0 0 1000 1000"
               preserveAspectRatio="none"
-              className="absolute inset-0 w-full h-full overflow-visible"
+              className="absolute inset-0 w-full h-full overflow-visible text-primary-8"
             >
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0F52BA" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#0F52BA" stopOpacity="0" />
+                  <stop offset="0%" stopColor="currentColor" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
                 </linearGradient>
               </defs>
               <polygon points={areaPoints} fill="url(#areaGrad)" />
               <polyline
                 points={svgPoints}
                 fill="none"
-                stroke="#0F52BA"
+                stroke="currentColor"
                 strokeWidth="2"
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -443,10 +446,10 @@ function InvoiceHistoryTable() {
         <table className="w-full min-w-[500px]">
           <thead>
             <tr className="h-[40px] border-y border-bg-1">
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Invoice ID</th>
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Date</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Amount</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Status</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Invoice ID</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Date</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Amount</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Status</th>
             </tr>
           </thead>
           <tbody>
