@@ -150,7 +150,14 @@ export const SidebarContent = ({
               alt="WorkenAI"
               width={140}
               height={32}
-              className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
+              className={`shrink-0 transition-opacity duration-300 dark:hidden ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
+            />
+            <Image
+              src="/full-logo-dark-mode.png"
+              alt="WorkenAI"
+              width={140}
+              height={32}
+              className={`hidden shrink-0 transition-opacity duration-300 dark:block ${collapsed ? "opacity-0 absolute" : "opacity-100"}`}
             />
           </Link>
         </div>
