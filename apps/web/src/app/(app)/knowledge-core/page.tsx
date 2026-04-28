@@ -297,7 +297,7 @@ export default function KnowledgeCorePage() {
           <Button
             onClick={() => setNewFolderOpen(true)}
             variant="outline"
-            className="cursor-pointer gap-2 text-[13px]"
+            className="cursor-pointer gap-2 text-[13px] dark:border-border-3 dark:bg-bg-white dark:hover:bg-bg-2"
           >
             <Plus className="h-3.5 w-3.5" />
             New Folder
