@@ -129,9 +129,25 @@ export class CompareModelsController {
     @Body() body: CompareModelsRequestBody,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    if (!body?.models?.length) {
+    if (!Array.isArray(body?.models) || body.models.length === 0) {
       throw new BadRequestException('`models` must be a non-empty array.');
     }
+    const cleanedModels: string[] = [];
+    const seen = new Set<string>();
+    for (const m of body.models) {
+      if (typeof m !== 'string') {
+        throw new BadRequestException('`models` entries must be strings.');
+      }
+      const trimmed = m.trim();
+      if (!trimmed) {
+        throw new BadRequestException('`models` entries must be non-empty.');
+      }
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      cleanedModels.push(trimmed);
+    }
+    body.models = cleanedModels;
+
     if (!body.question?.trim()) {
       throw new BadRequestException('`question` is required.');
     }
