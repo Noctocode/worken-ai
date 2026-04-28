@@ -67,9 +67,9 @@ export function ApiTab() {
       </div>
 
       {/* Generate API Link */}
-      <div className="bg-white rounded-lg border border-bg-1 px-4 sm:px-6 py-5 mb-5">
-        <p className="text-[14px] font-semibold text-black mb-3">Generate API Link</p>
-        <p className="text-[12px] text-slate-500 mb-1">Link Name</p>
+      <div className="bg-bg-white rounded-lg border border-bg-1 px-4 sm:px-6 py-5 mb-5">
+        <p className="text-[14px] font-semibold text-text-1 mb-3">Generate API Link</p>
+        <p className="text-[12px] text-text-2 mb-1">Link Name</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
             placeholder="Type Link Name"
@@ -90,9 +90,9 @@ export function ApiTab() {
       </div>
 
       {/* My Keys */}
-      <div className="bg-white rounded-lg border border-bg-1 overflow-hidden">
+      <div className="bg-bg-white rounded-lg border border-bg-1 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-bg-1">
-          <p className="text-[14px] font-semibold text-black">My Keys</p>
+          <p className="text-[14px] font-semibold text-text-1">My Keys</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[580px]">
@@ -107,29 +107,29 @@ export function ApiTab() {
             </thead>
             <tbody>
               {keys.map((key) => (
-                <tr key={key.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
-                  <td className="px-4 sm:px-6 align-middle text-[13px] font-medium text-black whitespace-nowrap">{key.name}</td>
+                <tr key={key.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-bg-1/50">
+                  <td className="px-4 sm:px-6 align-middle text-[13px] font-medium text-text-1 whitespace-nowrap">{key.name}</td>
                   <td className="px-4 align-middle">
                     <div className="flex items-center gap-2">
                       <span className="text-[13px] text-primary-5 whitespace-nowrap">{truncateKey(key.link)}</span>
                       <button
                         onClick={() => handleCopy(key)}
-                        className="text-slate-400 hover:text-slate-600 transition-colors"
+                        className="text-text-3 hover:text-text-1 transition-colors"
                         title="Copy key"
                       >
                         <Copy className="h-3.5 w-3.5" />
                       </button>
                       {copied === key.id && (
-                        <span className="text-[11px] text-emerald-500">Copied!</span>
+                        <span className="text-[11px] text-success-7">Copied!</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 align-middle text-[13px] text-black whitespace-nowrap">{key.created}</td>
-                  <td className="px-4 align-middle text-[13px] text-black whitespace-nowrap">{key.lastUsed}</td>
+                  <td className="px-4 align-middle text-[13px] text-text-1 whitespace-nowrap">{key.created}</td>
+                  <td className="px-4 align-middle text-[13px] text-text-1 whitespace-nowrap">{key.lastUsed}</td>
                   <td className="px-4 align-middle text-right">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600">
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-text-3 hover:text-text-1">
                           <MoreVertical className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -143,7 +143,7 @@ export function ApiTab() {
                           View usage
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          className="gap-2 text-red-600 focus:text-red-600"
+                          className="gap-2 text-danger-6 focus:text-danger-6"
                           onClick={() => handleDelete(key.id)}
                         >
                           <Trash2 className="h-4 w-4" />
@@ -156,7 +156,7 @@ export function ApiTab() {
               ))}
               {keys.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-sm text-slate-400">
+                  <td colSpan={5} className="py-12 text-center text-sm text-text-3">
                     No API keys yet. Generate your first key above.
                   </td>
                 </tr>

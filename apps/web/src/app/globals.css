@@ -60,6 +60,7 @@
   --color-success-5: var(--success-5);
   --color-success-7: var(--success-7);
   --color-success-8: var(--success-8);
+  --color-danger-1: var(--danger-1);
   --color-danger-5: var(--danger-5);
   --color-danger-6: var(--danger-6);
   --color-warning-1: var(--warning-1);
@@ -143,6 +144,7 @@
   --success-5: #ECFDF5;
   --success-7: #009A29;
   --success-8: #059669;
+  --danger-1: #FFECE8;
   --danger-5: #F76560;
   --danger-6: #F53F3F;
   --bg-1: #F7F8FA;
@@ -187,55 +189,72 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-  --primary-1: #EBF8FF;
+  --sidebar: #0A171F;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-primary: #178ACA;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #17171A;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #313132;
+  --sidebar-ring: #178ACA;
+
+  /* Brand — kept saturated; primary-7 inverts to "lighter than base"
+     so hover/active states still have direction in dark mode. */
+  --primary-1: #00334F;
   --primary-5: #5AC4FF;
   --primary-6: #178ACA;
-  --primary-7: #0369A1;
-  --primary-8: #0F52BA;
-  --text-1: #1D2129;
-  --text-2: #4E5969;
+  --primary-7: #33AFF3;
+  --primary-8: #0369A1;
+
+  /* Text — white at the top, stepping down through Figma grays. */
+  --text-1: #FFFFFF;
+  --text-2: #929293;
   --text-3: #86909C;
-  --text-4: #64748B;
-  --text-5: #94A3B8;
-  --text-heading: #1E293B;
+  --text-4: #6B7785;
+  --text-5: #5F5F60;
+  --text-heading: #FFFFFF;
   --text-white: #FFFFFF;
-  --warning-1: #FFFBEB;
-  --warning-2: #FEF3C7;
-  --warning-5: #F59E0B;
-  --warning-6: #FF7D00;
-  --success-1: #E8FFEA;
-  --success-2: #AFF0B5;
-  --success-3: #DCFCE7;
-  --success-4: #D1FAE5;
-  --success-5: #ECFDF5;
-  --success-7: #009A29;
-  --success-8: #059669;
-  --danger-5: #F76560;
-  --danger-6: #F53F3F;
-  --bg-1: #F7F8FA;
-  --bg-2: #F8FAFC;
-  --bg-3: #E5E6EB;
-  --bg-white: #FFFFFF;
-  --border-2: #E5E6EB;
-  --border-3: #C9CDD4;
-  --border-4: #86909C;
-  --border-5: #CBD5E1;
-  --border-6: #E5E7EB;
-  --divider: rgba(92, 92, 92, 0.2);
-  --black-100: #DEDFE3;
-  --black-400: #9BA0AB;
-  --black-600: #737A85;
-  --black-700: #5D636F;
-  --black-800: #4A4F59;
-  --black-900: #383B43;
+
+  /* Status — pale light backgrounds become deep dark backgrounds;
+     mid/strong hues lighten so they read on dark surfaces. */
+  --warning-1: #4D1B00;
+  --warning-2: #793004;
+  --warning-5: #FFB357;
+  --warning-6: #FF9626;
+  --success-1: #004D1C;
+  --success-2: #27C346;
+  --success-3: #004D1C;
+  --success-4: #004D1C;
+  --success-5: #1DB440;
+  --success-7: #50D266;
+  --success-8: #27C346;
+  --danger-1: #4D000A;
+  --danger-5: #F76965;
+  --danger-6: #F54E4E;
+
+  /* Surfaces — page bg stays slightly darker than card surface so
+     elevation reads. */
+  --bg-1: #17171A;
+  --bg-2: #1D1D1F;
+  --bg-3: #2E2E30;
+  --bg-white: #232324;
+
+  /* Borders — warm grays, stepping up in contrast. */
+  --border-2: #313132;
+  --border-3: #383B43;
+  --border-4: #484849;
+  --border-5: #383B43;
+  --border-6: #313132;
+  --divider: rgba(255, 255, 255, 0.12);
+
+  /* Black scale inverts: 100 was lightest gray (now darkest surface
+     step), 900 was darkest gray (now near-white). */
+  --black-100: #2E2E30;
+  --black-400: #484849;
+  --black-600: #5F5F60;
+  --black-700: #86909C;
+  --black-800: #929293;
+  --black-900: #FFFFFF;
 }
 
 @layer base {

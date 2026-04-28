@@ -101,7 +101,7 @@ function ProjectCard({ project }: { project: Project }) {
                     Manage Context
                   </DropdownMenuItem>
                   <DropdownMenuItem
-                    className="text-red-600 focus:text-red-600"
+                    className="text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteDialogOpen(true)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
@@ -201,7 +201,7 @@ export default function WorkenDashboard() {
         <>
           {allLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+              <Loader2 className="h-6 w-6 animate-spin text-text-3" />
             </div>
           ) : (
             <div className="flex gap-4">
@@ -242,12 +242,12 @@ export default function WorkenDashboard() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
         {isLoading && (
           <div className="col-span-full flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-text-3" />
           </div>
         )}
 
         {error && (
-          <div className="col-span-full text-center py-12 text-sm text-red-500">
+          <div className="col-span-full text-center py-12 text-sm text-danger-6">
             Failed to load projects. Is the API running?
           </div>
         )}
@@ -261,13 +261,13 @@ export default function WorkenDashboard() {
           projects?.length === 0 &&
           !canCreateProject && (
             <div className="col-span-full flex flex-col items-center justify-center py-16">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-                <FolderOpen className="h-6 w-6 text-slate-300" />
+              <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border-2 bg-bg-white shadow-sm">
+                <FolderOpen className="h-6 w-6 text-text-3" />
               </div>
-              <h3 className="mt-4 text-sm font-semibold text-slate-700">
+              <h3 className="mt-4 text-sm font-semibold text-text-1">
                 No projects yet
               </h3>
-              <p className="mt-1 max-w-[260px] text-center text-xs text-slate-400">
+              <p className="mt-1 max-w-[260px] text-center text-xs text-text-3">
                 You don&apos;t have any projects to show. Ask your team owner to
                 create one or upgrade to a paid plan.
               </p>
@@ -277,15 +277,15 @@ export default function WorkenDashboard() {
         {/* New Project Card */}
         {canCreateProject ? (
           <Link href="/projects/create">
-            <Card className="group flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center transition-all duration-300 hover:border-blue-400 hover:bg-blue-50/30 cursor-pointer">
+            <Card className="group flex flex-col items-center justify-center border-dashed border-border-3 bg-bg-1 text-center transition-all duration-300 hover:border-primary-6 hover:bg-primary-1/30 cursor-pointer">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
-                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm transition-transform group-hover:scale-110">
-                  <PlusCircle className="h-5 w-5 text-slate-400 group-hover:text-blue-600" />
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-border-2 bg-bg-white shadow-sm transition-transform group-hover:scale-110">
+                  <PlusCircle className="h-5 w-5 text-text-3 group-hover:text-primary-6" />
                 </div>
-                <h3 className="text-sm font-semibold text-slate-700">
+                <h3 className="text-sm font-semibold text-text-1">
                   Create New Project
                 </h3>
-                <p className="mt-1 max-w-[180px] text-xs text-slate-400">
+                <p className="mt-1 max-w-[180px] text-xs text-text-3">
                   Start a new thread, compare models, or analyze documents.
                 </p>
               </div>
@@ -296,15 +296,15 @@ export default function WorkenDashboard() {
             disabled
             reason="Not available for basic users"
           >
-            <Card className="flex flex-col items-center justify-center border-dashed border-slate-300 bg-slate-50 text-center opacity-50 cursor-not-allowed">
+            <Card className="flex flex-col items-center justify-center border-dashed border-border-3 bg-bg-1 text-center opacity-50 cursor-not-allowed">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
-                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white shadow-sm">
-                  <PlusCircle className="h-5 w-5 text-slate-400" />
+                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full border border-border-2 bg-bg-white shadow-sm">
+                  <PlusCircle className="h-5 w-5 text-text-3" />
                 </div>
-                <h3 className="text-sm font-semibold text-slate-700">
+                <h3 className="text-sm font-semibold text-text-1">
                   Create New Project
                 </h3>
-                <p className="mt-1 max-w-[180px] text-xs text-slate-400">
+                <p className="mt-1 max-w-[180px] text-xs text-text-3">
                   Start a new thread, compare models, or analyze documents.
                 </p>
               </div>
@@ -316,41 +316,41 @@ export default function WorkenDashboard() {
       )}
 
       {/* Comparisons Section */}
-      <div className="border-t border-slate-200/60 pt-8">
+      <div className="border-t border-border-2 pt-8">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight text-slate-900">
+          <h2 className="text-lg font-semibold tracking-tight text-text-1">
             Recent Model Comparisons
           </h2>
           <Link
             href="#"
-            className="flex items-center gap-1 text-sm font-medium text-blue-600 hover:text-blue-700"
+            className="flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
           >
             View all
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="grid grid-cols-1 divide-y divide-slate-100 md:grid-cols-3 md:divide-x md:divide-y-0">
+        <div className="overflow-hidden rounded-xl border border-border-2 bg-bg-white shadow-sm">
+          <div className="grid grid-cols-1 divide-y divide-border-2 md:grid-cols-3 md:divide-x md:divide-y-0">
             {/* Comparison Item 1 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-slate-50">
+            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
               <div className="mb-2 flex items-center gap-2">
                 <div className="flex -space-x-1.5">
-                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[8px] font-bold text-slate-700 shadow-sm">
+                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
                     G4
                   </div>
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[8px] font-bold text-slate-700 shadow-sm">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
                     C3
                   </div>
                 </div>
-                <span className="text-xs font-medium text-slate-500">
+                <span className="text-xs font-medium text-text-2">
                   vs. Baseline
                 </span>
               </div>
-              <h4 className="text-sm font-medium text-slate-900 transition-colors group-hover:text-blue-600">
+              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
                 Legal Contract Summary
               </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
                 <span className="flex items-center gap-1">
                   <Clock className="h-3 w-3" /> 0.4s faster
                 </span>
@@ -361,38 +361,38 @@ export default function WorkenDashboard() {
             </div>
 
             {/* Comparison Item 2 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-slate-50">
+            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
               <div className="mb-2 flex items-center gap-2">
                 <div className="flex -space-x-1.5">
-                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[8px] font-bold text-slate-700 shadow-sm">
+                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
                     L3
                   </div>
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-slate-200 bg-white text-[8px] font-bold text-slate-700 shadow-sm">
+                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
                     M
                   </div>
                 </div>
               </div>
-              <h4 className="text-sm font-medium text-slate-900 transition-colors group-hover:text-blue-600">
+              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
                 Python Code Gen Accuracy
               </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
-                <span className="flex items-center gap-1 text-emerald-600">
+              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
+                <span className="flex items-center gap-1 text-success-7">
                   <TrendingUp className="h-3 w-3" /> 12% better
                 </span>
               </div>
             </div>
 
             {/* Comparison Item 3 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-slate-50">
+            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
               <div className="mb-2 flex items-center gap-2">
-                <span className="text-xs font-medium text-slate-400">
+                <span className="text-xs font-medium text-text-3">
                   Benchmark Test
                 </span>
               </div>
-              <h4 className="text-sm font-medium text-slate-900 transition-colors group-hover:text-blue-600">
+              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
                 Customer Sentiment Analysis
               </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-slate-500">
+              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
                 <span className="flex items-center gap-1">
                   <Calendar className="h-3 w-3" /> Yesterday
                 </span>

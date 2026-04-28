@@ -39,38 +39,41 @@ interface TeamCostEntry {
 // inactive: bg #F8FAFC, icon #0F52BA, no border
 
 function PlanIcon({ type, active }: { type: PlanIconType; active: boolean }) {
-  const bg = active ? "bg-primary-8" : "bg-bg-2";
-  const color = active ? "#FFFFFF" : "#0F52BA";
+  // Active: white icon on brand bg. Inactive: brand-colored icon on muted bg.
+  // Both rely on currentColor so the inactive state retones in dark mode.
+  const containerClass = active
+    ? "bg-primary-8 text-white"
+    : "bg-bg-2 text-primary-8";
 
   const icons: Record<PlanIconType, React.ReactNode> = {
     "user-seat": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <path d="M10 10a3 3 0 100-6 3 3 0 000 6zM4 16c0-2.21 2.69-4 6-4s6 1.79 6 4v1H4v-1z" fill={color} />
+        <path d="M10 10a3 3 0 100-6 3 3 0 000 6zM4 16c0-2.21 2.69-4 6-4s6 1.79 6 4v1H4v-1z" fill="currentColor" />
       </svg>
     ),
     "team-org": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <circle cx="10" cy="10" r="7" stroke={color} strokeWidth="1.5" fill="none" />
-        <circle cx="10" cy="8" r="2.5" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M5.5 16c0-2.49 2.01-4.5 4.5-4.5s4.5 2.01 4.5 4.5" stroke={color} strokeWidth="1.5" fill="none" />
+        <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <circle cx="10" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M5.5 16c0-2.49 2.01-4.5 4.5-4.5s4.5 2.01 4.5 4.5" stroke="currentColor" strokeWidth="1.5" fill="none" />
       </svg>
     ),
     "per-tender": (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="3" y="4" width="14" height="12" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M7 8h6M7 11h4" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="3" y="4" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M7 8h6M7 11h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
     byok: (
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-        <rect x="4" y="8" width="12" height="8" rx="2" stroke={color} strokeWidth="1.5" fill="none" />
-        <path d="M7 8V5a3 3 0 016 0v3" stroke={color} strokeWidth="1.5" strokeLinecap="round" />
+        <rect x="4" y="8" width="12" height="8" rx="2" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <path d="M7 8V5a3 3 0 016 0v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       </svg>
     ),
   };
 
   return (
-    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${bg} p-2.5`}>
+    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg p-2.5 ${containerClass}`}>
       {icons[type]}
     </div>
   );
@@ -155,7 +158,7 @@ const TOKEN_USAGE = [1100000, 1350000, 1550000, 2050000];
 
 function CurrentPlanCard() {
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-[16px] font-bold text-text-heading leading-[24px]">Current Plan</h3>
@@ -206,8 +209,8 @@ function PlanCard({
       onClick={onSelect}
       className={`relative flex flex-col rounded-lg border p-5 text-left transition-all cursor-pointer ${
         selected
-          ? "border-primary-8 bg-white ring-1 ring-primary-8"
-          : "border-bg-3 bg-white hover:border-border-5"
+          ? "border-primary-8 bg-bg-white ring-1 ring-primary-8"
+          : "border-bg-3 bg-bg-white hover:border-border-5"
       }`}
     >
       {selected && (
@@ -257,7 +260,7 @@ function TokenUsageChart() {
   const areaPoints = `0,1000 ${svgPoints} 1000,1000`;
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Token Usage & Cost Trends</h3>
 
       <div className="flex">
@@ -286,19 +289,19 @@ function TokenUsageChart() {
             <svg
               viewBox="0 0 1000 1000"
               preserveAspectRatio="none"
-              className="absolute inset-0 w-full h-full overflow-visible"
+              className="absolute inset-0 w-full h-full overflow-visible text-primary-8"
             >
               <defs>
                 <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#0F52BA" stopOpacity="0.3" />
-                  <stop offset="100%" stopColor="#0F52BA" stopOpacity="0" />
+                  <stop offset="0%" stopColor="currentColor" stopOpacity="0.3" />
+                  <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
                 </linearGradient>
               </defs>
               <polygon points={areaPoints} fill="url(#areaGrad)" />
               <polyline
                 points={svgPoints}
                 fill="none"
-                stroke="#0F52BA"
+                stroke="currentColor"
                 strokeWidth="2"
                 strokeLinejoin="round"
                 strokeLinecap="round"
@@ -324,7 +327,7 @@ function CostByTeamChart() {
   const barValues = [185, 124, 89, 62];
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Cost by Team</h3>
 
       <div className="flex">
@@ -386,12 +389,12 @@ function BudgetControls() {
   const [budgetCap, setBudgetCap] = useState("10000");
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Budget Controls</h3>
 
       <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">Monthly Budget Cap</p>
 
-      <div className="flex items-center rounded-lg border border-border-6 bg-white px-3 py-2.5 mb-2">
+      <div className="flex items-center rounded-lg border border-border-6 bg-bg-white px-3 py-2.5 mb-2">
         <span className="text-[13px] text-text-4 mr-2">$</span>
         <input
           type="text"
@@ -410,7 +413,10 @@ function BudgetControls() {
       </div>
 
       <div className="space-y-3">
-        <div className="flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1 p-3">
+        {/* Per Figma 4648:60824: in dark mode the alert callouts go neutral
+            (page bg + gray border) — the icon alone carries the severity.
+            In light mode they keep their tinted amber/green backgrounds. */}
+        <div className="flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1 dark:border-border-4 dark:bg-bg-1 p-3">
           <AlertTriangle className="h-4 w-4 text-warning-5 shrink-0 mt-0.5" />
           <div>
             <p className="text-[13px] font-bold text-text-heading leading-[18px]">Overage Warnings</p>
@@ -420,10 +426,10 @@ function BudgetControls() {
           </div>
         </div>
 
-        <div className="flex items-start gap-3 rounded-lg border border-success-4 bg-success-5 p-3">
+        <div className="flex items-start gap-3 rounded-lg border border-success-4 bg-success-5 dark:border-text-5 dark:bg-success-1 p-3">
           <Lightbulb className="h-4 w-4 text-success-8 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-bold text-success-8 leading-[18px]">Optimization Suggestion</p>
+            <p className="text-[13px] font-bold text-success-8 dark:text-text-1 leading-[18px]">Optimization Suggestion</p>
             <p className="text-[12px] text-text-4 leading-[18px]">
               Switching to BYOK could save approximately $2,200/month based on your usage patterns
             </p>
@@ -436,22 +442,22 @@ function BudgetControls() {
 
 function InvoiceHistoryTable() {
   return (
-    <div className="rounded-lg border border-bg-1 bg-white overflow-hidden">
+    <div className="rounded-lg border border-bg-1 bg-bg-white overflow-hidden">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-4 sm:px-6 pt-5 pb-3">Invoice History</h3>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[500px]">
           <thead>
             <tr className="h-[40px] border-y border-bg-1">
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Invoice ID</th>
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-success-8 uppercase tracking-wide">Date</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Amount</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-success-8 uppercase tracking-wide">Status</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Invoice ID</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Date</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Amount</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Status</th>
             </tr>
           </thead>
           <tbody>
             {INVOICES.map((inv) => (
-              <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
+              <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-bg-1/50">
                 <td className="px-4 sm:px-6 font-mono text-[13px] font-medium text-text-heading leading-[19.5px]">{inv.invoiceId}</td>
                 <td className="px-4 sm:px-6">
                   <div className="flex items-center gap-2">

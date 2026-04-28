@@ -125,7 +125,7 @@ export default function TeamsPage() {
             </CreateTeamDialog>
           </DisabledReasonTooltip>
         </div>
-        <div className="overflow-x-auto bg-white rounded-lg">
+        <div className="overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[800px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
@@ -156,7 +156,7 @@ export default function TeamsPage() {
               {teamsLoading && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-text-3" />
                   </td>
                 </tr>
               )}
@@ -164,7 +164,7 @@ export default function TeamsPage() {
                 <tr>
                   <td
                     colSpan={7}
-                    className="py-12 text-center align-middle text-sm text-red-500"
+                    className="py-12 text-center align-middle text-sm text-danger-6"
                   >
                     Failed to load teams. Is the API running?
                   </td>
@@ -180,8 +180,8 @@ export default function TeamsPage() {
               {!teamsLoading && !teamsError && filteredTeams.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
-                    <Users className="mx-auto h-10 w-10 text-slate-300" />
-                    <p className="mt-3 text-sm text-slate-500">
+                    <Users className="mx-auto h-10 w-10 text-text-3" />
+                    <p className="mt-3 text-sm text-text-2">
                       {teamSearch
                         ? "No teams match your search."
                         : user?.canCreateProject
@@ -225,7 +225,7 @@ export default function TeamsPage() {
             </InviteUserDialog>
           </DisabledReasonTooltip>
         </div>
-        <div className="overflow-x-auto bg-white rounded-lg">
+        <div className="overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[850px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
@@ -262,7 +262,7 @@ export default function TeamsPage() {
               {usersLoading && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-text-3" />
                   </td>
                 </tr>
               )}
@@ -270,7 +270,7 @@ export default function TeamsPage() {
                 <tr>
                   <td
                     colSpan={7}
-                    className="py-12 text-center align-middle text-sm text-red-500"
+                    className="py-12 text-center align-middle text-sm text-danger-6"
                   >
                     Failed to load users. Is the API running?
                   </td>
@@ -282,8 +282,8 @@ export default function TeamsPage() {
               {!usersLoading && !usersError && filteredUsers.length === 0 && (
                 <tr>
                   <td colSpan={7} className="py-12 text-center align-middle">
-                    <Users className="mx-auto h-10 w-10 text-slate-300" />
-                    <p className="mt-3 text-sm text-slate-500">
+                    <Users className="mx-auto h-10 w-10 text-text-3" />
+                    <p className="mt-3 text-sm text-text-2">
                       {userSearch
                         ? "No users match your search."
                         : "No users yet. Invite someone to get started."}
@@ -315,7 +315,7 @@ export default function TeamsPage() {
             </Button>
           </AddModelDialog>
         </div>
-        <div className="overflow-x-auto bg-white rounded-lg">
+        <div className="overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
@@ -340,7 +340,7 @@ export default function TeamsPage() {
               {modelsLoading && (
                 <tr>
                   <td colSpan={5} className="py-12 text-center align-middle">
-                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-slate-400" />
+                    <Loader2 className="mx-auto h-6 w-6 animate-spin text-text-3" />
                   </td>
                 </tr>
               )}
@@ -348,7 +348,7 @@ export default function TeamsPage() {
                 <tr>
                   <td
                     colSpan={5}
-                    className="py-12 text-center align-middle text-sm text-red-500"
+                    className="py-12 text-center align-middle text-sm text-danger-6"
                   >
                     Failed to load models. Is the API running?
                   </td>
@@ -360,8 +360,8 @@ export default function TeamsPage() {
               {!modelsLoading && !modelsError && filteredModels.length === 0 && (
                 <tr>
                   <td colSpan={5} className="py-12 text-center align-middle">
-                    <Bot className="mx-auto h-10 w-10 text-slate-300" />
-                    <p className="mt-3 text-sm text-slate-500">
+                    <Bot className="mx-auto h-10 w-10 text-text-3" />
+                    <p className="mt-3 text-sm text-text-2">
                       {modelSearch
                         ? "No models match your search."
                         : "No models configured yet. Add one to get started."}
@@ -376,7 +376,7 @@ export default function TeamsPage() {
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
       <PageTabsContent value="my-account">
-        <div className="py-16 text-center text-sm text-slate-400">
+        <div className="py-16 text-center text-sm text-text-3">
           Coming soon.
         </div>
       </PageTabsContent>

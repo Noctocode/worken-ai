@@ -12,11 +12,14 @@ import {
   Moon,
   Plus,
   Shield,
+  Sun,
   Users,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,6 +50,29 @@ export const SidebarContent = ({
   const pathname = usePathname();
   const { collapsed: providerCollapsed, toggle } = useSidebar();
   const collapsed = forceCollapsed || providerCollapsed;
+
+  // next-themes is client-only — guard against SSR/hydration mismatch by
+  // rendering a stable fallback (Moon icon, "Light / Dark" label) until
+  // mounted, then swap to the live theme.
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted && resolvedTheme === "dark";
+  const ThemeIcon = isDark ? Sun : Moon;
+  const themeLabel = mounted
+    ? isDark
+      ? "Switch to light mode"
+      : "Switch to dark mode"
+    : "Toggle theme";
+  // Visible button text mirrors the action: in dark mode the click goes to
+  // light, so the label reads "Light Mode". Falls back to a neutral label
+  // until mounted so SSR/CSR don't disagree.
+  const themeButtonText = mounted
+    ? isDark
+      ? "Light Mode"
+      : "Dark Mode"
+    : "Light / Dark";
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";
@@ -128,8 +154,13 @@ export const SidebarContent = ({
               height={14}
               className={`shrink-0 transition-opacity duration-300 ${collapsed ? "opacity-100" : "opacity-0 absolute"}`}
             />
+            {/* One full-logo Image at a time so the browser only fetches the
+                wordmark variant the user actually sees. Pre-mount we don't
+                know the theme, so render the light logo as a stable
+                fallback (matches SSR output and gracefully shows on first
+                paint for first-time dark visitors). */}
             <Image
-              src="/full-logo.png"
+              src={isDark ? "/full-logo-dark-mode.png" : "/full-logo.png"}
               alt="WorkenAI"
               width={140}
               height={32}
@@ -217,31 +248,27 @@ export const SidebarContent = ({
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
-          <DisabledReasonTooltip disabled reason="Coming Soon">
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-            >
-              <Moon className="h-5 w-5 text-text-3" />
-            </Button>
-          </DisabledReasonTooltip>
-        ) : (
-          <DisabledReasonTooltip
-            disabled
-            reason="Coming Soon"
-            className="w-full"
+          <Button
+            variant="ghost"
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}
+            className="h-[40px] w-[40px] cursor-pointer p-0 justify-center text-text-2 hover:text-text-1"
           >
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-            >
-              <Moon className="size-5 shrink-0 text-text-3" />
-              <span>Light / Dark</span>
-            </Button>
-          </DisabledReasonTooltip>
+            <ThemeIcon className="h-5 w-5 text-text-3" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="nav"
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}
+            className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
+          >
+            <ThemeIcon className="size-5 shrink-0 text-text-3" />
+            <span>{themeButtonText}</span>
+          </Button>
         )}
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
@@ -249,7 +276,7 @@ export const SidebarContent = ({
           <Link
             href="/account"
             title="My account"
-            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-white ${collapsed ? "p-0" : "flex-1 p-1"}`}
+            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent ${collapsed ? "" : "flex-1"}`}
           >
             <Avatar
               className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
@@ -277,7 +304,7 @@ export const SidebarContent = ({
                   {user && (
                     <Badge className={`shrink-0 border-transparent uppercase tracking-wide text-[10px] px-1.5 py-0 ${
                       user.role === "admin"
-                        ? "bg-[#FFECE8] text-danger-6"
+                        ? "bg-danger-1 text-danger-6"
                         : user.role === "advanced"
                           ? "bg-primary-1 text-primary-7"
                           : "bg-bg-3 text-text-2"
@@ -295,7 +322,7 @@ export const SidebarContent = ({
           {!collapsed && (
             <button
               onClick={() => logout()}
-              className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
+              className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-accent hover:text-text-2"
               title="Sign out"
             >
               <LogOut className="h-4 w-4" />

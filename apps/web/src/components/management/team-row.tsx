@@ -46,14 +46,14 @@ function ProjectedBadge({
   projected: number;
   budget: number;
 }) {
-  if (budget <= 0) return <span className="text-black text-sm">—</span>;
+  if (budget <= 0) return <span className="text-text-1 text-sm">—</span>;
 
   const overBudget = projected > budget;
 
   if (overBudget)
     return (
       <div className="flex items-center gap-1.5">
-        <span className="text-sm text-black">{formatCurrency(projected)}</span>
+        <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
         <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
           Over Budget
         </span>
@@ -61,7 +61,7 @@ function ProjectedBadge({
     );
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-sm text-black">{formatCurrency(projected)}</span>
+      <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
       <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
         On track
       </span>
@@ -86,12 +86,12 @@ function MemberAvatars({
               key={i}
               src={m.picture}
               alt={m.name ?? ""}
-              className="h-6 w-6 rounded-full border-2 border-white object-cover"
+              className="h-6 w-6 rounded-full border-2 border-bg-white object-cover"
             />
           ) : (
             <div
               key={i}
-              className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-500"
+              className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-bg-white bg-bg-3 text-[9px] font-semibold text-text-3"
             >
               {(m.name ?? "?").charAt(0)}
             </div>
@@ -99,7 +99,7 @@ function MemberAvatars({
         )}
       </div>
       {extra != null && extra > 0 && (
-        <span className="ml-1.5 text-[12px] text-slate-500">+{extra}</span>
+        <span className="ml-1.5 text-[12px] text-text-2">+{extra}</span>
       )}
     </div>
   );
@@ -139,7 +139,7 @@ export function TeamRow({
       role="link"
       tabIndex={0}
       aria-label={`Open ${team.name}`}
-      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-slate-50/50 focus:outline-none focus-visible:bg-slate-50/60 focus-visible:ring-1 focus-visible:ring-primary-6"
+      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-bg-1/50 focus:outline-none focus-visible:bg-bg-1/60 focus-visible:ring-1 focus-visible:ring-primary-6"
       onClick={() => router.push(`/teams/${team.id}`)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -149,13 +149,13 @@ export function TeamRow({
       }}
     >
       {/* Team name */}
-      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         <div className="flex items-center gap-2">
           {team.name}
           {isOwner && (
             <Badge
               variant="secondary"
-              className="gap-1 text-[11px] border-amber-200 bg-amber-50 text-amber-700"
+              className="gap-1 text-[11px] border-warning-2 bg-warning-1 text-warning-6"
             >
               <Crown className="h-3 w-3" />
               Owner
@@ -164,18 +164,18 @@ export function TeamRow({
         </div>
       </td>
       {/* Description */}
-      <td className="px-4 align-middle text-sm text-slate-500 whitespace-nowrap">
+      <td className="px-4 align-middle text-sm text-text-2 whitespace-nowrap">
         {team.description ?? "—"}
       </td>
       {/* Monthly Budget */}
-      <td className="px-4 align-middle text-sm text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-sm text-text-1 whitespace-nowrap">
         {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
       <td className="w-[1%] px-4 align-middle whitespace-nowrap">
         {budget > 0 ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm leading-tight text-black">
+            <span className="text-sm leading-tight text-text-1">
               {formatCurrency(spent)} /{" "}
               {remaining < 0 ? (
                 <span className="text-danger-5">
@@ -190,7 +190,7 @@ export function TeamRow({
             </span>
           </div>
         ) : (
-          <span className="text-sm text-black">—</span>
+          <span className="text-sm text-text-1">—</span>
         )}
       </td>
       {/* Projected */}
@@ -198,7 +198,7 @@ export function TeamRow({
         {budget > 0 ? (
           <ProjectedBadge projected={projected} budget={budget} />
         ) : (
-          <span className="text-sm text-black">—</span>
+          <span className="text-sm text-text-1">—</span>
         )}
       </td>
       {/* Members */}
@@ -206,7 +206,7 @@ export function TeamRow({
         {team.members.length > 0 ? (
           <MemberAvatars members={team.members} extra={extraMembers} />
         ) : (
-          <span className="text-sm text-black">—</span>
+          <span className="text-sm text-text-1">—</span>
         )}
       </td>
       {/* Actions */}
@@ -219,7 +219,7 @@ export function TeamRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-slate-400 hover:text-slate-600"
+              className="h-7 w-7 text-text-3 hover:text-text-1"
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
@@ -240,7 +240,7 @@ export function TeamRow({
               </CreateTeamDialog>
             )}
             <DropdownMenuItem
-              className="gap-2 text-red-600 focus:text-red-600"
+              className="gap-2 text-danger-6 focus:text-danger-6"
               disabled={!team.canManage}
               onSelect={(e) => {
                 e.preventDefault();

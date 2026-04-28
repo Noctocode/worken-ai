@@ -32,9 +32,9 @@ export function ModelRow({ model }: { model: ModelConfig }) {
   const fallbacks = (model.fallbackModels ?? []) as string[];
 
   return (
-    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
       {/* Custom Name */}
-      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         {model.customName}
       </td>
       {/* Status */}
@@ -53,8 +53,8 @@ export function ModelRow({ model }: { model: ModelConfig }) {
       {/* Model */}
       <td className="px-4 align-middle whitespace-nowrap">
         <div className="flex items-center gap-1.5">
-          <Bot className="h-4 w-4 text-slate-400 shrink-0" />
-          <span className="text-base font-normal text-black">
+          <Bot className="h-4 w-4 text-text-3 shrink-0" />
+          <span className="text-base font-normal text-text-1">
             {model.modelIdentifier}
           </span>
         </div>
@@ -66,14 +66,14 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             fallbacks.map((fb) => (
               <span
                 key={fb}
-                className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[12px] text-slate-700 whitespace-nowrap"
+                className="flex items-center gap-1 rounded-full border border-border-2 bg-bg-1 px-2.5 py-0.5 text-[12px] text-text-1 whitespace-nowrap"
               >
-                <Bot className="h-3 w-3 text-slate-400 shrink-0" />
+                <Bot className="h-3 w-3 text-text-3 shrink-0" />
                 {fb}
               </span>
             ))
           ) : (
-            <span className="text-sm text-slate-400">—</span>
+            <span className="text-sm text-text-3">—</span>
           )}
         </div>
       </td>
@@ -84,7 +84,7 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-slate-400 hover:text-slate-600"
+              className="h-7 w-7 text-text-3 hover:text-text-1"
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
@@ -95,7 +95,7 @@ export function ModelRow({ model }: { model: ModelConfig }) {
               Edit model
             </DropdownMenuItem>
             <DropdownMenuItem
-              className="gap-2 text-red-600 focus:text-red-600"
+              className="gap-2 text-danger-6 focus:text-danger-6"
               disabled={deleteMutation.isPending}
               onClick={() => deleteMutation.mutate()}
             >

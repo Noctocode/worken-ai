@@ -182,7 +182,7 @@ export default function ResourcesPage() {
                 {bullets.map((b) => (
                   <li key={b} className="flex items-center gap-2">
                     <Check
-                      className="h-4 w-4 shrink-0 text-[#23C343]"
+                      className="h-4 w-4 shrink-0 text-success-7"
                       strokeWidth={2.5}
                     />
                     <span className="text-[12px] leading-[1.5] text-text-2">

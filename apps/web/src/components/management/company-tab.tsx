@@ -73,7 +73,7 @@ export function CompanyTab() {
       <div className="bg-bg-white rounded p-4 space-y-[30px]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-slate-200 text-slate-500 text-2xl font-bold">
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-bg-3 text-text-3 text-2xl font-bold">
               C
             </div>
             <div className="space-y-3">
@@ -174,7 +174,7 @@ export function CompanyTab() {
                   <tr key={admin.id} className="h-14">
                     <td className="bg-bg-white px-4 align-middle w-[300px]">
                       <div className="flex items-center gap-2.5">
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-500">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg-3 text-[10px] font-semibold text-text-3">
                           {admin.name.charAt(0)}
                         </div>
                         <span className="text-[16px] text-text-1 whitespace-nowrap">{admin.name}</span>
@@ -199,7 +199,7 @@ export function CompanyTab() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                            <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
                               <UserX className="h-4 w-4" />
                               Remove admin
                             </DropdownMenuItem>
@@ -279,7 +279,7 @@ export function CompanyTab() {
                               <Pencil className="h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="gap-2 text-red-600 focus:text-red-600">
+                            <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
                               <Trash2 className="h-4 w-4" />
                               Delete
                             </DropdownMenuItem>

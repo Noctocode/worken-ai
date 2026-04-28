@@ -297,7 +297,7 @@ export default function KnowledgeCorePage() {
           <Button
             onClick={() => setNewFolderOpen(true)}
             variant="outline"
-            className="cursor-pointer gap-2 text-[13px]"
+            className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
           >
             <Plus className="h-3.5 w-3.5" />
             New Folder
@@ -308,7 +308,7 @@ export default function KnowledgeCorePage() {
             <Link
               key={folder.id}
               href={`/knowledge-core/${folder.id}`}
-              className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-[#EBF8FF]"
+              className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-primary-1"
             >
               <div className="flex items-start justify-between">
                 <Folder
@@ -368,7 +368,7 @@ export default function KnowledgeCorePage() {
           {filteredFiles.map((file) => (
             <div
               key={file.id}
-              className="flex items-center gap-4 rounded border border-border-2 bg-bg-white px-4 py-3 transition-colors hover:bg-[#EBF8FF]"
+              className="flex items-center gap-4 rounded border border-border-2 bg-bg-white px-4 py-3 transition-colors hover:bg-primary-1"
             >
               <FileText
                 className="h-8 w-8 shrink-0 text-text-3"

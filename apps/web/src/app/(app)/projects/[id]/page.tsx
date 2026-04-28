@@ -214,7 +214,7 @@ export default function ProjectChatPage() {
       <div className="flex min-h-0 flex-1">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+          <Loader2 className="h-8 w-8 animate-spin text-text-3" />
         </div>
       </div>
     );
@@ -226,7 +226,7 @@ export default function ProjectChatPage() {
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <div className="text-center">
-            <p className="text-sm text-slate-600">Failed to load project</p>
+            <p className="text-sm text-text-2">Failed to load project</p>
             <Link href="/">
               <Button variant="link" className="mt-2">
                 Go back
@@ -243,25 +243,25 @@ export default function ProjectChatPage() {
       <ChatHistorySidebar {...sidebarProps} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Project Header */}
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-slate-200/60 bg-white/60 px-4 backdrop-blur-md sm:px-6">
+        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border-2 bg-bg-white/60 px-4 backdrop-blur-md sm:px-6">
           <div className="flex items-center gap-3">
             <Link href="/">
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-slate-500 hover:text-slate-900"
+                className="h-8 w-8 text-text-2 hover:text-text-1"
               >
                 <ArrowLeft className="h-4 w-4" />
               </Button>
             </Link>
-            <div className="h-4 w-px bg-slate-200" />
-            <h1 className="text-sm font-semibold text-slate-900">
+            <div className="h-4 w-px bg-border-2" />
+            <h1 className="text-sm font-semibold text-text-1">
               {project.name}
             </h1>
           </div>
           <Badge
             variant="secondary"
-            className="gap-1 border border-slate-100 bg-slate-50 text-xs font-medium text-slate-600"
+            className="gap-1 border border-border-2 bg-bg-1 text-xs font-medium text-text-2"
           >
             <Sparkles className="h-3 w-3" />
             {project.model}
@@ -275,11 +275,11 @@ export default function ProjectChatPage() {
               {/* Empty state */}
               {messages.length === 0 && !isLoadingConversation && (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <Bot className="h-12 w-12 text-slate-300" />
-                  <h3 className="mt-4 text-sm font-medium text-slate-900">
+                  <Bot className="h-12 w-12 text-text-3" />
+                  <h3 className="mt-4 text-sm font-medium text-text-1">
                     Start a conversation
                   </h3>
-                  <p className="mt-1 text-xs text-slate-500">
+                  <p className="mt-1 text-xs text-text-3">
                     Send a message to begin chatting with your AI assistant.
                   </p>
                 </div>
@@ -287,7 +287,7 @@ export default function ProjectChatPage() {
 
               {isLoadingConversation && (
                 <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                  <Loader2 className="h-6 w-6 animate-spin text-text-3" />
                 </div>
               )}
 
@@ -300,8 +300,8 @@ export default function ProjectChatPage() {
                 >
                   {/* Avatar */}
                   {msg.role === "assistant" ? (
-                    <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
-                      <AvatarFallback className="bg-slate-100 text-slate-600">
+                    <Avatar className="h-8 w-8 shrink-0 border border-border-2">
+                      <AvatarFallback className="bg-bg-2 text-text-2">
                         <Bot className="h-4 w-4" />
                       </AvatarFallback>
                     </Avatar>
@@ -313,7 +313,7 @@ export default function ProjectChatPage() {
                           alt={msg.userName || ""}
                         />
                       ) : null}
-                      <AvatarFallback className="bg-linear-to-tr from-blue-100 to-blue-50 text-xs font-medium text-blue-700">
+                      <AvatarFallback className="bg-primary-1 text-xs font-medium text-primary-6">
                         {getInitials(msg.userName || user?.name)}
                       </AvatarFallback>
                     </Avatar>
@@ -330,15 +330,15 @@ export default function ProjectChatPage() {
                       project.teamId &&
                       msg.userName &&
                       msg.userId !== user?.id && (
-                        <span className="mb-1 block text-[11px] font-medium text-slate-500">
+                        <span className="mb-1 block text-[11px] font-medium text-text-2">
                           {msg.userName}
                         </span>
                       )}
                     <div
                       className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                         msg.role === "assistant"
-                          ? "rounded-tl-sm border border-slate-200 bg-white text-slate-700 shadow-sm"
-                          : "rounded-tr-sm bg-slate-900 text-white"
+                          ? "rounded-tl-sm border border-border-2 bg-bg-white text-text-1 shadow-sm"
+                          : "rounded-tr-sm bg-primary-6 text-white"
                       }`}
                     >
                       {msg.content.split("\n").map((line, i) => (
@@ -358,7 +358,7 @@ export default function ProjectChatPage() {
                       ))}
                     </div>
                     <span
-                      className={`mt-1 block text-[11px] text-slate-400 ${
+                      className={`mt-1 block text-[11px] text-text-3 ${
                         msg.role === "user" ? "text-right" : "text-left"
                       }`}
                     >
@@ -371,12 +371,12 @@ export default function ProjectChatPage() {
               {/* Typing indicator */}
               {isSending && (
                 <div className="flex gap-3">
-                  <Avatar className="h-8 w-8 shrink-0 border border-slate-200">
-                    <AvatarFallback className="bg-slate-100 text-slate-600">
+                  <Avatar className="h-8 w-8 shrink-0 border border-border-2">
+                    <AvatarFallback className="bg-bg-2 text-text-2">
                       <Bot className="h-4 w-4" />
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-slate-200 bg-white px-4 py-3 text-sm text-slate-400 shadow-sm">
+                  <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border-2 bg-bg-white px-4 py-3 text-sm text-text-3 shadow-sm">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     Thinking...
                   </div>
@@ -389,7 +389,7 @@ export default function ProjectChatPage() {
         </div>
 
         {/* Input Area */}
-        <div className="shrink-0 border-t border-slate-200/60 bg-white/60 backdrop-blur-md">
+        <div className="shrink-0 border-t border-border-2 bg-bg-white/60 backdrop-blur-md">
           <form
             onSubmit={handleSubmit}
             className="mx-auto max-w-3xl px-4 py-3 sm:px-6"
@@ -403,7 +403,7 @@ export default function ProjectChatPage() {
                   placeholder="Type your message..."
                   rows={1}
                   disabled={isSending}
-                  className="w-full resize-none rounded-xl border border-slate-200 bg-white/80 px-4 py-3 pr-12 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-300 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/10 disabled:opacity-50"
+                  className="w-full resize-none rounded-xl border border-border-2 bg-bg-white/80 px-4 py-3 pr-12 text-sm text-text-1 placeholder:text-text-3 focus:border-primary-5 focus:bg-bg-white focus:outline-none focus:ring-2 focus:ring-primary-5/10 disabled:opacity-50"
                   style={{ minHeight: "44px", maxHeight: "120px" }}
                   onInput={(e) => {
                     const target = e.target as HTMLTextAreaElement;
@@ -416,7 +416,7 @@ export default function ProjectChatPage() {
               <Button
                 type="submit"
                 size="icon"
-                className="h-11 w-11 shrink-0 rounded-xl bg-slate-900 hover:bg-slate-800"
+                className="h-11 w-11 shrink-0 rounded-xl bg-primary-6 hover:bg-primary-7"
                 disabled={!message.trim() || isSending}
               >
                 <Send className="h-4 w-4" />
@@ -428,7 +428,7 @@ export default function ProjectChatPage() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                  className="h-8 w-8 text-text-3 hover:text-text-1"
                 >
                   <Paperclip className="h-4 w-4" />
                 </Button>
@@ -436,12 +436,12 @@ export default function ProjectChatPage() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 text-slate-400 hover:text-slate-600"
+                  className="h-8 w-8 text-text-3 hover:text-text-1"
                 >
                   <ImageIcon className="h-4 w-4" />
                 </Button>
               </div>
-              <span className="text-[11px] text-slate-400">
+              <span className="text-[11px] text-text-3">
                 Shift + Enter for new line
               </span>
             </div>

@@ -187,7 +187,7 @@ function TemplateCard({
       onClick={onSelect}
       className="flex cursor-pointer items-start gap-4 rounded-lg border border-border-2 bg-bg-white p-5 text-left transition-colors hover:border-primary-6"
     >
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#EBF8FF]">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-1">
         <Icon className="h-6 w-6 text-primary-6" strokeWidth={2} />
       </div>
       <div className="flex flex-col gap-2">
@@ -429,7 +429,7 @@ function DefineVariablesStep({
           <button
             type="button"
             onClick={addVariable}
-            className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-[#EBF8FF] px-3 py-1.5 text-xs font-medium text-text-2 transition-colors hover:bg-primary-6/20"
+            className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-primary-1 px-3 py-1.5 text-xs font-medium text-text-2 transition-colors hover:bg-primary-6/20"
           >
             <Plus className="h-3.5 w-3.5" />
             Add Variable
@@ -578,7 +578,7 @@ function ConfigureParametersStep({
             onChange={(e) =>
               setParams({ ...params, temperature: parseFloat(e.target.value) })
             }
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#F2F3F5] accent-primary-7"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <div className="flex justify-between text-[11px] text-text-2">
             <span>Focused</span>
@@ -605,7 +605,7 @@ function ConfigureParametersStep({
             onChange={(e) =>
               setParams({ ...params, maxTokens: parseInt(e.target.value, 10) })
             }
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#F2F3F5] accent-primary-7"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <p className="text-[11px] text-text-2">
             Maximum length of the AI response
@@ -631,7 +631,7 @@ function ConfigureParametersStep({
             onChange={(e) =>
               setParams({ ...params, topP: parseFloat(e.target.value) })
             }
-            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-[#F2F3F5] accent-primary-7"
+            className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <p className="text-[11px] text-text-2">
             Controls diversity via nucleus sampling
@@ -692,7 +692,7 @@ function PreviewTestStep({
 
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
         <h3 className="text-sm font-semibold text-text-1">Configuration</h3>
-        <div className="grid grid-cols-1 gap-3 text-[13px] text-slate-500 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 text-[13px] text-text-2 sm:grid-cols-2">
           <span>Model: {params.model}</span>
           <span>Temperature: {params.temperature.toFixed(2)}</span>
           <span>Max Tokens: {params.maxTokens}</span>
@@ -704,7 +704,7 @@ function PreviewTestStep({
         <h3 className="text-sm font-semibold text-text-1">Save Details</h3>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-text-2">
-            Title <span className="text-[#D92D20]">*</span>
+            Title <span className="text-danger-6">*</span>
           </label>
           <Input
             value={details.title}

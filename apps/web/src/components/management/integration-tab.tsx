@@ -168,10 +168,10 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
             value={apiLink}
             onChange={(e) => setApiLink(e.target.value)}
             placeholder="Put link here"
-            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-black placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
-        <button className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-slate-50 transition-colors">
+        <button className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors">
           <BookOpen className="h-4 w-4 text-success-7" />
           Integration documentation
         </button>
@@ -220,7 +220,7 @@ export function IntegrationTab() {
         {filtered.map((provider) => (
           <div
             key={provider.id}
-            className="flex flex-col rounded-[4px] border border-border-3 bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
+            className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
             onClick={() => setSelected(provider)}
           >
             {/* Header: icon + name + toggle */}
@@ -247,7 +247,7 @@ export function IntegrationTab() {
         ))}
 
         {filtered.length === 0 && (
-          <div className="col-span-full py-12 text-center text-sm text-slate-400">
+          <div className="col-span-full py-12 text-center text-sm text-text-3">
             No integrations match your search.
           </div>
         )}

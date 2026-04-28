@@ -29,21 +29,21 @@ type TenderStatus = "Active" | "Pending" | "Completed";
 const PAGE_SIZE = 7;
 
 const STATUS_STYLES: Record<TenderStatus, string> = {
-  Active: "bg-[#EBF8FF] text-[#0369A1]",
-  Pending: "bg-[#F7F8FA] text-text-1",
-  Completed: "bg-[#E8FFEA] text-[#009A29]",
+  Active: "bg-primary-1 text-primary-7",
+  Pending: "bg-bg-1 text-text-1",
+  Completed: "bg-success-1 text-success-7",
 };
 
 function matchRateColor(rate: number): string {
-  if (rate >= 80) return "text-[#009A29]";
-  if (rate >= 60) return "text-[#FF7D00]";
-  return "text-[#F53F3F]";
+  if (rate >= 80) return "text-success-7";
+  if (rate >= 60) return "text-warning-6";
+  return "text-danger-6";
 }
 
 function matchRateBg(rate: number): string {
-  if (rate >= 80) return "bg-[#009A29]";
-  if (rate >= 60) return "bg-[#FF7D00]";
-  return "bg-[#F53F3F]";
+  if (rate >= 80) return "bg-success-7";
+  if (rate >= 60) return "bg-warning-6";
+  return "bg-danger-6";
 }
 
 function formatDeadline(d: string | null): string {
@@ -87,26 +87,26 @@ function computeStats(tenders: TenderSummary[]): StatCard[] {
       label: "Active Tenders",
       value: String(active),
       icon: BarChart3,
-      iconBg: "bg-[#EBF8FF] text-primary-6",
+      iconBg: "bg-primary-1 text-primary-6",
     },
     {
       label: "Avg Match Rate",
       value: `${avgRate}%`,
       icon: TrendingUp,
-      iconBg: "bg-[#E8FFEA] text-[#009A29]",
+      iconBg: "bg-success-1 text-success-7",
     },
     {
       label: "Critical Gaps",
       value: String(criticalGaps),
       icon: AlertTriangle,
-      iconBg: "bg-[#FFF3E6] text-[#FF7D00]",
+      iconBg: "bg-warning-1 text-warning-6",
     },
     {
       label: "Upcoming Deadlines",
       value: String(upcoming),
       sub: "Next 14d",
       icon: Calendar,
-      iconBg: "bg-[#F2F3F5] text-text-2",
+      iconBg: "bg-bg-1 text-text-2",
     },
   ];
 }
@@ -225,7 +225,7 @@ export default function TenderAiPage() {
                   <Icon className="h-4 w-4" strokeWidth={2} />
                 </span>
                 {s.change && (
-                  <span className="inline-flex items-center gap-0.5 text-[12px] font-semibold text-[#009A29]">
+                  <span className="inline-flex items-center gap-0.5 text-[12px] font-semibold text-success-7">
                     <ArrowUpRight className="h-3 w-3" />
                     {s.change}
                   </span>
@@ -327,9 +327,9 @@ export default function TenderAiPage() {
                   </td>
                   <td className="px-5 py-4 text-text-2">
                     {t.gapCount === 0 ? (
-                      <span className="text-[#009A29]">0 gaps</span>
+                      <span className="text-success-7">0 gaps</span>
                     ) : (
-                      <span className={t.gapCount >= 3 ? "text-[#F53F3F]" : "text-[#FF7D00]"}>
+                      <span className={t.gapCount >= 3 ? "text-danger-6" : "text-warning-6"}>
                         {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
                       </span>
                     )}
@@ -352,7 +352,7 @@ export default function TenderAiPage() {
                         e.stopPropagation();
                         handleDelete(t.id, t.name);
                       }}
-                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-[#F53F3F]"
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
                       title="Delete tender"
                       aria-label={`Delete ${t.name}`}
                     >
@@ -405,7 +405,7 @@ export default function TenderAiPage() {
                       e.stopPropagation();
                       handleDelete(t.id, t.name);
                     }}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-[#FFECE8] hover:text-[#F53F3F]"
+                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
                     title="Delete tender"
                     aria-label={`Delete ${t.name}`}
                   >
@@ -433,7 +433,7 @@ export default function TenderAiPage() {
                 <div className="flex flex-col">
                   <span className="text-text-3">Gaps</span>
                   <span
-                    className={`font-medium ${t.gapCount >= 3 ? "text-[#F53F3F]" : t.gapCount === 0 ? "text-[#009A29]" : "text-[#FF7D00]"}`}
+                    className={`font-medium ${t.gapCount >= 3 ? "text-danger-6" : t.gapCount === 0 ? "text-success-7" : "text-warning-6"}`}
                   >
                     {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
                   </span>

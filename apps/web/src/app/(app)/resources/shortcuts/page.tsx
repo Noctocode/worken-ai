@@ -262,7 +262,7 @@ export default function ShortcutsPage() {
       ) : loadError ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
           <AlertTriangle
-            className="h-8 w-8 text-[#D92D20]"
+            className="h-8 w-8 text-danger-6"
             strokeWidth={1.5}
           />
           <h3 className="text-[16px] font-semibold text-text-1">
@@ -320,7 +320,7 @@ export default function ShortcutsPage() {
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     {s.category && (
-                      <span className="rounded bg-[#EBF8FF] px-2 py-0.5 text-[11px] font-medium text-text-2">
+                      <span className="rounded bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-text-2">
                         {s.category}
                       </span>
                     )}
@@ -351,7 +351,7 @@ export default function ShortcutsPage() {
                             e.preventDefault();
                             setDeleteTarget(s);
                           }}
-                          className="text-[#D92D20] focus:text-[#D92D20]"
+                          className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
                           Delete
@@ -394,7 +394,7 @@ export default function ShortcutsPage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-text-2">
-                Label <span className="text-[#D92D20]">*</span>
+                Label <span className="text-danger-6">*</span>
               </label>
               <Input
                 value={draft.label}
@@ -407,12 +407,12 @@ export default function ShortcutsPage() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-text-2">
-                  Body <span className="text-[#D92D20]">*</span>
+                  Body <span className="text-danger-6">*</span>
                 </label>
                 <span
                   className={`text-[11px] ${
                     draft.body.length > SHORTCUT_BODY_MAX
-                      ? "text-[#D92D20]"
+                      ? "text-danger-6"
                       : "text-text-3"
                   }`}
                 >

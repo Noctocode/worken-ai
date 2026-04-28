@@ -77,7 +77,7 @@ function UserAvatar({ name, picture, size = 24 }: { name: string; picture: strin
     );
   }
   return (
-    <div className="flex items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-500 border border-border-2" style={{ width: size, height: size }}>
+    <div className="flex items-center justify-center rounded-full bg-bg-3 text-[10px] font-semibold text-text-3 border border-border-2" style={{ width: size, height: size }}>
       {getInitials(name)}
     </div>
   );
@@ -511,16 +511,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   const subOverBudget = subProjected > subBudget;
                   const subExtraMembers = sub.memberCount > 4 ? sub.memberCount - 4 : 0;
                   return (
-                    <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
-                      <td className="px-4 align-middle text-base text-black whitespace-nowrap">{sub.name}</td>
-                      <td className="px-4 align-middle text-sm text-slate-500 whitespace-nowrap">{sub.description ?? "—"}</td>
-                      <td className="px-4 align-middle text-sm text-black whitespace-nowrap">
+                    <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
+                      <td className="px-4 align-middle text-base text-text-1 whitespace-nowrap">{sub.name}</td>
+                      <td className="px-4 align-middle text-sm text-text-2 whitespace-nowrap">{sub.description ?? "—"}</td>
+                      <td className="px-4 align-middle text-sm text-text-1 whitespace-nowrap">
                         {subBudget > 0 ? formatCurrency(subBudget) : "—"}
                       </td>
                       <td className="w-[1%] px-4 align-middle whitespace-nowrap">
                         {subBudget > 0 ? (
                           <div className="flex items-center gap-3">
-                            <span className="text-sm leading-tight text-black">
+                            <span className="text-sm leading-tight text-text-1">
                               {formatCurrency(subSpent)} /{" "}
                               {subRemaining < 0 ? (
                                 <span className="text-danger-5">{formatCurrency(subRemaining)}</span>
@@ -533,19 +533,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             </span>
                           </div>
                         ) : (
-                          <span className="text-sm text-black">—</span>
+                          <span className="text-sm text-text-1">—</span>
                         )}
                       </td>
                       <td className="px-4 align-middle whitespace-nowrap">
                         {subBudget > 0 ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm text-black">{formatCurrency(subProjected)}</span>
+                            <span className="text-sm text-text-1">{formatCurrency(subProjected)}</span>
                             <span className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
                               {subOverBudget ? "Over Budget" : "On track"}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-sm text-black">—</span>
+                          <span className="text-sm text-text-1">—</span>
                         )}
                       </td>
                       <td className="px-4 align-middle">
@@ -555,26 +555,26 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                               {sub.members.slice(0, 4).map((m, i) =>
                                 m.picture ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img key={i} src={m.picture} alt={m.name ?? ""} className="h-6 w-6 rounded-full border-2 border-white object-cover" />
+                                  <img key={i} src={m.picture} alt={m.name ?? ""} className="h-6 w-6 rounded-full border-2 border-bg-white object-cover" />
                                 ) : (
-                                  <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-slate-200 text-[9px] font-semibold text-slate-500">
+                                  <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-bg-white bg-bg-3 text-[9px] font-semibold text-text-3">
                                     {(m.name ?? "?").charAt(0)}
                                   </div>
                                 ),
                               )}
                             </div>
                             {subExtraMembers > 0 && (
-                              <span className="ml-1.5 text-[12px] text-slate-500">+{subExtraMembers}</span>
+                              <span className="ml-1.5 text-[12px] text-text-2">+{subExtraMembers}</span>
                             )}
                           </div>
                         ) : (
-                          <span className="text-sm text-black">—</span>
+                          <span className="text-sm text-text-1">—</span>
                         )}
                       </td>
                       <td className="px-4 align-middle text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-slate-600"><MoreVertical className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-text-3 hover:text-text-1"><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {canManageTeam ? (
@@ -583,7 +583,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                   <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
                                 </EditSubteamDialog>
                                 <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
-                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-red-600 focus:text-red-600"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-danger-6 focus:text-danger-6"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
                                 </DeleteSubteamDialog>
                               </>
                             ) : (
@@ -598,7 +598,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                 <DropdownMenuItem
                                   disabled
                                   onSelect={(e) => e.preventDefault()}
-                                  className="gap-2 text-red-600 focus:text-red-600"
+                                  className="gap-2 text-danger-6 focus:text-danger-6"
                                 >
                                   <Trash2 className="h-4 w-4" />Delete
                                 </DropdownMenuItem>
@@ -697,7 +697,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             <DropdownMenuItem
-                              className="gap-2 text-red-600 focus:text-red-600"
+                              className="gap-2 text-danger-6 focus:text-danger-6"
                               disabled={!canManageTeam}
                               onSelect={(e) => {
                                 if (!canManageTeam) {

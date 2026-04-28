@@ -12,9 +12,9 @@ import {
 import { MODULES, type Difficulty, type Module } from "@/lib/learn-academy-data";
 
 const DIFFICULTY_STYLES: Record<Difficulty, string> = {
-  Beginner: "bg-[#C6EBFF] text-text-2",
-  Intermediate: "bg-[#FFE4BA] text-text-3",
-  Advanced: "bg-[#FDCDC5] text-text-2",
+  Beginner: "bg-primary-1 text-primary-7",
+  Intermediate: "bg-warning-1 text-warning-6",
+  Advanced: "bg-danger-1 text-danger-6",
 };
 
 interface Stat {
@@ -86,7 +86,7 @@ function ModuleCard({ module: m }: { module: Module }) {
       className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-[#EBF8FF]">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-primary-1">
           <Icon className="h-6 w-6 text-primary-6" strokeWidth={2} />
         </div>
         <span
