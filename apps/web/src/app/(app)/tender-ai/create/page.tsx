@@ -145,7 +145,7 @@ function DesktopStepper({ active }: { active: number }) {
 
 function MobileStepper({ active }: { active: number }) {
   return (
-    <nav className="flex items-center gap-0 border border-[#E0E0E6] bg-bg-white px-4 py-3 lg:hidden">
+    <nav className="flex items-center gap-0 border border-border-2 bg-bg-white px-4 py-3 lg:hidden">
       {STEPS.map((s, i) => {
         const done = i < active;
         const current = i === active;
@@ -293,7 +293,7 @@ function BasicInfoStep({
       </div>
 
       {/* Timeline & Budget */}
-      <div className="flex flex-col gap-4 border-t border-[#F2F3F5] pt-4">
+      <div className="flex flex-col gap-4 border-t border-border-2 pt-4">
         <div className="flex items-center gap-2">
           <span className="h-5 w-1 rounded-full bg-primary-6" />
           <span className="text-[18px] font-bold leading-[1.3] text-text-1">Timeline &amp; Budget</span>
@@ -588,7 +588,7 @@ function TeamStep({
                   onClick={() => toggle(m.id)}
                   className={`cursor-pointer rounded px-3 py-1 text-[12px] font-medium transition-colors ${
                     isAdded
-                      ? "bg-[#E8FFEA] text-[#009A29]"
+                      ? "bg-success-1 text-success-7"
                       : "bg-bg-1 text-text-2 hover:bg-primary-6/10 hover:text-primary-6"
                   }`}
                 >
@@ -782,7 +782,7 @@ function ReviewStep({
           >
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#EBF8FF]">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-1">
                   <FileText className="h-4 w-4 text-primary-6" />
                 </span>
                 <div>
@@ -817,7 +817,7 @@ function ReviewStep({
       </div>
 
       {/* AI Analysis banner */}
-      <div className="flex items-start gap-3 rounded-lg border border-[#33AFF3]/30 bg-[#EBF8FF] p-4">
+      <div className="flex items-start gap-3 rounded-lg border border-primary-5/30 bg-primary-1 p-4">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-6/10">
           <Sparkles className="h-4 w-4 text-primary-6" />
         </span>

@@ -140,28 +140,28 @@ const TENDER_DETAIL: TenderDetail = {
   documents: [
     {
       badge: "PDF",
-      badgeColor: "bg-[#FFECE8] text-[#F53F3F]",
+      badgeColor: "bg-danger-1 text-danger-6",
       name: "RFP_FAA_Cloud_Migration_2026.pdf",
       size: "2.4 MB",
       date: "Feb 15, 2026",
     },
     {
       badge: "DOC",
-      badgeColor: "bg-[#EBF8FF] text-[#0369A1]",
+      badgeColor: "bg-primary-1 text-primary-7",
       name: "Technical_Proposal_Draft_v3.docx",
       size: "1.8 MB",
       date: "Mar 10, 2026",
     },
     {
       badge: "PDF",
-      badgeColor: "bg-[#FFECE8] text-[#F53F3F]",
+      badgeColor: "bg-danger-1 text-danger-6",
       name: "Team_Certifications.pdf",
       size: "3.1 MB",
       date: "Mar 05, 2026",
     },
     {
       badge: "XLS",
-      badgeColor: "bg-[#E8FFEA] text-[#009A29]",
+      badgeColor: "bg-success-1 text-success-7",
       name: "Cost_Breakdown_Analysis.xlsx",
       size: "524 KB",
       date: "Mar 08, 2026",
@@ -210,9 +210,9 @@ const REQ_STATUS_STYLES: Record<
   ReqStatus,
   { badge: string; label: string }
 > = {
-  met: { badge: "bg-[#E8FFEA] text-[#009A29]", label: "Met" },
-  partial: { badge: "bg-[#FFF7E8] text-[#D25F00]", label: "Partial" },
-  gap: { badge: "bg-[#FFECE8] text-[#F53F3F]", label: "Gap" },
+  met: { badge: "bg-success-1 text-success-7", label: "Met" },
+  partial: { badge: "bg-warning-1 text-warning-6", label: "Partial" },
+  gap: { badge: "bg-danger-1 text-danger-6", label: "Gap" },
 };
 
 type ReqFilter = "all" | ReqStatus;
@@ -376,15 +376,15 @@ export default function TenderDetailPage({
               </span>
               <div className="mt-1 flex flex-wrap items-center gap-4 text-[13px]">
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#00B42A]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-success-7" />
                   {tender.met} Met
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#D25F00]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-warning-6" />
                   {tender.partial} Partial
                 </span>
                 <span className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-2.5 rounded-full bg-[#F53F3F]" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-danger-6" />
                   {tender.gaps} Gaps
                 </span>
               </div>
@@ -450,7 +450,7 @@ export default function TenderDetailPage({
               Requirement Match
             </h2>
             {/* Filter tabs */}
-            <div className="flex items-center gap-1 rounded-lg bg-[#F2F3F5] p-1">
+            <div className="flex items-center gap-1 rounded-lg bg-bg-1 p-1">
               {filterTabs.map((tab) => (
                 <button
                   key={tab.value}
@@ -473,7 +473,7 @@ export default function TenderDetailPage({
                 return (
                   <div
                     key={req.code}
-                    className="flex flex-col gap-3 rounded-lg border border-[#F2F3F5] p-4"
+                    className="flex flex-col gap-3 rounded-lg border border-border-2 p-4"
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-[12px] text-text-3">
@@ -511,7 +511,7 @@ export default function TenderDetailPage({
               {tender.documents.map((doc) => (
                 <div
                   key={doc.name}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#F2F3F5] p-3 transition-colors hover:bg-bg-1"
+                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-border-2 p-3 transition-colors hover:bg-bg-1"
                 >
                   <span
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-[11px] font-bold ${doc.badgeColor}`}
@@ -561,9 +561,9 @@ export default function TenderDetailPage({
 
         {/* Right column — AI Tips */}
         <aside className="w-full shrink-0 xl:w-[374px]">
-          <div className="sticky top-24 flex flex-col gap-4 rounded-lg border border-[#F2F3F5] bg-bg-white p-5 shadow-[0_1px_2px_-1px_rgba(0,0,0,0.1),_0_1px_3px_0_rgba(0,0,0,0.1)] xl:bg-bg-white">
+          <div className="sticky top-24 flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-5 shadow-[0_1px_2px_-1px_rgba(0,0,0,0.1),_0_1px_3px_0_rgba(0,0,0,0.1)] xl:bg-bg-white">
             <div className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#33AFF3]" />
+              <span className="h-2.5 w-2.5 rounded-full bg-primary-5" />
               <h2 className="text-[18px] font-bold text-text-1">
                 AI-Generated Action Tips
               </h2>
@@ -582,13 +582,13 @@ export default function TenderDetailPage({
                     <span
                       className={`inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
                         isHigh
-                          ? "bg-[#FFECE8] text-[#CB272D]"
-                          : "bg-[#FFF7E8] text-[#D25F00]"
+                          ? "bg-danger-1 text-danger-6"
+                          : "bg-warning-1 text-warning-6"
                       }`}
                     >
                       <span
                         className={`h-1.5 w-1.5 rounded-full ${
-                          isHigh ? "bg-[#CB272D]" : "bg-[#FF9A2E]"
+                          isHigh ? "bg-danger-6" : "bg-warning-5"
                         }`}
                       />
                       {tip.priority} Priority
