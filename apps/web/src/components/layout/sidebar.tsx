@@ -63,6 +63,14 @@ export const SidebarContent = ({
       ? "Switch to light mode"
       : "Switch to dark mode"
     : "Toggle theme";
+  // Visible button text mirrors the action: in dark mode the click goes to
+  // light, so the label reads "Light Mode". Falls back to a neutral label
+  // until mounted so SSR/CSR don't disagree.
+  const themeButtonText = mounted
+    ? isDark
+      ? "Light Mode"
+      : "Dark Mode"
+    : "Light / Dark";
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const activeClass = "text-text-1 hover:text-text-1";
@@ -260,7 +268,7 @@ export const SidebarContent = ({
             className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
           >
             <ThemeIcon className="size-5 shrink-0 text-text-3" />
-            <span>Light / Dark</span>
+            <span>{themeButtonText}</span>
           </Button>
         )}
         <div
