@@ -775,7 +775,12 @@ function ObservabilityAppbarSlot() {
           );
         }}
       >
-        <SelectTrigger className="h-10 w-[180px] rounded-md border-border-2 bg-bg-white text-sm">
+        <SelectTrigger
+          // 24 px tall per Figma — !h-6 wins over the SelectTrigger's
+          // baked-in data-[size=default]:h-9. Tighter padding + smaller
+          // text/icon so the chevron and label still breathe.
+          className="!h-6 w-[180px] gap-1 rounded-md border-border-2 bg-bg-white px-2 text-[12px] [&_svg:not([class*='size-'])]:size-3"
+        >
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -791,9 +796,9 @@ function ObservabilityAppbarSlot() {
         onClick={() =>
           window.dispatchEvent(new CustomEvent("observability:export"))
         }
-        className="shrink-0 cursor-pointer gap-2 border-border-2 bg-bg-white"
+        className="h-6 shrink-0 cursor-pointer gap-1 rounded-md border-border-2 bg-bg-white px-2 text-[12px] [&_svg:not([class*='size-'])]:size-3"
       >
-        <Download className="h-4 w-4" />
+        <Download className="h-3 w-3" />
         Export CSV
       </Button>
     </>
