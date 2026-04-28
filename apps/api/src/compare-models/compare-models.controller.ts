@@ -152,6 +152,11 @@ export class CompareModelsController {
       throw new BadRequestException('`question` is required.');
     }
 
+    if (body.expectedOutput !== undefined && typeof body.expectedOutput !== 'string') {
+      throw new BadRequestException('`expectedOutput` must be a string when provided.');
+    }
+    body.expectedOutput = body.expectedOutput ?? '';
+
     let apiKey: string;
     try {
       apiKey = await this.keyResolverService.resolveUserKey(user.id);
