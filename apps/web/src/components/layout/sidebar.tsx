@@ -262,7 +262,7 @@ export const SidebarContent = ({
           <Link
             href="/account"
             title="My account"
-            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-white ${collapsed ? "p-0" : "flex-1 p-1"}`}
+            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent ${collapsed ? "p-0" : "flex-1 p-1"}`}
           >
             <Avatar
               className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
@@ -308,7 +308,7 @@ export const SidebarContent = ({
           {!collapsed && (
             <button
               onClick={() => logout()}
-              className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-white hover:text-text-2"
+              className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-accent hover:text-text-2"
               title="Sign out"
             >
               <LogOut className="h-4 w-4" />
