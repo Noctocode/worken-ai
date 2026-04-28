@@ -683,7 +683,7 @@ export const Appbar = () => {
       </div>
 
       {/* Right Header Controls */}
-      <div className={`flex items-center ${config.appbarType === "observability" ? "gap-5" : "gap-3"} ${config.appbarExpandControls ? "flex-1" : ""}`}>
+      <div className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}>
         {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
 
         {config.appbarSearch && (
@@ -777,11 +777,12 @@ function ObservabilityAppbarSlot() {
         }}
       >
         <SelectTrigger
-          // Match Figma frame 116:3963 exactly: 16/24 px padding, 8 px radius,
-          // gap 10 px, 16 px Regular text on a white card with --border-2 ring.
-          // !h-auto neutralises the data-[size=default]:h-9 baked into the
-          // primitive so padding alone drives the height.
-          className="!h-auto gap-2.5 rounded-lg border-border-2 bg-bg-white px-6 py-4 text-[16px] text-text-1 [&_svg:not([class*='size-'])]:size-4"
+          // Sized to match the project's other appbar action buttons
+          // (Add Guardrail / New Comparison): shadcn default h-9 + px-4
+          // for visual unity. Figma frame 116:3963's literal 16/24 padding
+          // and 16 px text rendered ~14 px taller than every other appbar
+          // chip — visually inconsistent.
+          className="h-9 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm text-text-1"
         >
           <Calendar className="h-4 w-4 shrink-0" />
           <span className="flex-1 text-left">
@@ -802,7 +803,7 @@ function ObservabilityAppbarSlot() {
         onClick={() =>
           window.dispatchEvent(new CustomEvent("observability:export"))
         }
-        className="!h-auto shrink-0 cursor-pointer gap-2.5 rounded-lg border-border-2 bg-bg-white px-6 py-4 text-[16px] font-normal text-text-1 [&_svg:not([class*='size-'])]:size-4"
+        className="shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white text-text-1"
       >
         <Download className="h-4 w-4" />
         Export CSV
