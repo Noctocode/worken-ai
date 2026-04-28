@@ -783,9 +783,23 @@ function ObservabilityAppbarSlot() {
           <Calendar className="h-4 w-4 shrink-0" />
           <SelectValue />
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent
+          // Right-align under the trigger (sits at the appbar's right
+          // edge) and use popper positioning so the menu drops cleanly
+          // below instead of overlapping. Match the trigger's rounded-lg
+          // + bg/border tokens so the open state looks like an extension
+          // of the chip rather than a generic popover.
+          position="popper"
+          align="end"
+          sideOffset={6}
+          className="min-w-[var(--radix-select-trigger-width)] rounded-lg border-border-2 bg-bg-white p-1 shadow-md"
+        >
           {OBSERVABILITY_RANGES.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
+            <SelectItem
+              key={opt.value}
+              value={opt.value}
+              className="rounded-md px-3 py-2 text-sm text-text-1"
+            >
               {opt.label}
             </SelectItem>
           ))}
