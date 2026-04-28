@@ -64,9 +64,9 @@ export function UserRow({ user }: { user: OrgUser }) {
   const overBudget = projected > budget;
 
   return (
-    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-slate-50/50">
+    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
       {/* Name */}
-      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         <div className="flex items-center gap-2">
           {user.picture && user.picture.length > 0 ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -76,7 +76,7 @@ export function UserRow({ user }: { user: OrgUser }) {
               className="h-7 w-7 shrink-0 rounded-full object-cover"
             />
           ) : (
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-500">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-bg-2 text-[11px] font-semibold text-text-3">
               {(user.name ?? user.email).charAt(0).toUpperCase()}
             </div>
           )}
@@ -84,14 +84,14 @@ export function UserRow({ user }: { user: OrgUser }) {
         </div>
       </td>
       {/* Email */}
-      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         {user.email}
       </td>
       {/* Role */}
       <td className="px-4 align-middle whitespace-nowrap">
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
           user.role === "admin"
-            ? "bg-[#FFECE8] text-danger-6"
+            ? "bg-danger-1 text-danger-6"
             : user.role === "advanced"
               ? "bg-primary-1 text-primary-7"
               : "bg-bg-3 text-text-2"
@@ -103,8 +103,8 @@ export function UserRow({ user }: { user: OrgUser }) {
       <td className="px-4 align-middle whitespace-nowrap">
         <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
           user.inviteStatus === "pending"
-            ? "bg-[#FFF3E6] text-[#FF7D00]"
-            : "bg-[#E8FFEA] text-[#009A29]"
+            ? "bg-warning-1 text-warning-6"
+            : "bg-success-1 text-success-7"
         }`}>
           {user.inviteStatus === "pending" ? "Pending" : "Active"}
         </span>
@@ -116,25 +116,25 @@ export function UserRow({ user }: { user: OrgUser }) {
             user.teams.map((t) => (
               <span
                 key={t}
-                className="rounded-sm bg-slate-100 px-1.5 py-0.5 text-[12px] text-slate-600 whitespace-nowrap"
+                className="rounded-sm bg-bg-2 px-1.5 py-0.5 text-[12px] text-text-2 whitespace-nowrap"
               >
                 {t}
               </span>
             ))
           ) : (
-            <span className="text-slate-400">—</span>
+            <span className="text-text-3">—</span>
           )}
         </div>
       </td>
       {/* Personal Monthly Budget */}
-      <td className="px-4 align-middle text-base font-normal text-black whitespace-nowrap">
+      <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         {budget > 0 ? formatCurrency(budget) : "—"}
       </td>
       {/* Spent / Remaining */}
       <td className="w-[1%] px-4 align-middle whitespace-nowrap">
         {budget > 0 ? (
           <div className="flex items-center gap-3">
-            <span className="text-sm leading-tight text-black">
+            <span className="text-sm leading-tight text-text-1">
               {formatCurrency(spent)} /{" "}
               {remaining < 0 ? (
                 <span className="text-danger-5">{formatCurrency(remaining)}</span>
@@ -153,7 +153,7 @@ export function UserRow({ user }: { user: OrgUser }) {
       {/* Projected */}
       <td className="px-4 align-middle whitespace-nowrap">
         <div className="flex items-center gap-1.5">
-          <span className="text-sm text-black">{formatCurrency(projected)}</span>
+          <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
           {overBudget ? (
             <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
               Over Budget
@@ -172,7 +172,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-slate-400 hover:text-slate-600"
+              className="h-7 w-7 text-text-3 hover:text-text-1"
             >
               <MoreVertical className="h-4 w-4" />
             </Button>
@@ -189,7 +189,7 @@ export function UserRow({ user }: { user: OrgUser }) {
               reason="Only admins can remove users"
             >
               <DropdownMenuItem
-                className="gap-2 text-red-600 focus:text-red-600"
+                className="gap-2 text-danger-6 focus:text-danger-6"
                 disabled={!canRemove || removeMutation.isPending}
                 onSelect={(e) => {
                   e.preventDefault();

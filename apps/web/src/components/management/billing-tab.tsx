@@ -155,7 +155,7 @@ const TOKEN_USAGE = [1100000, 1350000, 1550000, 2050000];
 
 function CurrentPlanCard() {
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="text-[16px] font-bold text-text-heading leading-[24px]">Current Plan</h3>
@@ -206,8 +206,8 @@ function PlanCard({
       onClick={onSelect}
       className={`relative flex flex-col rounded-lg border p-5 text-left transition-all cursor-pointer ${
         selected
-          ? "border-primary-8 bg-white ring-1 ring-primary-8"
-          : "border-bg-3 bg-white hover:border-border-5"
+          ? "border-primary-8 bg-bg-white ring-1 ring-primary-8"
+          : "border-bg-3 bg-bg-white hover:border-border-5"
       }`}
     >
       {selected && (
@@ -257,7 +257,7 @@ function TokenUsageChart() {
   const areaPoints = `0,1000 ${svgPoints} 1000,1000`;
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Token Usage & Cost Trends</h3>
 
       <div className="flex">
@@ -324,7 +324,7 @@ function CostByTeamChart() {
   const barValues = [185, 124, 89, 62];
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Cost by Team</h3>
 
       <div className="flex">
@@ -386,12 +386,12 @@ function BudgetControls() {
   const [budgetCap, setBudgetCap] = useState("10000");
 
   return (
-    <div className="rounded-lg border border-bg-1 bg-white p-4 sm:p-6">
+    <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Budget Controls</h3>
 
       <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">Monthly Budget Cap</p>
 
-      <div className="flex items-center rounded-lg border border-border-6 bg-white px-3 py-2.5 mb-2">
+      <div className="flex items-center rounded-lg border border-border-6 bg-bg-white px-3 py-2.5 mb-2">
         <span className="text-[13px] text-text-4 mr-2">$</span>
         <input
           type="text"
@@ -436,7 +436,7 @@ function BudgetControls() {
 
 function InvoiceHistoryTable() {
   return (
-    <div className="rounded-lg border border-bg-1 bg-white overflow-hidden">
+    <div className="rounded-lg border border-bg-1 bg-bg-white overflow-hidden">
       <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-4 sm:px-6 pt-5 pb-3">Invoice History</h3>
 
       <div className="overflow-x-auto">
@@ -451,7 +451,7 @@ function InvoiceHistoryTable() {
           </thead>
           <tbody>
             {INVOICES.map((inv) => (
-              <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-slate-50/50">
+              <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-bg-1/50">
                 <td className="px-4 sm:px-6 font-mono text-[13px] font-medium text-text-heading leading-[19.5px]">{inv.invoiceId}</td>
                 <td className="px-4 sm:px-6">
                   <div className="flex items-center gap-2">
