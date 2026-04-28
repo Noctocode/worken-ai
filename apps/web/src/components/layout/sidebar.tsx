@@ -12,11 +12,14 @@ import {
   Moon,
   Plus,
   Shield,
+  Sun,
   Users,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -47,6 +50,20 @@ export const SidebarContent = ({
   const pathname = usePathname();
   const { collapsed: providerCollapsed, toggle } = useSidebar();
   const collapsed = forceCollapsed || providerCollapsed;
+
+  // next-themes is client-only — guard against SSR/hydration mismatch by
+  // rendering a neutral icon until mounted, then swap to the live theme.
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const isDark = mounted && resolvedTheme === "dark";
+  const ThemeIcon = isDark ? Sun : Moon;
+  const themeLabel = mounted
+    ? isDark
+      ? "Switch to light mode"
+      : "Switch to dark mode"
+    : "Toggle theme";
+  const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const activeClass = "text-text-1 hover:text-text-1";
   const activeIconClass = "text-primary-6";
@@ -217,31 +234,27 @@ export const SidebarContent = ({
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
         {/* Dark mode toggle */}
         {collapsed ? (
-          <DisabledReasonTooltip disabled reason="Coming Soon">
-            <Button
-              variant="ghost"
-              className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-            >
-              <Moon className="h-5 w-5 text-text-3" />
-            </Button>
-          </DisabledReasonTooltip>
-        ) : (
-          <DisabledReasonTooltip
-            disabled
-            reason="Coming Soon"
-            className="w-full"
+          <Button
+            variant="ghost"
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}
+            className="h-[40px] w-[40px] cursor-pointer p-0 justify-center text-text-2 hover:text-text-1"
           >
-            <Button
-              variant="ghost"
-              size="nav"
-              className="w-full justify-start gap-3 font-normal text-text-2 hover:text-text-1 disabled:opacity-50 disabled:cursor-not-allowed"
-              disabled
-            >
-              <Moon className="size-5 shrink-0 text-text-3" />
-              <span>Light / Dark</span>
-            </Button>
-          </DisabledReasonTooltip>
+            <ThemeIcon className="h-5 w-5 text-text-3" />
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="nav"
+            onClick={toggleTheme}
+            aria-label={themeLabel}
+            title={themeLabel}
+            className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
+          >
+            <ThemeIcon className="size-5 shrink-0 text-text-3" />
+            <span>Light / Dark</span>
+          </Button>
         )}
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
