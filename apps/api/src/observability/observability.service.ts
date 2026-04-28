@@ -82,6 +82,30 @@ export class ObservabilityService {
    * none (personal use). Per-call: cached one query per request, but we
    * keep it simple and let callers cache across a request if needed.
    */
+  /**
+   * Returns true if the user has an accepted membership in the given team.
+   * Used by callers that accept an explicit teamId override (e.g. the
+   * compare-models composer) to validate before attaching it to events.
+   */
+  async isUserInTeam(userId: string, teamId: string): Promise<boolean> {
+    try {
+      const [row] = await this.db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.teamId, teamId),
+            eq(teamMembers.status, 'accepted'),
+          ),
+        )
+        .limit(1);
+      return Boolean(row);
+    } catch {
+      return false;
+    }
+  }
+
   async getPrimaryTeamId(userId: string): Promise<string | null> {
     try {
       const [row] = await this.db

@@ -846,11 +846,20 @@ export async function sendQuestionToCompareModels(
   question: string,
   expectedOutput: string,
   context?: string,
+  teamId?: string | null,
 ): Promise<CompareModelsApiResult> {
   const res = await apiFetch(`/compare-models`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ models, question, expectedOutput, context }),
+    body: JSON.stringify({
+      models,
+      question,
+      expectedOutput,
+      context,
+      // Sentinel "personal" tells the server to skip the team fallback
+      // and tag events as Personal. Undefined uses the user's primary.
+      ...(teamId !== undefined ? { teamId: teamId ?? "personal" } : {}),
+    }),
   });
   if (!res.ok) {
     const body = await res.text();

@@ -10,6 +10,15 @@ interface ChatMessage {
 interface ChatResponse {
   content: string;
   reasoning_details?: unknown;
+  totalTokens?: number;
+  totalCost?: number;
+}
+
+// OpenRouter returns a `cost` field on usage that the OpenAI types don't
+// model; we read it through this loose shape.
+interface OpenRouterUsage {
+  cost?: number;
+  total_tokens?: number;
 }
 
 @Injectable()
@@ -63,11 +72,15 @@ export class ChatService {
     };
     const response = completion.choices[0].message as ORChatMessage;
 
+    const usage = completion.usage as OpenRouterUsage | undefined;
+
     return {
       content: response.content || '',
       ...(response.reasoning_details
         ? { reasoning_details: response.reasoning_details }
         : {}),
+      totalTokens: usage?.total_tokens,
+      totalCost: usage?.cost,
     };
   }
 }

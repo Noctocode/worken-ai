@@ -8,12 +8,21 @@ import { randomUUID } from 'crypto';
 import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ObservabilityService } from '../observability/observability.service.js';
+
+interface OpenRouterUsage {
+  cost?: number;
+  total_tokens?: number;
+}
 
 @Injectable()
 export class DocumentsService {
   private embedder: FeatureExtractionPipeline | null = null;
 
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly observabilityService: ObservabilityService,
+  ) {}
 
   private makeClient(apiKey?: string): OpenAI {
     return new OpenAI({
@@ -74,11 +83,17 @@ export class DocumentsService {
     return results;
   }
 
-  private async generateTitle(text: string, apiKey?: string): Promise<string> {
+  private async generateTitle(
+    text: string,
+    apiKey?: string,
+    callerUserId?: string,
+  ): Promise<string> {
     const snippet = text.slice(0, 500);
+    const TITLE_MODEL = 'arcee-ai/trinity-large-preview:free';
+    const start = Date.now();
     try {
       const response = await this.makeClient(apiKey).chat.completions.create({
-        model: 'arcee-ai/trinity-large-preview:free',
+        model: TITLE_MODEL,
         messages: [
           {
             role: 'user',
@@ -87,21 +102,56 @@ export class DocumentsService {
         ],
         max_completion_tokens: 20,
       });
+      if (callerUserId) {
+        const usage = response.usage as OpenRouterUsage | undefined;
+        const teamId =
+          await this.observabilityService.getPrimaryTeamId(callerUserId);
+        void this.observabilityService.recordLLMCall({
+          userId: callerUserId,
+          teamId,
+          eventType: 'document_title',
+          model: TITLE_MODEL,
+          totalTokens: usage?.total_tokens,
+          costUsd: usage?.cost,
+          latencyMs: Date.now() - start,
+          success: true,
+          metadata: { phase: 'title-generation' },
+        });
+      }
       return (
         response.choices[0]?.message?.content?.trim() || 'Untitled Document'
       );
-    } catch {
+    } catch (err) {
+      if (callerUserId) {
+        const teamId =
+          await this.observabilityService.getPrimaryTeamId(callerUserId);
+        void this.observabilityService.recordLLMCall({
+          userId: callerUserId,
+          teamId,
+          eventType: 'document_title',
+          model: TITLE_MODEL,
+          latencyMs: Date.now() - start,
+          success: false,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          metadata: { phase: 'title-generation' },
+        });
+      }
       return 'Untitled Document';
     }
   }
 
-  async create(projectId: string, content: string, apiKey?: string) {
+  async create(
+    projectId: string,
+    content: string,
+    apiKey?: string,
+    callerUserId?: string,
+  ) {
     const chunks = this.chunkText(content);
     if (chunks.length === 0) return [];
 
     const [embeddings, title] = await Promise.all([
       this.embed(chunks),
-      this.generateTitle(content, apiKey),
+      this.generateTitle(content, apiKey, callerUserId),
     ]);
 
     const groupId = randomUUID();

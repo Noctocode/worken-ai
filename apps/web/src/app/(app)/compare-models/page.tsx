@@ -51,16 +51,25 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
   fetchPrompts,
   fetchShortcuts,
+  fetchTeams,
   parseArenaAttachment,
   sendQuestionToCompareModels,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
+  type TeamListItem,
 } from "@/lib/api";
 import { humanizeArenaError } from "@/lib/arena-errors";
 import { MODELS } from "@/lib/models";
@@ -175,6 +184,10 @@ export default function CompareModelsPage() {
     { name: string; content: string } | null
   >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
+  const [teamsList, setTeamsList] = useState<TeamListItem[]>([]);
+  // Sentinels: "default" → let server pick the user's primary team;
+  // "personal" → explicit no-team scope. Anything else is a team UUID.
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("default");
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -218,6 +231,15 @@ export default function CompareModelsPage() {
           err instanceof Error ? err.message : "Couldn't load history.";
         toast.error(message);
       });
+    // Teams list for the picker. Failure is non-fatal — the page still works
+    // without a picker; events just default to the user's primary team.
+    fetchTeams()
+      .then((rows) => {
+        if (!cancelled) setTeamsList(rows);
+      })
+      .catch(() => {
+        /* swallow — picker just stays empty */
+      });
     return () => {
       cancelled = true;
     };
@@ -245,11 +267,21 @@ export default function CompareModelsPage() {
     const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
     try {
+      // teamId sentinel: "default" → server picks user's primary team
+      // (matches getPrimaryTeamId), "personal" → explicit Personal scope,
+      // anything else → that team UUID.
+      const teamIdForCall =
+        selectedTeamId === "default"
+          ? undefined
+          : selectedTeamId === "personal"
+            ? null
+            : selectedTeamId;
       const result = await sendQuestionToCompareModels(
         activeModels,
         question,
         expectedOutput,
         context,
+        teamIdForCall,
       );
 
       const nextResponses: Record<string, string | null> = {};
@@ -444,6 +476,9 @@ export default function CompareModelsPage() {
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
+            teams={teamsList}
+            selectedTeamId={selectedTeamId}
+            onSelectTeam={setSelectedTeamId}
           />
         ) : (
           <button
@@ -1142,6 +1177,9 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
+  teams,
+  selectedTeamId,
+  onSelectTeam,
 }: {
   selectedModels: string[];
   disabledModels: Set<string>;
@@ -1157,6 +1195,9 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
+  teams: TeamListItem[];
+  selectedTeamId: string;
+  onSelectTeam: (id: string) => void;
 }) {
   const canRemove = selectedModels.length > MIN_MODELS;
   const allModelIds = useMemo(() => MODELS.map((m) => m.id), []);
@@ -1218,6 +1259,34 @@ function RightRail({
           Add Model
         </button>
       </RailSection>
+
+      {/* Team context — only render the picker when the user actually
+          belongs to ≥1 team. Solo users keep their composer clean and
+          their events default to Personal scope server-side. */}
+      {teams.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <span className="text-[16px] font-medium leading-[1.3] text-text-1">
+            Team Context
+          </span>
+          <Select value={selectedTeamId} onValueChange={onSelectTeam}>
+            <SelectTrigger className="h-10 rounded-md border-border-2 text-[13px]">
+              <SelectValue placeholder="Default (your primary team)" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Default (primary team)</SelectItem>
+              <SelectItem value="personal">Personal (no team)</SelectItem>
+              {teams.map((t) => (
+                <SelectItem key={t.id} value={t.id}>
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-text-3">
+            Tags this run&apos;s usage in the Observability dashboard.
+          </p>
+        </section>
+      )}
 
       {/* History section */}
       <RailSection

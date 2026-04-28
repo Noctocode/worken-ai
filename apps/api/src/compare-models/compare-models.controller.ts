@@ -44,6 +44,8 @@ interface CompareModelsRequestBody {
   question: string;
   expectedOutput: string;
   context?: string;
+  /** Optional. If omitted, server falls back to the user's primary team. */
+  teamId?: string | null;
 }
 
 interface ModelResponse {
@@ -168,10 +170,27 @@ export class CompareModelsController {
       throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
     }
 
-    // Resolve once per request — observability events get tagged with the
-    // user's primary team so the dashboard's team-analytics rollup is
-    // populated. NULL means personal use (user has no accepted memberships).
-    const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+    // Resolve once per request — observability events get tagged with a
+    // team so the dashboard's team-analytics rollup is populated.
+    //   - If the body carries an explicit teamId, validate membership.
+    //     Reject foreign teams instead of silently dropping; the user
+    //     consciously picked a team they don't belong to.
+    //   - "personal" / null / "" / "null" all mean Personal scope.
+    //   - Otherwise fall back to the user's primary team.
+    let teamId: string | null;
+    const requested = (body.teamId ?? '').trim();
+    if (requested && requested !== 'personal' && requested !== 'null') {
+      if (!(await this.observabilityService.isUserInTeam(user.id, requested))) {
+        throw new BadRequestException(
+          'You are not a member of the selected team.',
+        );
+      }
+      teamId = requested;
+    } else if (requested === 'personal' || requested === 'null') {
+      teamId = null;
+    } else {
+      teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+    }
 
     let responses: ModelResponse[];
     try {
