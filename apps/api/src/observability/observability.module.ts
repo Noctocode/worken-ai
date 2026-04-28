@@ -1,4 +1,5 @@
 import { Global, Module } from '@nestjs/common';
+import { ObservabilityController } from './observability.controller.js';
 import { ObservabilityService } from './observability.service.js';
 
 /**
@@ -7,6 +8,7 @@ import { ObservabilityService } from './observability.service.js';
  */
 @Global()
 @Module({
+  controllers: [ObservabilityController],
   providers: [ObservabilityService],
   exports: [ObservabilityService],
 })
