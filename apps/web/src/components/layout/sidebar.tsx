@@ -52,7 +52,8 @@ export const SidebarContent = ({
   const collapsed = forceCollapsed || providerCollapsed;
 
   // next-themes is client-only — guard against SSR/hydration mismatch by
-  // rendering a neutral icon until mounted, then swap to the live theme.
+  // rendering a stable fallback (Moon icon, "Light / Dark" label) until
+  // mounted, then swap to the live theme.
   const { resolvedTheme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
