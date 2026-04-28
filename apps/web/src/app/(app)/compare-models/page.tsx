@@ -133,9 +133,9 @@ function getModelTone(id: string): string {
 }
 
 function scoreBadgeTone(score: number): string {
-  if (score >= 8) return "bg-[#E8F7EE] text-[#009A29]";
-  if (score >= 5) return "bg-[#FFF3E6] text-[#FF7D00]";
-  return "bg-[#FDEDED] text-[#D92D20]";
+  if (score >= 8) return "bg-success-1 text-success-7";
+  if (score >= 5) return "bg-warning-1 text-warning-6";
+  return "bg-danger-1 text-danger-6";
 }
 
 const MIN_MODELS = 2;
@@ -735,7 +735,7 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
           Advantages
         </p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#009A29]">
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-success-7">
           {evaluation.advantages.map((a, i) => (
             <li key={i}>{a}</li>
           ))}
@@ -745,7 +745,7 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
           Disadvantages
         </p>
-        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-[#D92D20]">
+        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-danger-6">
           {evaluation.disadvantages.map((d, i) => (
             <li key={i}>{d}</li>
           ))}
@@ -955,7 +955,7 @@ function Composer({
   return (
     <form
       onSubmit={onSubmit}
-      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-[#E5E6EB] p-2"
+      className="flex w-full flex-col gap-2.5 rounded-[16px] bg-bg-3 p-2"
     >
       <input
         ref={fileInputRef}
@@ -971,7 +971,7 @@ function Composer({
         onChange={handleImageChange}
         className="hidden"
       />
-      <div className="flex flex-col rounded-[16px] border border-[#86909C] bg-bg-white">
+      <div className="flex flex-col rounded-[16px] border border-border-4 bg-bg-white">
         {/* Input row */}
         <div className="flex items-start gap-2.5 px-4 py-3">
           <Image
@@ -1116,7 +1116,7 @@ function ComposerChip({
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+      className="inline-flex h-8 items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
       title={onClick ? label : "Coming soon"}
     >
       <Icon className="h-4 w-4" />
@@ -1248,7 +1248,7 @@ function RightRail({
                       <button
                         type="button"
                         onClick={() => onDeleteHistory(h.id)}
-                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 transition-colors hover:bg-bg-1 hover:text-[#D92D20]"
+                        className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 transition-colors hover:bg-bg-1 hover:text-danger-6"
                         title="Delete this comparison"
                         aria-label="Delete this comparison"
                       >
@@ -1412,7 +1412,7 @@ function ModelPill({
                   e.preventDefault();
                   onRemove();
                 }}
-                className="text-[#D92D20] focus:text-[#D92D20]"
+                className="text-danger-6 focus:text-danger-6"
               >
                 Remove from comparison
               </DropdownMenuItem>
@@ -1747,7 +1747,7 @@ function PromptLibraryDialog({
                   {(p.category || p.tags.length > 0) && (
                     <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                       {p.category && (
-                        <span className="rounded bg-[#EBF8FF] px-2 py-0.5 text-[10px] font-medium text-text-2">
+                        <span className="rounded bg-primary-1 px-2 py-0.5 text-[10px] font-medium text-text-2">
                           {p.category}
                         </span>
                       )}
@@ -1826,7 +1826,7 @@ function ShortcutsPopover({
         <button
           type="button"
           disabled={disabled}
-          className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-[#E5E6EB] bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
           title="Insert a saved shortcut"
         >
           <LayoutGrid className="h-4 w-4" />
