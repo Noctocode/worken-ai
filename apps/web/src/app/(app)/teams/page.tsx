@@ -21,7 +21,6 @@ import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
 import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
-import { CatalogTab } from "@/components/management/catalog-tab";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
@@ -90,9 +89,6 @@ export default function TeamsPage() {
         <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
         <PageTabsTrigger value="models">Models</PageTabsTrigger>
-        {user?.role === "admin" && (
-          <PageTabsTrigger value="catalog">Catalog</PageTabsTrigger>
-        )}
         <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
         <PageTabsTrigger value="company">Company</PageTabsTrigger>
         <PageTabsTrigger value="api">API</PageTabsTrigger>
@@ -377,13 +373,6 @@ export default function TeamsPage() {
           </table>
         </div>
       </PageTabsContent>
-
-      {/* ── Catalog (admin-only) ─────────────────────────────────────────────── */}
-      {user?.role === "admin" && (
-        <PageTabsContent value="catalog">
-          <CatalogTab />
-        </PageTabsContent>
-      )}
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
       <PageTabsContent value="my-account">

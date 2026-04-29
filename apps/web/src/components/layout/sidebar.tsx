@@ -8,12 +8,14 @@ import {
   Database,
   FolderOpen,
   Layers,
+  Layers3,
   LogOut,
   MessageSquare,
   Moon,
   Plus,
   Shield,
   Sun,
+  User as UserIcon,
   Users,
 } from "lucide-react";
 import Image from "next/image";
@@ -26,6 +28,12 @@ import { useAuth } from "@/components/providers";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
@@ -275,52 +283,72 @@ export const SidebarContent = ({
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >
-          <Link
-            href="/account"
-            title="My account"
-            className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent ${collapsed ? "" : "flex-1"}`}
-          >
-            <Avatar
-              className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
-            >
-              <AvatarImage
-                src={user?.picture || "/default-avatar.png"}
-                alt={user?.name ?? ""}
-              />
-              <AvatarFallback
-                className={
-                  collapsed
-                    ? "text-xs font-medium text-text-1"
-                    : "bg-primary-1 text-xs font-medium text-primary-6"
-                }
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                title="Open user menu"
+                className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent cursor-pointer ${collapsed ? "" : "flex-1"}`}
               >
-                {getInitials(user?.name)}
-              </AvatarFallback>
-            </Avatar>
-            {!collapsed && (
-              <div className="flex-1 overflow-hidden">
-                <div className="flex items-center gap-1.5">
-                  <p className="truncate text-sm font-medium text-text-1">
-                    {user?.name ?? "Loading..."}
-                  </p>
-                  {user && (
-                    <Badge className={`shrink-0 border-transparent uppercase tracking-wide text-[10px] px-1.5 py-0 ${
-                      user.role === "admin"
-                        ? "bg-danger-1 text-danger-6"
-                        : user.role === "advanced"
-                          ? "bg-primary-1 text-primary-7"
-                          : "bg-bg-3 text-text-2"
-                    }`}>
-                      {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
-                    </Badge>
-                  )}
-                </div>
-                <p className="truncate text-xs text-text-3">
-                  {user?.email ?? ""}
-                </p>
-              </div>
-            )}
-          </Link>
+                <Avatar
+                  className={`shrink-0 ${collapsed ? "h-8 w-8 border border-black-400" : "h-9 w-9 border border-black-400"}`}
+                >
+                  <AvatarImage
+                    src={user?.picture || "/default-avatar.png"}
+                    alt={user?.name ?? ""}
+                  />
+                  <AvatarFallback
+                    className={
+                      collapsed
+                        ? "text-xs font-medium text-text-1"
+                        : "bg-primary-1 text-xs font-medium text-primary-6"
+                    }
+                  >
+                    {getInitials(user?.name)}
+                  </AvatarFallback>
+                </Avatar>
+                {!collapsed && (
+                  <div className="flex-1 overflow-hidden text-left">
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-medium text-text-1">
+                        {user?.name ?? "Loading..."}
+                      </p>
+                      {user && (
+                        <Badge className={`shrink-0 border-transparent uppercase tracking-wide text-[10px] px-1.5 py-0 ${
+                          user.role === "admin"
+                            ? "bg-danger-1 text-danger-6"
+                            : user.role === "advanced"
+                              ? "bg-primary-1 text-primary-7"
+                              : "bg-bg-3 text-text-2"
+                        }`}>
+                          {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="truncate text-xs text-text-3">
+                      {user?.email ?? ""}
+                    </p>
+                  </div>
+                )}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side="top" className="w-56">
+              <DropdownMenuItem asChild>
+                <Link href="/account" className="cursor-pointer">
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  My account
+                </Link>
+              </DropdownMenuItem>
+              {user?.role === "admin" && (
+                <DropdownMenuItem asChild>
+                  <Link href="/catalog" className="cursor-pointer">
+                    <Layers3 className="mr-2 h-4 w-4" />
+                    Models catalog
+                  </Link>
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
           {!collapsed && (
             <button
               onClick={() => logout()}
