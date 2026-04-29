@@ -135,6 +135,20 @@ export function CatalogTab() {
     batchMutation.mutate({ ids: Array.from(selected), enabled });
   };
 
+  /**
+   * One-click admin shortcut: flip every model in the catalog (not just
+   * the currently visible/filtered subset) to the given enabled state.
+   * Used to bootstrap the workspace ("enable everything, disable a few
+   * later") and for a quick reset.
+   */
+  const setAll = (enabled: boolean) => {
+    if (!catalog || catalog.length === 0) return;
+    batchMutation.mutate({
+      ids: catalog.map((m) => m.id),
+      enabled,
+    });
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -160,10 +174,29 @@ export function CatalogTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <span className="rounded bg-bg-1 px-2 py-0.5 text-[12px] text-text-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <span className="rounded bg-bg-1 px-2 py-0.5 text-[12px] text-text-2 w-fit">
           {enabledCount} of {catalog.length} enabled
         </span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setAll(false)}
+            disabled={batchMutation.isPending || enabledCount === 0}
+            className="cursor-pointer"
+          >
+            Disable all
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setAll(true)}
+            disabled={batchMutation.isPending || enabledCount === catalog.length}
+            className="cursor-pointer"
+          >
+            {batchMutation.isPending ? "Saving…" : "Enable all"}
+          </Button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
