@@ -1,18 +1,12 @@
-export const MODELS = [
-  {
-    id: "minimax/minimax-m2.5:free",
-    label: "MiniMax M2.5",
-  },
-  {
-    id: "inclusionai/ling-2.6-flash:free",
-    label: "Ling 2.6 Flash",
-  },
-  {
-    id: "liquid/lfm-2.5-1.2b-thinking:free",
-    label: "LFM 2.5 1.2B Thinking",
-  },
-] as const;
-
-export const MODEL_LABELS: Record<string, string> = Object.fromEntries(
-  MODELS.map((m) => [m.id, m.label])
-);
+/**
+ * @deprecated The hardcoded MODELS / MODEL_LABELS list was replaced by the
+ * admin-curated catalog. Use `useAvailableModels()` from
+ * `@/lib/hooks/use-available-models` for the runtime list, or call
+ * `fetchAvailableModels()` from `@/lib/api` directly when you need the
+ * data outside React.
+ *
+ * This file is kept as an empty module so any leftover bare-specifier
+ * import surfaces as a TS error instead of silently resolving to a stale
+ * constant. Remove it once we're confident no tooling references it.
+ */
+export {};

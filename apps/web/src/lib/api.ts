@@ -781,6 +781,49 @@ export async function fetchModels(): Promise<ModelConfig[]> {
   return res.json();
 }
 
+// ─── Catalog (admin-curated subset of OpenRouter models) ───────────────────
+
+export interface AvailableModel {
+  id: string;
+  name: string;
+  description?: string;
+  context_length?: number;
+  pricing?: { prompt?: string; completion?: string };
+}
+
+export interface CatalogModel extends AvailableModel {
+  enabled: boolean;
+  enabledAt: string | null;
+}
+
+export async function fetchAvailableModels(): Promise<AvailableModel[]> {
+  const res = await apiFetch("/models/available");
+  if (!res.ok) throw new Error("Failed to fetch available models");
+  return res.json();
+}
+
+export async function fetchModelsCatalog(): Promise<CatalogModel[]> {
+  const res = await apiFetch("/models/catalog");
+  if (!res.ok) throw new Error("Failed to fetch models catalog");
+  return res.json();
+}
+
+export async function setModelEnabled(
+  modelIdentifier: string,
+  enabled: boolean,
+): Promise<{ modelIdentifier: string; enabled: boolean }> {
+  const res = await apiFetch(
+    `/models/catalog/${encodeURIComponent(modelIdentifier)}/enabled`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    },
+  );
+  if (!res.ok) throw new Error("Failed to update model");
+  return res.json();
+}
+
 export async function createModel(data: {
   customName: string;
   modelIdentifier: string;

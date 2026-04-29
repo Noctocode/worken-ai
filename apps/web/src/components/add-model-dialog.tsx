@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { MODELS } from "@/lib/models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
 
 const MODEL_ICONS: Record<string, { color: string; letter: string }> = {
   "stepfun/step-3.5-flash:free": { color: "#10a37f", letter: "S" },
@@ -143,6 +143,8 @@ export function AddModelDialog({
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
   const queryClient = useQueryClient();
+  const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
+    useAvailableModels();
 
   const mutation = useMutation({
     mutationFn: createModel,
@@ -192,12 +194,11 @@ export function AddModelDialog({
     });
   };
 
-  const availableFallbacks = MODELS.filter(
+  const availableFallbacks = models.filter(
     (m) => m.id !== modelId && !fallbacks.includes(m.id),
   );
 
-  const getLabelById = (id: string) =>
-    MODELS.find((m) => m.id === id)?.label ?? id;
+  const getLabelById = (id: string) => getModelLabel(id);
 
   const handleApply = () => {
     if (!customName.trim() || !modelId) return;
@@ -247,13 +248,21 @@ export function AddModelDialog({
               </p>
               <Select value={modelId} onValueChange={setModelId}>
                 <SelectTrigger className={modelSelectClass}>
-                  <SelectValue placeholder="Select a model" />
+                  <SelectValue
+                    placeholder={
+                      modelsLoading
+                        ? "Loading models…"
+                        : models.length === 0
+                          ? "No models enabled — ask an admin"
+                          : "Select a model"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent className="p-0">
-                  {MODELS.map((m) => (
+                  {models.map((m) => (
                     <SelectItem key={m.id} value={m.id} className={selectItemClass}>
                       <ModelIcon id={m.id} />
-                      {m.label}
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -300,7 +309,7 @@ export function AddModelDialog({
                   {availableFallbacks.map((m) => (
                     <SelectItem key={m.id} value={m.id} className={selectItemClass}>
                       <ModelIcon id={m.id} />
-                      {m.label}
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -42,7 +42,7 @@ import {
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { useAuth } from "@/components/providers";
 import { fetchProjects, deleteProject, type Project } from "@/lib/api";
-import { MODEL_LABELS } from "@/lib/models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -57,6 +57,7 @@ function ProjectCard({ project }: { project: Project }) {
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
+  const { getLabel: getModelLabel } = useAvailableModels();
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProject(project.id),
@@ -119,7 +120,7 @@ function ProjectCard({ project }: { project: Project }) {
               <span className="text-[13px] text-text-2">/</span>
               <div className="flex items-center gap-1">
                 <PenSquare className="h-[18px] w-[18px] text-text-2" />
-                <span className="text-[13px] text-text-2">{MODEL_LABELS[project.model] || project.model}</span>
+                <span className="text-[13px] text-text-2">{getModelLabel(project.model)}</span>
               </div>
             </div>
           </div>

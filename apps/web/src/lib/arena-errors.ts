@@ -1,8 +1,10 @@
-import { MODEL_LABELS } from "./models";
-
+// Pure function: can't call useAvailableModels() here, so we display the
+// raw model identifier (e.g. "openai/gpt-4o") in error messages. Callers
+// that want a friendlier label can pre-process `err.message` before
+// passing it in.
 function modelLabel(id: string | undefined): string | null {
   if (!id) return null;
-  return MODEL_LABELS[id] ?? id;
+  return id;
 }
 
 export function humanizeArenaError(err: unknown): string {

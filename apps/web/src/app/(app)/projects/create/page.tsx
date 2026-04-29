@@ -40,7 +40,7 @@ import {
   // fetchOrgUsers,
   // type OrgUser,
 } from "@/lib/api";
-import { MODELS } from "@/lib/models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
 
 const AGENTS = [
   { id: "general-assistant", label: "General Assistant", icon: Bot },
@@ -174,6 +174,8 @@ export default function CreateProjectPage() {
     enabled: projectType === "team",
   });
 
+  const { models: availableModels } = useAvailableModels();
+
   // Only teams the user can actually create a project in. Mirrors the BE
   // gate in projects.service.create() (owner|editor required).
   const manageableTeams = teams?.filter((t) => t.canManage) ?? [];
@@ -203,10 +205,19 @@ export default function CreateProjectPage() {
     }
     const agent = AGENTS.find((a) => a.id === selectedAgent);
     if (!agent) return;
+    if (availableModels.length === 0) {
+      // Admin hasn't enabled any models yet — surface a clear error rather
+      // than silently submitting with an empty model id.
+      setNameError(false);
+      alert(
+        "No models are enabled in this workspace. Ask an admin to enable at least one model in Models → Catalog.",
+      );
+      return;
+    }
     mutation.mutate({
       name,
       description: `${agent.label} project`,
-      model: MODELS[0].id,
+      model: availableModels[0].id,
       teamId: projectType === "team" && selectedTeamId ? selectedTeamId : undefined,
     });
   };
