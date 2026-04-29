@@ -32,7 +32,7 @@ export class OpenRouterProvisioningService {
       },
       body: JSON.stringify({
         name,
-        credit_limit: creditLimitUsd,
+        limit: creditLimitUsd,
         limit_reset: 'monthly',
       }),
     });
@@ -60,7 +60,7 @@ export class OpenRouterProvisioningService {
         Authorization: `Bearer ${this.provisioningKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ credit_limit: creditLimitUsd }),
+      body: JSON.stringify({ limit: creditLimitUsd }),
     });
 
     if (!response.ok) {
@@ -71,13 +71,16 @@ export class OpenRouterProvisioningService {
     }
   }
 
-  /** Fetch current-period usage for a provisioned key. */
+  /**
+   * Fetch current-period usage for a provisioned key.
+   * Reads `data.usage` and `data.limit` from `GET /keys/:hash`. Returns
+   * null when the key has no limit set (legacy keys provisioned before
+   * the credit_limit→limit fix), so callers can render "unknown" rather
+   * than misleading zeros.
+   */
   async getKeyUsage(
     hash: string,
   ): Promise<{ usageCents: number; limitCents: number } | null> {
-    // TODO: Replace with real OpenRouter usage API when available.
-    // OpenRouter does not currently expose per-key usage via a public endpoint.
-    // For now return null so callers can fall back to mock/placeholder data.
     try {
       const response = await fetch(
         `https://openrouter.ai/api/v1/keys/${hash}`,
