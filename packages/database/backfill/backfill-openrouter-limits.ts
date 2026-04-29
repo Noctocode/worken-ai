@@ -12,21 +12,27 @@
  * Idempotent: PATCH with the current limit is a no-op. Safe to re-run after
  * a partial pass; only keys that still need updating actually change.
  *
- * How to run (from repo root):
- *   node --env-file=.env --import tsx packages/database/backfill/backfill-openrouter-limits.ts
+ * Pass `--dry-run` to preview the plan without calling PATCH. Recommended
+ * before the live run.
  *
- * Or with ts-node (already a dep of apps/api):
- *   pnpm --filter @worken/api exec ts-node ../../packages/database/backfill/backfill-openrouter-limits.ts
+ * How to run (from repo root):
+ *   pnpm tsx packages/database/backfill/backfill-openrouter-limits.ts --dry-run
+ *   pnpm tsx packages/database/backfill/backfill-openrouter-limits.ts
+ *
+ * Or via ts-node (already a dep of apps/api):
+ *   pnpm --filter @worken/api exec ts-node \
+ *     ../../packages/database/backfill/backfill-openrouter-limits.ts --dry-run
  */
 import { Pool } from 'pg';
 
-const DATABASE_URL = process.env.DATABASE_URL;
+// Mirror apps/api/src/database/database.module.ts so the script works
+// out of the box against the local docker-compose Postgres.
+const DATABASE_URL =
+  process.env.DATABASE_URL ||
+  'postgresql://worken:worken@localhost:5432/worken';
 const PROVISIONING_KEY = process.env.OPENROUTER_PROVISIONING_KEY;
+const DRY_RUN = process.argv.includes('--dry-run');
 
-if (!DATABASE_URL) {
-  console.error('DATABASE_URL is not set. Aborting.');
-  process.exit(1);
-}
 if (!PROVISIONING_KEY) {
   console.error('OPENROUTER_PROVISIONING_KEY is not set. Aborting.');
   process.exit(1);
@@ -70,6 +76,16 @@ async function patchLimit(
 }
 
 async function main(): Promise<void> {
+  // Redact credentials before logging the DB URL.
+  const safeDbUrl = DATABASE_URL.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
+  console.log(`DB: ${safeDbUrl}`);
+  if (DRY_RUN) {
+    console.log('Mode: DRY RUN (no PATCH calls)');
+  } else {
+    console.log('Mode: LIVE (PATCH /keys/:hash will be called)');
+  }
+  console.log('');
+
   const pool = new Pool({ connectionString: DATABASE_URL });
 
   const { rows: teamRows } = await pool.query<{
@@ -112,10 +128,14 @@ async function main(): Promise<void> {
   console.log(
     `Found ${teamRows.length} team(s) and ${userRows.length} user(s) with provisioned keys.`,
   );
+  if (DRY_RUN) {
+    console.log('DRY RUN — no PATCH calls will be made.\n');
+  }
 
   let updated = 0;
   let skipped = 0;
   let failed = 0;
+  let wouldUpdate = 0;
 
   for (const target of targets) {
     const limitUsd = target.budgetCents / 100;
@@ -128,11 +148,20 @@ async function main(): Promise<void> {
       continue;
     }
 
+    const before = state?.limit;
+    const beforeLabel = before == null ? 'null' : `$${before}`;
+
+    if (DRY_RUN) {
+      wouldUpdate++;
+      console.log(
+        `[dry] ${target.scope} ${target.id}: would set limit ${beforeLabel} → $${limitUsd}`,
+      );
+      continue;
+    }
+
     const result = await patchLimit(target.hash, limitUsd);
     if (result.ok) {
       updated++;
-      const before = state?.limit;
-      const beforeLabel = before == null ? 'null' : `$${before}`;
       console.log(
         `✓ ${target.scope} ${target.id}: limit ${beforeLabel} → $${limitUsd}`,
       );
@@ -144,9 +173,15 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(
-    `\nDone: ${updated} updated, ${skipped} already correct, ${failed} failed.`,
-  );
+  if (DRY_RUN) {
+    console.log(
+      `\nDry-run done: ${wouldUpdate} would be updated, ${skipped} already correct.`,
+    );
+  } else {
+    console.log(
+      `\nDone: ${updated} updated, ${skipped} already correct, ${failed} failed.`,
+    );
+  }
 
   await pool.end();
 
