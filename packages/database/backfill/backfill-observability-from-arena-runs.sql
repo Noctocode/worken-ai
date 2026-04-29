@@ -1,7 +1,8 @@
 -- One-time backfill: seed observability_events from existing arena_runs.
 --
--- Idempotent: aborts early if any backfilled event already exists.
--- Re-running after a partial run is safe; no duplicates will be created.
+-- Idempotent per (arena_run_id, model): re-running after a partial or
+-- complete run skips pairs already inserted, so an interrupted run can
+-- be safely resumed.
 --
 -- How to apply:
 --   psql "$DATABASE_URL" -f packages/database/backfill/backfill-observability-from-arena-runs.sql
@@ -21,9 +22,8 @@ BEGIN
 
   IF existing_count > 0 THEN
     RAISE NOTICE
-      'Skipping backfill: % event(s) already tagged metadata.backfilled=true. Delete those rows and re-run for a clean slate.',
+      'Found % previously backfilled event(s); will skip any (arena_run_id, model) pairs already inserted.',
       existing_count;
-    RETURN;
   END IF;
 
   WITH primary_team AS (
@@ -106,8 +106,14 @@ BEGIN
     END,
     jsonb_build_object('backfilled', true, 'arenaRunId', arena_run_id),
     created_at
-  FROM rows;
+  FROM rows
+  WHERE NOT EXISTS (
+    SELECT 1 FROM observability_events oe
+    WHERE oe.metadata @> '{"backfilled": true}'::jsonb
+      AND oe.metadata ->> 'arenaRunId' = rows.arena_run_id::text
+      AND oe.model IS NOT DISTINCT FROM rows.model
+  );
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
-  RAISE NOTICE 'Backfill complete: inserted % event(s) from arena_runs.', inserted_count;
+  RAISE NOTICE 'Backfill complete: inserted % new event(s) from arena_runs.', inserted_count;
 END $$;

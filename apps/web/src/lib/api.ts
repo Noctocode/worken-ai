@@ -916,9 +916,11 @@ export async function deleteArenaRun(id: string): Promise<void> {
 
 export async function parseArenaAttachment(
   file: File,
+  teamId?: string | null,
 ): Promise<{ name: string; content: string }> {
   const form = new FormData();
   form.append("file", file);
+  if (teamId) form.append("teamId", teamId);
   const res = await apiFetch(`/compare-models/attachments/parse`, {
     method: "POST",
     body: form,

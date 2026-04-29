@@ -8,6 +8,22 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 
+const KNOWN_PROVIDERS = new Set([
+  'openai',
+  'anthropic',
+  'google',
+  'meta-llama',
+  'mistralai',
+  'cohere',
+  'nvidia',
+  'arcee-ai',
+  'liquid',
+  'stepfun',
+  'baidu',
+  'qwen',
+  'deepseek',
+]);
+
 /**
  * Derive a coarse provider label from an OpenRouter-style model id like
  * "openai/gpt-4o:free" → "openai". Falls back to "openrouter:other" so we
@@ -17,22 +33,7 @@ export function providerFromModel(model: string | null | undefined): string {
   if (!model) return 'unknown';
   const slug = model.split('/')[0]?.toLowerCase();
   if (!slug) return 'unknown';
-  const known = new Set([
-    'openai',
-    'anthropic',
-    'google',
-    'meta-llama',
-    'mistralai',
-    'cohere',
-    'nvidia',
-    'arcee-ai',
-    'liquid',
-    'stepfun',
-    'baidu',
-    'qwen',
-    'deepseek',
-  ]);
-  return known.has(slug) ? slug : `openrouter:${slug}`;
+  return KNOWN_PROVIDERS.has(slug) ? slug : `openrouter:${slug}`;
 }
 
 const PROMPT_PREVIEW_MAX = 200;
@@ -77,12 +78,6 @@ export class ObservabilityService {
   // ─── Team association helper ──────────────────────────────────────────
 
   /**
-   * Pick a user's "primary" team for event scoping.
-   * Rule: oldest accepted membership wins. Returns null when the user has
-   * none (personal use). Per-call: cached one query per request, but we
-   * keep it simple and let callers cache across a request if needed.
-   */
-  /**
    * Returns true if the user has an accepted membership in the given team.
    * Used by callers that accept an explicit teamId override (e.g. the
    * compare-models composer) to validate before attaching it to events.
@@ -106,6 +101,12 @@ export class ObservabilityService {
     }
   }
 
+  /**
+   * Pick a user's "primary" team for event scoping.
+   * Rule: oldest accepted membership wins. Returns null when the user has
+   * none (personal use). Per-call: cached one query per request, but we
+   * keep it simple and let callers cache across a request if needed.
+   */
   async getPrimaryTeamId(userId: string): Promise<string | null> {
     try {
       const [row] = await this.db
