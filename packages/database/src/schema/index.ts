@@ -9,6 +9,7 @@ import {
   jsonb,
   integer,
   real,
+  numeric,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -137,6 +138,36 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+export const observabilityEvents = pgTable(
+  "observability_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(), // 'arena_call' | 'evaluator_call' | 'guardrail_trigger' | future
+    model: text("model"),
+    provider: text("provider"), // 'openai' | 'anthropic' | 'google' | 'openrouter:other' | 'system'
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    totalTokens: integer("total_tokens"),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    latencyMs: integer("latency_ms"),
+    success: boolean("success").notNull().default(true),
+    errorMessage: text("error_message"),
+    promptPreview: text("prompt_preview"), // first 200 chars, never the full prompt
+    metadata: jsonb("metadata"),            // small extras, e.g. { arenaRunId, guardrailId, severity }
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("observability_events_user_created_idx").on(table.userId, table.createdAt),
+    index("observability_events_team_created_idx").on(table.teamId, table.createdAt),
+    index("observability_events_model_created_idx").on(table.model, table.createdAt),
+    index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
+  ],
+);
 
 export const arenaRuns = pgTable("arena_runs", {
   id: uuid("id").primaryKey().defaultRandom(),

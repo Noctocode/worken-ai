@@ -13,7 +13,7 @@ interface RouteConfig {
   title?: string;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
   appbarAction?: AppbarAction;
   appbarSearch?: AppbarSearch;
   appbarExpandControls?: boolean;
@@ -80,6 +80,13 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
     appbarAction: { label: "Add Guardrail", event: "guardrails:add" },
+  },
+  "/observability": {
+    bg: "bg-bg-1",
+    title: "Observability",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarType: "observability",
   },
   "/compare-models": {
     bg: "bg-bg-1",

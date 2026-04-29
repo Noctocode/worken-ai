@@ -9,6 +9,7 @@ import {
   Search,
   Bell,
   ArrowLeft,
+  Calendar,
   Pencil,
   Trash2,
   Users,
@@ -28,6 +29,13 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
@@ -676,6 +684,8 @@ export const Appbar = () => {
 
       {/* Right Header Controls */}
       <div className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}>
+        {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
+
         {config.appbarSearch && (
           <div className="relative hidden flex-1 sm:block">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
@@ -738,3 +748,76 @@ export const Appbar = () => {
     </header>
   );
 };
+
+/* ─── Observability appbar slot ────────────────────────────────────────
+   Two controls live here per Figma frame 116:3959 — the time range
+   dropdown and the Export CSV button. The page (/observability) listens
+   for the events emitted below to keep its state in sync. The default
+   range "7d" matches the page's initial useState value, so they boot in
+   sync without any extra plumbing. */
+
+// Labels include the "Time Range: " prefix so we can lean on the stock
+// SelectValue rendering — wrapping a custom <span> inside the trigger
+// was eating the click target on first paint.
+const OBSERVABILITY_RANGES = [
+  { value: "24h", label: "Time Range: Last 24 hours" },
+  { value: "7d", label: "Time Range: Last 7 days" },
+  { value: "30d", label: "Time Range: Last 30 days" },
+  { value: "90d", label: "Time Range: Last 90 days" },
+] as const;
+
+function ObservabilityAppbarSlot() {
+  const [range, setRange] = useState<string>("7d");
+  return (
+    <>
+      <Select
+        value={range}
+        onValueChange={(value) => {
+          setRange(value);
+          window.dispatchEvent(
+            new CustomEvent("observability:range-change", { detail: value }),
+          );
+        }}
+      >
+        <SelectTrigger className="h-9 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm text-text-1">
+          <Calendar className="h-4 w-4 shrink-0" />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent
+          // Right-align under the trigger (sits at the appbar's right
+          // edge) and use popper positioning so the menu drops cleanly
+          // below instead of overlapping. Match the trigger's rounded-lg
+          // + bg/border tokens so the open state looks like an extension
+          // of the chip rather than a generic popover.
+          position="popper"
+          align="end"
+          sideOffset={6}
+          className="min-w-[var(--radix-select-trigger-width)] rounded-lg border-border-2 bg-bg-white p-1 shadow-md"
+        >
+          {OBSERVABILITY_RANGES.map((opt) => (
+            <SelectItem
+              key={opt.value}
+              value={opt.value}
+              className="rounded-md px-3 py-2 text-sm text-text-1"
+            >
+              {opt.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="outline"
+        onClick={() =>
+          window.dispatchEvent(new CustomEvent("observability:export"))
+        }
+        // Project Button defaults to h-12 (size=default in this fork), so
+        // the Time Range Select at h-9 looked shorter. Pin h-9 + matching
+        // px-3 / text-sm so the two controls read as a pair.
+        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1"
+      >
+        <Download className="h-4 w-4" />
+        Export CSV
+      </Button>
+    </>
+  );
+}

@@ -23,6 +23,7 @@ import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
@@ -43,6 +44,8 @@ interface CompareModelsRequestBody {
   question: string;
   expectedOutput: string;
   context?: string;
+  /** Optional. If omitted, server falls back to the user's primary team. */
+  teamId?: string | null;
 }
 
 interface ModelResponse {
@@ -82,6 +85,7 @@ export class CompareModelsController {
   constructor(
     private readonly compareModelsService: CompareModelsService,
     private readonly keyResolverService: KeyResolverService,
+    private readonly observabilityService: ObservabilityService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -166,25 +170,72 @@ export class CompareModelsController {
       throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
     }
 
+    // Personal-by-default scoping. If the body carries an explicit
+    // teamId, validate membership and use it. Anything else
+    // (missing / null / empty / "personal") tags the events as
+    // Personal, so they show up under the "Personal" row in the
+    // Observability team-analytics rollup. The user opts in to a
+    // team scope by explicitly selecting one in the composer.
+    let teamId: string | null = null;
+    const requested = (body.teamId ?? '').trim();
+    if (requested && requested !== 'personal' && requested !== 'null') {
+      if (!(await this.observabilityService.isUserInTeam(user.id, requested))) {
+        throw new BadRequestException(
+          'You are not a member of the selected team.',
+        );
+      }
+      teamId = requested;
+    }
+
     let responses: ModelResponse[];
     try {
       responses = await Promise.all(
         body.models.map(async (model) => {
           const start = Date.now();
-          const response = await this.compareModelsService.sendQuestion(
-            body.question,
-            model,
-            false,
-            body.context,
-            apiKey,
-          );
-          return {
-            model,
-            response,
-            time: Date.now() - start,
-            totalTokens: response.totalTokens,
-            totalCost: response.totalCost,
-          };
+          try {
+            const response = await this.compareModelsService.sendQuestion(
+              body.question,
+              model,
+              false,
+              body.context,
+              apiKey,
+            );
+            const latencyMs = Date.now() - start;
+            void this.observabilityService.recordLLMCall({
+              userId: user.id,
+              teamId,
+              eventType: 'arena_call',
+              model,
+              totalTokens: response.totalTokens,
+              costUsd: response.totalCost,
+              latencyMs,
+              success: true,
+              prompt: body.question,
+              metadata: { hasContext: Boolean(body.context) },
+            });
+            return {
+              model,
+              response,
+              time: latencyMs,
+              totalTokens: response.totalTokens,
+              totalCost: response.totalCost,
+            };
+          } catch (err) {
+            const latencyMs = Date.now() - start;
+            const msg = err instanceof Error ? err.message : String(err);
+            void this.observabilityService.recordLLMCall({
+              userId: user.id,
+              teamId,
+              eventType: 'arena_call',
+              model,
+              latencyMs,
+              success: false,
+              errorMessage: msg,
+              prompt: body.question,
+              metadata: { hasContext: Boolean(body.context) },
+            });
+            throw err;
+          }
         }),
       );
     } catch (err) {
@@ -197,18 +248,39 @@ export class CompareModelsController {
     let lastParseError: string | undefined;
     let lastRawContent = '';
 
+    const EVALUATOR_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
     for (let attempt = 1; attempt <= MAX_COMPARE_ATTEMPTS; attempt++) {
       let comparison;
+      const evalStart = Date.now();
       try {
         comparison = await this.compareModelsService.compareModelAnswers(
           responses,
           body.expectedOutput,
-          'nvidia/nemotron-3-super-120b-a12b:free',
+          EVALUATOR_MODEL,
           false,
           apiKey,
         );
+        void this.observabilityService.recordLLMCall({
+          userId: user.id,
+          teamId,
+          eventType: 'evaluator_call',
+          model: EVALUATOR_MODEL,
+          latencyMs: Date.now() - evalStart,
+          success: true,
+          metadata: { attempt },
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        void this.observabilityService.recordLLMCall({
+          userId: user.id,
+          teamId,
+          eventType: 'evaluator_call',
+          model: EVALUATOR_MODEL,
+          latencyMs: Date.now() - evalStart,
+          success: false,
+          errorMessage: msg,
+          metadata: { attempt },
+        });
         this.logger.error(
           `Evaluator call failed on attempt ${attempt}/${MAX_COMPARE_ATTEMPTS}: ${msg}`,
         );
@@ -364,16 +436,37 @@ export class CompareModelsController {
         );
       }
 
+      const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
       const dataUrl = `data:${mimetype};base64,${file.buffer.toString('base64')}`;
       let extracted: string;
+      const ocrStart = Date.now();
       try {
         extracted = await this.compareModelsService.extractTextFromImage(
           dataUrl,
           OCR_MODEL,
           apiKey,
         );
+        void this.observabilityService.recordLLMCall({
+          userId: user.id,
+          teamId,
+          eventType: 'arena_attachment_ocr',
+          model: OCR_MODEL,
+          latencyMs: Date.now() - ocrStart,
+          success: true,
+          metadata: { filename: name, mimetype },
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        void this.observabilityService.recordLLMCall({
+          userId: user.id,
+          teamId,
+          eventType: 'arena_attachment_ocr',
+          model: OCR_MODEL,
+          latencyMs: Date.now() - ocrStart,
+          success: false,
+          errorMessage: msg,
+          metadata: { filename: name, mimetype },
+        });
         this.logger.error(`OCR failed for "${name}": ${msg}`);
         throw new BadGatewayException(msg);
       }

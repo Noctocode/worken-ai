@@ -3,6 +3,7 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { ChatService } from './chat.service.js';
 
@@ -21,6 +22,7 @@ export class ChatController {
     private readonly documentsService: DocumentsService,
     private readonly conversationsService: ConversationsService,
     private readonly keyResolverService: KeyResolverService,
+    private readonly observabilityService: ObservabilityService,
   ) {}
 
   @Post()
@@ -68,14 +70,52 @@ export class ChatController {
       }
     }
 
-    // 5. Call the chat service
-    const response = await this.chatService.sendMessage(
-      apiMessages,
-      body.model,
-      body.enableReasoning,
-      context,
-      apiKey,
-    );
+    // 5. Call the chat service (with per-call observability)
+    const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+    const chatStart = Date.now();
+    let response;
+    try {
+      response = await this.chatService.sendMessage(
+        apiMessages,
+        body.model,
+        body.enableReasoning,
+        context,
+        apiKey,
+      );
+      void this.observabilityService.recordLLMCall({
+        userId: user.id,
+        teamId,
+        eventType: 'chat_call',
+        model: body.model ?? 'moonshotai/kimi-k2.5',
+        totalTokens: response.totalTokens,
+        costUsd: response.totalCost,
+        latencyMs: Date.now() - chatStart,
+        success: true,
+        prompt: body.content,
+        metadata: {
+          conversationId: body.conversationId,
+          projectId: body.projectId ?? null,
+          hasContext: Boolean(context),
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      void this.observabilityService.recordLLMCall({
+        userId: user.id,
+        teamId,
+        eventType: 'chat_call',
+        model: body.model ?? 'moonshotai/kimi-k2.5',
+        latencyMs: Date.now() - chatStart,
+        success: false,
+        errorMessage: msg,
+        prompt: body.content,
+        metadata: {
+          conversationId: body.conversationId,
+          projectId: body.projectId ?? null,
+        },
+      });
+      throw err;
+    }
 
     // 6. Persist assistant response
     const metadata = response.reasoning_details

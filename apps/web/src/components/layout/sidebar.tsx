@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Activity,
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
@@ -87,6 +88,7 @@ export const SidebarContent = ({
       { href: "/", label: "Ongoing Projects", icon: FolderOpen, match: "exact" },
       { href: "/compare-models", label: "Model Arena", icon: Layers, match: "exact" },
       { href: "/guardrails", label: "Guardrails", icon: Shield, match: "exact" },
+      { href: "/observability", label: "Observability", icon: Activity, match: "exact" },
       { href: "/teams", label: "Team Management", icon: Users, match: "prefix" },
     ],
     [

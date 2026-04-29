@@ -15,6 +15,7 @@ import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
+import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
@@ -35,6 +36,7 @@ import { UsersModule } from './users/users.module';
     GuardrailsSectionModule,
     KnowledgeCoreModule,
     ModelsModule,
+    ObservabilityModule,
     OnboardingModule,
     ProjectsModule,
     PromptsModule,
