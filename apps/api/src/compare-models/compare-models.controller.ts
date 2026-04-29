@@ -414,9 +414,26 @@ export class CompareModelsController {
   async parseAttachment(
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
+    @Body('teamId') rawTeamId?: string,
   ): Promise<{ name: string; content: string }> {
     if (!file) {
       throw new BadRequestException('No file was uploaded.');
+    }
+
+    // Mirror the /compare-models scoping rule: Personal by default; an
+    // explicit teamId from the composer is honored after membership check.
+    // Without this, OCR events would always be tagged with the user's
+    // primary team and misattributed when the composer is set to Personal
+    // or another team.
+    let teamId: string | null = null;
+    const requested = (rawTeamId ?? '').trim();
+    if (requested && requested !== 'personal' && requested !== 'null') {
+      if (!(await this.observabilityService.isUserInTeam(user.id, requested))) {
+        throw new BadRequestException(
+          'You are not a member of the selected team.',
+        );
+      }
+      teamId = requested;
     }
 
     const mimetype = file.mimetype;
@@ -436,7 +453,6 @@ export class CompareModelsController {
         );
       }
 
-      const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
       const dataUrl = `data:${mimetype};base64,${file.buffer.toString('base64')}`;
       let extracted: string;
       const ocrStart = Date.now();

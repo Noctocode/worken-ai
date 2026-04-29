@@ -952,7 +952,7 @@ function Composer({
       const verb = isImageFile(file) ? "Reading" : "Parsing";
       const toastId = toast.loading(`${verb} ${file.name}…`);
       try {
-        const parsed = await parseArenaAttachment(file);
+        const parsed = await parseArenaAttachment(file, selectedTeamId);
         setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {

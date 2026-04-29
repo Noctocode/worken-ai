@@ -84,7 +84,7 @@ export class ObservabilityController {
     const { key, from, to } = parseRange(range);
     const span = to.getTime() - from.getTime();
     const previousFrom = new Date(from.getTime() - span);
-    const previousTo = from;
+    const previousTo = new Date(from.getTime() - 1);
     const [current, previous] = await Promise.all([
       this.observabilityService.summary(from, to),
       this.observabilityService.summary(previousFrom, previousTo),
