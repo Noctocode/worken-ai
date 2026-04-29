@@ -426,6 +426,7 @@ export default function CompareModelsPage() {
             attachedImage={attachedImage}
             setAttachedImage={setAttachedImage}
             onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
+            selectedTeamId={selectedTeamId}
           />
         </section>
 
@@ -873,6 +874,7 @@ function Composer({
   attachedImage,
   setAttachedImage,
   onOpenPromptLibrary,
+  selectedTeamId,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -886,6 +888,7 @@ function Composer({
   attachedImage: { name: string; content: string } | null;
   setAttachedImage: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
+  selectedTeamId: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
