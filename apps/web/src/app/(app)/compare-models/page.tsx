@@ -1278,7 +1278,7 @@ function RightRail({
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
-            Tags this run&apos;s usage in the Observability dashboard.
+            Attributes this run&apos;s spend and tokens to the chosen team.
           </p>
         </section>
       )}
