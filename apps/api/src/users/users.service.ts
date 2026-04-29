@@ -2,7 +2,9 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import {
@@ -19,13 +21,17 @@ import {
   modelConfigs,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly provisioningService: OpenRouterProvisioningService,
+    private readonly encryptionService: EncryptionService,
   ) {}
 
   async findAll() {
@@ -229,9 +235,38 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Update OpenRouter key limit if provisioned
+    // Self-heal: if the user has no OpenRouter key (provisioning failed at
+    // signup, or this is a legacy user), provision one now using the
+    // budget the admin just submitted. Without this the budget would be
+    // stored only in our DB while OpenRouter has no enforcement at all.
     if (user.openrouterKeyId) {
       await this.provisioningService.updateKey(user.openrouterKeyId, budgetUsd);
+    } else {
+      try {
+        const { key, hash } = await this.provisioningService.createKey(
+          `user-${userId}`,
+          budgetUsd,
+        );
+        const encrypted = this.encryptionService.encrypt(key);
+        await this.db
+          .update(users)
+          .set({
+            openrouterKeyId: hash,
+            openrouterKeyEncrypted: encrypted,
+          })
+          .where(eq(users.id, userId));
+        this.logger.log(
+          `Reprovisioned OpenRouter key for user ${userId} during budget update.`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Failed to reprovision OpenRouter key for user ${userId}: ${msg}`,
+        );
+        throw new ServiceUnavailableException(
+          'Could not provision an OpenRouter key for this user. Please try again in a moment.',
+        );
+      }
     }
 
     const budgetCents = Math.round(budgetUsd * 100);

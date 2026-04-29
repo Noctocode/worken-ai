@@ -4,7 +4,9 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -20,6 +22,8 @@ import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisio
 
 @Injectable()
 export class TeamsService {
+  private readonly logger = new Logger(TeamsService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly mailService: MailService,
@@ -67,7 +71,11 @@ export class TeamsService {
       status: 'accepted',
     });
 
-    // Provision OpenRouter key for this team (non-blocking)
+    // Provision OpenRouter key for this team. Best-effort: if it fails, the
+    // team still exists in DB but with a null openrouterKeyId — chat calls
+    // in that team will fail until the key is re-provisioned (which now
+    // happens automatically the next time the owner saves a budget; see
+    // updateBudget below).
     const budgetUsd = budgetCents / 100;
     try {
       const { key, hash } = await this.provisioningService.createKey(
@@ -83,7 +91,10 @@ export class TeamsService {
         })
         .where(eq(teams.id, team.id));
     } catch (err) {
-      console.error('Failed to provision team OpenRouter key:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to provision OpenRouter key for team ${team.id} ("${name}"): ${msg}`,
+      );
     }
 
     return team;
@@ -171,13 +182,43 @@ export class TeamsService {
     if (team.ownerId !== userId) {
       throw new ForbiddenException('Only the team owner can update the budget');
     }
-    if (!team.openrouterKeyId) {
-      throw new BadRequestException(
-        'This team does not have a provisioned OpenRouter key',
-      );
-    }
 
-    await this.provisioningService.updateKey(team.openrouterKeyId, budgetUsd);
+    // Self-heal: if the team has no OpenRouter key (provisioning failed at
+    // create time, or this is a legacy team), provision one now using the
+    // budget the owner just submitted. If it still fails, surface a clear
+    // error instead of silently saving a budget that OpenRouter doesn't
+    // know about.
+    let openrouterKeyId = team.openrouterKeyId;
+    if (!openrouterKeyId) {
+      try {
+        const { key, hash } = await this.provisioningService.createKey(
+          `team-${team.id}`,
+          budgetUsd,
+        );
+        const encrypted = this.encryptionService.encrypt(key);
+        await this.db
+          .update(teams)
+          .set({
+            openrouterKeyId: hash,
+            openrouterKeyEncrypted: encrypted,
+          })
+          .where(eq(teams.id, teamId));
+        openrouterKeyId = hash;
+        this.logger.log(
+          `Reprovisioned OpenRouter key for team ${teamId} during budget update.`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Failed to reprovision OpenRouter key for team ${teamId}: ${msg}`,
+        );
+        throw new ServiceUnavailableException(
+          'Could not provision an OpenRouter key for this team. Please try again in a moment.',
+        );
+      }
+    } else {
+      await this.provisioningService.updateKey(openrouterKeyId, budgetUsd);
+    }
 
     const budgetCents = Math.round(budgetUsd * 100);
     await this.db
@@ -467,7 +508,8 @@ export class TeamsService {
           });
         }
       } catch (err) {
-        console.error('Failed to resend invitation email:', err);
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Failed to resend invitation email: ${msg}`);
       }
 
       return { ...refreshed, resent: true };
@@ -508,7 +550,8 @@ export class TeamsService {
         });
       }
     } catch (err) {
-      console.error('Failed to send invitation email:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to send invitation email: ${msg}`);
     }
 
     return { ...member, resent: false };
