@@ -99,13 +99,10 @@ export function CatalogTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-[18px] font-bold text-text-1">Models Catalog</h2>
-          <span className="rounded bg-bg-1 px-2 py-0.5 text-[12px] text-text-2">
-            {enabledCount} of {catalog.length} enabled
-          </span>
-        </div>
+      <div className="flex items-center gap-2">
+        <span className="rounded bg-bg-1 px-2 py-0.5 text-[12px] text-text-2">
+          {enabledCount} of {catalog.length} enabled
+        </span>
       </div>
 
       <div className="flex flex-col gap-2 sm:flex-row">
