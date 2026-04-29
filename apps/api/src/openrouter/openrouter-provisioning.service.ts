@@ -32,7 +32,7 @@ export class OpenRouterProvisioningService {
       },
       body: JSON.stringify({
         name,
-        credit_limit: creditLimitUsd,
+        limit: creditLimitUsd,
         limit_reset: 'monthly',
       }),
     });
@@ -60,7 +60,7 @@ export class OpenRouterProvisioningService {
         Authorization: `Bearer ${this.provisioningKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ credit_limit: creditLimitUsd }),
+      body: JSON.stringify({ limit: creditLimitUsd }),
     });
 
     if (!response.ok) {
