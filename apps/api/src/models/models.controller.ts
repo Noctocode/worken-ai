@@ -34,17 +34,28 @@ export class ModelsController {
     return this.modelsService.listAvailable();
   }
 
-  /** Admin: toggle a single model. */
-  @Patch('catalog/:modelIdentifier(*)/enabled')
+  /**
+   * Admin: toggle a single model. The identifier travels in the body
+   * (not the path) because OpenRouter model ids contain a slash, e.g.
+   * "openai/gpt-4o", and Express + path-to-regexp 8 can't carry that
+   * through a path parameter cleanly.
+   */
+  @Patch('catalog/enabled')
   setEnabled(
-    @Param('modelIdentifier') modelIdentifier: string,
-    @Body() body: { enabled: boolean },
+    @Body() body: { modelIdentifier: string; enabled: boolean },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    if (typeof body?.modelIdentifier !== 'string' || !body.modelIdentifier) {
+      throw new BadRequestException('`modelIdentifier` is required');
+    }
     if (typeof body?.enabled !== 'boolean') {
       throw new BadRequestException('`enabled` must be a boolean');
     }
-    return this.modelsService.setEnabled(user.id, modelIdentifier, body.enabled);
+    return this.modelsService.setEnabled(
+      user.id,
+      body.modelIdentifier,
+      body.enabled,
+    );
   }
 
   /** Admin: replace the entire enabled set with this list. */

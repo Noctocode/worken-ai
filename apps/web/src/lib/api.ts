@@ -812,14 +812,11 @@ export async function setModelEnabled(
   modelIdentifier: string,
   enabled: boolean,
 ): Promise<{ modelIdentifier: string; enabled: boolean }> {
-  const res = await apiFetch(
-    `/models/catalog/${encodeURIComponent(modelIdentifier)}/enabled`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ enabled }),
-    },
-  );
+  const res = await apiFetch(`/models/catalog/enabled`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelIdentifier, enabled }),
+  });
   if (!res.ok) throw new Error("Failed to update model");
   return res.json();
 }
