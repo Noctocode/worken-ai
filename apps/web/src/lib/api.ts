@@ -653,7 +653,27 @@ export async function sendChatMessage(
       projectId,
     }),
   });
-  if (!res.ok) throw new Error("Failed to send message");
+  if (!res.ok) {
+    // Surface the BE error body so humanizeChatError() can route it to a
+    // specific user-facing message (402 budget, 401 auth, 429 rate limit,
+    // context-length, …). Without this, every failure used to flatten to
+    // a generic "Failed to send message".
+    let detail = `${res.status} ${res.statusText}`;
+    try {
+      const body = await res.text();
+      try {
+        const parsed = JSON.parse(body) as { message?: string | string[] };
+        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
+        else if (typeof parsed.message === "string") detail = parsed.message;
+        else if (body) detail = body;
+      } catch {
+        if (body) detail = body;
+      }
+    } catch {
+      /* keep status fallback */
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 

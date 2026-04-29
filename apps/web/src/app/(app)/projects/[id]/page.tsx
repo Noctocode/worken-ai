@@ -26,6 +26,7 @@ import {
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { useAuth } from "@/components/providers";
+import { humanizeChatError } from "@/lib/chat-errors";
 
 interface LocalMessage {
   id: string;
@@ -179,14 +180,13 @@ export default function ProjectChatPage() {
       queryClient.invalidateQueries({
         queryKey: ["conversations", projectId],
       });
-    } catch {
+    } catch (err) {
       setMessages((prev) => [
         ...prev,
         {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content:
-            "Sorry, I encountered an error. Please make sure the API server is running and try again.",
+          content: humanizeChatError(err),
           timestamp: getTimestamp(),
         },
       ]);

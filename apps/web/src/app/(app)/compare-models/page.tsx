@@ -71,7 +71,7 @@ import {
   type Shortcut,
   type TeamListItem,
 } from "@/lib/api";
-import { humanizeArenaError } from "@/lib/arena-errors";
+import { humanizeChatError } from "@/lib/chat-errors";
 import {
   useAvailableModels,
 } from "@/lib/hooks/use-available-models";
@@ -311,7 +311,7 @@ export default function CompareModelsPage() {
         setHistory((prev) => [newEntry, ...prev].slice(0, 50));
       }
     } catch (err) {
-      toast.error(humanizeArenaError(err));
+      toast.error(humanizeChatError(err));
     } finally {
       setLoading(false);
     }
@@ -970,7 +970,7 @@ function Composer({
         setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
-        toast.error(humanizeArenaError(err), { id: toastId });
+        toast.error(humanizeChatError(err), { id: toastId });
       }
       return;
     }
@@ -979,7 +979,7 @@ function Composer({
       const content = await file.text();
       setTarget({ name: file.name, content });
     } catch (err) {
-      toast.error(humanizeArenaError(err));
+      toast.error(humanizeChatError(err));
     }
   }
 
