@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Search } from "lucide-react";
 import {
   useMutation,
@@ -10,9 +10,11 @@ import {
 import {
   fetchModelsCatalog,
   setModelEnabled,
+  setModelsEnabledBatch,
   type CatalogModel,
 } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
+import { Button } from "@/components/ui/button";
 
 function getProvider(modelId: string): string {
   const idx = modelId.indexOf("/");
@@ -27,10 +29,14 @@ function formatPricePerMillion(raw: string | undefined): string {
   return `$${perMillion.toFixed(2)}/M`;
 }
 
+const checkboxClass =
+  "h-4 w-4 cursor-pointer rounded border border-border-3 text-primary-6 accent-primary-6 focus:ring-2 focus:ring-primary-6/30";
+
 export function CatalogTab() {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [provider, setProvider] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const {
     data: catalog,
@@ -42,13 +48,23 @@ export function CatalogTab() {
     staleTime: 5 * 60 * 1000,
   });
 
+  const invalidateCaches = () => {
+    queryClient.invalidateQueries({ queryKey: ["models", "catalog"] });
+    queryClient.invalidateQueries({ queryKey: ["models", "available"] });
+  };
+
   const toggleMutation = useMutation({
     mutationFn: ({ id, enabled }: { id: string; enabled: boolean }) =>
       setModelEnabled(id, enabled),
+    onSuccess: invalidateCaches,
+  });
+
+  const batchMutation = useMutation({
+    mutationFn: ({ ids, enabled }: { ids: string[]; enabled: boolean }) =>
+      setModelsEnabledBatch(ids, enabled),
     onSuccess: () => {
-      // Refresh both: catalog (admin) and available (end-user) caches.
-      queryClient.invalidateQueries({ queryKey: ["models", "catalog"] });
-      queryClient.invalidateQueries({ queryKey: ["models", "available"] });
+      invalidateCaches();
+      setSelected(new Set());
     },
   });
 
@@ -72,7 +88,52 @@ export function CatalogTab() {
     });
   }, [catalog, search, provider]);
 
+  // Drop selections that are no longer visible (e.g. after the user
+  // tightens search/provider filter). Avoids confusing "5 selected" while
+  // none of those rows are on screen.
+  useEffect(() => {
+    if (selected.size === 0) return;
+    const visibleIds = new Set(filtered.map((m) => m.id));
+    let changed = false;
+    const next = new Set<string>();
+    selected.forEach((id) => {
+      if (visibleIds.has(id)) next.add(id);
+      else changed = true;
+    });
+    if (changed) setSelected(next);
+  }, [filtered, selected]);
+
   const enabledCount = catalog?.filter((m) => m.enabled).length ?? 0;
+
+  const allVisibleSelected =
+    filtered.length > 0 && filtered.every((m) => selected.has(m.id));
+  const someVisibleSelected = filtered.some((m) => selected.has(m.id));
+
+  const toggleOneSelected = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        filtered.forEach((m) => next.delete(m.id));
+      } else {
+        filtered.forEach((m) => next.add(m.id));
+      }
+      return next;
+    });
+  };
+
+  const bulkAction = (enabled: boolean) => {
+    if (selected.size === 0) return;
+    batchMutation.mutate({ ids: Array.from(selected), enabled });
+  };
 
   if (isLoading) {
     return (
@@ -130,10 +191,69 @@ export function CatalogTab() {
         </select>
       </div>
 
+      {/* Bulk actions bar */}
+      {selected.size > 0 && (
+        <div className="flex items-center justify-between rounded-md border border-primary-3 bg-primary-1/40 px-3 py-2">
+          <span className="text-[13px] text-text-1">
+            <strong>{selected.size}</strong> selected
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setSelected(new Set())}
+              disabled={batchMutation.isPending}
+              className="cursor-pointer"
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => bulkAction(false)}
+              disabled={batchMutation.isPending}
+              className="cursor-pointer"
+            >
+              Disable
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => bulkAction(true)}
+              disabled={batchMutation.isPending}
+              className="cursor-pointer"
+            >
+              {batchMutation.isPending ? "Saving…" : "Enable"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-lg border border-border-2 bg-bg-white">
-        <table className="w-full min-w-[700px]">
+        <table className="w-full min-w-[760px]">
           <thead className="bg-bg-1 text-left text-[12px] uppercase tracking-wide text-text-3">
             <tr>
+              <th className="w-[1%] px-4 py-2 font-medium">
+                <input
+                  type="checkbox"
+                  className={checkboxClass}
+                  aria-label={
+                    allVisibleSelected
+                      ? "Deselect all visible models"
+                      : "Select all visible models"
+                  }
+                  checked={allVisibleSelected}
+                  ref={(el) => {
+                    // Indeterminate state when *some* but not all visible
+                    // rows are selected — reads as a partial selection.
+                    if (el) {
+                      el.indeterminate =
+                        someVisibleSelected && !allVisibleSelected;
+                    }
+                  }}
+                  onChange={toggleAllVisible}
+                  disabled={filtered.length === 0}
+                />
+              </th>
               <th className="px-4 py-2 font-medium">Model</th>
               <th className="px-4 py-2 font-medium">Provider</th>
               <th className="px-4 py-2 font-medium">Context</th>
@@ -147,16 +267,18 @@ export function CatalogTab() {
               <CatalogRow
                 key={m.id}
                 model={m}
-                onToggle={(enabled) =>
+                isSelected={selected.has(m.id)}
+                onToggleSelect={() => toggleOneSelected(m.id)}
+                onToggleEnabled={(enabled) =>
                   toggleMutation.mutate({ id: m.id, enabled })
                 }
-                disabled={toggleMutation.isPending}
+                disabled={toggleMutation.isPending || batchMutation.isPending}
               />
             ))}
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-4 py-8 text-center text-[13px] text-text-3"
                 >
                   No models match your filter.
@@ -172,15 +294,28 @@ export function CatalogTab() {
 
 function CatalogRow({
   model,
-  onToggle,
+  isSelected,
+  onToggleSelect,
+  onToggleEnabled,
   disabled,
 }: {
   model: CatalogModel;
-  onToggle: (enabled: boolean) => void;
+  isSelected: boolean;
+  onToggleSelect: () => void;
+  onToggleEnabled: (enabled: boolean) => void;
   disabled: boolean;
 }) {
   return (
-    <tr className="text-[13px]">
+    <tr className={`text-[13px] ${isSelected ? "bg-primary-1/30" : ""}`}>
+      <td className="px-4 py-3">
+        <input
+          type="checkbox"
+          className={checkboxClass}
+          aria-label={`Select ${model.name}`}
+          checked={isSelected}
+          onChange={onToggleSelect}
+        />
+      </td>
       <td className="px-4 py-3">
         <div className="flex flex-col">
           <span className="font-medium text-text-1">{model.name}</span>
@@ -202,7 +337,7 @@ function CatalogRow({
       <td className="px-4 py-3 text-right">
         <Switch
           checked={model.enabled}
-          onCheckedChange={onToggle}
+          onCheckedChange={onToggleEnabled}
           disabled={disabled}
         />
       </td>

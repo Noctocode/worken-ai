@@ -821,6 +821,19 @@ export async function setModelEnabled(
   return res.json();
 }
 
+export async function setModelsEnabledBatch(
+  modelIdentifiers: string[],
+  enabled: boolean,
+): Promise<{ updated: string[]; enabled: boolean }> {
+  const res = await apiFetch(`/models/catalog/enabled`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ modelIdentifiers, enabled }),
+  });
+  if (!res.ok) throw new Error("Failed to bulk-update models");
+  return res.json();
+}
+
 export async function createModel(data: {
   customName: string;
   modelIdentifier: string;

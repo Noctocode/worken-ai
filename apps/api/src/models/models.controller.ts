@@ -58,16 +58,26 @@ export class ModelsController {
     );
   }
 
-  /** Admin: replace the entire enabled set with this list. */
+  /**
+   * Admin: bulk enable or disable a list of models. Additive — does not
+   * touch models outside the list.
+   */
   @Put('catalog/enabled')
-  setEnabledBulk(
-    @Body() body: { modelIdentifiers: string[] },
+  setEnabledBatch(
+    @Body() body: { modelIdentifiers: string[]; enabled: boolean },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!Array.isArray(body?.modelIdentifiers)) {
       throw new BadRequestException('`modelIdentifiers` must be an array');
     }
-    return this.modelsService.setEnabledBulk(user.id, body.modelIdentifiers);
+    if (typeof body?.enabled !== 'boolean') {
+      throw new BadRequestException('`enabled` must be a boolean');
+    }
+    return this.modelsService.setEnabledBatch(
+      user.id,
+      body.modelIdentifiers,
+      body.enabled,
+    );
   }
 
   @Post()

@@ -94,12 +94,21 @@ export class ModelsService {
     return { modelIdentifier, enabled };
   }
 
-  /** Bulk-set: useful for the admin "select multiple, save" flow. */
-  async setEnabledBulk(
+  /**
+   * Bulk additive/subtractive: set every listed identifier to the given
+   * enabled state, leave all other rows untouched. Used by the admin
+   * "select N, then Enable/Disable selected" flow.
+   */
+  async setEnabledBatch(
     callerId: string,
     modelIdentifiers: string[],
-  ): Promise<{ enabled: string[] }> {
+    enabled: boolean,
+  ): Promise<{ updated: string[]; enabled: boolean }> {
     await this.assertAdmin(callerId);
+
+    if (modelIdentifiers.length === 0) {
+      return { updated: [], enabled };
+    }
 
     const catalog = await this.catalogService.list();
     const valid = new Set(catalog.map((m) => m.id));
@@ -110,28 +119,25 @@ export class ModelsService {
       );
     }
 
-    // Replace the whole set: anything not in the new list gets removed.
-    await this.db.transaction(async (tx) => {
-      const existing = await tx.select().from(enabledModels);
-      const existingIds = existing.map((r) => r.modelIdentifier);
-      const toRemove = existingIds.filter(
-        (id) => !modelIdentifiers.includes(id),
-      );
-      const toAdd = modelIdentifiers.filter((id) => !existingIds.includes(id));
+    if (enabled) {
+      // ON_CONFLICT DO NOTHING so re-enabling something already enabled
+      // is a no-op rather than a constraint error.
+      await this.db
+        .insert(enabledModels)
+        .values(
+          modelIdentifiers.map((id) => ({
+            modelIdentifier: id,
+            enabledById: callerId,
+          })),
+        )
+        .onConflictDoNothing();
+    } else {
+      await this.db
+        .delete(enabledModels)
+        .where(inArray(enabledModels.modelIdentifier, modelIdentifiers));
+    }
 
-      if (toRemove.length > 0) {
-        await tx
-          .delete(enabledModels)
-          .where(inArray(enabledModels.modelIdentifier, toRemove));
-      }
-      if (toAdd.length > 0) {
-        await tx
-          .insert(enabledModels)
-          .values(toAdd.map((id) => ({ modelIdentifier: id, enabledById: callerId })));
-      }
-    });
-
-    return { enabled: modelIdentifiers };
+    return { updated: modelIdentifiers, enabled };
   }
 
   private async assertAdmin(userId: string): Promise<void> {
