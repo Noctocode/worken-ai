@@ -278,7 +278,7 @@ export default function CreateProjectPage() {
             {projectType === "team" && (
               <div className="flex flex-col w-full">
                 {manageableTeams.length === 0 ? (
-                  <div className="rounded-xl border border-border-2 bg-bg-1 px-4 py-3 text-[13px] text-text-2">
+                  <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-3 text-[14px] text-text-2">
                     You don&apos;t own or co-manage any teams yet.{" "}
                     <Link href="/teams" className="text-primary-6 hover:underline">
                       Create a team first
@@ -291,15 +291,19 @@ export default function CreateProjectPage() {
                     onValueChange={(v) => { setSelectedTeamId(v); setTeamError(false); }}
                   >
                     <SelectTrigger
-                      className={`w-full rounded-xl border ${
+                      className={`w-full cursor-pointer rounded-lg text-[16px] text-text-1 data-[size=default]:h-12 ${
                         teamError ? "border-danger-5" : "border-border-2"
-                      } px-3.5 py-3 text-[14px] text-text-1`}
+                      }`}
                     >
                       <SelectValue placeholder="Select a team..." />
                     </SelectTrigger>
                     <SelectContent>
                       {manageableTeams.map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
+                        <SelectItem
+                          key={t.id}
+                          value={t.id}
+                          className="cursor-pointer text-[16px]"
+                        >
                           {t.name}
                         </SelectItem>
                       ))}
