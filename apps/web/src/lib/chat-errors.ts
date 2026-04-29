@@ -25,11 +25,30 @@ export function humanizeChatError(err: unknown): string {
   const withModel = (tpl: (name: string) => string): string =>
     modelName ? tpl(modelName) : tpl("The selected model");
 
+  // 402 first — OpenRouter's body for budget-exhausted hits is full of
+  // "max_tokens" and "total limit" wording that would otherwise false-
+  // positive into the context-length branch below. The HTTP status code
+  // is the most reliable signal, hence the \b402\b check here.
+  if (
+    /\b402\b/.test(raw) ||
+    /insufficient (credit|balance)/i.test(raw) ||
+    /payment required/i.test(raw) ||
+    /credit limit/i.test(raw) ||
+    /monthly limit/i.test(raw) ||
+    /requires more credits/i.test(raw) ||
+    /can only afford/i.test(raw)
+  ) {
+    return "Monthly budget for this workspace is exhausted. It resets on the 1st of next month — or an admin can raise the limit in Team Management.";
+  }
+
   if (
     lower.includes("context_length") ||
     lower.includes("context length") ||
+    lower.includes("context window") ||
     lower.includes("maximum context") ||
-    (lower.includes("token") && /(exceed|limit|too long)/.test(lower))
+    /input.*(too long|too large)/.test(lower) ||
+    /prompt.*(too long|too large)/.test(lower) ||
+    /exceeds.*context/.test(lower)
   ) {
     return withModel(
       (m) =>
@@ -55,19 +74,6 @@ export function humanizeChatError(err: unknown): string {
 
   if (/\b401\b/.test(raw) || /invalid api key/i.test(raw) || /authentication/i.test(raw)) {
     return "The OpenRouter key for this team is invalid. Please contact an admin.";
-  }
-
-  // 402 = OpenRouter monthly limit hit on the team or user key.
-  // We can't tell from the error message alone whether it's a team or
-  // personal budget that's exhausted, so the copy stays generic.
-  if (
-    /\b402\b/.test(raw) ||
-    /insufficient (credit|balance)/i.test(raw) ||
-    /payment required/i.test(raw) ||
-    /credit limit/i.test(raw) ||
-    /monthly limit/i.test(raw)
-  ) {
-    return "Monthly budget for this workspace is exhausted. It resets on the 1st of next month — or an admin can raise the limit in Team Management.";
   }
 
   if (

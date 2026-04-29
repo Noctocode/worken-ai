@@ -655,10 +655,12 @@ export async function sendChatMessage(
   });
   if (!res.ok) {
     // Surface the BE error body so humanizeChatError() can route it to a
-    // specific user-facing message (402 budget, 401 auth, 429 rate limit,
-    // context-length, …). Without this, every failure used to flatten to
-    // a generic "Failed to send message".
-    let detail = `${res.status} ${res.statusText}`;
+    // specific user-facing message. The HTTP status is *always* prepended
+    // so the humanizer can rely on \b402\b / \b429\b / \b401\b matching
+    // even when the BE body itself doesn't mention the code (OpenRouter's
+    // 402 text, for example, talks about "max_tokens" + "total limit"
+    // which would otherwise false-positive as a context-length error).
+    let detail: string | null = null;
     try {
       const body = await res.text();
       try {
@@ -670,9 +672,12 @@ export async function sendChatMessage(
         if (body) detail = body;
       }
     } catch {
-      /* keep status fallback */
+      /* keep null fallback */
     }
-    throw new Error(detail);
+    const message = detail
+      ? `${res.status} ${res.statusText}: ${detail}`
+      : `${res.status} ${res.statusText}`;
+    throw new Error(message);
   }
   return res.json();
 }
