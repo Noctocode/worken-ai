@@ -170,14 +170,13 @@ export class CompareModelsController {
       throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
     }
 
-    // Resolve once per request — observability events get tagged with a
-    // team so the dashboard's team-analytics rollup is populated.
-    //   - If the body carries an explicit teamId, validate membership.
-    //     Reject foreign teams instead of silently dropping; the user
-    //     consciously picked a team they don't belong to.
-    //   - "personal" / null / "" / "null" all mean Personal scope.
-    //   - Otherwise fall back to the user's primary team.
-    let teamId: string | null;
+    // Personal-by-default scoping. If the body carries an explicit
+    // teamId, validate membership and use it. Anything else
+    // (missing / null / empty / "personal") tags the events as
+    // Personal, so they show up under the "Personal" row in the
+    // Observability team-analytics rollup. The user opts in to a
+    // team scope by explicitly selecting one in the composer.
+    let teamId: string | null = null;
     const requested = (body.teamId ?? '').trim();
     if (requested && requested !== 'personal' && requested !== 'null') {
       if (!(await this.observabilityService.isUserInTeam(user.id, requested))) {
@@ -186,10 +185,6 @@ export class CompareModelsController {
         );
       }
       teamId = requested;
-    } else if (requested === 'personal' || requested === 'null') {
-      teamId = null;
-    } else {
-      teamId = await this.observabilityService.getPrimaryTeamId(user.id);
     }
 
     let responses: ModelResponse[];

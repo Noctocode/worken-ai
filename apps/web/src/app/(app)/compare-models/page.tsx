@@ -185,9 +185,10 @@ export default function CompareModelsPage() {
   >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const [teamsList, setTeamsList] = useState<TeamListItem[]>([]);
-  // Sentinels: "default" → let server pick the user's primary team;
-  // "personal" → explicit no-team scope. Anything else is a team UUID.
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("default");
+  // Personal-first: events default to no team scope unless the user
+  // explicitly picks one. "personal" is the sentinel for null teamId;
+  // anything else is a real team UUID.
+  const [selectedTeamId, setSelectedTeamId] = useState<string>("personal");
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -267,15 +268,10 @@ export default function CompareModelsPage() {
     const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
     try {
-      // teamId sentinel: "default" → server picks user's primary team
-      // (matches getPrimaryTeamId), "personal" → explicit Personal scope,
-      // anything else → that team UUID.
+      // "personal" → null teamId (Personal scope, the default).
+      // Anything else → real team UUID, server validates membership.
       const teamIdForCall =
-        selectedTeamId === "default"
-          ? undefined
-          : selectedTeamId === "personal"
-            ? null
-            : selectedTeamId;
+        selectedTeamId === "personal" ? null : selectedTeamId;
       const result = await sendQuestionToCompareModels(
         activeModels,
         question,
@@ -1270,10 +1266,9 @@ function RightRail({
           </span>
           <Select value={selectedTeamId} onValueChange={onSelectTeam}>
             <SelectTrigger className="h-10 rounded-md border-border-2 text-[13px]">
-              <SelectValue placeholder="Default (your primary team)" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="default">Default (primary team)</SelectItem>
               <SelectItem value="personal">Personal (no team)</SelectItem>
               {teams.map((t) => (
                 <SelectItem key={t.id} value={t.id}>
