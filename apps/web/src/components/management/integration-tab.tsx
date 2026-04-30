@@ -1,7 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, BookOpen, Info, Loader2, Plus, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  Check,
+  Info,
+  KeyRound,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -96,6 +105,10 @@ function ProviderSettingsDialog({
   const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(card.isEnabled);
+  // Editing mode: when a key is already saved, show a status panel by
+  // default and only reveal the input on explicit "Replace key" click.
+  // Avoids the user typing over an already-good key by accident.
+  const [editingKey, setEditingKey] = useState(!card.hasApiKey);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -104,7 +117,14 @@ function ProviderSettingsDialog({
       if (card.id) {
         return updateIntegration(card.id, {
           isEnabled: enabled,
-          apiKey: useOwnKey ? (apiKey || undefined) : null,
+          // Only send apiKey when user is actually replacing it. Sending
+          // `undefined` means "leave existing key alone" (BE PATCH skips
+          // it). Sending null = explicit clear.
+          apiKey: !useOwnKey
+            ? null
+            : editingKey && apiKey
+              ? apiKey
+              : undefined,
         });
       }
       return upsertIntegration({
@@ -115,7 +135,11 @@ function ProviderSettingsDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      toast.success(`${card.displayName} settings saved.`);
+      toast.success(
+        editingKey && apiKey && useOwnKey
+          ? `${card.displayName} key saved.`
+          : `${card.displayName} settings saved.`,
+      );
       onClose();
     },
     onError: (err: Error) => {
@@ -207,25 +231,85 @@ function ProviderSettingsDialog({
             <input
               type="checkbox"
               checked={useOwnKey}
-              onChange={(e) => setUseOwnKey(e.target.checked)}
+              onChange={(e) => {
+                setUseOwnKey(e.target.checked);
+                // Toggling off and back on resets the editor — keeps
+                // the "key already saved" path visible until the user
+                // explicitly clicks Replace.
+                if (!e.target.checked) {
+                  setEditingKey(true);
+                  setApiKey("");
+                } else {
+                  setEditingKey(!card.hasApiKey);
+                }
+              }}
               className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
             />
             <span className="text-[14px] font-normal leading-[20px] text-text-2">
               Use your own API KEY
             </span>
           </label>
-          {useOwnKey && (
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              placeholder={
-                card.hasApiKey
-                  ? "Enter a new key to replace the saved one"
-                  : "Enter your API key"
-              }
-              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-            />
+
+          {useOwnKey && card.hasApiKey && !editingKey && (
+            // Status panel: the user has a key saved already. Show a
+            // clear "configured" state with masked dots, plus actions
+            // to replace or remove. Without this, after clicking
+            // Apply the dialog just closes and there's no visible
+            // signal that the key persisted.
+            <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
+                <Check className="h-4 w-4" strokeWidth={2.5} />
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-[13px] font-semibold text-success-7">
+                  API key configured
+                </span>
+                <span className="flex items-center gap-1.5 text-[13px] text-text-2">
+                  <KeyRound className="h-3.5 w-3.5 text-text-3" />
+                  <span className="font-mono tracking-wide">
+                    ••••••••••••••••
+                  </span>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingKey(true);
+                  setApiKey("");
+                }}
+                className="text-[13px] font-medium text-primary-6 hover:underline"
+              >
+                Replace
+              </button>
+            </div>
+          )}
+
+          {useOwnKey && (editingKey || !card.hasApiKey) && (
+            <>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={
+                  card.hasApiKey
+                    ? "Enter a new key to replace the saved one"
+                    : "Enter your API key"
+                }
+                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+              {card.hasApiKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(false);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] text-text-3 hover:underline"
+                >
+                  Cancel — keep the saved key
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -460,8 +544,21 @@ export function IntegrationTab() {
                 />
               </div>
 
+              {/* Persistent BYOK indicator: a small "Key set" pill so
+                  the user sees the saved state without opening the
+                  Settings dialog. */}
+              {card.hasApiKey && (
+                <span
+                  className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7"
+                  title="Your own API key is saved for this provider"
+                >
+                  <Check className="h-3 w-3" strokeWidth={2.5} />
+                  Key set
+                </span>
+              )}
+
               {/* Description */}
-              <p className="mt-3 text-[14px] font-normal text-text-2 line-clamp-2">
+              <p className="mt-2 text-[14px] font-normal text-text-2 line-clamp-2">
                 {card.description}
               </p>
 
