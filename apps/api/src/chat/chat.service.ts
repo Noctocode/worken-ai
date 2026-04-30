@@ -11,6 +11,9 @@ interface ChatResponse {
   content: string;
   reasoning_details?: unknown;
   totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  /** Set by OpenRouter only; null for native BYOK / Custom endpoints. */
   totalCost?: number;
 }
 
@@ -19,6 +22,8 @@ interface ChatResponse {
 interface OpenRouterUsage {
   cost?: number;
   total_tokens?: number;
+  prompt_tokens?: number;
+  completion_tokens?: number;
 }
 
 @Injectable()
@@ -83,6 +88,8 @@ export class ChatService {
         ? { reasoning_details: response.reasoning_details }
         : {}),
       totalTokens: usage?.total_tokens,
+      promptTokens: usage?.prompt_tokens,
+      completionTokens: usage?.completion_tokens,
       totalCost: usage?.cost,
     };
   }

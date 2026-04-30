@@ -6,6 +6,9 @@ interface QuestionResponse {
   content: string;
   reasoning_details?: unknown;
   totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  /** OpenRouter only — null for native BYOK / Custom endpoints. */
   totalCost?: number;
 }
 
@@ -115,13 +118,18 @@ export class CompareModelsService {
     };
     const response = completion.choices[0].message as ORChatMessage;
 
+    const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {
       content: response.content || '',
       ...(response.reasoning_details
         ? { reasoning_details: response.reasoning_details }
         : {}),
       totalTokens: completion.usage?.total_tokens,
-      totalCost: (completion.usage as OpenRouterUsage | undefined)?.cost ?? 0,
+      promptTokens: completion.usage?.prompt_tokens,
+      completionTokens: completion.usage?.completion_tokens,
+      // Leave undefined when the upstream didn't return cost — controller
+      // estimates from the OpenRouter catalog for BYOK / Custom routes.
+      ...(orCost != null ? { totalCost: orCost } : {}),
     };
   }
 

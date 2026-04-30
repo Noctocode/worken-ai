@@ -58,4 +58,30 @@ export class OpenRouterCatalogService {
     await this.redis.del(CACHE_KEY);
     return this.list();
   }
+
+  /**
+   * Estimate USD cost of a chat call from the catalog's per-token
+   * pricing. Returns null when the model isn't in the catalog or has
+   * no pricing data — caller should leave costUsd null and not show a
+   * misleading zero on the dashboard.
+   *
+   * Used for BYOK / Custom routes where the upstream response doesn't
+   * include cost (only OpenRouter does), so observability would
+   * otherwise undercount spend.
+   */
+  async estimateCost(
+    modelId: string,
+    promptTokens: number,
+    completionTokens: number,
+  ): Promise<number | null> {
+    const catalog = await this.list();
+    const model = catalog.find((m) => m.id === modelId);
+    if (!model?.pricing) return null;
+    const promptPrice = Number(model.pricing.prompt ?? 0);
+    const completionPrice = Number(model.pricing.completion ?? 0);
+    if (!Number.isFinite(promptPrice) || !Number.isFinite(completionPrice)) {
+      return null;
+    }
+    return promptTokens * promptPrice + completionTokens * completionPrice;
+  }
 }

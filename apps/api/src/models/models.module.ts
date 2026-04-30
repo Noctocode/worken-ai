@@ -6,6 +6,6 @@ import { OpenRouterCatalogService } from './openrouter-catalog.service.js';
 @Module({
   controllers: [ModelsController],
   providers: [ModelsService, OpenRouterCatalogService],
-  exports: [ModelsService],
+  exports: [ModelsService, OpenRouterCatalogService],
 })
 export class ModelsModule {}

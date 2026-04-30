@@ -4,6 +4,7 @@ import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ChatService } from './chat.service.js';
 
@@ -22,6 +23,7 @@ export class ChatController {
     private readonly documentsService: DocumentsService,
     private readonly conversationsService: ConversationsService,
     private readonly chatTransport: ChatTransportService,
+    private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
   ) {}
 
@@ -85,6 +87,32 @@ export class ChatController {
         transport.apiKey,
         transport.baseURL,
       );
+
+      // Cost backfill for non-OpenRouter routes. OpenRouter returns
+      // `usage.cost` directly; native (BYOK) and Custom endpoints
+      // don't, so observability would otherwise show $0 for those
+      // calls. Estimate from the OpenRouter catalog's per-token
+      // pricing — assumes native pricing matches OpenRouter's listed
+      // prices, which is true for headline providers.
+      let costUsd = response.totalCost ?? null;
+      let costEstimated = false;
+      if (
+        costUsd == null &&
+        transport.source !== 'openrouter' &&
+        response.promptTokens != null &&
+        response.completionTokens != null
+      ) {
+        const estimated = await this.catalogService.estimateCost(
+          body.model ?? 'moonshotai/kimi-k2.5',
+          response.promptTokens,
+          response.completionTokens,
+        );
+        if (estimated != null) {
+          costUsd = estimated;
+          costEstimated = true;
+        }
+      }
+
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
@@ -92,7 +120,7 @@ export class ChatController {
         model: body.model ?? 'moonshotai/kimi-k2.5',
         provider: transport.provider,
         totalTokens: response.totalTokens,
-        costUsd: response.totalCost,
+        costUsd,
         latencyMs: Date.now() - chatStart,
         success: true,
         prompt: body.content,
@@ -101,6 +129,7 @@ export class ChatController {
           projectId: body.projectId ?? null,
           hasContext: Boolean(context),
           routingSource: transport.source,
+          costEstimated,
         },
       });
     } catch (err) {
