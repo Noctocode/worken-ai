@@ -52,7 +52,7 @@ import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { deleteTeam, fetchProject, fetchTeam } from "@/lib/api";
 import { CreateTeamDialog } from "@/components/create-team-dialog";
-import { MODEL_LABELS } from "@/lib/models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useAuth } from "@/components/providers";
 
 const AI_CHAT_TABS = [
@@ -67,6 +67,7 @@ export const Appbar = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const config = getRouteConfig(pathname);
+  const { getLabel: getModelLabel } = useAvailableModels();
 
   // Project detail data — hooks always called, gated by `enabled`
   const isProjectDetail = config.appbarType === "projectDetail";
@@ -396,7 +397,7 @@ export const Appbar = () => {
 
           <button className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1">
             <span className="text-[16px] text-text-1">
-              {_project ? (MODEL_LABELS[_project.model] || _project.model) : "Model"}
+              {_project ? getModelLabel(_project.model) : "Model"}
             </span>
             <ChevronDown className="h-4 w-4 text-text-2" />
           </button>

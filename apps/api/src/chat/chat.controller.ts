@@ -1,4 +1,4 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, HttpException, Post } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
@@ -114,6 +114,28 @@ export class ChatController {
           projectId: body.projectId ?? null,
         },
       });
+
+      // Surface OpenRouter HTTP status codes (402/401/429/…) to the
+      // client so the FE humanizer can route them to a specific message.
+      // The OpenAI SDK throws errors with a numeric `status` field;
+      // everything else falls through as 500.
+      if (
+        err &&
+        typeof err === 'object' &&
+        'status' in err &&
+        typeof (err as { status: unknown }).status === 'number'
+      ) {
+        const apiErr = err as {
+          status: number;
+          message?: string;
+          error?: { message?: string };
+        };
+        const detail =
+          apiErr.error?.message ??
+          apiErr.message ??
+          `OpenRouter error ${apiErr.status}`;
+        throw new HttpException(detail, apiErr.status);
+      }
       throw err;
     }
 

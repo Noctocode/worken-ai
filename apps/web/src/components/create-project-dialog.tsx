@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams } from "@/lib/api";
-import { MODELS } from "@/lib/models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
 
@@ -36,6 +36,7 @@ export function CreateProjectDialog({
   const [teamId, setTeamId] = useState<string>("personal");
 
   const queryClient = useQueryClient();
+  const { models, isLoading: modelsLoading } = useAvailableModels();
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],
@@ -110,12 +111,20 @@ export function CreateProjectDialog({
               <Label>Model</Label>
               <Select value={model} onValueChange={setModel} required>
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a model" />
+                  <SelectValue
+                    placeholder={
+                      modelsLoading
+                        ? "Loading models…"
+                        : models.length === 0
+                          ? "No models enabled — ask an admin"
+                          : "Select a model"
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
-                  {MODELS.map((m) => (
+                  {models.map((m) => (
                     <SelectItem key={m.id} value={m.id}>
-                      {m.label}
+                      {m.name}
                     </SelectItem>
                   ))}
                 </SelectContent>

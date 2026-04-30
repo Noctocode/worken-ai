@@ -1,32 +1,58 @@
-import { MODEL_LABELS } from "./models";
-
+// Pure function: can't call useAvailableModels() here, so we display the
+// raw model identifier (e.g. "openai/gpt-4o") in error messages. Callers
+// that want a friendlier label can pre-process `err.message` before
+// passing it in.
 function modelLabel(id: string | undefined): string | null {
   if (!id) return null;
-  return MODEL_LABELS[id] ?? id;
+  return id;
 }
 
-export function humanizeArenaError(err: unknown): string {
+/**
+ * Turn a thrown chat error into a user-readable sentence. Used by both
+ * the project chat (/projects/[id]) and the compare-models arena, since
+ * they share the same OpenRouter failure modes.
+ */
+export function humanizeChatError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
   if (typeof console !== "undefined") {
-    console.error("[arena]", raw);
+    console.error("[chat]", raw);
   }
 
   const modelMatch = raw.match(/for model "([^"]+)"/);
   const modelName = modelLabel(modelMatch?.[1]);
   const withModel = (tpl: (name: string) => string): string =>
-    modelName ? tpl(modelName) : tpl("One of the selected models");
+    modelName ? tpl(modelName) : tpl("The selected model");
+
+  // 402 first — OpenRouter's body for budget-exhausted hits is full of
+  // "max_tokens" and "total limit" wording that would otherwise false-
+  // positive into the context-length branch below. The HTTP status code
+  // is the most reliable signal, hence the \b402\b check here.
+  if (
+    /\b402\b/.test(raw) ||
+    /insufficient (credit|balance)/i.test(raw) ||
+    /payment required/i.test(raw) ||
+    /credit limit/i.test(raw) ||
+    /monthly limit/i.test(raw) ||
+    /requires more credits/i.test(raw) ||
+    /can only afford/i.test(raw)
+  ) {
+    return "Monthly budget for this workspace is exhausted. It resets on the 1st of next month — or an admin can raise the limit in Team Management.";
+  }
 
   if (
     lower.includes("context_length") ||
     lower.includes("context length") ||
+    lower.includes("context window") ||
     lower.includes("maximum context") ||
-    (lower.includes("token") && /(exceed|limit|too long)/.test(lower))
+    /input.*(too long|too large)/.test(lower) ||
+    /prompt.*(too long|too large)/.test(lower) ||
+    /exceeds.*context/.test(lower)
   ) {
     return withModel(
       (m) =>
-        `Your prompt together with the attached file is too long for ${m}. Try a shorter prompt or a smaller attachment.`,
+        `Your prompt is too long for ${m}. Try a shorter message, trim project context, or pick a model with a larger context window.`,
     );
   }
 
@@ -42,20 +68,12 @@ export function humanizeArenaError(err: unknown): string {
 
   if (/no endpoints found/i.test(raw)) {
     return withModel(
-      (m) => `${m} is no longer available on OpenRouter. Pick a different model.`,
+      (m) => `${m} is no longer available on OpenRouter. Pick a different model in the project header.`,
     );
   }
 
   if (/\b401\b/.test(raw) || /invalid api key/i.test(raw) || /authentication/i.test(raw)) {
-    return "The OpenRouter key looks invalid. Please contact an admin.";
-  }
-
-  if (
-    /\b402\b/.test(raw) ||
-    /insufficient (credit|balance)/i.test(raw) ||
-    /payment required/i.test(raw)
-  ) {
-    return "OpenRouter credits have run out. Top up the account and try again.";
+    return "The OpenRouter key for this team is invalid. Please contact an admin.";
   }
 
   if (
@@ -72,6 +90,12 @@ export function humanizeArenaError(err: unknown): string {
 
   if (/\b5\d\d\b/.test(raw) || /provider/i.test(raw)) {
     return withModel((m) => `${m}'s provider had a hiccup. Please try again.`);
+  }
+
+  if (/\b404\b/.test(raw) || /model not found/i.test(raw)) {
+    return withModel(
+      (m) => `${m} can't be reached. Make sure the model is enabled in Models → Catalog.`,
+    );
   }
 
   const unsupportedIdx = lower.indexOf("unsupported file type");
@@ -91,6 +115,15 @@ export function humanizeArenaError(err: unknown): string {
     /no text (could|was) (be )?extracted/i.test(raw)
   ) {
     return "We couldn't read that attachment. The file may be scanned, image-only or corrupted.";
+  }
+
+  // Plain network blip (browser couldn't reach the API at all)
+  if (
+    /failed to fetch/i.test(raw) ||
+    /networkerror/i.test(raw) ||
+    /load failed/i.test(raw)
+  ) {
+    return "Couldn't reach the API. Check that the server is running and your connection is alive.";
   }
 
   return "Something went wrong. Please try again.";

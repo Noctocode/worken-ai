@@ -71,8 +71,11 @@ import {
   type Shortcut,
   type TeamListItem,
 } from "@/lib/api";
-import { humanizeArenaError } from "@/lib/arena-errors";
-import { MODELS } from "@/lib/models";
+import { humanizeChatError } from "@/lib/chat-errors";
+import {
+  useAvailableModels,
+} from "@/lib/hooks/use-available-models";
+import type { AvailableModel } from "@/lib/api";
 
 function getModelProvider(id: string): string {
   const slug = id.split("/")[0] ?? "Unknown";
@@ -133,9 +136,9 @@ const MODEL_COLORS: Record<string, string> = {
   "liquid/lfm-2.5-1.2b-thinking:free": "bg-[#4338CA]/10 text-[#4338CA]",
 };
 
-function getModelLabel(id: string): string {
-  return MODELS.find((m) => m.id === id)?.label ?? id;
-}
+// getModelLabel: each component that needs it calls useAvailableModels() and
+// destructures `getLabel`. The hook shares a single React Query cache across
+// the page so multiple calls don't refetch.
 
 function getModelTone(id: string): string {
   return MODEL_COLORS[id] ?? "bg-bg-1 text-text-2";
@@ -156,10 +159,17 @@ function slotLabel(index: number): string {
 }
 
 export default function CompareModelsPage() {
-  const [selectedModels, setSelectedModels] = useState<string[]>([
-    MODELS[0].id,
-    MODELS[1].id,
-  ]);
+  const { models: availableModels, getLabel: getModelLabel } = useAvailableModels();
+  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+
+  // Seed the comparison with the first two enabled models once the catalog
+  // loads. Done in an effect so the initial render doesn't depend on async
+  // data and so we don't clobber the user's later picks.
+  useEffect(() => {
+    if (selectedModels.length === 0 && availableModels.length >= MIN_MODELS) {
+      setSelectedModels([availableModels[0].id, availableModels[1].id]);
+    }
+  }, [availableModels, selectedModels.length]);
   const [question, setQuestion] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
   const [responses, setResponses] = useState<Record<string, string | null>>({});
@@ -301,7 +311,7 @@ export default function CompareModelsPage() {
         setHistory((prev) => [newEntry, ...prev].slice(0, 50));
       }
     } catch (err) {
-      toast.error(humanizeArenaError(err));
+      toast.error(humanizeChatError(err));
     } finally {
       setLoading(false);
     }
@@ -589,6 +599,7 @@ function ResponseCard({
   loading: boolean;
   onCopy: (text: string) => void;
 }) {
+  const { getLabel: getModelLabel } = useAvailableModels();
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
   const provider = getModelProvider(modelId);
@@ -959,7 +970,7 @@ function Composer({
         setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
-        toast.error(humanizeArenaError(err), { id: toastId });
+        toast.error(humanizeChatError(err), { id: toastId });
       }
       return;
     }
@@ -968,7 +979,7 @@ function Composer({
       const content = await file.text();
       setTarget({ name: file.name, content });
     } catch (err) {
-      toast.error(humanizeArenaError(err));
+      toast.error(humanizeChatError(err));
     }
   }
 
@@ -1198,9 +1209,9 @@ function RightRail({
   selectedTeamId: string;
   onSelectTeam: (id: string) => void;
 }) {
+  const { models } = useAvailableModels();
   const canRemove = selectedModels.length > MIN_MODELS;
-  const allModelIds = useMemo(() => MODELS.map((m) => m.id), []);
-  const canAddMore = selectedModels.length < allModelIds.length;
+  const canAddMore = selectedModels.length < models.length;
   return (
     <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
       <header className="flex items-center justify-between">
@@ -1382,6 +1393,7 @@ function ModelPill({
   onRemove?: () => void;
   disabledIds: string[];
 }) {
+  const { models, getLabel: getModelLabel } = useAvailableModels();
   const tone = getModelTone(value);
   const label = getModelLabel(value);
 
@@ -1451,7 +1463,7 @@ function ModelPill({
             Slot {slot}
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          {MODELS.map((m) => {
+          {models.map((m) => {
             const isActive = m.id === value;
             const isOther = disabledIds.includes(m.id) && !isActive;
             return (
@@ -1464,7 +1476,7 @@ function ModelPill({
                 }}
                 className="flex items-center justify-between gap-2"
               >
-                <span className="truncate">{m.label}</span>
+                <span className="truncate">{m.name}</span>
                 {isActive && (
                   <Check className="h-3.5 w-3.5 text-primary-6" />
                 )}
@@ -1495,21 +1507,24 @@ function ModelPill({
 
 interface ProviderGroup {
   provider: string;
-  models: typeof MODELS[number][];
+  models: AvailableModel[];
 }
 
-function groupModelsByProvider(query: string): ProviderGroup[] {
+function groupModelsByProvider(
+  source: AvailableModel[],
+  query: string,
+): ProviderGroup[] {
   const q = query.trim().toLowerCase();
-  const matched = MODELS.filter((m) => {
+  const matched = source.filter((m) => {
     if (!q) return true;
     return (
-      m.label.toLowerCase().includes(q) ||
+      m.name.toLowerCase().includes(q) ||
       m.id.toLowerCase().includes(q) ||
       getModelProvider(m.id).toLowerCase().includes(q)
     );
   });
 
-  const map = new Map<string, typeof MODELS[number][]>();
+  const map = new Map<string, AvailableModel[]>();
   for (const m of matched) {
     const provider = getModelProvider(m.id);
     const existing = map.get(provider) ?? [];
@@ -1532,11 +1547,15 @@ function AddModelDialog({
   selectedModels: string[];
   onAdd: (id: string) => void;
 }) {
+  const { models } = useAvailableModels();
   const [query, setQuery] = useState("");
   // Default selection points at the first model not already in the comparison.
   const firstAvailable = useMemo(
-    () => MODELS.find((m) => !selectedModels.includes(m.id))?.id ?? MODELS[0].id,
-    [selectedModels],
+    () =>
+      models.find((m) => !selectedModels.includes(m.id))?.id ??
+      models[0]?.id ??
+      "",
+    [models, selectedModels],
   );
   const [selectedId, setSelectedId] = useState<string>(firstAvailable);
 
@@ -1551,10 +1570,14 @@ function AddModelDialog({
     wasOpenRef.current = open;
   }, [open, firstAvailable]);
 
-  const groups = useMemo(() => groupModelsByProvider(query), [query]);
-  const selected = MODELS.find((m) => m.id === selectedId) ?? MODELS[0];
-  const tone = getModelTone(selected.id);
-  const alreadyInUse = selectedModels.includes(selected.id);
+  const groups = useMemo(
+    () => groupModelsByProvider(models, query),
+    [models, query],
+  );
+  const selected =
+    models.find((m) => m.id === selectedId) ?? models[0] ?? null;
+  const tone = selected ? getModelTone(selected.id) : "bg-bg-1 text-text-2";
+  const alreadyInUse = selected ? selectedModels.includes(selected.id) : false;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1617,7 +1640,7 @@ function AddModelDialog({
                           >
                             <span className="flex w-full items-center justify-between gap-2">
                               <span className="text-[13px] font-medium text-text-1">
-                                {m.label}
+                                {m.name}
                               </span>
                               {inUse && (
                                 <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
@@ -1640,35 +1663,51 @@ function AddModelDialog({
 
           {/* Detail column */}
           <div className="flex flex-col gap-4 p-6">
-            <div className="flex items-center gap-3">
-              <span
-                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone}`}
-              >
-                <Bot className="h-5 w-5" strokeWidth={2} />
-              </span>
-              <div className="flex min-w-0 flex-col">
-                <span className="text-[15px] font-bold text-text-1">
-                  {selected.label}
-                </span>
-                <span className="truncate text-[11px] text-text-3">
-                  {selected.id}
-                </span>
-              </div>
-            </div>
+            {selected ? (
+              <>
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tone}`}
+                  >
+                    <Bot className="h-5 w-5" strokeWidth={2} />
+                  </span>
+                  <div className="flex min-w-0 flex-col">
+                    <span className="text-[15px] font-bold text-text-1">
+                      {selected.name}
+                    </span>
+                    <span className="truncate text-[11px] text-text-3">
+                      {selected.id}
+                    </span>
+                  </div>
+                </div>
 
-            <p className="text-[13px] leading-[1.5] text-text-2">
-              Free tier model provided via OpenRouter. Used to compare answers
-              against other models in the arena.
-            </p>
+                <p className="text-[13px] leading-[1.5] text-text-2">
+                  {selected.description ??
+                    "Available via OpenRouter. Used to compare answers against other models in the arena."}
+                </p>
 
-            <div className="grid grid-cols-2 gap-2">
-              <SpecChip label="Provider" value={getModelProvider(selected.id)} />
-              <SpecChip label="Tier" value="Free" />
-              <SpecChip
-                label="Status"
-                value={alreadyInUse ? "In use" : "Available"}
-              />
-            </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <SpecChip label="Provider" value={getModelProvider(selected.id)} />
+                  {selected.context_length ? (
+                    <SpecChip
+                      label="Context"
+                      value={`${selected.context_length.toLocaleString()} tokens`}
+                    />
+                  ) : (
+                    <SpecChip label="Tier" value="—" />
+                  )}
+                  <SpecChip
+                    label="Status"
+                    value={alreadyInUse ? "In use" : "Available"}
+                  />
+                </div>
+              </>
+            ) : (
+              <p className="text-[13px] text-text-3">
+                No models enabled yet. Ask an admin to enable models in
+                Models → Catalog.
+              </p>
+            )}
           </div>
         </div>
 

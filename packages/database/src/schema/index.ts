@@ -347,3 +347,15 @@ export const modelConfigs = pgTable("model_configs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// Admin-managed allowlist of OpenRouter models that end users can pick from
+// in the various model dropdowns (project create, compare-models, …).
+// The full OpenRouter catalog is fetched live; this table flips the visible
+// subset on/off without a deploy. Membership = enabled.
+export const enabledModels = pgTable("enabled_models", {
+  modelIdentifier: text("model_identifier").primaryKey(),
+  enabledById: uuid("enabled_by_id").references(() => users.id, {
+    onDelete: "set null",
+  }),
+  enabledAt: timestamp("enabled_at").defaultNow().notNull(),
+});
