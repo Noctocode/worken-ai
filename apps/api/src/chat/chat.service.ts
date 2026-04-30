@@ -23,10 +23,12 @@ interface OpenRouterUsage {
 
 @Injectable()
 export class ChatService {
-  private makeClient(apiKey?: string): OpenAI {
+  private makeClient(baseURL: string, apiKey: string): OpenAI {
     return new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
+      baseURL,
+      // OpenAI SDK rejects empty apiKey; pass a placeholder for endpoints
+      // that don't need auth (rare — local Ollama, internal vLLM, …).
+      apiKey: apiKey || 'no-auth',
       defaultHeaders: {
         'HTTP-Referer': process.env['SITE_URL'] || '',
         'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
@@ -39,7 +41,8 @@ export class ChatService {
     model: string = 'moonshotai/kimi-k2.5',
     enableReasoning: boolean = true,
     context?: string,
-    apiKey?: string,
+    apiKey: string = '',
+    baseURL: string = 'https://openrouter.ai/api/v1',
   ): Promise<ChatResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
@@ -51,7 +54,7 @@ export class ChatService {
       });
     }
 
-    const completion = await this.makeClient(apiKey).chat.completions.create({
+    const completion = await this.makeClient(baseURL, apiKey).chat.completions.create({
       model,
       messages: [
         ...systemMessages,

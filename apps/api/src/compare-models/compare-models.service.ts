@@ -29,16 +29,16 @@ function describeOpenRouterError(model: string, action: string, err: unknown): E
 
 @Injectable()
 export class CompareModelsService {
-  private makeClient(apiKey?: string): OpenAI {
+  private makeClient(apiKey?: string, baseURL?: string): OpenAI {
     const resolved = apiKey ?? process.env['OPENROUTER_API_KEY'];
     if (!resolved) {
       throw new Error(
-        'No OpenRouter API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
+        'No API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
       );
     }
     return new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: resolved,
+      baseURL: baseURL ?? 'https://openrouter.ai/api/v1',
+      apiKey: resolved || 'no-auth',
       defaultHeaders: {
         'HTTP-Referer': process.env['SITE_URL'] || '',
         'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
@@ -51,6 +51,8 @@ export class CompareModelsService {
     model: string,
     apiKey?: string,
   ): Promise<string> {
+    // OCR always uses OpenRouter (baidu/qianfan-ocr-fast:free), so no
+    // BYOK / Custom routing here.
     let completion;
     try {
       completion = await this.makeClient(apiKey).chat.completions.create({
@@ -84,6 +86,7 @@ export class CompareModelsService {
     enableReasoning: boolean = true,
     context?: string,
     apiKey?: string,
+    baseURL?: string,
   ): Promise<QuestionResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
@@ -97,7 +100,7 @@ export class CompareModelsService {
 
     let completion;
     try {
-      completion = await this.makeClient(apiKey).chat.completions.create({
+      completion = await this.makeClient(apiKey, baseURL).chat.completions.create({
         model,
         messages: [...systemMessages, { role: 'user', content: question }],
         ...(enableReasoning && { reasoning: { enabled: true } }),

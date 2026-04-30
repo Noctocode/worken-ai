@@ -23,6 +23,7 @@ import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
@@ -85,6 +86,7 @@ export class CompareModelsController {
   constructor(
     private readonly compareModelsService: CompareModelsService,
     private readonly keyResolverService: KeyResolverService,
+    private readonly chatTransport: ChatTransportService,
     private readonly observabilityService: ObservabilityService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
@@ -161,9 +163,12 @@ export class CompareModelsController {
     }
     body.expectedOutput = body.expectedOutput ?? '';
 
-    let apiKey: string;
+    // Resolve transport per model below (each can route differently:
+    // BYOK / Custom / OpenRouter). The evaluator at the bottom uses
+    // OpenRouter regardless, so we still need a base key for it.
+    let evaluatorApiKey: string;
     try {
-      apiKey = await this.keyResolverService.resolveUserKey(user.id);
+      evaluatorApiKey = await this.keyResolverService.resolveUserKey(user.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
@@ -191,14 +196,21 @@ export class CompareModelsController {
     try {
       responses = await Promise.all(
         body.models.map(async (model) => {
+          // Each model resolves its own transport independently — one
+          // arena run can mix OpenRouter, BYOK, and Custom routes.
+          const transport = await this.chatTransport.resolve({
+            userId: user.id,
+            modelIdentifier: model,
+          });
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(
               body.question,
-              model,
+              transport.model,
               false,
               body.context,
-              apiKey,
+              transport.apiKey,
+              transport.baseURL,
             );
             const latencyMs = Date.now() - start;
             void this.observabilityService.recordLLMCall({
@@ -206,12 +218,16 @@ export class CompareModelsController {
               teamId,
               eventType: 'arena_call',
               model,
+              provider: transport.provider,
               totalTokens: response.totalTokens,
               costUsd: response.totalCost,
               latencyMs,
               success: true,
               prompt: body.question,
-              metadata: { hasContext: Boolean(body.context) },
+              metadata: {
+                hasContext: Boolean(body.context),
+                routingSource: transport.source,
+              },
             });
             return {
               model,
@@ -228,11 +244,15 @@ export class CompareModelsController {
               teamId,
               eventType: 'arena_call',
               model,
+              provider: transport.provider,
               latencyMs,
               success: false,
               errorMessage: msg,
               prompt: body.question,
-              metadata: { hasContext: Boolean(body.context) },
+              metadata: {
+                hasContext: Boolean(body.context),
+                routingSource: transport.source,
+              },
             });
             throw err;
           }
@@ -258,7 +278,7 @@ export class CompareModelsController {
           body.expectedOutput,
           EVALUATOR_MODEL,
           false,
-          apiKey,
+          evaluatorApiKey,
         );
         void this.observabilityService.recordLLMCall({
           userId: user.id,

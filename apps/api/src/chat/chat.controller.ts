@@ -3,8 +3,8 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
-import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { ChatService } from './chat.service.js';
 
 interface ChatRequestBody {
@@ -21,7 +21,7 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly documentsService: DocumentsService,
     private readonly conversationsService: ConversationsService,
-    private readonly keyResolverService: KeyResolverService,
+    private readonly chatTransport: ChatTransportService,
     private readonly observabilityService: ObservabilityService,
   ) {}
 
@@ -44,11 +44,13 @@ export class ChatController {
       user.id,
     );
 
-    // Resolve per-team or per-user API key
-    const apiKey = await this.keyResolverService.resolveForProject(
-      conversation.projectId,
-      user.id,
-    );
+    // Resolve transport: BYOK / Custom LLM if user configured one for
+    // this model, else OpenRouter via the resolved per-team/per-user key.
+    const transport = await this.chatTransport.resolve({
+      userId: user.id,
+      modelIdentifier: body.model ?? 'moonshotai/kimi-k2.5',
+      projectId: conversation.projectId,
+    });
 
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
@@ -77,16 +79,18 @@ export class ChatController {
     try {
       response = await this.chatService.sendMessage(
         apiMessages,
-        body.model,
+        transport.model,
         body.enableReasoning,
         context,
-        apiKey,
+        transport.apiKey,
+        transport.baseURL,
       );
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
         eventType: 'chat_call',
         model: body.model ?? 'moonshotai/kimi-k2.5',
+        provider: transport.provider,
         totalTokens: response.totalTokens,
         costUsd: response.totalCost,
         latencyMs: Date.now() - chatStart,
@@ -96,6 +100,7 @@ export class ChatController {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
           hasContext: Boolean(context),
+          routingSource: transport.source,
         },
       });
     } catch (err) {
@@ -105,6 +110,7 @@ export class ChatController {
         teamId,
         eventType: 'chat_call',
         model: body.model ?? 'moonshotai/kimi-k2.5',
+        provider: transport.provider,
         latencyMs: Date.now() - chatStart,
         success: false,
         errorMessage: msg,
@@ -112,6 +118,7 @@ export class ChatController {
         metadata: {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
+          routingSource: transport.source,
         },
       });
 

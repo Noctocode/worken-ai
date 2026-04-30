@@ -344,6 +344,15 @@ export const modelConfigs = pgTable("model_configs", {
   modelIdentifier: text("model_identifier").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   fallbackModels: jsonb("fallback_models").notNull().default([]),
+  // When set, chat calls for this alias route through the linked
+  // integration (a Custom LLM the user registered in Management →
+  // Integration). When null, routing falls back to BYOK (if the user
+  // has a key for the alias's predefined provider) or OpenRouter.
+  // ON DELETE SET NULL so deleting a Custom LLM doesn't delete aliases
+  // pointing at it — they revert to OpenRouter routing.
+  integrationId: uuid("integration_id").references(() => integrations.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
