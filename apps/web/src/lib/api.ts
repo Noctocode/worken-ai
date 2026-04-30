@@ -830,6 +830,22 @@ export async function fetchAvailableModels(): Promise<AvailableModel[]> {
   return res.json();
 }
 
+export interface EffectiveModel extends AvailableModel {
+  source: "alias" | "byok" | "custom";
+  aliasId?: string;
+}
+
+/**
+ * Per-user effective model list — drives the model pickers in the arena
+ * and project chat. Includes the user's model aliases (Models tab) plus
+ * any catalog model for a provider where the user has BYOK enabled.
+ */
+export async function fetchEffectiveModels(): Promise<EffectiveModel[]> {
+  const res = await apiFetch("/models/effective");
+  if (!res.ok) throw new Error("Failed to fetch effective models");
+  return res.json();
+}
+
 export async function fetchModelsCatalog(): Promise<CatalogModel[]> {
   const res = await apiFetch("/models/catalog");
   if (!res.ok) throw new Error("Failed to fetch models catalog");
