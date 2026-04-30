@@ -1810,3 +1810,86 @@ export function fetchObservabilityGuardrailActivity(
     `/observability/guardrail-activity?range=${range}`,
   );
 }
+
+// ─── Integrations (Management → Integration) ──────────────────────────────
+
+export interface PredefinedProvider {
+  id: string;
+  displayName: string;
+  description: string;
+  iconHint: string;
+  defaultRateLimit: number;
+}
+
+export interface IntegrationCard {
+  id: string | null; // null when no DB row exists yet (untouched predefined)
+  providerId: string;
+  displayName: string;
+  description: string;
+  iconHint: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  isEnabled: boolean;
+  isCustom: boolean;
+  stats: {
+    successRate: number; // 0..1
+    apiCalls: number;
+    rateLimit: number;
+  };
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export async function fetchIntegrationProviders(): Promise<PredefinedProvider[]> {
+  const res = await apiFetch("/integrations/providers");
+  if (!res.ok) throw new Error("Failed to fetch provider catalog");
+  return res.json();
+}
+
+export async function fetchIntegrations(): Promise<IntegrationCard[]> {
+  const res = await apiFetch("/integrations");
+  if (!res.ok) throw new Error("Failed to fetch integrations");
+  return res.json();
+}
+
+export async function upsertIntegration(input: {
+  providerId: string;
+  apiUrl?: string;
+  apiKey?: string;
+  isEnabled?: boolean;
+}): Promise<IntegrationCard> {
+  const res = await apiFetch("/integrations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to save integration");
+  }
+  return res.json();
+}
+
+export async function updateIntegration(
+  id: string,
+  input: { isEnabled?: boolean; apiKey?: string | null },
+): Promise<IntegrationCard> {
+  const res = await apiFetch(`/integrations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update integration");
+  }
+  return res.json();
+}
+
+export async function deleteIntegration(id: string): Promise<void> {
+  const res = await apiFetch(`/integrations/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to delete integration");
+  }
+}

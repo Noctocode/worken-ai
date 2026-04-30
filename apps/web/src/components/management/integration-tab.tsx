@@ -1,22 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Plus } from "lucide-react";
+import { BookOpen, Loader2, Plus, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsDialog } from "@/components/settings-dialog";
+import {
+  deleteIntegration,
+  fetchIntegrations,
+  updateIntegration,
+  upsertIntegration,
+  type IntegrationCard,
+} from "@/lib/api";
 
-interface LLMProvider {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  icon: React.ReactNode;
-  successRate: number;
-  apiCalls: number;
-  rateLimit: number;
-}
+/* ─── Icons ──────────────────────────────────────────────────────────────
+ *
+ * The brand SVGs live in the FE because they're visual assets, not data.
+ * Each predefined provider in the BE catalog carries an `iconHint` string
+ * (e.g. "gemini", "openai") that we switch on here. Custom LLMs and
+ * unknown hints get a neutral fallback.
+ */
 
 function GeminiIcon() {
   return (
@@ -51,69 +57,126 @@ function BrandIcon({ color, letter }: { color: string; letter: string }) {
   );
 }
 
-const INITIAL_PROVIDERS: LLMProvider[] = [
-  { id: "gemini", name: "Gemini", description: "Short text describing this", enabled: true, icon: <GeminiIcon />, successRate: 98.5, apiCalls: 3456, rateLimit: 4000 },
-  { id: "chatgpt", name: "Chat GPT", description: "Short text describing this", enabled: false, icon: <BrandIcon color="#10a37f" letter="G" />, successRate: 97.2, apiCalls: 1200, rateLimit: 4000 },
-  { id: "deepseek", name: "Deepseek", description: "Short text describing this", enabled: true, icon: <BrandIcon color="#1a73e8" letter="D" />, successRate: 95.1, apiCalls: 800, rateLimit: 2000 },
-  { id: "mistral", name: "Mistral", description: "Short text describing this", enabled: false, icon: <BrandIcon color="#f7931e" letter="M" />, successRate: 96.8, apiCalls: 540, rateLimit: 3000 },
-  { id: "claude", name: "Claude", description: "Short text describing this", enabled: false, icon: <BrandIcon color="#d97706" letter="C" />, successRate: 99.1, apiCalls: 2100, rateLimit: 5000 },
-  { id: "preplexity", name: "Preplexity", description: "Short text describing this", enabled: false, icon: <BrandIcon color="#20b2aa" letter="P" />, successRate: 94.3, apiCalls: 320, rateLimit: 1000 },
-  { id: "qwen", name: "Qwen", description: "Short text describing this", enabled: true, icon: <BrandIcon color="#7c3aed" letter="Q" />, successRate: 93.7, apiCalls: 670, rateLimit: 2000 },
-  { id: "copilot", name: "Copilot", description: "Short text describing this", enabled: false, icon: <BrandIcon color="#0078d4" letter="Co" />, successRate: 97.9, apiCalls: 1890, rateLimit: 4000 },
-  { id: "grok", name: "Grok", description: "Short text describing this", enabled: true, icon: <BrandIcon color="#1a1a1a" letter="X" />, successRate: 96.0, apiCalls: 430, rateLimit: 1500 },
-];
+function iconForHint(hint: string): React.ReactNode {
+  switch (hint) {
+    case "gemini":
+      return <GeminiIcon />;
+    case "chatgpt":
+      return <BrandIcon color="#10a37f" letter="G" />;
+    case "deepseek":
+      return <BrandIcon color="#1a73e8" letter="D" />;
+    case "mistral":
+      return <BrandIcon color="#f7931e" letter="M" />;
+    case "claude":
+      return <BrandIcon color="#d97706" letter="C" />;
+    case "perplexity":
+      return <BrandIcon color="#20b2aa" letter="P" />;
+    case "qwen":
+      return <BrandIcon color="#7c3aed" letter="Q" />;
+    case "copilot":
+      return <BrandIcon color="#0078d4" letter="Co" />;
+    case "grok":
+      return <BrandIcon color="#1a1a1a" letter="X" />;
+    case "custom":
+    default:
+      return <BrandIcon color="#64748b" letter="·" />;
+  }
+}
+
+/* ─── Provider Settings (BYOK) dialog ───────────────────────────────── */
 
 function ProviderSettingsDialog({
-  provider,
+  card,
   onClose,
-  onToggle,
 }: {
-  provider: LLMProvider;
+  card: IntegrationCard;
   onClose: () => void;
-  onToggle: () => void;
 }) {
-  const [useOwnKey, setUseOwnKey] = useState(false);
+  const queryClient = useQueryClient();
+  const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
+  const [enabled, setEnabled] = useState(card.isEnabled);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      // Card has no DB row yet (untouched predefined): create on first save.
+      // Otherwise patch the existing one.
+      if (card.id) {
+        return updateIntegration(card.id, {
+          isEnabled: enabled,
+          apiKey: useOwnKey ? (apiKey || undefined) : null,
+        });
+      }
+      return upsertIntegration({
+        providerId: card.providerId,
+        apiKey: useOwnKey && apiKey ? apiKey : undefined,
+        isEnabled: enabled,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success(`${card.displayName} settings saved.`);
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Couldn't save settings.");
+    },
+  });
+
+  const successRatePct = (card.stats.successRate * 100).toFixed(1);
 
   return (
     <SettingsDialog
       open
       onClose={onClose}
-      title={provider.name}
-      description={`Configure ${provider.name} integration settings.`}
-      headerIcon={provider.icon}
+      onApply={() => saveMutation.mutate()}
+      title={card.displayName}
+      description={`Configure ${card.displayName} integration settings.`}
+      headerIcon={iconForHint(card.iconHint)}
       headerContent={
-        <Switch checked={provider.enabled} onCheckedChange={onToggle} />
+        <Switch checked={enabled} onCheckedChange={setEnabled} />
       }
     >
       <div className="space-y-5">
         {/* Stats row */}
         <div className="flex items-start gap-8">
           <div>
-            <p className="text-[16px] font-normal text-text-1 mb-0.5">Success rate:</p>
-            <p className="text-[18px] font-bold text-text-1">{provider.successRate}%</p>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              Success rate:
+            </p>
+            <p className="text-[18px] font-bold text-text-1">{successRatePct}%</p>
           </div>
           <div>
-            <p className="text-[16px] font-normal text-text-1 mb-0.5">API calls:</p>
-            <p className="text-[18px] font-bold text-text-1">{provider.apiCalls}</p>
-          </div>
-          <div>
-            <p className="text-[16px] font-normal text-text-1 mb-0.5">Rate limit:</p>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              API calls:
+            </p>
             <p className="text-[18px] font-bold text-text-1">
-              {provider.rateLimit}
-              <span className="text-[13px] font-normal text-text-3 ml-2">requests/day</span>
+              {card.stats.apiCalls.toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              Rate limit:
+            </p>
+            <p className="text-[18px] font-bold text-text-1">
+              {card.stats.rateLimit.toLocaleString()}
+              <span className="text-[13px] font-normal text-text-3 ml-2">
+                requests/day
+              </span>
             </p>
           </div>
         </div>
 
-        {/* WorkenAI API */}
+        {/* WorkenAI default note */}
         <div>
-          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">Use WORKENAI API</p>
+          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+            Use WORKENAI API
+          </p>
           <textarea
             readOnly
             className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 resize-none outline-none"
             rows={1}
-            defaultValue="additional costs on his WorkenAI subscription will be added"
+            defaultValue="Additional costs on the WorkenAI subscription will be added."
           />
         </div>
 
@@ -126,52 +189,84 @@ function ProviderSettingsDialog({
               onChange={(e) => setUseOwnKey(e.target.checked)}
               className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
             />
-            <span className="text-[14px] font-normal leading-[20px] text-text-2">Use your own API KEY</span>
+            <span className="text-[14px] font-normal leading-[20px] text-text-2">
+              Use your own API KEY
+            </span>
           </label>
           {useOwnKey && (
             <input
-              type="text"
+              type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="Enter your API key"
+              placeholder={
+                card.hasApiKey
+                  ? "Enter a new key to replace the saved one"
+                  : "Enter your API key"
+              }
               className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-            />
-          )}
-          {!useOwnKey && (
-            <input
-              type="text"
-              readOnly
-              value="12er1te2r1sa3df1ó5a5s1fd5ad5as"
-              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none"
             />
           )}
         </div>
 
         <p className="text-[16px] font-normal leading-[24px] text-text-1">
-          API calls will incur a small Technology fee
+          API calls will incur a small Technology fee.
         </p>
       </div>
     </SettingsDialog>
   );
 }
 
+/* ─── Add Custom LLM dialog ─────────────────────────────────────────── */
+
 function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
-  const [apiLink, setApiLink] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      upsertIntegration({
+        providerId: "custom",
+        apiUrl: apiUrl.trim(),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success("Custom LLM added.");
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Couldn't add custom LLM.");
+    },
+  });
 
   return (
-    <SettingsDialog open onClose={onClose} title="Add Custom LLM">
+    <SettingsDialog
+      open
+      onClose={onClose}
+      onApply={() => createMutation.mutate()}
+      title="Add Custom LLM"
+    >
       <div className="space-y-4">
         <div>
           <p className="text-[14px] font-normal text-text-2 mb-1.5">API Link</p>
           <input
             type="text"
-            value={apiLink}
-            onChange={(e) => setApiLink(e.target.value)}
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
             placeholder="Put link here"
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
-        <button className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors">
+        <button
+          type="button"
+          className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
+          onClick={() =>
+            window.open(
+              "https://openrouter.ai/docs/api-reference/overview",
+              "_blank",
+              "noopener,noreferrer",
+            )
+          }
+        >
           <BookOpen className="h-4 w-4 text-success-7" />
           Integration documentation
         </button>
@@ -180,23 +275,55 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ─── Main tab ──────────────────────────────────────────────────────── */
+
 export function IntegrationTab() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
-  const [providers, setProviders] = useState<LLMProvider[]>(INITIAL_PROVIDERS);
-  const [selected, setSelected] = useState<LLMProvider | null>(null);
+  const [selected, setSelected] = useState<IntegrationCard | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
 
-  const toggle = (id: string) => {
-    setProviders((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p)),
-    );
-    if (selected?.id === id) {
-      setSelected((prev) => (prev ? { ...prev, enabled: !prev.enabled } : null));
-    }
-  };
+  const {
+    data: cards,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: fetchIntegrations,
+  });
 
-  const filtered = providers.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()),
+  // Optimistic-ish toggle: PATCH and let React Query refetch.
+  const toggleMutation = useMutation({
+    mutationFn: ({ card, next }: { card: IntegrationCard; next: boolean }) => {
+      if (card.id) {
+        return updateIntegration(card.id, { isEnabled: next });
+      }
+      return upsertIntegration({
+        providerId: card.providerId,
+        isEnabled: next,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Couldn't toggle integration.");
+    },
+  });
+
+  const deleteCustomMutation = useMutation({
+    mutationFn: (id: string) => deleteIntegration(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      toast.success("Custom LLM removed.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Couldn't delete.");
+    },
+  });
+
+  const filtered = (cards ?? []).filter((c) =>
+    c.displayName.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
@@ -215,50 +342,92 @@ export function IntegrationTab() {
         </Button>
       </div>
 
+      {/* Loading / error states */}
+      {isLoading && (
+        <div className="flex items-center justify-center py-16">
+          <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+        </div>
+      )}
+      {error && (
+        <div className="py-12 text-center text-sm text-danger-6">
+          Failed to load integrations. Is the API running?
+        </div>
+      )}
+
       {/* Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {filtered.map((provider) => (
-          <div
-            key={provider.id}
-            className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
-            onClick={() => setSelected(provider)}
-          >
-            {/* Header: icon + name + toggle */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                {provider.icon}
-                <span className="text-[16px] font-normal text-text-1">{provider.name}</span>
+      {!isLoading && !error && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {filtered.map((card) => (
+            <div
+              key={`${card.providerId}-${card.id ?? "new"}`}
+              className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
+              onClick={() => setSelected(card)}
+            >
+              {/* Header: icon + name + toggle */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  {iconForHint(card.iconHint)}
+                  <span className="truncate text-[16px] font-normal text-text-1">
+                    {card.displayName}
+                  </span>
+                </div>
+                <Switch
+                  checked={card.isEnabled}
+                  onCheckedChange={(next) =>
+                    toggleMutation.mutate({ card, next })
+                  }
+                  onClick={(e) => e.stopPropagation()}
+                  disabled={toggleMutation.isPending}
+                />
               </div>
-              <Switch
-                checked={provider.enabled}
-                onCheckedChange={() => toggle(provider.id)}
-                onClick={(e) => e.stopPropagation()}
-              />
+
+              {/* Description */}
+              <p className="mt-3 text-[14px] font-normal text-text-2 line-clamp-2">
+                {card.description}
+              </p>
+
+              {/* Footer: settings link + (custom only) delete */}
+              <div className="mt-auto flex items-center justify-between">
+                {card.isCustom && card.id ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (
+                        confirm(`Delete custom LLM "${card.displayName}"?`)
+                      ) {
+                        deleteCustomMutation.mutate(card.id!);
+                      }
+                    }}
+                    className="text-[13px] text-danger-6 hover:underline inline-flex items-center gap-1"
+                    title="Delete custom LLM"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete
+                  </button>
+                ) : (
+                  <span />
+                )}
+                <span className="text-[14px] font-normal text-text-3">
+                  Settings
+                </span>
+              </div>
             </div>
+          ))}
 
-            {/* Description */}
-            <p className="mt-3 text-[16px] font-normal text-text-2">{provider.description}</p>
-
-            {/* Settings link */}
-            <div className="mt-auto flex justify-end">
-              <span className="text-[14px] font-normal text-text-3">Settings</span>
+          {filtered.length === 0 && (
+            <div className="col-span-full py-12 text-center text-sm text-text-3">
+              No integrations match your search.
             </div>
-          </div>
-        ))}
-
-        {filtered.length === 0 && (
-          <div className="col-span-full py-12 text-center text-sm text-text-3">
-            No integrations match your search.
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Provider settings dialog */}
       {selected && (
         <ProviderSettingsDialog
-          provider={providers.find((p) => p.id === selected.id) ?? selected}
+          card={selected}
           onClose={() => setSelected(null)}
-          onToggle={() => toggle(selected.id)}
         />
       )}
 
