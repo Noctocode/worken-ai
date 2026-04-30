@@ -34,6 +34,16 @@ const DEFAULT_MAX_TOKENS = 4096;
  * "extended thinking" feature with a different shape, which we'd
  * surface separately when/if FE adds support for it.
  */
+/**
+ * OpenRouter model ids dot-separate version components
+ * ("claude-opus-4.7", "claude-sonnet-4.5"). Anthropic's native API
+ * uses hyphens ("claude-opus-4-7"). Translate before sending; if a
+ * future model breaks the convention we'll need a smarter map.
+ */
+function toAnthropicModelId(modelId: string): string {
+  return modelId.replace(/\./g, '-');
+}
+
 @Injectable()
 export class AnthropicClientService {
   async sendMessage(
@@ -48,6 +58,7 @@ export class AnthropicClientService {
     }
 
     const client = new Anthropic({ apiKey });
+    const nativeModel = toAnthropicModelId(model);
 
     // Pull any leading "system" message into the dedicated parameter.
     // Our app currently injects context as a synthetic system message
@@ -72,7 +83,7 @@ export class AnthropicClientService {
     }
 
     const response = await client.messages.create({
-      model,
+      model: nativeModel,
       max_tokens: maxTokens,
       ...(systemPieces.length > 0
         ? { system: systemPieces.join('\n\n') }
