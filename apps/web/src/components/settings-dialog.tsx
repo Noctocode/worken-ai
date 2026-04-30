@@ -13,6 +13,8 @@ interface SettingsDialogProps {
   open: boolean;
   onClose: () => void;
   onApply?: () => void;
+  applyLabel?: string;
+  applyVariant?: "default" | "danger";
   title: string;
   description?: string;
   headerIcon?: React.ReactNode;
@@ -24,6 +26,8 @@ export function SettingsDialog({
   open,
   onClose,
   onApply,
+  applyLabel = "Apply",
+  applyVariant = "default",
   title,
   description,
   headerIcon,
@@ -64,9 +68,13 @@ export function SettingsDialog({
           </Button>
           <Button
             onClick={onApply ?? onClose}
-            className="h-[43px] bg-primary-6 text-white text-[16px] font-normal hover:bg-primary-6/90"
+            className={
+              applyVariant === "danger"
+                ? "h-[43px] bg-danger-6 text-white text-[16px] font-normal hover:bg-danger-6/90"
+                : "h-[43px] bg-primary-6 text-white text-[16px] font-normal hover:bg-primary-6/90"
+            }
           >
-            Apply
+            {applyLabel}
           </Button>
         </div>
       </DialogContent>

@@ -5,9 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import {
   integrations,
+  modelConfigs,
   observabilityEvents,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -34,6 +35,19 @@ export interface IntegrationView {
   hasApiKey: boolean; // never expose the key itself
   isEnabled: boolean;
   isCustom: boolean;
+  /**
+   * Whether the provider's native API can be hit through the OpenAI SDK.
+   * `false` for Anthropic, Google, Qwen — BYOK key is stored but chat
+   * still routes through OpenRouter; FE uses this to show a disclaimer.
+   * Always true for "custom" rows (the user picked the URL, presumed
+   * OpenAI-compatible).
+   */
+  openAICompatible: boolean;
+  /**
+   * For custom rows only: how many model_configs aliases reference this
+   * integration. Drives the "delete will unlink N aliases" warning.
+   */
+  boundAliasCount: number;
   stats: IntegrationStats;
   createdAt: string | null;
   updatedAt: string | null;
@@ -105,6 +119,29 @@ export class IntegrationsService {
       };
     };
 
+    // For custom rows we surface boundAliasCount so the FE can warn
+    // before deletion ("N aliases will be unlinked"). One query for all
+    // customs at once.
+    const customIds = rows
+      .filter((r) => r.providerId === 'custom')
+      .map((r) => r.id);
+    const aliasCountByIntegration = new Map<string, number>();
+    if (customIds.length > 0) {
+      const aliasRows = await this.db
+        .select({
+          integrationId: modelConfigs.integrationId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(modelConfigs)
+        .where(inArray(modelConfigs.integrationId, customIds))
+        .groupBy(modelConfigs.integrationId);
+      for (const r of aliasRows) {
+        if (r.integrationId) {
+          aliasCountByIntegration.set(r.integrationId, Number(r.count ?? 0));
+        }
+      }
+    }
+
     const out: IntegrationView[] = [];
 
     // Predefined first, in catalog order.
@@ -122,6 +159,8 @@ export class IntegrationsService {
         hasApiKey: !!row?.apiKeyEncrypted,
         isEnabled: row?.isEnabled ?? true, // default-on per UI mock
         isCustom: false,
+        openAICompatible: p.openAICompatible,
+        boundAliasCount: 0,
         stats: buildStats(p.id, p.defaultRateLimit),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
@@ -146,6 +185,12 @@ export class IntegrationsService {
         hasApiKey: !!r.apiKeyEncrypted,
         isEnabled: r.isEnabled,
         isCustom: true,
+        // Custom URLs are presumed OpenAI-compatible — that's literally
+        // what the user signed up for by registering an OpenAI-style
+        // endpoint. (If it's not, the chat will fail at request time
+        // and the humanizer surfaces the error.)
+        openAICompatible: true,
+        boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
         stats: buildStats('custom', 0),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),

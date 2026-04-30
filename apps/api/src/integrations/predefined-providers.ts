@@ -12,6 +12,8 @@
  * lower-case strings, ideally matching the OpenRouter provider slug so
  * we can correlate with `observability_events.provider` for stats.
  */
+import { NATIVE_ENDPOINTS } from './native-endpoints.js';
+
 export interface PredefinedProvider {
   id: string;
   displayName: string;
@@ -27,73 +29,88 @@ export interface PredefinedProvider {
    * expose a real per-key quota we can read.
    */
   defaultRateLimit: number;
+  /**
+   * Whether the provider's native API speaks OpenAI Chat Completions.
+   * When false, BYOK keys for this provider are stored but the chat
+   * path keeps falling back to OpenRouter — the FE shows a disclaimer
+   * in the Settings dialog so the user knows their key is dormant.
+   * Derived at module load time from NATIVE_ENDPOINTS.
+   */
+  openAICompatible: boolean;
 }
 
-export const PREDEFINED_PROVIDERS: PredefinedProvider[] = [
+const PROVIDERS_RAW: Omit<PredefinedProvider, 'openAICompatible'>[] = [
   {
-    id: "google",
-    displayName: "Gemini",
+    id: 'google',
+    displayName: 'Gemini',
     description: "Google's flagship models — Gemini Pro, Flash.",
-    iconHint: "gemini",
+    iconHint: 'gemini',
     defaultRateLimit: 4000,
   },
   {
-    id: "openai",
-    displayName: "Chat GPT",
+    id: 'openai',
+    displayName: 'Chat GPT',
     description: "OpenAI's GPT family — GPT-4, GPT-5, mini variants.",
-    iconHint: "chatgpt",
+    iconHint: 'chatgpt',
     defaultRateLimit: 4000,
   },
   {
-    id: "deepseek",
-    displayName: "Deepseek",
-    description: "Deepseek V4 family — fast and inexpensive.",
-    iconHint: "deepseek",
+    id: 'deepseek',
+    displayName: 'Deepseek',
+    description: 'Deepseek V4 family — fast and inexpensive.',
+    iconHint: 'deepseek',
     defaultRateLimit: 2000,
   },
   {
-    id: "mistralai",
-    displayName: "Mistral",
-    description: "Mistral / Codestral / Mixtral open-weight family.",
-    iconHint: "mistral",
+    id: 'mistralai',
+    displayName: 'Mistral',
+    description: 'Mistral / Codestral / Mixtral open-weight family.',
+    iconHint: 'mistral',
     defaultRateLimit: 3000,
   },
   {
-    id: "anthropic",
-    displayName: "Claude",
+    id: 'anthropic',
+    displayName: 'Claude',
     description: "Anthropic's Claude — Sonnet, Opus, Haiku.",
-    iconHint: "claude",
+    iconHint: 'claude',
     defaultRateLimit: 5000,
   },
   {
-    id: "perplexity",
-    displayName: "Preplexity",
-    description: "Perplexity Sonar — search-augmented chat.",
-    iconHint: "perplexity",
+    id: 'perplexity',
+    displayName: 'Preplexity',
+    description: 'Perplexity Sonar — search-augmented chat.',
+    iconHint: 'perplexity',
     defaultRateLimit: 1000,
   },
   {
-    id: "qwen",
-    displayName: "Qwen",
-    description: "Alibaba Qwen 3 family — open-weight strong code support.",
-    iconHint: "qwen",
+    id: 'qwen',
+    displayName: 'Qwen',
+    description: 'Alibaba Qwen 3 family — open-weight strong code support.',
+    iconHint: 'qwen',
     defaultRateLimit: 2000,
   },
   {
-    id: "github",
-    displayName: "Copilot",
-    description: "GitHub Copilot models for code-heavy workflows.",
-    iconHint: "copilot",
+    id: 'github',
+    displayName: 'Copilot',
+    description: 'GitHub Copilot models for code-heavy workflows.',
+    iconHint: 'copilot',
     defaultRateLimit: 4000,
   },
   {
-    id: "x-ai",
-    displayName: "Grok",
+    id: 'x-ai',
+    displayName: 'Grok',
     description: "xAI's Grok models.",
-    iconHint: "grok",
+    iconHint: 'grok',
     defaultRateLimit: 1500,
   },
 ];
+
+export const PREDEFINED_PROVIDERS: PredefinedProvider[] = PROVIDERS_RAW.map(
+  (p) => ({
+    ...p,
+    openAICompatible: NATIVE_ENDPOINTS[p.id]?.openAICompatible ?? false,
+  }),
+);
 
 export function isPredefinedProvider(id: string): boolean {
   return PREDEFINED_PROVIDERS.some((p) => p.id === id);

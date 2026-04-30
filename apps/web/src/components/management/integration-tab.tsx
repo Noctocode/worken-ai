@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Loader2, Plus, Trash2 } from "lucide-react";
+import { AlertTriangle, BookOpen, Info, Loader2, Plus, Trash2 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,7 @@ function ProviderSettingsDialog({
   });
 
   const successRatePct = (card.stats.successRate * 100).toFixed(1);
+  const showCompatibilityNotice = !card.openAICompatible && !card.isCustom;
 
   return (
     <SettingsDialog
@@ -138,6 +139,22 @@ function ProviderSettingsDialog({
       }
     >
       <div className="space-y-5">
+        {/* Compatibility disclaimer for non-OpenAI-compatible providers
+            (Anthropic, Google, Qwen). The BYOK key is saved but chat
+            calls keep going through OpenRouter for now — surface that
+            so the user knows their key is dormant. */}
+        {showCompatibilityNotice && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning-3 bg-warning-1/40 px-3 py-2">
+            <Info className="h-4 w-4 shrink-0 text-warning-7 mt-0.5" />
+            <p className="text-[13px] text-warning-7 leading-snug">
+              {card.displayName}&rsquo;s native API isn&rsquo;t OpenAI-compatible
+              yet, so a BYOK key here is stored but chat calls still route
+              through OpenRouter. We&rsquo;ll honor it directly once native
+              support lands.
+            </p>
+          </div>
+        )}
+
         {/* Stats row */}
         <div className="flex items-start gap-8">
           <div>
@@ -275,6 +292,56 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/* ─── Delete-with-bound-aliases warning ────────────────────────────── */
+
+function DeleteCustomLLMDialog({
+  card,
+  onClose,
+  onConfirm,
+  isPending,
+}: {
+  card: IntegrationCard;
+  onClose: () => void;
+  onConfirm: () => void;
+  isPending: boolean;
+}) {
+  const n = card.boundAliasCount;
+  return (
+    <SettingsDialog
+      open
+      onClose={onClose}
+      onApply={onConfirm}
+      applyLabel={isPending ? "Deleting…" : n > 0 ? "Delete anyway" : "Delete"}
+      applyVariant="danger"
+      title={`Delete "${card.displayName}"?`}
+    >
+      <div className="space-y-3">
+        {n > 0 ? (
+          <div className="flex items-start gap-2 rounded-lg border border-danger-3 bg-danger-1/40 px-3 py-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-danger-6 mt-0.5" />
+            <p className="text-[13px] text-danger-6 leading-snug">
+              <strong>{n}</strong> model alias{n === 1 ? "" : "es"} currently
+              route to this Custom LLM. Deleting it will{" "}
+              <strong>unlink them</strong> — those aliases will fall back to
+              the default routing (OpenRouter), which will likely fail until
+              you point them at another endpoint or remove them.
+            </p>
+          </div>
+        ) : (
+          <p className="text-[14px] text-text-2">
+            This Custom LLM has no aliases bound to it. Removing it now is
+            safe.
+          </p>
+        )}
+        <p className="text-[13px] text-text-3">
+          The action cannot be undone. The endpoint URL and any saved API
+          key are deleted from this workspace.
+        </p>
+      </div>
+    </SettingsDialog>
+  );
+}
+
 /* ─── Main tab ──────────────────────────────────────────────────────── */
 
 export function IntegrationTab() {
@@ -282,6 +349,9 @@ export function IntegrationTab() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<IntegrationCard | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<IntegrationCard | null>(
+    null,
+  );
 
   const {
     data: cards,
@@ -315,7 +385,12 @@ export function IntegrationTab() {
     mutationFn: (id: string) => deleteIntegration(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      // Aliases that were bound to this integration just had their
+      // integrationId set to null at the DB level — refresh Models tab
+      // so the badge disappears immediately.
+      queryClient.invalidateQueries({ queryKey: ["models"] });
       toast.success("Custom LLM removed.");
+      setPendingDelete(null);
     },
     onError: (err: Error) => {
       toast.error(err.message ?? "Couldn't delete.");
@@ -393,17 +468,18 @@ export function IntegrationTab() {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (
-                        confirm(`Delete custom LLM "${card.displayName}"?`)
-                      ) {
-                        deleteCustomMutation.mutate(card.id!);
-                      }
+                      setPendingDelete(card);
                     }}
                     className="text-[13px] text-danger-6 hover:underline inline-flex items-center gap-1"
                     title="Delete custom LLM"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete
+                    {card.boundAliasCount > 0 && (
+                      <span className="ml-1 rounded-full bg-danger-1 px-1.5 py-0 text-[10px] font-medium text-danger-6">
+                        {card.boundAliasCount}
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <span />
@@ -434,6 +510,16 @@ export function IntegrationTab() {
       {/* Add custom LLM dialog */}
       {showAddDialog && (
         <AddCustomLLMDialog onClose={() => setShowAddDialog(false)} />
+      )}
+
+      {/* Delete-with-warning dialog (custom LLMs only) */}
+      {pendingDelete && pendingDelete.id && (
+        <DeleteCustomLLMDialog
+          card={pendingDelete}
+          onClose={() => setPendingDelete(null)}
+          onConfirm={() => deleteCustomMutation.mutate(pendingDelete.id!)}
+          isPending={deleteCustomMutation.isPending}
+        />
       )}
     </div>
   );

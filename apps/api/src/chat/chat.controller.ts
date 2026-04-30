@@ -122,7 +122,7 @@ export class ChatController {
         },
       });
 
-      // Surface OpenRouter HTTP status codes (402/401/429/…) to the
+      // Surface upstream HTTP status codes (402/401/429/…) to the
       // client so the FE humanizer can route them to a specific message.
       // The OpenAI SDK throws errors with a numeric `status` field;
       // everything else falls through as 500.
@@ -137,10 +137,18 @@ export class ChatController {
           message?: string;
           error?: { message?: string };
         };
-        const detail =
-          apiErr.error?.message ??
-          apiErr.message ??
-          `OpenRouter error ${apiErr.status}`;
+        const upstreamMessage =
+          apiErr.error?.message ?? apiErr.message ?? '';
+
+        // 401 + no-auth placeholder = user registered a Custom LLM
+        // without an API key but the endpoint requires one. Surface a
+        // distinct message so the humanizer doesn't say "your key is
+        // invalid" (the user has no key).
+        const noAuthAttempt =
+          transport.apiKey === 'no-auth' && apiErr.status === 401;
+        const detail = noAuthAttempt
+          ? `Custom LLM endpoint rejected the request — it requires an API key. Open Management → Integration → ${transport.provider}, click Settings, and add your key.`
+          : upstreamMessage || `${transport.provider} error ${apiErr.status}`;
         throw new HttpException(detail, apiErr.status);
       }
       throw err;
