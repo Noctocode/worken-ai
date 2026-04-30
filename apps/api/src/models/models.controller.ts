@@ -87,6 +87,7 @@ export class ModelsController {
       customName: string;
       modelIdentifier: string;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -102,6 +103,7 @@ export class ModelsController {
       modelIdentifier?: string;
       isActive?: boolean;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {

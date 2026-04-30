@@ -796,6 +796,9 @@ export interface ModelConfig {
   modelIdentifier: string;
   isActive: boolean;
   fallbackModels: string[];
+  /** When set, chat calls for this alias route through the linked Custom
+   *  LLM integration instead of OpenRouter. */
+  integrationId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -863,6 +866,7 @@ export async function createModel(data: {
   customName: string;
   modelIdentifier: string;
   fallbackModels?: string[];
+  integrationId?: string | null;
 }): Promise<ModelConfig> {
   const res = await apiFetch("/models", {
     method: "POST",
@@ -880,6 +884,7 @@ export async function updateModel(
     modelIdentifier?: string;
     isActive?: boolean;
     fallbackModels?: string[];
+    integrationId?: string | null;
   },
 ): Promise<ModelConfig> {
   const res = await apiFetch(`/models/${id}`, {

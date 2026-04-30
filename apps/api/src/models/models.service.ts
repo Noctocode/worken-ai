@@ -156,6 +156,7 @@ export class ModelsService {
       customName: string;
       modelIdentifier: string;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
   ) {
     const [model] = await this.db
@@ -165,6 +166,7 @@ export class ModelsService {
         customName: data.customName,
         modelIdentifier: data.modelIdentifier,
         fallbackModels: data.fallbackModels ?? [],
+        integrationId: data.integrationId ?? null,
       })
       .returning();
 
@@ -179,6 +181,7 @@ export class ModelsService {
       modelIdentifier?: string;
       isActive?: boolean;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
   ) {
     const [model] = await this.db
@@ -198,6 +201,8 @@ export class ModelsService {
     if (data.isActive !== undefined) updates.isActive = data.isActive;
     if (data.fallbackModels !== undefined)
       updates.fallbackModels = data.fallbackModels;
+    if (data.integrationId !== undefined)
+      updates.integrationId = data.integrationId;
 
     if (Object.keys(updates).length === 0) return model;
 

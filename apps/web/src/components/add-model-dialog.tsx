@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
-import { createModel } from "@/lib/api";
+import { createModel, fetchIntegrations } from "@/lib/api";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -142,9 +142,21 @@ export function AddModelDialog({
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
+  const [integrationId, setIntegrationId] = useState<string>("");
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
     useAvailableModels();
+
+  // Custom LLMs the user has registered in Management → Integration.
+  // Listed as an optional binding so an alias can route to a self-hosted
+  // or BYOK endpoint instead of OpenRouter.
+  const { data: integrations } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: fetchIntegrations,
+    enabled: open,
+  });
+  const customIntegrations =
+    integrations?.filter((i) => i.isCustom && i.isEnabled) ?? [];
 
   const mutation = useMutation({
     mutationFn: createModel,
@@ -153,6 +165,7 @@ export function AddModelDialog({
       setCustomName("Model 1");
       setModelId("");
       setFallbacks([]);
+      setIntegrationId("");
       setOpen(false);
     },
   });
@@ -206,6 +219,7 @@ export function AddModelDialog({
       customName: customName.trim(),
       modelIdentifier: modelId,
       fallbackModels: fallbacks,
+      integrationId: integrationId || null,
     });
   };
 
@@ -281,6 +295,47 @@ export function AddModelDialog({
                 className={`${inputClass} outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
               />
             </div>
+
+            {/* Optional: bind to a Custom LLM endpoint registered in
+                Management → Integration. Hidden when the user has none —
+                it's an opt-in advanced setting that only matters for
+                self-hosted / BYOK endpoints. */}
+            {customIntegrations.length > 0 && (
+              <div>
+                <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
+                  Custom LLM endpoint{" "}
+                  <span className="text-text-3">(optional)</span>
+                </p>
+                <Select
+                  value={integrationId || "__none__"}
+                  onValueChange={(v) =>
+                    setIntegrationId(v === "__none__" ? "" : v)
+                  }
+                >
+                  <SelectTrigger className={modelSelectClass}>
+                    <SelectValue placeholder="OpenRouter (default)" />
+                  </SelectTrigger>
+                  <SelectContent className="p-0">
+                    <SelectItem value="__none__" className={selectItemClass}>
+                      OpenRouter (default)
+                    </SelectItem>
+                    {customIntegrations.map((i) => (
+                      <SelectItem
+                        key={i.id ?? i.providerId}
+                        value={i.id ?? ""}
+                        className={selectItemClass}
+                      >
+                        {i.displayName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="mt-1 text-[12px] text-text-3">
+                  When set, chat calls for this alias route to the selected
+                  Custom LLM endpoint instead of OpenRouter.
+                </p>
+              </div>
+            )}
 
             {/* Fallback models */}
             <div>
