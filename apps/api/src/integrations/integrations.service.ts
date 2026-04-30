@@ -1,0 +1,306 @@
+import {
+  BadRequestException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, eq, gte, sql } from 'drizzle-orm';
+import {
+  integrations,
+  observabilityEvents,
+} from '@worken/database/schema';
+import { DATABASE, type Database } from '../database/database.module.js';
+import { EncryptionService } from '../openrouter/encryption.service.js';
+import {
+  PREDEFINED_PROVIDERS,
+  isPredefinedProvider,
+  type PredefinedProvider,
+} from './predefined-providers.js';
+
+interface IntegrationStats {
+  successRate: number; // 0..1
+  apiCalls: number;
+  rateLimit: number;
+}
+
+export interface IntegrationView {
+  id: string | null; // null when no row exists yet (predefined, untouched)
+  providerId: string;
+  displayName: string;
+  description: string;
+  iconHint: string;
+  apiUrl: string | null; // only set for "custom"
+  hasApiKey: boolean; // never expose the key itself
+  isEnabled: boolean;
+  isCustom: boolean;
+  stats: IntegrationStats;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+@Injectable()
+export class IntegrationsService {
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly encryptionService: EncryptionService,
+  ) {}
+
+  /** Catalog of predefined providers, in canonical UI order. */
+  listPredefined(): PredefinedProvider[] {
+    return PREDEFINED_PROVIDERS;
+  }
+
+  /**
+   * Returns one card-row per provider for the Integration tab.
+   *
+   * Predefined providers always appear (even when the user hasn't touched
+   * them yet — id=null, isEnabled=true, no key). Custom LLMs are appended
+   * after, one row each.
+   */
+  async listForUser(userId: string): Promise<IntegrationView[]> {
+    const rows = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.ownerId, userId));
+
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
+    const statsRows = await this.db
+      .select({
+        provider: observabilityEvents.provider,
+        successCount: sql<number>`count(*) filter (where ${observabilityEvents.success}=true)::int`,
+        totalCount: sql<number>`count(*)::int`,
+        thisMonth: sql<number>`count(*) filter (where ${observabilityEvents.createdAt} >= date_trunc('month', now()))::int`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.userId, userId),
+          gte(observabilityEvents.createdAt, since),
+        ),
+      )
+      .groupBy(observabilityEvents.provider);
+
+    const statsByProvider = new Map<
+      string,
+      { successCount: number; totalCount: number; thisMonth: number }
+    >();
+    for (const r of statsRows) {
+      if (!r.provider) continue;
+      statsByProvider.set(r.provider, {
+        successCount: Number(r.successCount ?? 0),
+        totalCount: Number(r.totalCount ?? 0),
+        thisMonth: Number(r.thisMonth ?? 0),
+      });
+    }
+
+    const buildStats = (providerId: string, rateLimit: number): IntegrationStats => {
+      const s = statsByProvider.get(providerId);
+      const successRate =
+        s && s.totalCount > 0 ? s.successCount / s.totalCount : 0;
+      return {
+        successRate,
+        apiCalls: s?.thisMonth ?? 0,
+        rateLimit,
+      };
+    };
+
+    const out: IntegrationView[] = [];
+
+    // Predefined first, in catalog order.
+    for (const p of PREDEFINED_PROVIDERS) {
+      const row = rows.find(
+        (r) => r.providerId === p.id && r.apiUrl === null,
+      );
+      out.push({
+        id: row?.id ?? null,
+        providerId: p.id,
+        displayName: p.displayName,
+        description: p.description,
+        iconHint: p.iconHint,
+        apiUrl: null,
+        hasApiKey: !!row?.apiKeyEncrypted,
+        isEnabled: row?.isEnabled ?? true, // default-on per UI mock
+        isCustom: false,
+        stats: buildStats(p.id, p.defaultRateLimit),
+        createdAt: row?.createdAt?.toISOString() ?? null,
+        updatedAt: row?.updatedAt?.toISOString() ?? null,
+      });
+    }
+
+    // Custom LLMs after, sorted by created_at asc.
+    const customs = rows
+      .filter((r) => r.providerId === 'custom' && r.apiUrl !== null)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+      );
+    for (const r of customs) {
+      out.push({
+        id: r.id,
+        providerId: 'custom',
+        displayName: deriveCustomDisplayName(r.apiUrl ?? ''),
+        description: r.apiUrl ?? '',
+        iconHint: 'custom',
+        apiUrl: r.apiUrl,
+        hasApiKey: !!r.apiKeyEncrypted,
+        isEnabled: r.isEnabled,
+        isCustom: true,
+        stats: buildStats('custom', 0),
+        createdAt: r.createdAt.toISOString(),
+        updatedAt: r.updatedAt.toISOString(),
+      });
+    }
+
+    return out;
+  }
+
+  /**
+   * Create or upsert an integration row.
+   * - For predefined providers: upsert by (ownerId, providerId).
+   * - For custom: always insert a new row (apiUrl required).
+   */
+  async upsert(
+    userId: string,
+    input: {
+      providerId: string;
+      apiUrl?: string | null;
+      apiKey?: string | null;
+      isEnabled?: boolean;
+    },
+  ): Promise<IntegrationView> {
+    const isCustom = input.providerId === 'custom';
+    if (!isCustom && !isPredefinedProvider(input.providerId)) {
+      throw new BadRequestException(`Unknown provider: ${input.providerId}`);
+    }
+    if (isCustom) {
+      if (!input.apiUrl?.trim()) {
+        throw new BadRequestException('Custom LLM requires apiUrl');
+      }
+      try {
+        new URL(input.apiUrl);
+      } catch {
+        throw new BadRequestException('apiUrl is not a valid URL');
+      }
+    }
+
+    const apiKeyEncrypted = input.apiKey?.trim()
+      ? this.encryptionService.encrypt(input.apiKey.trim())
+      : null;
+
+    if (isCustom) {
+      await this.db.insert(integrations).values({
+        ownerId: userId,
+        providerId: 'custom',
+        apiUrl: input.apiUrl!,
+        apiKeyEncrypted,
+        isEnabled: input.isEnabled ?? true,
+      });
+    } else {
+      // Upsert: try update, else insert.
+      const [existing] = await this.db
+        .select()
+        .from(integrations)
+        .where(
+          and(
+            eq(integrations.ownerId, userId),
+            eq(integrations.providerId, input.providerId),
+          ),
+        );
+
+      if (existing) {
+        const updates: Record<string, unknown> = {
+          updatedAt: new Date(),
+        };
+        if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
+        if (apiKeyEncrypted !== null) updates.apiKeyEncrypted = apiKeyEncrypted;
+        if (apiKeyEncrypted === null && input.apiKey === '') {
+          // Empty string explicitly clears the key.
+          updates.apiKeyEncrypted = null;
+        }
+        await this.db
+          .update(integrations)
+          .set(updates)
+          .where(eq(integrations.id, existing.id));
+      } else {
+        await this.db.insert(integrations).values({
+          ownerId: userId,
+          providerId: input.providerId,
+          apiUrl: null,
+          apiKeyEncrypted,
+          isEnabled: input.isEnabled ?? true,
+        });
+      }
+    }
+
+    const all = await this.listForUser(userId);
+    const view = isCustom
+      ? all.findLast((v) => v.providerId === 'custom') // newest custom
+      : all.find((v) => v.providerId === input.providerId);
+    return view!;
+  }
+
+  async update(
+    userId: string,
+    id: string,
+    input: { isEnabled?: boolean; apiKey?: string | null },
+  ): Promise<IntegrationView> {
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, id));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.ownerId !== userId) {
+      throw new ForbiddenException('Not your integration');
+    }
+
+    const updates: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+    if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
+    if (input.apiKey !== undefined) {
+      updates.apiKeyEncrypted = input.apiKey
+        ? this.encryptionService.encrypt(input.apiKey)
+        : null;
+    }
+    await this.db
+      .update(integrations)
+      .set(updates)
+      .where(eq(integrations.id, id));
+
+    const all = await this.listForUser(userId);
+    const view = all.find((v) => v.id === id);
+    if (!view) throw new NotFoundException('Integration not found after update');
+    return view;
+  }
+
+  async remove(userId: string, id: string): Promise<void> {
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, id));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.ownerId !== userId) {
+      throw new ForbiddenException('Not your integration');
+    }
+    if (row.providerId !== 'custom') {
+      throw new BadRequestException(
+        'Predefined provider rows cannot be deleted — disable them instead.',
+      );
+    }
+    await this.db.delete(integrations).where(eq(integrations.id, id));
+  }
+}
+
+/**
+ * "https://api.together.xyz/v1/chat/completions" → "api.together.xyz"
+ * Used as a card title for custom LLMs since the dialog doesn't ask for
+ * a friendly name (Figma shows only the API Link field).
+ */
+function deriveCustomDisplayName(url: string): string {
+  try {
+    return new URL(url).hostname || 'Custom LLM';
+  } catch {
+    return 'Custom LLM';
+  }
+}
