@@ -796,6 +796,9 @@ export interface ModelConfig {
   modelIdentifier: string;
   isActive: boolean;
   fallbackModels: string[];
+  /** When set, chat calls for this alias route through the linked Custom
+   *  LLM integration instead of OpenRouter. */
+  integrationId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -824,6 +827,22 @@ export interface CatalogModel extends AvailableModel {
 export async function fetchAvailableModels(): Promise<AvailableModel[]> {
   const res = await apiFetch("/models/available");
   if (!res.ok) throw new Error("Failed to fetch available models");
+  return res.json();
+}
+
+export interface EffectiveModel extends AvailableModel {
+  source: "alias" | "byok" | "custom";
+  aliasId?: string;
+}
+
+/**
+ * Per-user effective model list — drives the model pickers in the arena
+ * and project chat. Includes the user's model aliases (Models tab) plus
+ * any catalog model for a provider where the user has BYOK enabled.
+ */
+export async function fetchEffectiveModels(): Promise<EffectiveModel[]> {
+  const res = await apiFetch("/models/effective");
+  if (!res.ok) throw new Error("Failed to fetch effective models");
   return res.json();
 }
 
@@ -863,6 +882,7 @@ export async function createModel(data: {
   customName: string;
   modelIdentifier: string;
   fallbackModels?: string[];
+  integrationId?: string | null;
 }): Promise<ModelConfig> {
   const res = await apiFetch("/models", {
     method: "POST",
@@ -880,6 +900,7 @@ export async function updateModel(
     modelIdentifier?: string;
     isActive?: boolean;
     fallbackModels?: string[];
+    integrationId?: string | null;
   },
 ): Promise<ModelConfig> {
   const res = await apiFetch(`/models/${id}`, {
@@ -1809,4 +1830,97 @@ export function fetchObservabilityGuardrailActivity(
   return fetchObservability(
     `/observability/guardrail-activity?range=${range}`,
   );
+}
+
+// ─── Integrations (Management → Integration) ──────────────────────────────
+
+export interface PredefinedProvider {
+  id: string;
+  displayName: string;
+  description: string;
+  iconHint: string;
+  defaultRateLimit: number;
+}
+
+export interface IntegrationCard {
+  id: string | null; // null when no DB row exists yet (untouched predefined)
+  providerId: string;
+  displayName: string;
+  description: string;
+  iconHint: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  isEnabled: boolean;
+  isCustom: boolean;
+  /** Whether the provider's native API speaks OpenAI Chat Completions. */
+  openAICompatible: boolean;
+  /**
+   * Whether the BYOK key is honored end-to-end (OpenAI SDK or a native
+   * SDK shim like Anthropic's). When false the key is stored but chat
+   * still routes through OpenRouter — Settings dialog shows a disclaimer.
+   */
+  byokSupported: boolean;
+  /** For custom rows: how many model_configs aliases reference this integration. */
+  boundAliasCount: number;
+  stats: {
+    successRate: number; // 0..1
+    apiCalls: number;
+    rateLimit: number;
+  };
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export async function fetchIntegrationProviders(): Promise<PredefinedProvider[]> {
+  const res = await apiFetch("/integrations/providers");
+  if (!res.ok) throw new Error("Failed to fetch provider catalog");
+  return res.json();
+}
+
+export async function fetchIntegrations(): Promise<IntegrationCard[]> {
+  const res = await apiFetch("/integrations");
+  if (!res.ok) throw new Error("Failed to fetch integrations");
+  return res.json();
+}
+
+export async function upsertIntegration(input: {
+  providerId: string;
+  apiUrl?: string;
+  apiKey?: string;
+  isEnabled?: boolean;
+}): Promise<IntegrationCard> {
+  const res = await apiFetch("/integrations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to save integration");
+  }
+  return res.json();
+}
+
+export async function updateIntegration(
+  id: string,
+  input: { isEnabled?: boolean; apiKey?: string | null },
+): Promise<IntegrationCard> {
+  const res = await apiFetch(`/integrations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update integration");
+  }
+  return res.json();
+}
+
+export async function deleteIntegration(id: string): Promise<void> {
+  const res = await apiFetch(`/integrations/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to delete integration");
+  }
 }

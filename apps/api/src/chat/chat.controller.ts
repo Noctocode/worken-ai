@@ -3,8 +3,9 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
-import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { ChatService } from './chat.service.js';
 
 interface ChatRequestBody {
@@ -21,7 +22,8 @@ export class ChatController {
     private readonly chatService: ChatService,
     private readonly documentsService: DocumentsService,
     private readonly conversationsService: ConversationsService,
-    private readonly keyResolverService: KeyResolverService,
+    private readonly chatTransport: ChatTransportService,
+    private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
   ) {}
 
@@ -44,11 +46,13 @@ export class ChatController {
       user.id,
     );
 
-    // Resolve per-team or per-user API key
-    const apiKey = await this.keyResolverService.resolveForProject(
-      conversation.projectId,
-      user.id,
-    );
+    // Resolve transport: BYOK / Custom LLM if user configured one for
+    // this model, else OpenRouter via the resolved per-team/per-user key.
+    const transport = await this.chatTransport.resolve({
+      userId: user.id,
+      modelIdentifier: body.model ?? 'moonshotai/kimi-k2.5',
+      projectId: conversation.projectId,
+    });
 
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
@@ -77,18 +81,47 @@ export class ChatController {
     try {
       response = await this.chatService.sendMessage(
         apiMessages,
-        body.model,
+        transport.model,
         body.enableReasoning,
         context,
-        apiKey,
+        transport.apiKey,
+        transport.baseURL,
+        transport.kind,
       );
+
+      // Cost backfill for non-OpenRouter routes. OpenRouter returns
+      // `usage.cost` directly; native (BYOK) and Custom endpoints
+      // don't, so observability would otherwise show $0 for those
+      // calls. Estimate from the OpenRouter catalog's per-token
+      // pricing — assumes native pricing matches OpenRouter's listed
+      // prices, which is true for headline providers.
+      let costUsd = response.totalCost ?? null;
+      let costEstimated = false;
+      if (
+        costUsd == null &&
+        transport.source !== 'openrouter' &&
+        response.promptTokens != null &&
+        response.completionTokens != null
+      ) {
+        const estimated = await this.catalogService.estimateCost(
+          body.model ?? 'moonshotai/kimi-k2.5',
+          response.promptTokens,
+          response.completionTokens,
+        );
+        if (estimated != null) {
+          costUsd = estimated;
+          costEstimated = true;
+        }
+      }
+
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
         eventType: 'chat_call',
         model: body.model ?? 'moonshotai/kimi-k2.5',
+        provider: transport.provider,
         totalTokens: response.totalTokens,
-        costUsd: response.totalCost,
+        costUsd,
         latencyMs: Date.now() - chatStart,
         success: true,
         prompt: body.content,
@@ -96,6 +129,8 @@ export class ChatController {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
           hasContext: Boolean(context),
+          routingSource: transport.source,
+          costEstimated,
         },
       });
     } catch (err) {
@@ -105,6 +140,7 @@ export class ChatController {
         teamId,
         eventType: 'chat_call',
         model: body.model ?? 'moonshotai/kimi-k2.5',
+        provider: transport.provider,
         latencyMs: Date.now() - chatStart,
         success: false,
         errorMessage: msg,
@@ -112,10 +148,11 @@ export class ChatController {
         metadata: {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
+          routingSource: transport.source,
         },
       });
 
-      // Surface OpenRouter HTTP status codes (402/401/429/…) to the
+      // Surface upstream HTTP status codes (402/401/429/…) to the
       // client so the FE humanizer can route them to a specific message.
       // The OpenAI SDK throws errors with a numeric `status` field;
       // everything else falls through as 500.
@@ -130,10 +167,18 @@ export class ChatController {
           message?: string;
           error?: { message?: string };
         };
-        const detail =
-          apiErr.error?.message ??
-          apiErr.message ??
-          `OpenRouter error ${apiErr.status}`;
+        const upstreamMessage =
+          apiErr.error?.message ?? apiErr.message ?? '';
+
+        // 401 + no-auth placeholder = user registered a Custom LLM
+        // without an API key but the endpoint requires one. Surface a
+        // distinct message so the humanizer doesn't say "your key is
+        // invalid" (the user has no key).
+        const noAuthAttempt =
+          transport.apiKey === 'no-auth' && apiErr.status === 401;
+        const detail = noAuthAttempt
+          ? `Custom LLM endpoint rejected the request — it requires an API key. Open Management → Integration → ${transport.provider}, click Settings, and add your key.`
+          : upstreamMessage || `${transport.provider} error ${apiErr.status}`;
         throw new HttpException(detail, apiErr.status);
       }
       throw err;

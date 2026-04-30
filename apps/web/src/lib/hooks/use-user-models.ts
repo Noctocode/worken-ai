@@ -1,19 +1,27 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchModels, type AvailableModel } from "@/lib/api";
+import { fetchEffectiveModels, type AvailableModel } from "@/lib/api";
 
-const STALE_TIME_MS = 60 * 1000; // 1 min — user can edit Models tab live
+const STALE_TIME_MS = 60 * 1000; // 1 min — list moves when user edits Models or Integration tabs
 
 /**
- * The user's active model_configs aliases, exposed in the same shape as
- * useAvailableModels() so consumers can swap one for the other.
+ * Effective model list for the current user — used by the arena, the
+ * project pickers, and anything else that lets the user pick a model
+ * to chat with.
  *
- * Used by the Compare Models arena, where we only want to allow choosing
- * among models the user has explicitly added under Management → Models
- * (i.e. their custom aliases). Two aliases that point at the same upstream
- * modelIdentifier are deduped to the first one, since selectedModels in
- * the arena is keyed on upstream id.
+ * Sources (BE-merged via /models/effective):
+ *   - Active model_configs aliases (Models tab) — custom name preserved.
+ *   - Catalog models for any provider with an enabled BYOK key in
+ *     Integration tab — auto-unlocked, no per-model alias needed.
+ *
+ * Returns an empty list when the user has neither aliases nor BYOK
+ * keys; UI should treat that as a setup-required state (the arena
+ * already does — it gates on `< 2 models`).
+ *
+ * The hook keeps the same shape as useAvailableModels for drop-in
+ * compatibility — consumers that just need {id, name, getLabel} don't
+ * need to know about the new EffectiveModel.source field.
  */
 export function useUserModels(): {
   models: AvailableModel[];
@@ -22,23 +30,22 @@ export function useUserModels(): {
   getLabel: (id: string) => string;
 } {
   const { data, isLoading, error } = useQuery({
-    queryKey: ["models", "user", "active"],
-    queryFn: fetchModels,
+    queryKey: ["models", "effective"],
+    queryFn: fetchEffectiveModels,
     staleTime: STALE_TIME_MS,
   });
 
   const all = data ?? [];
-  const seen = new Set<string>();
-  const models: AvailableModel[] = [];
-  for (const cfg of all) {
-    if (!cfg.isActive) continue;
-    if (seen.has(cfg.modelIdentifier)) continue;
-    seen.add(cfg.modelIdentifier);
-    models.push({
-      id: cfg.modelIdentifier,
-      name: cfg.customName,
-    });
-  }
+  // Strip the BE-only `source` / `aliasId` fields for callers that only
+  // know AvailableModel. Order is BE-controlled: aliases first, then
+  // BYOK catalog entries.
+  const models: AvailableModel[] = all.map((m) => ({
+    id: m.id,
+    name: m.name,
+    description: m.description,
+    context_length: m.context_length,
+    pricing: m.pricing,
+  }));
 
   const getLabel = (id: string) =>
     models.find((m) => m.id === id)?.name ?? id;

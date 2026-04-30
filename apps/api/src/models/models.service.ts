@@ -4,13 +4,40 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, inArray } from 'drizzle-orm';
-import { enabledModels, modelConfigs, users } from '@worken/database/schema';
+import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import {
+  enabledModels,
+  integrations,
+  modelConfigs,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import {
   OpenRouterCatalogService,
   type CatalogModel,
 } from './openrouter-catalog.service.js';
+
+/**
+ * What a model picker (arena, project chat, …) should show for a user.
+ * Aliases first (preserve their custom name), then any catalog model
+ * for a provider where the user has an enabled BYOK key — those are
+ * implicitly unlocked because chat-transport routes them through the
+ * user's own provider account.
+ */
+export interface EffectiveModel {
+  id: string;
+  name: string;
+  /** "alias" = backed by a model_configs row; "byok" = unlocked via a
+   *  BYOK key on the model's provider; "custom" = bound to a Custom LLM
+   *  integration (alias with integrationId set). */
+  source: 'alias' | 'byok' | 'custom';
+  /** Set when source === "alias" or "custom". Lets the FE deep-link to
+   *  Models tab edit. */
+  aliasId?: string;
+  description?: string;
+  context_length?: number;
+  pricing?: { prompt?: string; completion?: string };
+}
 
 export interface CatalogEntry extends CatalogModel {
   enabled: boolean;
@@ -26,6 +53,82 @@ export class ModelsService {
 
   async findAll() {
     return this.db.select().from(modelConfigs);
+  }
+
+  /**
+   * Models the FE should surface in pickers (arena, project create, …)
+   * for a given user.
+   *
+   *  - Active model_configs aliases (one entry each, custom name as label).
+   *  - Plus every catalog model whose provider has an enabled BYOK row
+   *    with an api key in `integrations`. The user has explicitly opted
+   *    in to using their own provider account for that whole vendor;
+   *    surfacing the full catalog there saves them from manually
+   *    aliasing every model they want to try.
+   *
+   * Aliases dedupe over catalog entries on the same modelIdentifier —
+   * the user's custom name and (if present) Custom LLM binding take
+   * precedence.
+   */
+  async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
+    const aliasRows = await this.db
+      .select()
+      .from(modelConfigs)
+      .where(
+        and(eq(modelConfigs.ownerId, userId), eq(modelConfigs.isActive, true)),
+      );
+
+    const byokRows = await this.db
+      .select({ providerId: integrations.providerId })
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.ownerId, userId),
+          eq(integrations.isEnabled, true),
+          isNotNull(integrations.apiKeyEncrypted),
+        ),
+      );
+    const byokProviders = new Set(
+      byokRows
+        .map((r) => r.providerId)
+        .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
+    );
+
+    const out: EffectiveModel[] = [];
+    const seen = new Set<string>();
+
+    for (const a of aliasRows) {
+      if (seen.has(a.modelIdentifier)) continue;
+      seen.add(a.modelIdentifier);
+      out.push({
+        id: a.modelIdentifier,
+        name: a.customName,
+        source: a.integrationId ? 'custom' : 'alias',
+        aliasId: a.id,
+      });
+    }
+
+    if (byokProviders.size > 0) {
+      const catalog = await this.catalogService.list();
+      for (const m of catalog) {
+        if (seen.has(m.id)) continue;
+        const slash = m.id.indexOf('/');
+        if (slash === -1) continue;
+        const provider = m.id.slice(0, slash);
+        if (!byokProviders.has(provider)) continue;
+        seen.add(m.id);
+        out.push({
+          id: m.id,
+          name: m.name,
+          source: 'byok',
+          description: m.description,
+          context_length: m.context_length,
+          pricing: m.pricing,
+        });
+      }
+    }
+
+    return out;
   }
 
   /**
@@ -156,6 +259,7 @@ export class ModelsService {
       customName: string;
       modelIdentifier: string;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
   ) {
     const [model] = await this.db
@@ -165,6 +269,7 @@ export class ModelsService {
         customName: data.customName,
         modelIdentifier: data.modelIdentifier,
         fallbackModels: data.fallbackModels ?? [],
+        integrationId: data.integrationId ?? null,
       })
       .returning();
 
@@ -179,6 +284,7 @@ export class ModelsService {
       modelIdentifier?: string;
       isActive?: boolean;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
   ) {
     const [model] = await this.db
@@ -198,6 +304,8 @@ export class ModelsService {
     if (data.isActive !== undefined) updates.isActive = data.isActive;
     if (data.fallbackModels !== undefined)
       updates.fallbackModels = data.fallbackModels;
+    if (data.integrationId !== undefined)
+      updates.integrationId = data.integrationId;
 
     if (Object.keys(updates).length === 0) return model;
 
