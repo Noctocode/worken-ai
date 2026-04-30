@@ -72,9 +72,7 @@ import {
   type TeamListItem,
 } from "@/lib/api";
 import { humanizeChatError } from "@/lib/chat-errors";
-import {
-  useAvailableModels,
-} from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import type { AvailableModel } from "@/lib/api";
 
 function getModelProvider(id: string): string {
@@ -136,7 +134,7 @@ const MODEL_COLORS: Record<string, string> = {
   "liquid/lfm-2.5-1.2b-thinking:free": "bg-[#4338CA]/10 text-[#4338CA]",
 };
 
-// getModelLabel: each component that needs it calls useAvailableModels() and
+// getModelLabel: each component that needs it calls useUserModels() and
 // destructures `getLabel`. The hook shares a single React Query cache across
 // the page so multiple calls don't refetch.
 
@@ -159,7 +157,8 @@ function slotLabel(index: number): string {
 }
 
 export default function CompareModelsPage() {
-  const { models: availableModels, getLabel: getModelLabel } = useAvailableModels();
+  const { models: availableModels, isLoading: modelsLoading, getLabel: getModelLabel } =
+    useUserModels();
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
 
   // Seed the comparison with the first two enabled models once the catalog
@@ -365,6 +364,36 @@ export default function CompareModelsPage() {
     } catch {
       toast.error("Couldn't copy to clipboard.");
     }
+  }
+
+  // Gate: arena needs at least MIN_MODELS active aliases under
+  // Management → Models. Without that we can't even seed the comparison,
+  // and silently rendering an empty rail looks broken.
+  if (!modelsLoading && availableModels.length < MIN_MODELS) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center pb-6">
+        <div className="flex max-w-[480px] flex-col items-center gap-4 rounded-[20px] bg-bg-white p-8 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-1">
+            <LayoutGrid className="h-6 w-6 text-primary-7" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[18px] font-bold text-text-1">
+              Add at least {MIN_MODELS} models to start comparing
+            </h3>
+            <p className="text-[14px] text-text-2">
+              Model Arena uses the active models from your Models list. You
+              currently have {availableModels.length}.
+            </p>
+          </div>
+          <Link
+            href="/teams?tab=models"
+            className="inline-flex h-10 items-center rounded-lg bg-primary-6 px-5 text-[14px] font-medium text-white transition-colors hover:bg-primary-7"
+          >
+            Manage Models
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -599,7 +628,7 @@ function ResponseCard({
   loading: boolean;
   onCopy: (text: string) => void;
 }) {
-  const { getLabel: getModelLabel } = useAvailableModels();
+  const { getLabel: getModelLabel } = useUserModels();
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
   const provider = getModelProvider(modelId);
@@ -1209,7 +1238,7 @@ function RightRail({
   selectedTeamId: string;
   onSelectTeam: (id: string) => void;
 }) {
-  const { models } = useAvailableModels();
+  const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
   return (
@@ -1393,7 +1422,7 @@ function ModelPill({
   onRemove?: () => void;
   disabledIds: string[];
 }) {
-  const { models, getLabel: getModelLabel } = useAvailableModels();
+  const { models, getLabel: getModelLabel } = useUserModels();
   const tone = getModelTone(value);
   const label = getModelLabel(value);
 
@@ -1547,7 +1576,7 @@ function AddModelDialog({
   selectedModels: string[];
   onAdd: (id: string) => void;
 }) {
-  const { models } = useAvailableModels();
+  const { models } = useUserModels();
   const [query, setQuery] = useState("");
   // Default selection points at the first model not already in the comparison.
   const firstAvailable = useMemo(
