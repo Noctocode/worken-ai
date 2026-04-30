@@ -36,13 +36,17 @@ export interface IntegrationView {
   isEnabled: boolean;
   isCustom: boolean;
   /**
-   * Whether the provider's native API can be hit through the OpenAI SDK.
-   * `false` for Anthropic, Google, Qwen — BYOK key is stored but chat
-   * still routes through OpenRouter; FE uses this to show a disclaimer.
-   * Always true for "custom" rows (the user picked the URL, presumed
-   * OpenAI-compatible).
+   * Whether the provider's native API speaks OpenAI Chat Completions
+   * verbatim. Factual flag.
    */
   openAICompatible: boolean;
+  /**
+   * Whether we can honour a BYOK key end-to-end (OpenAI SDK against the
+   * native baseURL, or a dedicated SDK shim like AnthropicClientService).
+   * FE uses this to decide whether to show the "key is stored but chat
+   * still routes through OpenRouter" disclaimer.
+   */
+  byokSupported: boolean;
   /**
    * For custom rows only: how many model_configs aliases reference this
    * integration. Drives the "delete will unlink N aliases" warning.
@@ -160,6 +164,7 @@ export class IntegrationsService {
         isEnabled: row?.isEnabled ?? true, // default-on per UI mock
         isCustom: false,
         openAICompatible: p.openAICompatible,
+        byokSupported: p.byokSupported,
         boundAliasCount: 0,
         stats: buildStats(p.id, p.defaultRateLimit),
         createdAt: row?.createdAt?.toISOString() ?? null,
@@ -190,6 +195,7 @@ export class IntegrationsService {
         // endpoint. (If it's not, the chat will fail at request time
         // and the humanizer surfaces the error.)
         openAICompatible: true,
+        byokSupported: true,
         boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
         stats: buildStats('custom', 0),
         createdAt: r.createdAt.toISOString(),

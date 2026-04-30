@@ -10,8 +10,16 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export type ChatRoutingSource = 'openrouter' | 'byok' | 'custom';
 
+/**
+ * Which client the chat layer should instantiate. `openai-sdk` is the
+ * default — works for OpenRouter, OpenAI-compatible BYOK, and Custom
+ * LLMs alike. `anthropic-sdk` triggers AnthropicClientService for
+ * Anthropic BYOK (their native API isn't OpenAI-compatible).
+ */
+export type ChatTransportKind = 'openai-sdk' | 'anthropic-sdk';
+
 export interface ChatTransport {
-  /** baseURL for the OpenAI SDK client. */
+  /** baseURL for the OpenAI SDK client. Unused when kind is 'anthropic-sdk'. */
   baseURL: string;
   /** Plaintext API key. Empty string means "no auth header" (rare). */
   apiKey: string;
@@ -21,6 +29,8 @@ export interface ChatTransport {
   provider: string;
   /** How the call was routed. */
   source: ChatRoutingSource;
+  /** Which SDK to use. */
+  kind: ChatTransportKind;
 }
 
 /**
@@ -93,6 +103,7 @@ export class ChatTransportService {
           model: modelIdentifier,
           provider: 'custom',
           source: 'custom',
+          kind: 'openai-sdk',
         };
       }
 
@@ -118,25 +129,41 @@ export class ChatTransportService {
 
       if (byok?.apiKeyEncrypted) {
         const native = NATIVE_ENDPOINTS[provider];
+        const bareModel = modelIdentifier.slice(provider.length + 1);
+        const apiKey = this.safeDecrypt(
+          byok.apiKeyEncrypted,
+          `BYOK ${provider}`,
+        );
+
+        // 2a. OpenAI-compatible providers go through the standard
+        // OpenAI SDK with a custom baseURL.
         if (native?.openAICompatible) {
-          const apiKey = this.safeDecrypt(
-            byok.apiKeyEncrypted,
-            `BYOK ${provider}`,
-          );
-          // Native endpoints expect the bare model name without the
-          // "vendor/" prefix that OpenRouter uses (e.g. OpenAI wants
-          // "gpt-5.5", not "openai/gpt-5.5"). Strip it.
-          const bareModel = modelIdentifier.slice(provider.length + 1);
           return {
             baseURL: native.baseURL,
             apiKey,
             model: bareModel,
             provider,
             source: 'byok',
+            kind: 'openai-sdk',
           };
         }
+
+        // 2b. Providers we have a dedicated SDK shim for (currently
+        // Anthropic). The chat layer recognises kind === 'anthropic-sdk'
+        // and routes to AnthropicClientService instead of OpenAI SDK.
+        if (native?.nativeSdkAvailable) {
+          return {
+            baseURL: native.baseURL, // unused by the SDK path
+            apiKey,
+            model: bareModel,
+            provider,
+            source: 'byok',
+            kind: 'anthropic-sdk',
+          };
+        }
+
         this.logger.warn(
-          `${provider} has a BYOK key set but its native API isn't OpenAI-compatible — falling back to OpenRouter for ${modelIdentifier}.`,
+          `${provider} has a BYOK key set but no native transport available — falling back to OpenRouter for ${modelIdentifier}.`,
         );
       }
     }
@@ -152,6 +179,7 @@ export class ChatTransportService {
       model: modelIdentifier,
       provider: provider ?? 'unknown',
       source: 'openrouter',
+      kind: 'openai-sdk',
     };
   }
 

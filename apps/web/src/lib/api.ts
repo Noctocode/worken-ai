@@ -1836,8 +1836,14 @@ export interface IntegrationCard {
   hasApiKey: boolean;
   isEnabled: boolean;
   isCustom: boolean;
-  /** When false, BYOK key is stored but chat still routes through OpenRouter. */
+  /** Whether the provider's native API speaks OpenAI Chat Completions. */
   openAICompatible: boolean;
+  /**
+   * Whether the BYOK key is honored end-to-end (OpenAI SDK or a native
+   * SDK shim like Anthropic's). When false the key is stored but chat
+   * still routes through OpenRouter — Settings dialog shows a disclaimer.
+   */
+  byokSupported: boolean;
   /** For custom rows: how many model_configs aliases reference this integration. */
   boundAliasCount: number;
   stats: {

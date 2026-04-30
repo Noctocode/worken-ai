@@ -124,7 +124,11 @@ function ProviderSettingsDialog({
   });
 
   const successRatePct = (card.stats.successRate * 100).toFixed(1);
-  const showCompatibilityNotice = !card.openAICompatible && !card.isCustom;
+  // Disclaimer fires when the provider can't honor BYOK end-to-end.
+  // openAICompatible=false alone doesn't cut it any more — Anthropic
+  // is non-compatible but routes through its native SDK, so the key
+  // IS honored. byokSupported is the right flag to gate on.
+  const showCompatibilityNotice = !card.byokSupported && !card.isCustom;
 
   return (
     <SettingsDialog

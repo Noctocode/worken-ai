@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
+import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -28,6 +30,8 @@ interface OpenRouterUsage {
 
 @Injectable()
 export class ChatService {
+  constructor(private readonly anthropic: AnthropicClientService) {}
+
   private makeClient(baseURL: string, apiKey: string): OpenAI {
     return new OpenAI({
       baseURL,
@@ -48,7 +52,28 @@ export class ChatService {
     context?: string,
     apiKey: string = '',
     baseURL: string = 'https://openrouter.ai/api/v1',
+    kind: ChatTransportKind = 'openai-sdk',
   ): Promise<ChatResponse> {
+    // Route to the Anthropic native SDK when the transport says so —
+    // Anthropic's Messages API isn't OpenAI-compatible, so we can't
+    // just point the OpenAI SDK at https://api.anthropic.com/v1.
+    if (kind === 'anthropic-sdk') {
+      const r = await this.anthropic.sendMessage(
+        messages.map((m) => ({ role: m.role, content: m.content })),
+        model,
+        apiKey,
+        context,
+      );
+      return {
+        content: r.content,
+        totalTokens: r.totalTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+        // Anthropic doesn't return cost — controller estimates it via
+        // OpenRouter catalog pricing.
+      };
+    }
+
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
       systemMessages.push({

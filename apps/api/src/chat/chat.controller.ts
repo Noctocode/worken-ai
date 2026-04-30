@@ -86,6 +86,7 @@ export class ChatController {
         context,
         transport.apiKey,
         transport.baseURL,
+        transport.kind,
       );
 
       // Cost backfill for non-OpenRouter routes. OpenRouter returns

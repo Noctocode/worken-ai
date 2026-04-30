@@ -12,7 +12,7 @@
  * lower-case strings, ideally matching the OpenRouter provider slug so
  * we can correlate with `observability_events.provider` for stats.
  */
-import { NATIVE_ENDPOINTS } from './native-endpoints.js';
+import { NATIVE_ENDPOINTS, isByokSupported } from './native-endpoints.js';
 
 export interface PredefinedProvider {
   id: string;
@@ -30,16 +30,23 @@ export interface PredefinedProvider {
    */
   defaultRateLimit: number;
   /**
-   * Whether the provider's native API speaks OpenAI Chat Completions.
-   * When false, BYOK keys for this provider are stored but the chat
-   * path keeps falling back to OpenRouter — the FE shows a disclaimer
-   * in the Settings dialog so the user knows their key is dormant.
-   * Derived at module load time from NATIVE_ENDPOINTS.
+   * Whether the provider's native API speaks OpenAI Chat Completions
+   * verbatim. Factual flag — never changes per-deploy.
    */
   openAICompatible: boolean;
+  /**
+   * Whether we can honour a BYOK key end-to-end (either via OpenAI SDK
+   * with a custom baseURL, or via a native SDK shim). When false, the
+   * key is stored but chat falls back to OpenRouter and the Settings
+   * dialog shows a disclaimer.
+   */
+  byokSupported: boolean;
 }
 
-const PROVIDERS_RAW: Omit<PredefinedProvider, 'openAICompatible'>[] = [
+const PROVIDERS_RAW: Omit<
+  PredefinedProvider,
+  'openAICompatible' | 'byokSupported'
+>[] = [
   {
     id: 'google',
     displayName: 'Gemini',
@@ -109,6 +116,7 @@ export const PREDEFINED_PROVIDERS: PredefinedProvider[] = PROVIDERS_RAW.map(
   (p) => ({
     ...p,
     openAICompatible: NATIVE_ENDPOINTS[p.id]?.openAICompatible ?? false,
+    byokSupported: isByokSupported(p.id),
   }),
 );
 

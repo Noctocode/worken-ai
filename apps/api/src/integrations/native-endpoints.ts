@@ -17,7 +17,22 @@
  */
 export interface NativeEndpoint {
   baseURL: string;
+  /** True when the native API speaks OpenAI Chat Completions verbatim. */
   openAICompatible: boolean;
+  /**
+   * True when we have a dedicated SDK shim for this provider's
+   * non-OpenAI-compatible API. Currently only "anthropic" via
+   * AnthropicClientService — chat-transport.service routes those calls
+   * to a separate transportKind that the chat layer recognises.
+   */
+  nativeSdkAvailable?: boolean;
+}
+
+/** True when we can honour a BYOK key for this provider end-to-end. */
+export function isByokSupported(providerId: string): boolean {
+  const ep = NATIVE_ENDPOINTS[providerId];
+  if (!ep) return false;
+  return ep.openAICompatible || ep.nativeSdkAvailable === true;
 }
 
 export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
@@ -50,6 +65,7 @@ export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
   anthropic: {
     baseURL: "https://api.anthropic.com/v1",
     openAICompatible: false,
+    nativeSdkAvailable: true,
   },
   google: {
     baseURL: "https://generativelanguage.googleapis.com/v1beta",

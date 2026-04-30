@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
+import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
 interface QuestionResponse {
   content: string;
@@ -32,6 +34,8 @@ function describeOpenRouterError(model: string, action: string, err: unknown): E
 
 @Injectable()
 export class CompareModelsService {
+  constructor(private readonly anthropic: AnthropicClientService) {}
+
   private makeClient(apiKey?: string, baseURL?: string): OpenAI {
     const resolved = apiKey ?? process.env['OPENROUTER_API_KEY'];
     if (!resolved) {
@@ -90,7 +94,23 @@ export class CompareModelsService {
     context?: string,
     apiKey?: string,
     baseURL?: string,
+    kind: ChatTransportKind = 'openai-sdk',
   ): Promise<QuestionResponse> {
+    // Native Anthropic path for BYOK on Claude.
+    if (kind === 'anthropic-sdk') {
+      const r = await this.anthropic.sendMessage(
+        [{ role: 'user', content: question }],
+        model,
+        apiKey ?? '',
+        context,
+      );
+      return {
+        content: r.content,
+        totalTokens: r.totalTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+      };
+    }
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
       systemMessages.push({

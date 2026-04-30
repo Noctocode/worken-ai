@@ -213,6 +213,7 @@ export class CompareModelsController {
               body.context,
               transport.apiKey,
               transport.baseURL,
+              transport.kind,
             );
             const latencyMs = Date.now() - start;
 
