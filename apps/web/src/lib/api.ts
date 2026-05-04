@@ -1926,3 +1926,51 @@ export async function deleteIntegration(id: string): Promise<void> {
     throw new Error(body.message || "Failed to delete integration");
   }
 }
+
+// ───── API keys (programmatic access tokens) ──────────────────────────
+
+export interface ApiKeySummary {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+/**
+ * Plaintext is included only on the response of POST /api-keys; subsequent
+ * fetches return ApiKeySummary without it.
+ */
+export interface MintedApiKey extends ApiKeySummary {
+  plaintext: string;
+}
+
+export async function fetchApiKeys(): Promise<ApiKeySummary[]> {
+  const res = await apiFetch("/api-keys");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to load API keys");
+  }
+  return res.json();
+}
+
+export async function mintApiKey(name: string): Promise<MintedApiKey> {
+  const res = await apiFetch("/api-keys", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to create API key");
+  }
+  return res.json();
+}
+
+export async function revokeApiKey(id: string): Promise<void> {
+  const res = await apiFetch(`/api-keys/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to revoke API key");
+  }
+}
