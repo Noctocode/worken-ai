@@ -72,8 +72,15 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Custom LLM endpoint requires an API key but none was configured.
+  // BE annotates the message; pass it through verbatim so the user
+  // sees "Open Management → Integration → … and add your key."
+  if (/requires an API key/i.test(raw)) {
+    return raw;
+  }
+
   if (/\b401\b/.test(raw) || /invalid api key/i.test(raw) || /authentication/i.test(raw)) {
-    return "The OpenRouter key for this team is invalid. Please contact an admin.";
+    return "The API key for this provider is invalid. Open Management → Integration, click Settings on the provider card and update it.";
   }
 
   if (

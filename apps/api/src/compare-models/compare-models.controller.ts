@@ -23,6 +23,8 @@ import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { CompareModelsService } from './compare-models.service.js';
@@ -85,6 +87,8 @@ export class CompareModelsController {
   constructor(
     private readonly compareModelsService: CompareModelsService,
     private readonly keyResolverService: KeyResolverService,
+    private readonly chatTransport: ChatTransportService,
+    private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
@@ -161,9 +165,12 @@ export class CompareModelsController {
     }
     body.expectedOutput = body.expectedOutput ?? '';
 
-    let apiKey: string;
+    // Resolve transport per model below (each can route differently:
+    // BYOK / Custom / OpenRouter). The evaluator at the bottom uses
+    // OpenRouter regardless, so we still need a base key for it.
+    let evaluatorApiKey: string;
     try {
-      apiKey = await this.keyResolverService.resolveUserKey(user.id);
+      evaluatorApiKey = await this.keyResolverService.resolveUserKey(user.id);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
@@ -191,34 +198,73 @@ export class CompareModelsController {
     try {
       responses = await Promise.all(
         body.models.map(async (model) => {
+          // Each model resolves its own transport independently — one
+          // arena run can mix OpenRouter, BYOK, and Custom routes.
+          const transport = await this.chatTransport.resolve({
+            userId: user.id,
+            modelIdentifier: model,
+          });
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(
               body.question,
-              model,
+              transport.model,
               false,
               body.context,
-              apiKey,
+              transport.apiKey,
+              transport.baseURL,
+              transport.kind,
             );
             const latencyMs = Date.now() - start;
+
+            // Estimate cost when the route bypassed OpenRouter (BYOK /
+            // Custom). Same logic as chat.controller — see commentary
+            // there. `model` (not `transport.model`) is what's looked
+            // up in the catalog; for BYOK we strip the vendor prefix
+            // before sending to the native endpoint, but the catalog
+            // still keys on the prefixed id.
+            let costUsd = response.totalCost ?? null;
+            let costEstimated = false;
+            if (
+              costUsd == null &&
+              transport.source !== 'openrouter' &&
+              response.promptTokens != null &&
+              response.completionTokens != null
+            ) {
+              const estimated = await this.catalogService.estimateCost(
+                model,
+                response.promptTokens,
+                response.completionTokens,
+              );
+              if (estimated != null) {
+                costUsd = estimated;
+                costEstimated = true;
+              }
+            }
+
             void this.observabilityService.recordLLMCall({
               userId: user.id,
               teamId,
               eventType: 'arena_call',
               model,
+              provider: transport.provider,
               totalTokens: response.totalTokens,
-              costUsd: response.totalCost,
+              costUsd,
               latencyMs,
               success: true,
               prompt: body.question,
-              metadata: { hasContext: Boolean(body.context) },
+              metadata: {
+                hasContext: Boolean(body.context),
+                routingSource: transport.source,
+                costEstimated,
+              },
             });
             return {
               model,
               response,
               time: latencyMs,
               totalTokens: response.totalTokens,
-              totalCost: response.totalCost,
+              totalCost: costUsd ?? undefined,
             };
           } catch (err) {
             const latencyMs = Date.now() - start;
@@ -228,11 +274,15 @@ export class CompareModelsController {
               teamId,
               eventType: 'arena_call',
               model,
+              provider: transport.provider,
               latencyMs,
               success: false,
               errorMessage: msg,
               prompt: body.question,
-              metadata: { hasContext: Boolean(body.context) },
+              metadata: {
+                hasContext: Boolean(body.context),
+                routingSource: transport.source,
+              },
             });
             throw err;
           }
@@ -258,7 +308,7 @@ export class CompareModelsController {
           body.expectedOutput,
           EVALUATOR_MODEL,
           false,
-          apiKey,
+          evaluatorApiKey,
         );
         void this.observabilityService.recordLLMCall({
           userId: user.id,

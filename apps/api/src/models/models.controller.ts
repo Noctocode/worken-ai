@@ -35,6 +35,16 @@ export class ModelsController {
   }
 
   /**
+   * Per-user effective model list for FE pickers (arena / project chat).
+   * Combines the user's own model_configs aliases with any catalog
+   * model for a provider where the user has an enabled BYOK key.
+   */
+  @Get('effective')
+  effective(@CurrentUser() user: AuthenticatedUser) {
+    return this.modelsService.listEffectiveForUser(user.id);
+  }
+
+  /**
    * Admin: toggle a single model. The identifier travels in the body
    * (not the path) because OpenRouter model ids contain a slash, e.g.
    * "openai/gpt-4o", and Express + path-to-regexp 8 can't carry that
@@ -87,6 +97,7 @@ export class ModelsController {
       customName: string;
       modelIdentifier: string;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -102,6 +113,7 @@ export class ModelsController {
       modelIdentifier?: string;
       isActive?: boolean;
       fallbackModels?: string[];
+      integrationId?: string | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {

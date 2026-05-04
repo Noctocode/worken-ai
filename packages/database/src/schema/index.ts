@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -5,6 +6,7 @@ import {
   uuid,
   vector,
   index,
+  uniqueIndex,
   boolean,
   jsonb,
   integer,
@@ -344,6 +346,15 @@ export const modelConfigs = pgTable("model_configs", {
   modelIdentifier: text("model_identifier").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   fallbackModels: jsonb("fallback_models").notNull().default([]),
+  // When set, chat calls for this alias route through the linked
+  // integration (a Custom LLM the user registered in Management →
+  // Integration). When null, routing falls back to BYOK (if the user
+  // has a key for the alias's predefined provider) or OpenRouter.
+  // ON DELETE SET NULL so deleting a Custom LLM doesn't delete aliases
+  // pointing at it — they revert to OpenRouter routing.
+  integrationId: uuid("integration_id").references(() => integrations.id, {
+    onDelete: "set null",
+  }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -359,3 +370,51 @@ export const enabledModels = pgTable("enabled_models", {
   }),
   enabledAt: timestamp("enabled_at").defaultNow().notNull(),
 });
+
+/**
+ * Per-user (BYOK) configuration for third-party LLM providers.
+ *
+ * Two flavors share this table:
+ *
+ *  - **Predefined providers** (Gemini, ChatGPT, Deepseek, Mistral, Claude,
+ *    Perplexity, Qwen, Copilot, Grok). The catalog of these lives as a
+ *    BE constant — see apps/api/src/integrations/predefined-providers.ts.
+ *    `apiUrl` is null for these (we use the provider's well-known endpoint
+ *    on the BE side). Unique on (ownerId, providerId).
+ *
+ *  - **Custom LLMs** — anything OpenAI-API-compatible the user runs
+ *    themselves (Ollama, vLLM, Together, Fireworks, …). `providerId`
+ *    is the literal string "custom"; `apiUrl` is required.
+ *
+ * `apiKeyEncrypted` is the user's own key (BYOK). When null, calls fall
+ * back to the workspace's WorkenAI / OpenRouter key.
+ */
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    providerId: text("provider_id").notNull(),
+    apiUrl: text("api_url"),
+    apiKeyEncrypted: text("api_key_encrypted"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Partial unique index: at most one row per (owner, predefined
+    // provider). Custom LLMs share `providerId='custom'` and need to
+    // stay non-unique (a user can register many custom endpoints), so
+    // the WHERE clause excludes them via `api_url IS NULL`.
+    //
+    // Without this, IntegrationsService.upsert (select-then-insert) is
+    // racy under concurrent saves and could land two predefined rows
+    // for the same provider; the BYOK lookup would then silently pick
+    // whichever the planner returns first.
+    uniqueIndex("integrations_owner_provider_predef_unique")
+      .on(table.ownerId, table.providerId)
+      .where(sql`${table.apiUrl} IS NULL`),
+  ],
+);

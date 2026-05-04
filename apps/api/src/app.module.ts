@@ -11,6 +11,7 @@ import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
 import { GuardrailsSectionModule } from './guardrails/guardrails-section.module';
+import { IntegrationsModule } from './integrations/integrations.module';
 import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
@@ -34,6 +35,7 @@ import { UsersModule } from './users/users.module';
     ConversationsModule,
     DocumentsModule,
     GuardrailsSectionModule,
+    IntegrationsModule,
     KnowledgeCoreModule,
     ModelsModule,
     ObservabilityModule,

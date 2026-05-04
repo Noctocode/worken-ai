@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
+import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
 interface QuestionResponse {
   content: string;
   reasoning_details?: unknown;
   totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  /** OpenRouter only — null for native BYOK / Custom endpoints. */
   totalCost?: number;
 }
 
@@ -29,16 +34,18 @@ function describeOpenRouterError(model: string, action: string, err: unknown): E
 
 @Injectable()
 export class CompareModelsService {
-  private makeClient(apiKey?: string): OpenAI {
+  constructor(private readonly anthropic: AnthropicClientService) {}
+
+  private makeClient(apiKey?: string, baseURL?: string): OpenAI {
     const resolved = apiKey ?? process.env['OPENROUTER_API_KEY'];
     if (!resolved) {
       throw new Error(
-        'No OpenRouter API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
+        'No API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
       );
     }
     return new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: resolved,
+      baseURL: baseURL ?? 'https://openrouter.ai/api/v1',
+      apiKey: resolved || 'no-auth',
       defaultHeaders: {
         'HTTP-Referer': process.env['SITE_URL'] || '',
         'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
@@ -51,6 +58,8 @@ export class CompareModelsService {
     model: string,
     apiKey?: string,
   ): Promise<string> {
+    // OCR always uses OpenRouter (baidu/qianfan-ocr-fast:free), so no
+    // BYOK / Custom routing here.
     let completion;
     try {
       completion = await this.makeClient(apiKey).chat.completions.create({
@@ -84,7 +93,24 @@ export class CompareModelsService {
     enableReasoning: boolean = true,
     context?: string,
     apiKey?: string,
+    baseURL?: string,
+    kind: ChatTransportKind = 'openai-sdk',
   ): Promise<QuestionResponse> {
+    // Native Anthropic path for BYOK on Claude.
+    if (kind === 'anthropic-sdk') {
+      const r = await this.anthropic.sendMessage(
+        [{ role: 'user', content: question }],
+        model,
+        apiKey ?? '',
+        context,
+      );
+      return {
+        content: r.content,
+        totalTokens: r.totalTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+      };
+    }
     const systemMessages: { role: 'system'; content: string }[] = [];
     if (context) {
       systemMessages.push({
@@ -97,7 +123,7 @@ export class CompareModelsService {
 
     let completion;
     try {
-      completion = await this.makeClient(apiKey).chat.completions.create({
+      completion = await this.makeClient(apiKey, baseURL).chat.completions.create({
         model,
         messages: [...systemMessages, { role: 'user', content: question }],
         ...(enableReasoning && { reasoning: { enabled: true } }),
@@ -112,13 +138,18 @@ export class CompareModelsService {
     };
     const response = completion.choices[0].message as ORChatMessage;
 
+    const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {
       content: response.content || '',
       ...(response.reasoning_details
         ? { reasoning_details: response.reasoning_details }
         : {}),
       totalTokens: completion.usage?.total_tokens,
-      totalCost: (completion.usage as OpenRouterUsage | undefined)?.cost ?? 0,
+      promptTokens: completion.usage?.prompt_tokens,
+      completionTokens: completion.usage?.completion_tokens,
+      // Leave undefined when the upstream didn't return cost — controller
+      // estimates from the OpenRouter catalog for BYOK / Custom routes.
+      ...(orCost != null ? { totalCost: orCost } : {}),
     };
   }
 

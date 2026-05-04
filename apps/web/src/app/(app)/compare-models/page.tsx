@@ -436,7 +436,21 @@ export default function CompareModelsPage() {
             )}
 
             {(loading || hasResults) && (
-              <div className="flex flex-wrap gap-4">
+              // Up to 3 cards per row, each 1/3 of the available width.
+              // 4th+ wrap to the next row at the same 1/3 width — so a
+              // single comparison never silently widens its cards just
+              // because the row is half-empty. With 1 or 2 cards we
+              // still cap columns at the active count so they fill the
+              // row evenly (full / half).
+              <div
+                className="grid gap-4"
+                style={{
+                  gridTemplateColumns: `repeat(${Math.min(
+                    Math.max(activeModels.length, 1),
+                    3,
+                  )}, minmax(0, 1fr))`,
+                }}
+              >
                 {activeModels.map((id) => (
                   <ResponseCard
                     key={id}
@@ -634,7 +648,7 @@ function ResponseCard({
   const provider = getModelProvider(modelId);
 
   return (
-    <article className="flex min-w-0 flex-1 basis-[320px] flex-col gap-2.5 rounded bg-bg-1 p-4">
+    <article className="flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4">
       {/* Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
