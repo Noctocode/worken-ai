@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { resolve } from 'path';
@@ -14,7 +14,7 @@ import { randomUUID } from 'crypto';
 import { join, posix as pathPosix } from 'path';
 import {
   users,
-  userLlmCredentials,
+  integrations,
   knowledgeDocuments,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -205,14 +205,36 @@ export class OnboardingService {
         })
         .where(eq(users.id, userId));
 
+      // Write step-5 keys directly into the `integrations` table so they
+      // show up in Management → Integration as enabled rows. Without
+      // this, the keys would be stranded — the chat-transport BYOK path
+      // and the Integration tab both read from `integrations`, while
+      // the legacy `user_llm_credentials` table this used to write to is
+      // unused for routing.
+      //
+      // Mapping note: the step-5 buttons (openai / azure / anthropic /
+      // private-vpc) don't all line up with the predefined providers
+      // catalog. `openai` and `anthropic` map directly. `azure` and
+      // `private-vpc` need extra fields (Azure deployment URL, VPC
+      // endpoint) that the wizard doesn't collect — those keys are
+      // dropped here and the user must finish setup in the Integration
+      // tab. Logged so it's visible in onboarding telemetry.
       if (payload.apiKeys) {
         for (const [provider, key] of Object.entries(payload.apiKeys)) {
           if (!key || !key.trim()) continue;
           if (!VALID_PROVIDERS.includes(provider as Provider)) continue;
-          await tx.insert(userLlmCredentials).values({
-            userId,
-            provider,
+          if (provider !== 'openai' && provider !== 'anthropic') {
+            this.logger.warn(
+              `Onboarding step-5: ${provider} key supplied but no matching predefined provider — skipping. User ${userId} can finish setup in Management → Integration.`,
+            );
+            continue;
+          }
+          await tx.insert(integrations).values({
+            ownerId: userId,
+            providerId: provider,
+            apiUrl: null,
             apiKeyEncrypted: this.encryption.encrypt(key.trim()),
+            isEnabled: true,
           });
         }
       }
@@ -307,14 +329,25 @@ export class OnboardingService {
       .where(eq(users.id, userId));
     if (!u) throw new NotFoundException('User not found');
 
+    // Connected providers shown on My Account. Read from `integrations`
+    // (the same table the Integration tab uses) so this section reflects
+    // what the user has actually configured. Filter to predefined
+    // providers with a key set — Custom LLMs aren't conceptually
+    // "connected providers" in the My Account sense.
     const providers = await this.db
       .select({
-        id: userLlmCredentials.id,
-        provider: userLlmCredentials.provider,
-        createdAt: userLlmCredentials.createdAt,
+        id: integrations.id,
+        provider: integrations.providerId,
+        createdAt: integrations.createdAt,
       })
-      .from(userLlmCredentials)
-      .where(eq(userLlmCredentials.userId, userId));
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.ownerId, userId),
+          isNotNull(integrations.apiKeyEncrypted),
+          isNull(integrations.apiUrl),
+        ),
+      );
 
     const documents = await this.db
       .select({

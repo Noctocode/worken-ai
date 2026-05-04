@@ -119,6 +119,13 @@ export default function SetupProfileStep5Page() {
                         onChange={(e) => setApiKey(id, e.target.value)}
                         className="h-11 text-base rounded-md border-border-3 placeholder:text-text-3 font-mono"
                       />
+                      {(id === "azure" || id === "private-vpc") && (
+                        <p className="text-[12px] text-text-3 leading-snug">
+                          {id === "azure"
+                            ? "Azure also needs a deployment URL — finish setup later in Management → Integration."
+                            : "Private VPC needs an endpoint URL — finish setup later in Management → Integration."}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
