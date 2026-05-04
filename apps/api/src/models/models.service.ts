@@ -78,18 +78,24 @@ export class ModelsService {
         and(eq(modelConfigs.ownerId, userId), eq(modelConfigs.isActive, true)),
       );
 
-    const byokRows = await this.db
+    // Every predefined provider the user has toggled ON, regardless of
+    // whether they've also added a BYOK key. With a key, chat-transport
+    // routes directly to the provider's native endpoint; without a key,
+    // the BYOK path falls through and the call goes via the shared
+    // WorkenAI OpenRouter account. Either way the user's intent is
+    // "give me this provider's models in my picker", so the effective
+    // list should reflect that intent independent of key presence.
+    const enabledRows = await this.db
       .select({ providerId: integrations.providerId })
       .from(integrations)
       .where(
         and(
           eq(integrations.ownerId, userId),
           eq(integrations.isEnabled, true),
-          isNotNull(integrations.apiKeyEncrypted),
         ),
       );
-    const byokProviders = new Set(
-      byokRows
+    const enabledProviders = new Set(
+      enabledRows
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -108,14 +114,14 @@ export class ModelsService {
       });
     }
 
-    if (byokProviders.size > 0) {
+    if (enabledProviders.size > 0) {
       const catalog = await this.catalogService.list();
       for (const m of catalog) {
         if (seen.has(m.id)) continue;
         const slash = m.id.indexOf('/');
         if (slash === -1) continue;
         const provider = m.id.slice(0, slash);
-        if (!byokProviders.has(provider)) continue;
+        if (!enabledProviders.has(provider)) continue;
         seen.add(m.id);
         out.push({
           id: m.id,

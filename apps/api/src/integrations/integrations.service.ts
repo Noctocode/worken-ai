@@ -204,7 +204,6 @@ export class IntegrationsService {
       const row = rows.find(
         (r) => r.providerId === p.id && r.apiUrl === null,
       );
-      const hasApiKey = !!row?.apiKeyEncrypted;
       out.push({
         id: row?.id ?? null,
         providerId: p.id,
@@ -212,16 +211,16 @@ export class IntegrationsService {
         description: p.description,
         iconHint: p.iconHint,
         apiUrl: null,
-        hasApiKey,
-        // A provider can only be considered "enabled" if it has a key
-        // saved — without one, BYOK routing in chat-transport falls
-        // straight through to OpenRouter, so a green toggle without a
-        // key is a lie about what the system will actually do. We
-        // default to OFF for untouched providers AND clamp stored
-        // is_enabled = true with no key down to false. Adding a key
-        // via the Settings dialog flips this back on through the
-        // upsert default.
-        isEnabled: hasApiKey && (row?.isEnabled ?? true),
+        hasApiKey: !!row?.apiKeyEncrypted,
+        // Default OFF for providers the user has never touched. Once
+        // they exist in the table, respect whatever toggle state they
+        // chose — independent of whether a BYOK key is set, because
+        // "enabled without a key" is a meaningful state: it makes the
+        // provider's models available in the picker / arena and the
+        // chat call routes through the shared WorkenAI OpenRouter
+        // account instead of BYOK. The key is an optional upgrade,
+        // not a prerequisite.
+        isEnabled: row?.isEnabled ?? false,
         isCustom: false,
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,
