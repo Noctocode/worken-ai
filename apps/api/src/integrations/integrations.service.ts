@@ -204,6 +204,7 @@ export class IntegrationsService {
       const row = rows.find(
         (r) => r.providerId === p.id && r.apiUrl === null,
       );
+      const hasApiKey = !!row?.apiKeyEncrypted;
       out.push({
         id: row?.id ?? null,
         providerId: p.id,
@@ -211,8 +212,16 @@ export class IntegrationsService {
         description: p.description,
         iconHint: p.iconHint,
         apiUrl: null,
-        hasApiKey: !!row?.apiKeyEncrypted,
-        isEnabled: row?.isEnabled ?? true, // default-on per UI mock
+        hasApiKey,
+        // A provider can only be considered "enabled" if it has a key
+        // saved — without one, BYOK routing in chat-transport falls
+        // straight through to OpenRouter, so a green toggle without a
+        // key is a lie about what the system will actually do. We
+        // default to OFF for untouched providers AND clamp stored
+        // is_enabled = true with no key down to false. Adding a key
+        // via the Settings dialog flips this back on through the
+        // upsert default.
+        isEnabled: hasApiKey && (row?.isEnabled ?? true),
         isCustom: false,
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,

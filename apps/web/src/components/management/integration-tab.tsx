@@ -540,7 +540,19 @@ export function IntegrationTab() {
                     toggleMutation.mutate({ card, next })
                   }
                   onClick={(e) => e.stopPropagation()}
-                  disabled={toggleMutation.isPending}
+                  // Disabled when there's no key on a predefined provider —
+                  // a green toggle without a key wouldn't actually route
+                  // anything (BYOK falls through to OpenRouter). The user
+                  // adds a key first via Settings, which auto-enables.
+                  disabled={
+                    toggleMutation.isPending ||
+                    (!card.isCustom && !card.hasApiKey)
+                  }
+                  title={
+                    !card.isCustom && !card.hasApiKey
+                      ? "Add an API key in Settings before enabling — without one, this toggle has no effect."
+                      : undefined
+                  }
                 />
               </div>
 
