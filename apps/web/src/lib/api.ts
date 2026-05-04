@@ -48,6 +48,10 @@ export interface User {
   id: string;
   email: string;
   role: "admin" | "advanced" | "basic";
+  // Subscription plan. Currently only "free" exists; the field is
+  // typed as a string union with `string` open-end so future plans
+  // ('pro', 'enterprise', …) don't require coordinated FE/BE deploy.
+  plan: "free" | (string & {});
   inviteStatus: "active" | "pending";
   name: string | null;
   picture: string | null;
@@ -1638,6 +1642,8 @@ export interface OnboardingProfile {
   name: string | null;
   email: string;
   picture: string | null;
+  /** Subscription plan — every user has at least 'free'. */
+  plan: "free" | (string & {});
   profileType: "company" | "personal" | null;
   companyName: string | null;
   industry: string | null;

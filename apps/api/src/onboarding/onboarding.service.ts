@@ -357,6 +357,7 @@ export class OnboardingService {
       name: u.name,
       email: u.email,
       picture: u.picture,
+      plan: u.plan,
       profileType: u.profileType as 'company' | 'personal' | null,
       companyName: u.companyName,
       industry: u.industry,

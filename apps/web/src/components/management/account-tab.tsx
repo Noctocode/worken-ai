@@ -12,6 +12,7 @@ import {
   Check,
   X,
   Download,
+  Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -76,6 +77,37 @@ function Section({
       {children}
     </div>
   );
+}
+
+/**
+ * Static plan catalog. The BE column is loose-typed (any string) so
+ * unknown plan ids fall back to a capitalize-the-raw-string render
+ * rather than crashing — anyone can ship a new plan id without an
+ * FE deploy. Add an entry here when the new plan launches and the
+ * marketing copy is final.
+ */
+const PLAN_DETAILS: Record<
+  string,
+  { label: string; tagline: string; tone: "neutral" | "primary" | "premium" }
+> = {
+  free: {
+    label: "Free",
+    tagline:
+      "Default plan for every new account. Personal workspace and trial-tier usage.",
+    tone: "neutral",
+  },
+};
+
+function getPlanDetails(plan: string) {
+  if (PLAN_DETAILS[plan]) return PLAN_DETAILS[plan];
+  return {
+    label: plan
+      .split(/[-_\s]+/)
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+      .join(" "),
+    tagline: "Custom plan.",
+    tone: "neutral" as const,
+  };
 }
 
 function buildPermissions(role: "admin" | "advanced" | "basic") {
@@ -202,6 +234,29 @@ export function AccountTab() {
             </p>
           </Section>
         </div>
+
+        {/* Plan — full width row showing the user's subscription tier. */}
+        <Section title="Plan" icon={Sparkles}>
+          {(() => {
+            const planDetails = getPlanDetails(data.plan);
+            const badgeClass =
+              planDetails.tone === "premium"
+                ? "bg-warning-1 text-warning-7"
+                : planDetails.tone === "primary"
+                  ? "bg-primary-1 text-primary-7"
+                  : "bg-bg-3 text-text-2";
+            return (
+              <div className="flex items-center gap-3">
+                <span
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-[13px] font-semibold uppercase tracking-wide ${badgeClass}`}
+                >
+                  {planDetails.label}
+                </span>
+                <p className="text-[13px] text-text-3">{planDetails.tagline}</p>
+              </div>
+            );
+          })()}
+        </Section>
 
         {/* Permissions — full width list */}
         <Section title="Access tier & permissions" icon={ShieldCheck}>
