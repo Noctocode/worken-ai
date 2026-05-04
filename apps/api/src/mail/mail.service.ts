@@ -118,11 +118,12 @@ export class MailService {
     // Matches Figma frame 4110-16154: 800px container, white bg, centered
     // inner card (30px padding, 30px radius), blue (#178ACA) CTA, IBM Plex
     // Sans type. Inlined styles because email clients don't run CSS files.
+    // The Follow Us footer renders only when at least one social URL is
+    // configured (LINKEDIN_URL / TWITTER_URL) so unconfigured envs don't
+    // show empty/dead links.
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        <div style="display: flex; align-items: center; gap: 6px; height: 48px; margin-bottom: 30px;">
-          <span style="font-size: 26px; font-weight: 700; color: #1D2129; letter-spacing: -0.01em;">WorkenAI</span>
-        </div>
+        ${this.brandedHeader(frontendUrl)}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Hi ${escapeHtml(greetingName)},</h1>
           <p style="font-size: 23px; font-weight: 400; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Thanks for joining WorkenAI</p>
@@ -134,6 +135,7 @@ export class MailService {
           <p style="font-size: 16px; font-weight: 400; color: #86909C; margin: 0 0 30px; line-height: 1.3; word-break: break-all;">${verifyUrl}</p>
           <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
         </div>
+        ${this.brandedFooter()}
       </div>
     `;
 
@@ -143,10 +145,51 @@ export class MailService {
       subject: 'Confirm your email address',
       html,
     });
+  }
 
-    // Reference frontend URL so the import stays useful even when the
-    // template later links back into app flows.
-    void frontendUrl;
+  /**
+   * Brand header — logo image at 106×29 (matching Figma frame 4110-16154).
+   * Email clients fetch the image from the public assets bundle, so it
+   * needs FRONTEND_URL pointed at a publicly reachable host in prod.
+   * Falls back to a plain text wordmark when the image can't load (most
+   * desktop clients block remote images by default until the user opts in).
+   */
+  private brandedHeader(frontendUrl: string): string {
+    return `
+      <div style="height: 48px; margin-bottom: 30px;">
+        <img src="${frontendUrl}/full-logo.png" alt="WorkenAI" width="106" height="29" style="display: block; border: 0; outline: none; text-decoration: none; height: 29px; width: 106px;" />
+      </div>
+    `;
+  }
+
+  /**
+   * Brand footer — "Follow Us" + social icons. Renders only when at least
+   * one social URL env var is configured. Each icon is a plain Unicode
+   * glyph wrapped in an anchor; SVG/IMG icons require a hosted asset
+   * pipeline (Mailchimp-style) and email clients block remote SVGs
+   * inconsistently anyway.
+   */
+  private brandedFooter(): string {
+    const linkedin = this.config.get<string>('LINKEDIN_URL');
+    const twitter = this.config.get<string>('TWITTER_URL');
+    if (!linkedin && !twitter) return '';
+
+    const link = (href: string, label: string) =>
+      `<a href="${href}" style="display: inline-block; margin: 0 8px; color: #4E5969; text-decoration: none; font-size: 14px;">${label}</a>`;
+
+    const links = [
+      linkedin ? link(linkedin, 'LinkedIn') : '',
+      twitter ? link(twitter, 'Twitter') : '',
+    ]
+      .filter(Boolean)
+      .join('');
+
+    return `
+      <div style="margin-top: 30px; text-align: center;">
+        <p style="font-size: 12px; font-weight: 600; color: #86909C; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 0 8px;">Follow Us</p>
+        <div>${links}</div>
+      </div>
+    `;
   }
 
   async sendPasswordResetEmail({ to, name, token }: PasswordResetEmailParams) {
@@ -161,9 +204,7 @@ export class MailService {
 
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        <div style="display: flex; align-items: center; gap: 6px; height: 48px; margin-bottom: 30px;">
-          <span style="font-size: 26px; font-weight: 700; color: #1D2129; letter-spacing: -0.01em;">WorkenAI</span>
-        </div>
+        ${this.brandedHeader(frontendUrl)}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Hi ${escapeHtml(greetingName)},</h1>
           <p style="font-size: 23px; font-weight: 400; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Reset your WorkenAI password</p>
@@ -176,6 +217,7 @@ export class MailService {
           <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0 0 8px; line-height: 1.3;">If you didn't request this, you can safely ignore this email.</p>
           <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
         </div>
+        ${this.brandedFooter()}
       </div>
     `;
 
@@ -202,9 +244,7 @@ export class MailService {
 
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        <div style="display: flex; align-items: center; gap: 6px; height: 48px; margin-bottom: 30px;">
-          <span style="font-size: 26px; font-weight: 700; color: #1D2129; letter-spacing: -0.01em;">WorkenAI</span>
-        </div>
+        ${this.brandedHeader(frontendUrl)}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">You've been invited to WorkenAI</h1>
           <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.6;">
@@ -223,6 +263,7 @@ export class MailService {
         <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px;">
           This invitation was sent to ${escapeHtml(to)}. If you weren't expecting this, you can safely ignore it.
         </p>
+        ${this.brandedFooter()}
       </div>
     `;
 

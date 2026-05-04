@@ -44,6 +44,28 @@ const VALID_PROVIDERS: Provider[] = [
   'anthropic',
   'private-vpc',
 ];
+
+// Whitelisted enum values for the company-branch dropdowns. Must stay in
+// sync with apps/web/src/app/setup-profile/step-2/page.tsx — the FE
+// dropdown values are the source of truth, and the BE enforces them so
+// direct API calls can't seed garbage like industry: "anything goes lol".
+const VALID_INDUSTRIES = [
+  'technology',
+  'finance',
+  'healthcare',
+  'government',
+  'manufacturing',
+  'retail',
+  'other',
+] as const;
+const VALID_TEAM_SIZES = [
+  '1-10',
+  '11-50',
+  '51-200',
+  '201-1000',
+  '1000+',
+] as const;
+
 const UPLOADS_ROOT = join(process.cwd(), 'uploads', 'knowledge');
 
 // Defense-in-depth against path traversal: multer's originalname is whatever
@@ -334,6 +356,28 @@ export class OnboardingService {
     if (p.profileType === 'company') {
       if (!p.companyName?.trim()) {
         throw new BadRequestException('companyName is required for Company');
+      }
+      // industry/teamSize stay optional (Figma shows no asterisk), but
+      // when supplied they must be one of the FE dropdown values.
+      if (
+        p.industry &&
+        !VALID_INDUSTRIES.includes(
+          p.industry as (typeof VALID_INDUSTRIES)[number],
+        )
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
+      if (
+        p.teamSize &&
+        !VALID_TEAM_SIZES.includes(
+          p.teamSize as (typeof VALID_TEAM_SIZES)[number],
+        )
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
       }
     }
     if (p.profileType === 'personal' && !p.fullName?.trim()) {
