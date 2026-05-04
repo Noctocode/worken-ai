@@ -241,8 +241,10 @@ export default function TeamsPage() {
             Managed-Cloud onboarding but still have monthlyBudgetCents = 0
             — they can't make AI calls until an admin sets a budget. The
             banner is clickable: it filters the table to just those rows
-            so the action is one click away. */}
-        {pendingApprovalCount > 0 && (
+            so the action is one click away. Admin-only because only
+            admins can mutate budgets — basic / advanced users seeing
+            this would have no way to act on it. */}
+        {user?.role === "admin" && pendingApprovalCount > 0 && (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-warning-7/30 bg-warning-1 px-4 py-3">
             <p className="text-[13px] text-text-1">
               <strong className="font-semibold">

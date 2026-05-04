@@ -27,6 +27,7 @@ import {
 import { fetchOrgUser, updateMemberRole, updateUserBudget } from "@/lib/api";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/components/providers";
 
 /* ─── Helper components ──────────────────────────────────────────────────── */
 
@@ -84,6 +85,12 @@ export default function UserDetailPage({
 }) {
   const { id } = use(params);
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  // Mirrors the BE guard on PATCH /users/:id/budget — only admins may
+  // change a user's spend cap, since the cap is enforced upstream on
+  // OpenRouter and basic / advanced users letting each other lift it
+  // would defeat the whole point of the budget.
+  const canEditBudget = currentUser?.role === "admin";
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: ["users", id],
@@ -95,6 +102,9 @@ export default function UserDetailPage({
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users", id] }),
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't update budget.");
+    },
   });
 
   const roleMutation = useMutation({
@@ -197,9 +207,21 @@ export default function UserDetailPage({
                 onChange={(e) => setBudgetInput(e.target.value)}
                 onBlur={handleBudgetBlur}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                disabled={!canEditBudget}
+                title={
+                  canEditBudget
+                    ? undefined
+                    : "Only admins can change a user's monthly budget."
+                }
+                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
+            {!canEditBudget && (
+              <p className="text-[12px] text-text-3">
+                Only admins can change this — ask an admin to adjust the
+                budget.
+              </p>
+            )}
           </div>
 
           {/* Spent / Remaining */}

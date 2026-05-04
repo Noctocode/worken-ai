@@ -98,10 +98,23 @@ export class UsersController {
   }
 
   @Patch(':id/budget')
-  updateBudget(
+  async updateBudget(
     @Param('id') id: string,
     @Body() body: { budgetUsd: number },
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
+    // Budget changes flip a real spend cap on the user's OpenRouter
+    // sub-account — basic / advanced users must not be able to lift
+    // each other's caps. Mirror the role gate used on /users delete.
+    const [callerUser] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, caller.id));
+    if (!callerUser || callerUser.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can change a user\'s monthly budget.',
+      );
+    }
     return this.usersService.updateBudget(id, body.budgetUsd);
   }
 
