@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Copy,
@@ -110,14 +111,12 @@ export function ApiTab() {
     <div className="py-5">
       <div className="flex items-center justify-between mb-5">
         <span className="text-[18px] font-bold text-black-900">API</span>
-        <a
-          href="https://docs.workenai.example/api"
+        <Link
+          href="/docs/api"
           className="text-[13px] text-primary-5 hover:underline"
-          target="_blank"
-          rel="noreferrer"
         >
           API Documentation
-        </a>
+        </Link>
       </div>
 
       <div className="bg-bg-white rounded-lg border border-bg-1 px-4 sm:px-6 py-5 mb-5">
