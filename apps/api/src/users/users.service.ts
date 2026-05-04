@@ -14,6 +14,7 @@ import {
   projects,
   conversations,
   guardrails,
+  messages,
   tenders,
   tenderTeamMembers,
   knowledgeFolders,
@@ -330,6 +331,11 @@ export class UsersService {
       await tx.delete(tenders).where(eq(tenders.ownerId, userId));
       await tx.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
       await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+      // Personal/global guardrails owned by the user (team_id NULL) AND
+      // any straggler guardrails the user owns on someone else's team —
+      // both have a NO ACTION FK to users.id, so without this they'd
+      // block the final users delete with a 23503 violation.
+      await tx.delete(guardrails).where(eq(guardrails.ownerId, userId));
       await tx.delete(conversations).where(eq(conversations.userId, userId));
       await tx.delete(projects).where(eq(projects.userId, userId));
 
@@ -337,6 +343,15 @@ export class UsersService {
         .update(knowledgeFiles)
         .set({ uploadedById: null })
         .where(eq(knowledgeFiles.uploadedById, userId));
+
+      // Messages the user posted in conversations owned by SOMEONE ELSE
+      // (e.g., team chats) survive the conversations delete above. The
+      // FK is NO ACTION, so we null out the author to preserve the
+      // thread for the remaining members rather than block the delete.
+      await tx
+        .update(messages)
+        .set({ userId: null })
+        .where(eq(messages.userId, userId));
 
       await tx.delete(users).where(eq(users.id, userId));
     });
