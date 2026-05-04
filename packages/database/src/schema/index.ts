@@ -18,6 +18,12 @@ export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
   role: text("role").notNull().default("basic"),
+  // Subscription plan. New rows default to 'free'; existing rows get
+  // 'free' too on the first `db:push` thanks to the default. Future
+  // plans (e.g. 'pro', 'enterprise') will live on this column without
+  // a schema change. Kept loose-typed for now — once we know the full
+  // tier set we can lock it down with an enum.
+  plan: text("plan").notNull().default("free"),
   inviteStatus: text("invite_status").notNull().default("active"),
   name: text("name"),
   picture: text("picture"),
