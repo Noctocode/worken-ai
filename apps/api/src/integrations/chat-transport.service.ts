@@ -200,62 +200,76 @@ export class ChatTransportService {
   /**
    * Pending-approval gate for Managed Cloud (OpenRouter-routed) calls.
    *
-   * After onboarding sets up an OpenRouter sub-account with `limit: 0`,
-   * the user has a real key but can't actually spend until an admin
-   * raises the budget in Management → Users. Without this gate the user
-   * would hit a generic 402 from OpenRouter and the FE humanizer would
-   * say "monthly budget exhausted" — confusing, since they never had a
-   * budget to begin with.
+   * Managed-Cloud users sit at `monthlyBudgetCents = 0` from onboarding
+   * until an admin explicitly approves a budget — at which point
+   * `users.service.updateBudget` provisions or patches the OpenRouter
+   * key with that budget. Without this gate, the user's first chat
+   * either trips a generic 402 from OpenRouter ("budget exhausted",
+   * misleading — they never had a budget) or sends `key-resolver`
+   * lazy-provisioning a key behind the admin's back.
+   *
+   * Predicate is keyed on `infraChoice` not `openrouterKeyId` so the
+   * gate fires equally for users whose onboarding-time provisioning
+   * failed (no key + budget=0) and for those whose key exists with
+   * budget=0 — both need admin approval before any spend.
    *
    * Skip for BYOK / Custom routes — those have their own external
    * billing and don't go through our budget tracking.
+   *
+   * @param teamId pass when the call is scoped to a specific team
+   *   (compare-models with explicit teamId). For project-routed chats,
+   *   pass `projectId` instead and the team is looked up from there.
    */
   async assertManagedBudgetApproved(
     transport: ChatTransport,
     userId: string,
-    projectId?: string | null,
+    options: { projectId?: string | null; teamId?: string | null } = {},
   ): Promise<void> {
     if (transport.source !== 'openrouter') return;
 
-    // Project under a team → team budget gates the spend.
-    if (projectId) {
+    // Resolve the team scope: explicit teamId wins, otherwise look up
+    // from project. Either way, team budget gates the spend.
+    let teamId = options.teamId ?? null;
+    if (!teamId && options.projectId) {
       const [proj] = await this.db
         .select({ teamId: projects.teamId })
         .from(projects)
-        .where(eq(projects.id, projectId))
+        .where(eq(projects.id, options.projectId))
         .limit(1);
-
-      if (proj?.teamId) {
-        const [team] = await this.db
-          .select({
-            budgetCents: teams.monthlyBudgetCents,
-            keyId: teams.openrouterKeyId,
-          })
-          .from(teams)
-          .where(eq(teams.id, proj.teamId))
-          .limit(1);
-
-        if (team?.keyId && team.budgetCents === 0) {
-          throw new HttpException(
-            `${PENDING_APPROVAL_MARKER}: This team is pending budget approval. Ask an admin to set a monthly budget in Management → Teams so members can use AI.`,
-            402,
-          );
-        }
-        return;
-      }
+      teamId = proj?.teamId ?? null;
     }
 
-    // No project, or project without a team → fall back to per-user budget.
+    if (teamId) {
+      const [team] = await this.db
+        .select({ budgetCents: teams.monthlyBudgetCents })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+
+      if (team && team.budgetCents === 0) {
+        throw new HttpException(
+          `${PENDING_APPROVAL_MARKER}: This team is pending budget approval. Ask an admin to set a monthly budget in Management → Teams so members can use AI.`,
+          402,
+        );
+      }
+      return;
+    }
+
+    // No team scope → personal call. Gate fires for managed-cloud users
+    // with budget=0 regardless of whether their key was provisioned.
     const [u] = await this.db
       .select({
         budgetCents: users.monthlyBudgetCents,
-        keyId: users.openrouterKeyId,
+        infraChoice: users.infraChoice,
       })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
 
-    if (u?.keyId && u.budgetCents === 0) {
+    if (
+      u?.infraChoice === 'managed' &&
+      u.budgetCents === 0
+    ) {
       throw new HttpException(
         `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
         402,

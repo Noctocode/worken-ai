@@ -92,10 +92,25 @@ export class KeyResolverService {
       return this.safeDecrypt(user.openrouterKeyEncrypted, `user ${userId}`);
     }
 
+    // Lazy-provision MUST match what the admin has approved. Without
+    // this guard, a managed-cloud user whose onboarding-time
+    // provisioning was never done would get a $10 key created here
+    // behind the admin's back — bypassing the explicit "admin must
+    // approve a budget" gate. Admins set the budget via
+    // users.service.updateBudget, which then provisions or patches
+    // the key with the approved limit. Until that happens, this path
+    // throws so the chat layer can surface the pending-approval 402.
+    const budgetUsd = (user.monthlyBudgetCents ?? 0) / 100;
+    if (budgetUsd <= 0) {
+      throw new Error(
+        `Could not obtain an OpenRouter key for user ${userId}: monthly budget is 0. An admin must approve a budget in Management → Users before this user can make AI calls.`,
+      );
+    }
+
     try {
       const { key, hash } = await this.provisioningService.createKey(
         `user-${userId}`,
-        10,
+        budgetUsd,
       );
       const encrypted = this.encryptionService.encrypt(key);
       await this.db

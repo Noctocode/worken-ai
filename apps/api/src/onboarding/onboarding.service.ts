@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { resolve } from 'path';
@@ -19,7 +19,6 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
-import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -88,7 +87,6 @@ export class OnboardingService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
-    private readonly provisioning: OpenRouterProvisioningService,
   ) {}
 
   async complete(
@@ -229,13 +227,27 @@ export class OnboardingService {
             );
             continue;
           }
-          await tx.insert(integrations).values({
-            ownerId: userId,
-            providerId: provider,
-            apiUrl: null,
-            apiKeyEncrypted: this.encryption.encrypt(key.trim()),
-            isEnabled: true,
-          });
+          // onConflictDoNothing on the partial unique index
+          // `(owner_id, provider_id) WHERE api_url IS NULL` so a
+          // re-run of onboarding (e.g. support-action that cleared
+          // onboarding_completed_at after the legacy backfill SQL was
+          // applied) doesn't crash the whole transaction with 23505
+          // and orphan the just-uploaded knowledge documents. The
+          // existing row is left as-is — the user can update keys
+          // from Management → Integration.
+          await tx
+            .insert(integrations)
+            .values({
+              ownerId: userId,
+              providerId: provider,
+              apiUrl: null,
+              apiKeyEncrypted: this.encryption.encrypt(key.trim()),
+              isEnabled: true,
+            })
+            .onConflictDoNothing({
+              target: [integrations.ownerId, integrations.providerId],
+              where: sql`${integrations.apiUrl} IS NULL`,
+            });
         }
       }
 
@@ -247,43 +259,24 @@ export class OnboardingService {
       }
     });
 
-    // Managed Cloud provisioning. Runs after the DB transaction so we don't
-    // hold the transaction open during the OpenRouter HTTP round-trip.
+    // Managed Cloud users are NOT provisioned an OpenRouter key here.
+    // The original design provisioned with `limit: 0`, but OpenRouter's
+    // API treats `limit: 0` ambiguously (and `limit: null` as
+    // unenforced — see backfill-openrouter-limits.ts), so a key created
+    // up front would be one bypassed gate away from uncapped spend.
     //
-    // Best-effort, mirroring the teams.create pattern: if OpenRouter is down
-    // at this exact moment we still let onboarding succeed — the
-    // `updateBudget` self-heal in users.service kicks in the first time an
-    // admin sets a real budget, and `key-resolver.service` self-heals on
-    // the first chat call too. The key is provisioned with `limit: 0` so
-    // no spend is allowed until an admin explicitly raises the budget,
-    // which matches the product decision to require manual approval.
-    if (
-      payload.infraChoice === 'managed' &&
-      !current.openrouterKeyId
-    ) {
-      try {
-        const { key, hash } = await this.provisioning.createKey(
-          `user-${userId}`,
-          0,
-        );
-        const encrypted = this.encryption.encrypt(key);
-        await this.db
-          .update(users)
-          .set({
-            openrouterKeyId: hash,
-            openrouterKeyEncrypted: encrypted,
-          })
-          .where(eq(users.id, userId));
-        this.logger.log(
-          `Provisioned OpenRouter key for user ${userId} with limit=0 (admin must set budget).`,
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(
-          `Failed to provision OpenRouter key for user ${userId} during onboarding: ${msg}. Will self-heal on next updateBudget.`,
-        );
-      }
-    }
+    // Instead we leave openrouterKeyId NULL and rely on:
+    //   1. The pending-approval banner on Management → Users (predicate
+    //      `infraChoice = 'managed' AND monthlyBudgetCents = 0`) to
+    //      surface the user to the admin.
+    //   2. `users.service.updateBudget` to provision the key the moment
+    //      the admin sets a real budget — that path already creates a
+    //      key matching the requested limit, so the OpenRouter cap and
+    //      our DB stay in sync.
+    //   3. `assertManagedBudgetApproved` and the lazy-provision guard
+    //      in `key-resolver.resolveUserKey` to make any chat attempt
+    //      before approval fail with a 402 + BUDGET_PENDING_APPROVAL
+    //      marker rather than silently creating a key.
   }
 
   /**

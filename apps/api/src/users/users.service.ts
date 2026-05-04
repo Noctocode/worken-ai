@@ -61,7 +61,7 @@ export class UsersService {
         role: users.role,
         inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
-        openrouterKeyId: users.openrouterKeyId,
+        infraChoice: users.infraChoice,
         createdAt: users.createdAt,
       })
       .from(users);
@@ -115,13 +115,16 @@ export class UsersService {
         status: membership?.status ?? 'accepted',
         teams: membership?.teams ?? [],
         monthlyBudgetCents: u.monthlyBudgetCents,
-        // True when the user finished Managed-Cloud onboarding (so they
-        // have a provisioned OpenRouter key) but no admin has set a
-        // budget yet — every chat call would otherwise 402. Drives the
-        // "N users awaiting budget approval" banner on Management →
-        // Users.
+        // Managed-Cloud users sit in this state from the moment they
+        // finish onboarding until an admin explicitly sets a budget
+        // in Management → Users (which provisions or patches their
+        // OpenRouter key). Drives the "N users awaiting budget
+        // approval" banner. Predicate is keyed on `infraChoice` rather
+        // than `openrouterKeyId` so users whose onboarding-time
+        // provisioning failed still surface — they need admin action
+        // just as much as the success path.
         pendingBudgetApproval:
-          !!u.openrouterKeyId && u.monthlyBudgetCents === 0,
+          u.infraChoice === 'managed' && u.monthlyBudgetCents === 0,
         spentCents: 0, // TODO: integrate with OpenRouter usage API
         projectedCents: 0, // TODO: integrate with OpenRouter usage API
         createdAt: u.createdAt,
