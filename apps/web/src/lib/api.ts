@@ -782,7 +782,28 @@ export async function updateUserBudget(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ budgetUsd }),
   });
-  if (!res.ok) throw new Error("Failed to update user budget");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update user budget");
+  }
+  return res.json();
+}
+
+export type OrgRole = "basic" | "advanced" | "admin";
+
+export async function updateUserRole(
+  userId: string,
+  role: OrgRole,
+): Promise<{ id: string; role: OrgRole }> {
+  const res = await apiFetch(`/users/${userId}/role`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update user role");
+  }
   return res.json();
 }
 

@@ -307,40 +307,42 @@ export class IntegrationsService {
         isEnabled: input.isEnabled ?? true,
       });
     } else {
-      // Upsert: try update, else insert.
-      const [existing] = await this.db
-        .select()
-        .from(integrations)
-        .where(
-          and(
-            eq(integrations.ownerId, userId),
-            eq(integrations.providerId, input.providerId),
-          ),
-        );
+      // Atomic upsert against the partial unique index
+      // `(owner_id, provider_id) WHERE api_url IS NULL`. Replaces an
+      // earlier select-then-insert which had a thin race window where
+      // two concurrent toggles could land on either side of the SELECT
+      // and leave the FE state out of sync.
+      //
+      // Build the on-conflict SET clause to preserve the 3-state
+      // semantic of `apiKey`:
+      //   - undefined → don't touch the stored key
+      //   - empty string → clear the stored key (set null)
+      //   - non-empty → encrypt and store
+      // and similarly for isEnabled (undefined → don't touch).
+      const conflictUpdates: Record<string, unknown> = {
+        updatedAt: new Date(),
+      };
+      if (input.isEnabled !== undefined) {
+        conflictUpdates.isEnabled = input.isEnabled;
+      }
+      if (input.apiKey !== undefined) {
+        conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
+      }
 
-      if (existing) {
-        const updates: Record<string, unknown> = {
-          updatedAt: new Date(),
-        };
-        if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
-        if (apiKeyEncrypted !== null) updates.apiKeyEncrypted = apiKeyEncrypted;
-        if (apiKeyEncrypted === null && input.apiKey === '') {
-          // Empty string explicitly clears the key.
-          updates.apiKeyEncrypted = null;
-        }
-        await this.db
-          .update(integrations)
-          .set(updates)
-          .where(eq(integrations.id, existing.id));
-      } else {
-        await this.db.insert(integrations).values({
+      await this.db
+        .insert(integrations)
+        .values({
           ownerId: userId,
           providerId: input.providerId,
           apiUrl: null,
           apiKeyEncrypted,
           isEnabled: input.isEnabled ?? true,
+        })
+        .onConflictDoUpdate({
+          target: [integrations.ownerId, integrations.providerId],
+          targetWhere: sql`${integrations.apiUrl} IS NULL`,
+          set: conflictUpdates,
         });
-      }
     }
 
     const all = await this.listForUser(userId);
