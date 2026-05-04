@@ -15,9 +15,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
 
@@ -92,8 +94,7 @@ const PLAN_DETAILS: Record<
 > = {
   free: {
     label: "Free",
-    tagline:
-      "Default plan for every new account. Personal workspace and trial-tier usage.",
+    tagline: "You're on the Free plan.",
     tone: "neutral",
   },
 };
@@ -235,7 +236,10 @@ export function AccountTab() {
           </Section>
         </div>
 
-        {/* Plan — full width row showing the user's subscription tier. */}
+        {/* Plan — full width row showing the user's subscription tier
+            plus an Upgrade CTA. The button currently fires a "Coming
+            soon" toast — paid plans aren't built yet. Wire it up to a
+            real upgrade flow once billing lands. */}
         <Section title="Plan" icon={Sparkles}>
           {(() => {
             const planDetails = getPlanDetails(data.plan);
@@ -246,13 +250,28 @@ export function AccountTab() {
                   ? "bg-primary-1 text-primary-7"
                   : "bg-bg-3 text-text-2";
             return (
-              <div className="flex items-center gap-3">
-                <span
-                  className={`inline-flex items-center rounded-full px-3 py-1 text-[13px] font-semibold uppercase tracking-wide ${badgeClass}`}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-[13px] font-semibold uppercase tracking-wide ${badgeClass}`}
+                  >
+                    {planDetails.label}
+                  </span>
+                  <p className="text-[13px] text-text-3">
+                    {planDetails.tagline}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() =>
+                    toast.info(
+                      "Upgrade flow is coming soon — paid plans aren't live yet.",
+                    )
+                  }
                 >
-                  {planDetails.label}
-                </span>
-                <p className="text-[13px] text-text-3">{planDetails.tagline}</p>
+                  Upgrade account
+                </Button>
               </div>
             );
           })()}
