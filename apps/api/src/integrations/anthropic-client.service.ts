@@ -60,21 +60,16 @@ export class AnthropicClientService {
     const client = new Anthropic({ apiKey });
     const nativeModel = toAnthropicModelId(model);
 
-    // Pull any leading "system" message into the dedicated parameter.
-    // Our app currently injects context as a synthetic system message
-    // in chat.service; merge that with the explicit context arg.
-    const systemPieces: string[] = [];
-    if (context) systemPieces.push(context);
-    const filteredMessages = messages.filter((m) => {
-      if (m.role === ('system' as unknown)) {
-        systemPieces.push(m.content);
-        return false;
-      }
-      return true;
-    });
+    // System content goes into Anthropic's dedicated `system` parameter,
+    // not into the messages array. Our callers pass it as the `context`
+    // arg; the messages array is always {user, assistant, …}.
+    const systemPiece = context ?? null;
 
     // Anthropic requires the conversation to start with a "user" role
-    // and alternate. Drop any leading non-user messages defensively.
+    // and alternate. Drop any leading non-user messages defensively
+    // (in practice this only fires if a future caller passes a stale
+    // assistant-led history fragment).
+    const filteredMessages = [...messages];
     while (
       filteredMessages.length > 0 &&
       filteredMessages[0].role !== 'user'
@@ -85,9 +80,7 @@ export class AnthropicClientService {
     const response = await client.messages.create({
       model: nativeModel,
       max_tokens: maxTokens,
-      ...(systemPieces.length > 0
-        ? { system: systemPieces.join('\n\n') }
-        : {}),
+      ...(systemPiece ? { system: systemPiece } : {}),
       messages: filteredMessages.map((m) => ({
         role: m.role,
         content: m.content,

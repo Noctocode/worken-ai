@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -5,6 +6,7 @@ import {
   uuid,
   vector,
   index,
+  uniqueIndex,
   boolean,
   jsonb,
   integer,
@@ -387,15 +389,32 @@ export const enabledModels = pgTable("enabled_models", {
  * `apiKeyEncrypted` is the user's own key (BYOK). When null, calls fall
  * back to the workspace's WorkenAI / OpenRouter key.
  */
-export const integrations = pgTable("integrations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  ownerId: uuid("owner_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  providerId: text("provider_id").notNull(),
-  apiUrl: text("api_url"),
-  apiKeyEncrypted: text("api_key_encrypted"),
-  isEnabled: boolean("is_enabled").notNull().default(true),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const integrations = pgTable(
+  "integrations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    providerId: text("provider_id").notNull(),
+    apiUrl: text("api_url"),
+    apiKeyEncrypted: text("api_key_encrypted"),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Partial unique index: at most one row per (owner, predefined
+    // provider). Custom LLMs share `providerId='custom'` and need to
+    // stay non-unique (a user can register many custom endpoints), so
+    // the WHERE clause excludes them via `api_url IS NULL`.
+    //
+    // Without this, IntegrationsService.upsert (select-then-insert) is
+    // racy under concurrent saves and could land two predefined rows
+    // for the same provider; the BYOK lookup would then silently pick
+    // whichever the planner returns first.
+    uniqueIndex("integrations_owner_provider_predef_unique")
+      .on(table.ownerId, table.providerId)
+      .where(sql`${table.apiUrl} IS NULL`),
+  ],
+);
