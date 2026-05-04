@@ -516,6 +516,7 @@ export class AuthService {
       name: user.name,
       picture: user.picture,
       role: userRole,
+      plan: user.plan,
       inviteStatus: user.inviteStatus,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,

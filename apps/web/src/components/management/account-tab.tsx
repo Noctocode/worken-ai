@@ -12,11 +12,14 @@ import {
   Check,
   X,
   Download,
+  Sparkles,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
 
@@ -76,6 +79,36 @@ function Section({
       {children}
     </div>
   );
+}
+
+/**
+ * Static plan catalog. The BE column is loose-typed (any string) so
+ * unknown plan ids fall back to a capitalize-the-raw-string render
+ * rather than crashing — anyone can ship a new plan id without an
+ * FE deploy. Add an entry here when the new plan launches and the
+ * marketing copy is final.
+ */
+const PLAN_DETAILS: Record<
+  string,
+  { label: string; tagline: string; tone: "neutral" | "primary" | "premium" }
+> = {
+  free: {
+    label: "Free",
+    tagline: "You're on the Free plan.",
+    tone: "neutral",
+  },
+};
+
+function getPlanDetails(plan: string) {
+  if (PLAN_DETAILS[plan]) return PLAN_DETAILS[plan];
+  return {
+    label: plan
+      .split(/[-_\s]+/)
+      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
+      .join(" "),
+    tagline: "Custom plan.",
+    tone: "neutral" as const,
+  };
 }
 
 function buildPermissions(role: "admin" | "advanced" | "basic") {
@@ -202,6 +235,47 @@ export function AccountTab() {
             </p>
           </Section>
         </div>
+
+        {/* Plan — full width row showing the user's subscription tier
+            plus an Upgrade CTA. The button currently fires a "Coming
+            soon" toast — paid plans aren't built yet. Wire it up to a
+            real upgrade flow once billing lands. */}
+        <Section title="Plan" icon={Sparkles}>
+          {(() => {
+            const planDetails = getPlanDetails(data.plan);
+            const badgeClass =
+              planDetails.tone === "premium"
+                ? "bg-warning-1 text-warning-7"
+                : planDetails.tone === "primary"
+                  ? "bg-primary-1 text-primary-7"
+                  : "bg-bg-3 text-text-2";
+            return (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-[13px] font-semibold uppercase tracking-wide ${badgeClass}`}
+                  >
+                    {planDetails.label}
+                  </span>
+                  <p className="text-[13px] text-text-3">
+                    {planDetails.tagline}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  className="shrink-0"
+                  onClick={() =>
+                    toast.info(
+                      "Upgrade flow is coming soon — paid plans aren't live yet.",
+                    )
+                  }
+                >
+                  Upgrade account
+                </Button>
+              </div>
+            );
+          })()}
+        </Section>
 
         {/* Permissions — full width list */}
         <Section title="Access tier & permissions" icon={ShieldCheck}>
