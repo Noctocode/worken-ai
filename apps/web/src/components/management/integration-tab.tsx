@@ -212,17 +212,17 @@ function ProviderSettingsDialog({
           </div>
         </div>
 
-        {/* WorkenAI default note */}
+        {/* WorkenAI default note. Plain div on purpose — using a
+            textarea/input here gave it scroll behavior the moment the
+            text didn't fit, which we never want. The block now grows
+            to fit whatever copy lands in it. */}
         <div>
           <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
             Use WORKENAI API
           </p>
-          <textarea
-            readOnly
-            className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 resize-none outline-none"
-            rows={1}
-            defaultValue="Additional costs on the WorkenAI subscription will be added."
-          />
+          <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
+            Additional costs on the WorkenAI subscription will be added.
+          </div>
         </div>
 
         {/* Own API key */}

@@ -36,7 +36,7 @@ export function SettingsDialog({
 }: SettingsDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-md p-0 gap-0 overflow-hidden" showCloseButton={false}>
+      <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">
           {description ?? `${title} settings`}
