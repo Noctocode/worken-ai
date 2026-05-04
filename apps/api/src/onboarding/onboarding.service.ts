@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
@@ -18,6 +19,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -59,9 +61,12 @@ function sanitizeFilename(raw: string): string {
 
 @Injectable()
 export class OnboardingService {
+  private readonly logger = new Logger(OnboardingService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
+    private readonly provisioning: OpenRouterProvisioningService,
   ) {}
 
   async complete(
@@ -197,6 +202,44 @@ export class OnboardingService {
         });
       }
     });
+
+    // Managed Cloud provisioning. Runs after the DB transaction so we don't
+    // hold the transaction open during the OpenRouter HTTP round-trip.
+    //
+    // Best-effort, mirroring the teams.create pattern: if OpenRouter is down
+    // at this exact moment we still let onboarding succeed — the
+    // `updateBudget` self-heal in users.service kicks in the first time an
+    // admin sets a real budget, and `key-resolver.service` self-heals on
+    // the first chat call too. The key is provisioned with `limit: 0` so
+    // no spend is allowed until an admin explicitly raises the budget,
+    // which matches the product decision to require manual approval.
+    if (
+      payload.infraChoice === 'managed' &&
+      !current.openrouterKeyId
+    ) {
+      try {
+        const { key, hash } = await this.provisioning.createKey(
+          `user-${userId}`,
+          0,
+        );
+        const encrypted = this.encryption.encrypt(key);
+        await this.db
+          .update(users)
+          .set({
+            openrouterKeyId: hash,
+            openrouterKeyEncrypted: encrypted,
+          })
+          .where(eq(users.id, userId));
+        this.logger.log(
+          `Provisioned OpenRouter key for user ${userId} with limit=0 (admin must set budget).`,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Failed to provision OpenRouter key for user ${userId} during onboarding: ${msg}. Will self-heal on next updateBudget.`,
+        );
+      }
+    }
   }
 
   /**
