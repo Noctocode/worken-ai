@@ -3,9 +3,10 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import { resolve } from 'path';
@@ -13,7 +14,7 @@ import { randomUUID } from 'crypto';
 import { join, posix as pathPosix } from 'path';
 import {
   users,
-  userLlmCredentials,
+  integrations,
   knowledgeDocuments,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -42,6 +43,28 @@ const VALID_PROVIDERS: Provider[] = [
   'anthropic',
   'private-vpc',
 ];
+
+// Whitelisted enum values for the company-branch dropdowns. Must stay in
+// sync with apps/web/src/app/setup-profile/step-2/page.tsx — the FE
+// dropdown values are the source of truth, and the BE enforces them so
+// direct API calls can't seed garbage like industry: "anything goes lol".
+const VALID_INDUSTRIES = [
+  'technology',
+  'finance',
+  'healthcare',
+  'government',
+  'manufacturing',
+  'retail',
+  'other',
+] as const;
+const VALID_TEAM_SIZES = [
+  '1-10',
+  '11-50',
+  '51-200',
+  '201-1000',
+  '1000+',
+] as const;
+
 const UPLOADS_ROOT = join(process.cwd(), 'uploads', 'knowledge');
 
 // Defense-in-depth against path traversal: multer's originalname is whatever
@@ -59,6 +82,8 @@ function sanitizeFilename(raw: string): string {
 
 @Injectable()
 export class OnboardingService {
+  private readonly logger = new Logger(OnboardingService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
@@ -178,15 +203,51 @@ export class OnboardingService {
         })
         .where(eq(users.id, userId));
 
+      // Write step-5 keys directly into the `integrations` table so they
+      // show up in Management → Integration as enabled rows. Without
+      // this, the keys would be stranded — the chat-transport BYOK path
+      // and the Integration tab both read from `integrations`, while
+      // the legacy `user_llm_credentials` table this used to write to is
+      // unused for routing.
+      //
+      // Mapping note: the step-5 buttons (openai / azure / anthropic /
+      // private-vpc) don't all line up with the predefined providers
+      // catalog. `openai` and `anthropic` map directly. `azure` and
+      // `private-vpc` need extra fields (Azure deployment URL, VPC
+      // endpoint) that the wizard doesn't collect — those keys are
+      // dropped here and the user must finish setup in the Integration
+      // tab. Logged so it's visible in onboarding telemetry.
       if (payload.apiKeys) {
         for (const [provider, key] of Object.entries(payload.apiKeys)) {
           if (!key || !key.trim()) continue;
           if (!VALID_PROVIDERS.includes(provider as Provider)) continue;
-          await tx.insert(userLlmCredentials).values({
-            userId,
-            provider,
-            apiKeyEncrypted: this.encryption.encrypt(key.trim()),
-          });
+          if (provider !== 'openai' && provider !== 'anthropic') {
+            this.logger.warn(
+              `Onboarding step-5: ${provider} key supplied but no matching predefined provider — skipping. User ${userId} can finish setup in Management → Integration.`,
+            );
+            continue;
+          }
+          // onConflictDoNothing on the partial unique index
+          // `(owner_id, provider_id) WHERE api_url IS NULL` so a
+          // re-run of onboarding (e.g. support-action that cleared
+          // onboarding_completed_at after the legacy backfill SQL was
+          // applied) doesn't crash the whole transaction with 23505
+          // and orphan the just-uploaded knowledge documents. The
+          // existing row is left as-is — the user can update keys
+          // from Management → Integration.
+          await tx
+            .insert(integrations)
+            .values({
+              ownerId: userId,
+              providerId: provider,
+              apiUrl: null,
+              apiKeyEncrypted: this.encryption.encrypt(key.trim()),
+              isEnabled: true,
+            })
+            .onConflictDoNothing({
+              target: [integrations.ownerId, integrations.providerId],
+              where: sql`${integrations.apiUrl} IS NULL`,
+            });
         }
       }
 
@@ -197,6 +258,25 @@ export class OnboardingService {
         });
       }
     });
+
+    // Managed Cloud users are NOT provisioned an OpenRouter key here.
+    // The original design provisioned with `limit: 0`, but OpenRouter's
+    // API treats `limit: 0` ambiguously (and `limit: null` as
+    // unenforced — see backfill-openrouter-limits.ts), so a key created
+    // up front would be one bypassed gate away from uncapped spend.
+    //
+    // Instead we leave openrouterKeyId NULL and rely on:
+    //   1. The pending-approval banner on Management → Users (predicate
+    //      `infraChoice = 'managed' AND monthlyBudgetCents = 0`) to
+    //      surface the user to the admin.
+    //   2. `users.service.updateBudget` to provision the key the moment
+    //      the admin sets a real budget — that path already creates a
+    //      key matching the requested limit, so the OpenRouter cap and
+    //      our DB stay in sync.
+    //   3. `assertManagedBudgetApproved` and the lazy-provision guard
+    //      in `key-resolver.resolveUserKey` to make any chat attempt
+    //      before approval fail with a 402 + BUDGET_PENDING_APPROVAL
+    //      marker rather than silently creating a key.
   }
 
   /**
@@ -242,14 +322,25 @@ export class OnboardingService {
       .where(eq(users.id, userId));
     if (!u) throw new NotFoundException('User not found');
 
+    // Connected providers shown on My Account. Read from `integrations`
+    // (the same table the Integration tab uses) so this section reflects
+    // what the user has actually configured. Filter to predefined
+    // providers with a key set — Custom LLMs aren't conceptually
+    // "connected providers" in the My Account sense.
     const providers = await this.db
       .select({
-        id: userLlmCredentials.id,
-        provider: userLlmCredentials.provider,
-        createdAt: userLlmCredentials.createdAt,
+        id: integrations.id,
+        provider: integrations.providerId,
+        createdAt: integrations.createdAt,
       })
-      .from(userLlmCredentials)
-      .where(eq(userLlmCredentials.userId, userId));
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.ownerId, userId),
+          isNotNull(integrations.apiKeyEncrypted),
+          isNull(integrations.apiUrl),
+        ),
+      );
 
     const documents = await this.db
       .select({
@@ -291,6 +382,28 @@ export class OnboardingService {
     if (p.profileType === 'company') {
       if (!p.companyName?.trim()) {
         throw new BadRequestException('companyName is required for Company');
+      }
+      // industry/teamSize stay optional (Figma shows no asterisk), but
+      // when supplied they must be one of the FE dropdown values.
+      if (
+        p.industry &&
+        !VALID_INDUSTRIES.includes(
+          p.industry as (typeof VALID_INDUSTRIES)[number],
+        )
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
+      if (
+        p.teamSize &&
+        !VALID_TEAM_SIZES.includes(
+          p.teamSize as (typeof VALID_TEAM_SIZES)[number],
+        )
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
       }
     }
     if (p.profileType === 'personal' && !p.fullName?.trim()) {

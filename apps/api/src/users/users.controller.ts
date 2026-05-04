@@ -98,11 +98,53 @@ export class UsersController {
   }
 
   @Patch(':id/budget')
-  updateBudget(
+  async updateBudget(
     @Param('id') id: string,
     @Body() body: { budgetUsd: number },
+    @CurrentUser() caller: AuthenticatedUser,
   ) {
+    // Budget changes flip a real spend cap on the user's OpenRouter
+    // sub-account — basic / advanced users must not be able to lift
+    // each other's caps. Mirror the role gate used on /users delete.
+    const [callerUser] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, caller.id));
+    if (!callerUser || callerUser.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can change a user\'s monthly budget.',
+      );
+    }
     return this.usersService.updateBudget(id, body.budgetUsd);
+  }
+
+  @Patch(':id/role')
+  async updateRole(
+    @Param('id') id: string,
+    @Body() body: { role: string },
+    @CurrentUser() caller: AuthenticatedUser,
+  ) {
+    // Admin-only — role determines permissions across the entire org
+    // (project creation, team management, user removal). Only an
+    // existing admin can grant or revoke roles.
+    const [callerUser] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, caller.id));
+    if (!callerUser || callerUser.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can change a user\'s organization role.',
+      );
+    }
+    // Block self-mutation: prevents an admin from accidentally
+    // demoting themselves into a basic / advanced lockout. They have
+    // to be demoted by another admin.
+    if (id === caller.id) {
+      throw new BadRequestException(
+        'You cannot change your own role. Ask another admin to do it.',
+      );
+    }
+    return this.usersService.updateRole(id, body.role);
   }
 
   @Delete(':id')

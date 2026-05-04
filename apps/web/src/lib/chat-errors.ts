@@ -25,7 +25,25 @@ export function humanizeChatError(err: unknown): string {
   const withModel = (tpl: (name: string) => string): string =>
     modelName ? tpl(modelName) : tpl("The selected model");
 
-  // 402 first — OpenRouter's body for budget-exhausted hits is full of
+  // Pending-approval check FIRST — this is a 402 too, but distinct from
+  // a budget that was set and then exhausted. The BE prefixes its error
+  // string with `BUDGET_PENDING_APPROVAL: <message>` when a Managed
+  // Cloud user has no admin-approved budget yet. Keep this branch above
+  // the generic 402 so the user gets the actionable "ask your admin"
+  // message instead of "your budget is exhausted".
+  //
+  // Anchored on the colon-then-message shape so any future error that
+  // mentions the constant by name (telemetry echo, log line surfaced to
+  // FE) won't accidentally trigger this branch.
+  const pendingMatch = raw.match(/BUDGET_PENDING_APPROVAL:\s*([^\r\n]+)/);
+  if (pendingMatch) {
+    return (
+      pendingMatch[1].trim() ||
+      "Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI."
+    );
+  }
+
+  // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code
   // is the most reliable signal, hence the \b402\b check here.

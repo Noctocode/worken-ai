@@ -24,9 +24,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { fetchOrgUser, updateMemberRole, updateUserBudget } from "@/lib/api";
+import {
+  fetchOrgUser,
+  updateMemberRole,
+  updateUserBudget,
+  updateUserRole,
+  type OrgRole,
+} from "@/lib/api";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/components/providers";
 
 /* ─── Helper components ──────────────────────────────────────────────────── */
 
@@ -61,6 +68,56 @@ function UserAvatar({ name, picture, size = 80 }: { name: string; picture: strin
   );
 }
 
+/**
+ * Role indicator + admin-only role select. Non-admin viewers see a
+ * read-only badge. Admins viewing other users see a Select that
+ * mutates `users.role`. Admins viewing THEMSELVES still see a badge —
+ * the BE blocks self-mutation (lockout prevention) so the FE doesn't
+ * offer the affordance either.
+ */
+function UserRoleControl({
+  user,
+  canEdit,
+  onChange,
+  pending,
+}: {
+  user: { role: "basic" | "advanced" | "admin" };
+  canEdit: boolean;
+  onChange: (role: OrgRole) => void;
+  pending: boolean;
+}) {
+  const badgeClass =
+    user.role === "admin"
+      ? "border-transparent bg-danger-1 text-danger-6 uppercase tracking-wide text-[10px] px-1.5 py-0"
+      : user.role === "advanced"
+        ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0"
+        : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0";
+
+  if (!canEdit) {
+    return <Badge className={badgeClass}>{user.role}</Badge>;
+  }
+
+  return (
+    <Select
+      value={user.role}
+      onValueChange={(v) => {
+        if (v === user.role) return;
+        onChange(v as OrgRole);
+      }}
+      disabled={pending}
+    >
+      <SelectTrigger className="h-7 w-[110px] rounded-full border-border-3 bg-bg-1 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-text-2">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="basic">Basic</SelectItem>
+        <SelectItem value="advanced">Advanced</SelectItem>
+        <SelectItem value="admin">Admin</SelectItem>
+      </SelectContent>
+    </Select>
+  );
+}
+
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const exceeded = spent > budget;
@@ -84,6 +141,12 @@ export default function UserDetailPage({
 }) {
   const { id } = use(params);
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  // Mirrors the BE guard on PATCH /users/:id/budget — only admins may
+  // change a user's spend cap, since the cap is enforced upstream on
+  // OpenRouter and basic / advanced users letting each other lift it
+  // would defeat the whole point of the budget.
+  const canEditBudget = currentUser?.role === "admin";
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: ["users", id],
@@ -95,6 +158,9 @@ export default function UserDetailPage({
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users", id] }),
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't update budget.");
+    },
   });
 
   const roleMutation = useMutation({
@@ -110,6 +176,20 @@ export default function UserDetailPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
       toast.success("Role updated.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't update role.");
+    },
+  });
+
+  const orgRoleMutation = useMutation({
+    mutationFn: (role: OrgRole) => updateUserRole(id, role),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["users", id] });
+      // Refresh the org-users list so the role badge in Management →
+      // Users updates immediately without a hard reload.
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      toast.success(`Role updated to ${data.role}.`);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't update role.");
@@ -148,7 +228,10 @@ export default function UserDetailPage({
     if (budgetInput === null) return;
     const raw = budgetInput.replace(/\./g, "").replace(",", ".");
     const num = parseFloat(raw);
-    if (!isNaN(num) && num > 0 && num !== budget) {
+    // Allow 0 — that's the "suspend" gesture (admin blocks all spend
+    // for this user until they raise the budget again). BE enforces
+    // non-negative.
+    if (!isNaN(num) && num >= 0 && num !== budget) {
       budgetMutation.mutate(num);
     }
     setBudgetInput(null);
@@ -165,15 +248,14 @@ export default function UserDetailPage({
             <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <p className="text-[18px] font-bold text-text-1">{displayName}</p>
-                <Badge
-                  className={
-                    user.tier === "advanced"
-                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0"
-                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0"
+                <UserRoleControl
+                  user={user}
+                  canEdit={
+                    currentUser?.role === "admin" && currentUser.id !== id
                   }
-                >
-                  {user.tier === "advanced" ? "Advanced" : "Basic"}
-                </Badge>
+                  onChange={(role) => orgRoleMutation.mutate(role)}
+                  pending={orgRoleMutation.isPending}
+                />
               </div>
               <p className="text-[16px] text-text-1">{user.email}</p>
             </div>
@@ -197,9 +279,21 @@ export default function UserDetailPage({
                 onChange={(e) => setBudgetInput(e.target.value)}
                 onBlur={handleBudgetBlur}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                disabled={!canEditBudget}
+                title={
+                  canEditBudget
+                    ? undefined
+                    : "Only admins can change a user's monthly budget."
+                }
+                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
               />
             </div>
+            {!canEditBudget && (
+              <p className="text-[12px] text-text-3">
+                Only admins can change this — ask an admin to adjust the
+                budget.
+              </p>
+            )}
           </div>
 
           {/* Spent / Remaining */}

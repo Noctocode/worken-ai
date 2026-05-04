@@ -11,11 +11,40 @@ import { useOnboarding } from "../layout";
 
 type ProviderId = "openai" | "azure" | "anthropic" | "private-vpc";
 
-const PROVIDERS: Array<{ id: ProviderId; name: string; models: string }> = [
-  { id: "openai", name: "OpenAI", models: "GPT-4, GPT-3.5" },
-  { id: "azure", name: "Azure OpenAI", models: "Enterprise GPT-4" },
-  { id: "anthropic", name: "Anthropic", models: "Claude 3 Opus" },
-  { id: "private-vpc", name: "Private VPC", models: "Mistral, Llama" },
+// Per-provider placeholder mirrors the format the user sees in their
+// provider dashboard so they know they're pasting the right thing. We
+// avoid fully-formed valid-looking strings to discourage anyone copying
+// the placeholder itself by accident.
+const PROVIDERS: Array<{
+  id: ProviderId;
+  name: string;
+  models: string;
+  placeholder: string;
+}> = [
+  {
+    id: "openai",
+    name: "OpenAI",
+    models: "GPT-4, GPT-3.5",
+    placeholder: "sk-proj-…",
+  },
+  {
+    id: "azure",
+    name: "Azure OpenAI",
+    models: "Enterprise GPT-4",
+    placeholder: "Azure deployment key (32-char hex)",
+  },
+  {
+    id: "anthropic",
+    name: "Anthropic",
+    models: "Claude 3 Opus",
+    placeholder: "sk-ant-api03-…",
+  },
+  {
+    id: "private-vpc",
+    name: "Private VPC",
+    models: "Mistral, Llama",
+    placeholder: "Endpoint URL or bearer token",
+  },
 ];
 
 export default function SetupProfileStep5Page() {
@@ -47,7 +76,7 @@ export default function SetupProfileStep5Page() {
           </div>
 
           <div className="flex flex-col gap-2">
-            {PROVIDERS.map(({ id, name, models }) => {
+            {PROVIDERS.map(({ id, name, models, placeholder }) => {
               const isExpanded = expanded === id;
               return (
                 <div
@@ -85,11 +114,18 @@ export default function SetupProfileStep5Page() {
                       </label>
                       <Input
                         type="password"
-                        placeholder={`Enter your ${name} API key`}
+                        placeholder={placeholder}
                         value={apiKeys[id] ?? ""}
                         onChange={(e) => setApiKey(id, e.target.value)}
-                        className="h-11 text-base rounded-md border-border-3 placeholder:text-text-3"
+                        className="h-11 text-base rounded-md border-border-3 placeholder:text-text-3 font-mono"
                       />
+                      {(id === "azure" || id === "private-vpc") && (
+                        <p className="text-[12px] text-text-3 leading-snug">
+                          {id === "azure"
+                            ? "Azure also needs a deployment URL — finish setup later in Management → Integration."
+                            : "Private VPC needs an endpoint URL — finish setup later in Management → Integration."}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

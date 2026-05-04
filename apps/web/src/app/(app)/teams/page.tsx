@@ -40,6 +40,9 @@ export default function TeamsPage() {
   const [teamSearch, setTeamSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [modelSearch, setModelSearch] = useState("");
+  // When the "X users awaiting budget approval" banner is clicked, the
+  // table narrows to just those rows so the admin can quickly action them.
+  const [showPendingOnly, setShowPendingOnly] = useState(false);
 
   const {
     data: teams = [],
@@ -63,11 +66,19 @@ export default function TeamsPage() {
     t.name.toLowerCase().includes(teamSearch.toLowerCase()),
   );
 
-  const filteredUsers = orgUsers.filter(
-    (u) =>
-      u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
-      (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()),
-  );
+  const filteredUsers = orgUsers
+    .filter((u) =>
+      showPendingOnly ? u.pendingBudgetApproval : true,
+    )
+    .filter(
+      (u) =>
+        u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+        (u.name ?? "").toLowerCase().includes(userSearch.toLowerCase()),
+    );
+
+  const pendingApprovalCount = orgUsers.filter(
+    (u) => u.pendingBudgetApproval,
+  ).length;
 
   const {
     data: models = [],
@@ -226,6 +237,33 @@ export default function TeamsPage() {
             </InviteUserDialog>
           </DisabledReasonTooltip>
         </div>
+        {/* Pending-budget-approval banner. Surfaces users who finished
+            Managed-Cloud onboarding but still have monthlyBudgetCents = 0
+            — they can't make AI calls until an admin sets a budget. The
+            banner is clickable: it filters the table to just those rows
+            so the action is one click away. Admin-only because only
+            admins can mutate budgets — basic / advanced users seeing
+            this would have no way to act on it. */}
+        {user?.role === "admin" && pendingApprovalCount > 0 && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-warning-7/30 bg-warning-1 px-4 py-3">
+            <p className="text-[13px] text-text-1">
+              <strong className="font-semibold">
+                {pendingApprovalCount}{" "}
+                {pendingApprovalCount === 1 ? "user is" : "users are"}
+              </strong>{" "}
+              awaiting budget approval — set a monthly budget for{" "}
+              {pendingApprovalCount === 1 ? "them" : "each"} to enable AI
+              access.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowPendingOnly((v) => !v)}
+              className="shrink-0 rounded-md px-3 py-1 text-[12px] font-medium text-warning-7 transition-colors hover:bg-warning-7/10"
+            >
+              {showPendingOnly ? "Show all users" : "Show pending only"}
+            </button>
+          </div>
+        )}
         <div className="overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[850px]">
             <thead>

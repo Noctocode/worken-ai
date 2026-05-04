@@ -167,8 +167,14 @@ export class TeamsService {
     userId: string,
     budgetUsd: number,
   ): Promise<{ monthlyBudgetCents: number }> {
-    if (typeof budgetUsd !== 'number' || budgetUsd <= 0) {
-      throw new BadRequestException('budgetUsd must be a positive number');
+    if (
+      typeof budgetUsd !== 'number' ||
+      budgetUsd < 0 ||
+      !Number.isFinite(budgetUsd)
+    ) {
+      throw new BadRequestException(
+        'budgetUsd must be a non-negative finite number',
+      );
     }
 
     const [team] = await this.db
@@ -183,13 +189,19 @@ export class TeamsService {
       throw new ForbiddenException('Only the team owner can update the budget');
     }
 
-    // Self-heal: if the team has no OpenRouter key (provisioning failed at
-    // create time, or this is a legacy team), provision one now using the
-    // budget the owner just submitted. If it still fails, surface a clear
-    // error instead of silently saving a budget that OpenRouter doesn't
-    // know about.
+    // Suspend semantic: budgetUsd === 0 means "block this team from
+    // spending anything until I raise the budget again". The chat
+    // gate (assertManagedBudgetApproved) trips on team.budget=0 at
+    // request time. We still patch OpenRouter to a $0.01 floor as
+    // defense-in-depth — see users.service.updateBudget for the same
+    // pattern and rationale.
+    const upstreamLimitUsd = budgetUsd === 0 ? 0.01 : budgetUsd;
+
     let openrouterKeyId = team.openrouterKeyId;
-    if (!openrouterKeyId) {
+    if (!openrouterKeyId && budgetUsd > 0) {
+      // Self-heal: provision a key when the owner sets a real budget
+      // for a team that doesn't have one yet (failed create-time
+      // provisioning, or a legacy team).
       try {
         const { key, hash } = await this.provisioningService.createKey(
           `team-${team.id}`,
@@ -205,20 +217,25 @@ export class TeamsService {
           .where(eq(teams.id, teamId));
         openrouterKeyId = hash;
         this.logger.log(
-          `Reprovisioned OpenRouter key for team ${teamId} during budget update.`,
+          `Provisioned OpenRouter key for team ${teamId} during budget update.`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `Failed to reprovision OpenRouter key for team ${teamId}: ${msg}`,
+          `Failed to provision OpenRouter key for team ${teamId}: ${msg}`,
         );
         throw new ServiceUnavailableException(
           'Could not provision an OpenRouter key for this team. Please try again in a moment.',
         );
       }
-    } else {
-      await this.provisioningService.updateKey(openrouterKeyId, budgetUsd);
+    } else if (openrouterKeyId) {
+      await this.provisioningService.updateKey(
+        openrouterKeyId,
+        upstreamLimitUsd,
+      );
     }
+    // else: budget=0 AND no key — nothing to provision, gate handles
+    // the block. Owner can raise the budget later to enable.
 
     const budgetCents = Math.round(budgetUsd * 100);
     await this.db

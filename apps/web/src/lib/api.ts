@@ -728,6 +728,13 @@ export interface OrgUser {
   status: "pending" | "accepted";
   teams: string[];
   monthlyBudgetCents: number;
+  /**
+   * True when the user finished Managed-Cloud onboarding (has an
+   * OpenRouter key provisioned) but no admin has set a monthly budget
+   * yet — they cannot make AI calls until budget is bumped from 0.
+   * Drives the "N users awaiting approval" banner on Management → Users.
+   */
+  pendingBudgetApproval: boolean;
   spentCents: number;
   projectedCents: number;
   createdAt: string;
@@ -775,7 +782,28 @@ export async function updateUserBudget(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ budgetUsd }),
   });
-  if (!res.ok) throw new Error("Failed to update user budget");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update user budget");
+  }
+  return res.json();
+}
+
+export type OrgRole = "basic" | "advanced" | "admin";
+
+export async function updateUserRole(
+  userId: string,
+  role: OrgRole,
+): Promise<{ id: string; role: OrgRole }> {
+  const res = await apiFetch(`/users/${userId}/role`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update user role");
+  }
   return res.json();
 }
 

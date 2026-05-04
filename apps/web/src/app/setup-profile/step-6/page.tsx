@@ -210,7 +210,8 @@ export default function SetupProfileStep6Page() {
           {/* Upload status / selected files */}
           {files.length === 0 ? (
             <div className="rounded border border-border-2 bg-bg-1 px-6 py-5 text-center text-[13px] text-text-3">
-              No files uploaded yet. Add documents to begin training your AI.
+              No files uploaded yet — this step is optional. You can finish
+              setup now and add documents later from Knowledge Core.
             </div>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -251,11 +252,15 @@ export default function SetupProfileStep6Page() {
               Back
             </Button>
             <Button
-              className="h-12 w-[175px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
+              className="h-12 w-[200px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending}
             >
-              {mutation.isPending ? "Saving..." : "Complete Setup"}
+              {mutation.isPending
+                ? "Saving..."
+                : files.length === 0
+                  ? "Skip & Finish Setup"
+                  : "Complete Setup"}
             </Button>
           </div>
         </div>

@@ -204,6 +204,17 @@ export class CompareModelsController {
             userId: user.id,
             modelIdentifier: model,
           });
+          // Same pending-approval gate as /chat — blocks Managed Cloud
+          // calls until an admin sets a budget. BYOK/Custom routes
+          // skip the gate (their billing is external). Pass the
+          // resolved teamId (if the user picked one in the composer)
+          // so the gate uses the team budget rather than the user's
+          // personal one.
+          await this.chatTransport.assertManagedBudgetApproved(
+            transport,
+            user.id,
+            { teamId },
+          );
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(

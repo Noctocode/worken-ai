@@ -61,6 +61,7 @@ export class UsersService {
         role: users.role,
         inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
+        infraChoice: users.infraChoice,
         createdAt: users.createdAt,
       })
       .from(users);
@@ -114,6 +115,16 @@ export class UsersService {
         status: membership?.status ?? 'accepted',
         teams: membership?.teams ?? [],
         monthlyBudgetCents: u.monthlyBudgetCents,
+        // Managed-Cloud users sit in this state from the moment they
+        // finish onboarding until an admin explicitly sets a budget
+        // in Management → Users (which provisions or patches their
+        // OpenRouter key). Drives the "N users awaiting budget
+        // approval" banner. Predicate is keyed on `infraChoice` rather
+        // than `openrouterKeyId` so users whose onboarding-time
+        // provisioning failed still surface — they need admin action
+        // just as much as the success path.
+        pendingBudgetApproval:
+          u.infraChoice === 'managed' && u.monthlyBudgetCents === 0,
         spentCents: 0, // TODO: integrate with OpenRouter usage API
         projectedCents: 0, // TODO: integrate with OpenRouter usage API
         createdAt: u.createdAt,
@@ -239,8 +250,14 @@ export class UsersService {
     userId: string,
     budgetUsd: number,
   ): Promise<{ monthlyBudgetCents: number }> {
-    if (typeof budgetUsd !== 'number' || budgetUsd <= 0) {
-      throw new BadRequestException('budgetUsd must be a positive number');
+    if (
+      typeof budgetUsd !== 'number' ||
+      budgetUsd < 0 ||
+      !Number.isFinite(budgetUsd)
+    ) {
+      throw new BadRequestException(
+        'budgetUsd must be a non-negative finite number',
+      );
     }
 
     const [user] = await this.db
@@ -252,13 +269,26 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Self-heal: if the user has no OpenRouter key (provisioning failed at
-    // signup, or this is a legacy user), provision one now using the
-    // budget the admin just submitted. Without this the budget would be
-    // stored only in our DB while OpenRouter has no enforcement at all.
+    // Suspend semantic: budgetUsd === 0 means "block this user from
+    // spending anything until I raise the budget again".
+    // assertManagedBudgetApproved already trips on budget=0+managed at
+    // request time, so the suspend is enforced at our layer. We still
+    // patch the OpenRouter cap to a $0.01 floor (not 0 — OpenRouter
+    // treats `limit: null` as unenforced and the `0` case is
+    // undocumented) as defense-in-depth: if our gate is ever
+    // bypassed, the upstream cap stops runaway spend at 1 cent.
+    const upstreamLimitUsd = budgetUsd === 0 ? 0.01 : budgetUsd;
+
     if (user.openrouterKeyId) {
-      await this.provisioningService.updateKey(user.openrouterKeyId, budgetUsd);
-    } else {
+      await this.provisioningService.updateKey(
+        user.openrouterKeyId,
+        upstreamLimitUsd,
+      );
+    } else if (budgetUsd > 0) {
+      // Self-heal: provision a key when the admin sets a real budget
+      // for a user that doesn't have one yet (failed onboarding-time
+      // provisioning, or a managed-cloud user under the new design
+      // where onboarding deliberately skips provisioning).
       try {
         const { key, hash } = await this.provisioningService.createKey(
           `user-${userId}`,
@@ -273,18 +303,20 @@ export class UsersService {
           })
           .where(eq(users.id, userId));
         this.logger.log(
-          `Reprovisioned OpenRouter key for user ${userId} during budget update.`,
+          `Provisioned OpenRouter key for user ${userId} during budget update.`,
         );
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(
-          `Failed to reprovision OpenRouter key for user ${userId}: ${msg}`,
+          `Failed to provision OpenRouter key for user ${userId}: ${msg}`,
         );
         throw new ServiceUnavailableException(
           'Could not provision an OpenRouter key for this user. Please try again in a moment.',
         );
       }
     }
+    // else: budget=0 AND no key — nothing to provision, our gate
+    // handles the block. Admin can raise the budget later to enable.
 
     const budgetCents = Math.round(budgetUsd * 100);
     await this.db
@@ -293,6 +325,32 @@ export class UsersService {
       .where(eq(users.id, userId));
 
     return { monthlyBudgetCents: budgetCents };
+  }
+
+  /**
+   * Promote / demote a user's organization-level role. Caller-side
+   * checks (admin guard, self-mutation block) live in the controller;
+   * here we just validate the value and write.
+   */
+  async updateRole(
+    userId: string,
+    role: string,
+  ): Promise<{ id: string; role: string }> {
+    const validRoles = ['basic', 'advanced', 'admin'];
+    if (!validRoles.includes(role)) {
+      throw new BadRequestException(
+        `Role must be one of: ${validRoles.join(', ')}`,
+      );
+    }
+
+    const [updated] = await this.db
+      .update(users)
+      .set({ role, updatedAt: new Date() })
+      .where(eq(users.id, userId))
+      .returning({ id: users.id, role: users.role });
+
+    if (!updated) throw new NotFoundException('User not found');
+    return updated;
   }
 
   async remove(userId: string, callerId: string) {

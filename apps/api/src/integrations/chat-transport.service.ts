@@ -1,10 +1,24 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { integrations, modelConfigs } from '@worken/database/schema';
+import {
+  integrations,
+  modelConfigs,
+  projects,
+  teams,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
+
+/**
+ * Marker string the FE chat-error humanizer matches on to render the
+ * "ask your admin to approve a budget" message instead of the generic
+ * "monthly budget exhausted" one. Exported so it stays a single source
+ * of truth on both sides.
+ */
+export const PENDING_APPROVAL_MARKER = 'BUDGET_PENDING_APPROVAL';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -181,6 +195,86 @@ export class ChatTransportService {
       source: 'openrouter',
       kind: 'openai-sdk',
     };
+  }
+
+  /**
+   * Pending-approval gate for Managed Cloud (OpenRouter-routed) calls.
+   *
+   * Managed-Cloud users sit at `monthlyBudgetCents = 0` from onboarding
+   * until an admin explicitly approves a budget — at which point
+   * `users.service.updateBudget` provisions or patches the OpenRouter
+   * key with that budget. Without this gate, the user's first chat
+   * either trips a generic 402 from OpenRouter ("budget exhausted",
+   * misleading — they never had a budget) or sends `key-resolver`
+   * lazy-provisioning a key behind the admin's back.
+   *
+   * Predicate is keyed on `infraChoice` not `openrouterKeyId` so the
+   * gate fires equally for users whose onboarding-time provisioning
+   * failed (no key + budget=0) and for those whose key exists with
+   * budget=0 — both need admin approval before any spend.
+   *
+   * Skip for BYOK / Custom routes — those have their own external
+   * billing and don't go through our budget tracking.
+   *
+   * @param teamId pass when the call is scoped to a specific team
+   *   (compare-models with explicit teamId). For project-routed chats,
+   *   pass `projectId` instead and the team is looked up from there.
+   */
+  async assertManagedBudgetApproved(
+    transport: ChatTransport,
+    userId: string,
+    options: { projectId?: string | null; teamId?: string | null } = {},
+  ): Promise<void> {
+    if (transport.source !== 'openrouter') return;
+
+    // Resolve the team scope: explicit teamId wins, otherwise look up
+    // from project. Either way, team budget gates the spend.
+    let teamId = options.teamId ?? null;
+    if (!teamId && options.projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, options.projectId))
+        .limit(1);
+      teamId = proj?.teamId ?? null;
+    }
+
+    if (teamId) {
+      const [team] = await this.db
+        .select({ budgetCents: teams.monthlyBudgetCents })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+
+      if (team && team.budgetCents === 0) {
+        throw new HttpException(
+          `${PENDING_APPROVAL_MARKER}: This team is pending budget approval. Ask an admin to set a monthly budget in Management → Teams so members can use AI.`,
+          402,
+        );
+      }
+      return;
+    }
+
+    // No team scope → personal call. Gate fires for managed-cloud users
+    // with budget=0 regardless of whether their key was provisioned.
+    const [u] = await this.db
+      .select({
+        budgetCents: users.monthlyBudgetCents,
+        infraChoice: users.infraChoice,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (
+      u?.infraChoice === 'managed' &&
+      u.budgetCents === 0
+    ) {
+      throw new HttpException(
+        `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
+        402,
+      );
+    }
   }
 
   private safeDecrypt(encrypted: string, context: string): string {

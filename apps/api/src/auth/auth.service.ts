@@ -519,12 +519,13 @@ export class AuthService {
       inviteStatus: user.inviteStatus,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
-      // Back-compat: users who completed the legacy single-step profile-type
-      // flow have profileType set but no onboardingCompletedAt. Treat them
-      // as onboarded so the guard doesn't bounce them through the new
-      // wizard. Can drop once we backfill onboarding_completed_at.
-      onboardingCompleted:
-        !!user.onboardingCompletedAt || !!user.profileType,
+      // Strict gate: only users who reached step 6 of the wizard and
+      // submitted (which atomically stamps onboarding_completed_at) are
+      // admitted to the app. Picking a profile type and bailing earlier
+      // is no longer enough — those users come back into the wizard at
+      // the step they have data for. Legacy single-step users were
+      // backfilled by `packages/database/backfill/backfill-legacy-onboarding-completed.sql`.
+      onboardingCompleted: !!user.onboardingCompletedAt,
       canCreateProject,
     };
   }

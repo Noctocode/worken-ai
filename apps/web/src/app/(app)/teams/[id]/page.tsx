@@ -411,7 +411,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     if (budgetInput === null) return;
     const raw = budgetInput.replace(/\./g, "").replace(",", ".");
     const num = parseFloat(raw);
-    if (!isNaN(num) && num > 0 && num !== budget) budgetMutation.mutate(num);
+    // 0 is allowed as a "suspend" gesture — blocks all spend until the
+    // owner raises the budget again. BE enforces non-negative.
+    if (!isNaN(num) && num >= 0 && num !== budget) budgetMutation.mutate(num);
     setBudgetInput(null);
   };
 
