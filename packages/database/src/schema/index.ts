@@ -389,6 +389,42 @@ export const enabledModels = pgTable("enabled_models", {
  * `apiKeyEncrypted` is the user's own key (BYOK). When null, calls fall
  * back to the workspace's WorkenAI / OpenRouter key.
  */
+/**
+ * Programmatic API tokens for external clients (CI/CD, scripts, mobile
+ * apps, internal automations) that want to call the WorkenAI REST API
+ * without going through the FE login flow. Each row is a single token
+ * the user has minted; they can have many (one per integration / bot /
+ * environment).
+ *
+ * Plaintext format: `sk-wai-<32 random chars>`. Only the SHA-256 hash
+ * is stored — the JwtOrApiKeyGuard hashes the incoming `Authorization:
+ * Bearer …` header and looks it up here. Revoked rows keep a non-null
+ * `revoked_at` so audit logs survive after a user disables a key.
+ *
+ * `prefix` is the last 4 chars of the plaintext (e.g. "x9k2"), shown in
+ * the My Keys table alongside `sk-wai-…` so the user can tell their
+ * tokens apart without seeing the secret again.
+ */
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    hash: text("hash").notNull(),
+    prefix: text("prefix").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    lastUsedAt: timestamp("last_used_at"),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("api_keys_hash_unique").on(table.hash),
+    index("api_keys_owner_idx").on(table.ownerId),
+  ],
+);
+
 export const integrations = pgTable(
   "integrations",
   {

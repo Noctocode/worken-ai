@@ -34,6 +34,22 @@ export class UsersService {
     private readonly encryptionService: EncryptionService,
   ) {}
 
+  /**
+   * Lightweight lookup used by the API-key auth guard to populate
+   * `AuthenticatedUser`. Returns null instead of throwing because the
+   * guard turns "not found" into 401, not 404.
+   */
+  async findById(
+    userId: string,
+  ): Promise<{ id: string; email: string } | null> {
+    const [row] = await this.db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return row ?? null;
+  }
+
   async findAll() {
     const allUsers = await this.db
       .select({

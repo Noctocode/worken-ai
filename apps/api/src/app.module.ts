@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
-import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { JwtOrApiKeyGuard } from './auth/jwt-or-api-key.guard';
 import { ChatModule } from './chat/chat.module';
 import { CompareModelsModule } from './compare-models/compare-models.module';
 import { ConversationsModule } from './conversations/conversations.module';
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     ConfigModule.forRoot({ envFilePath: '../../.env', isGlobal: true }),
     DatabaseModule,
     RedisModule,
+    ApiKeysModule,
     AuthModule,
     ChatModule,
     CompareModelsModule,
@@ -52,7 +54,7 @@ import { UsersModule } from './users/users.module';
     AppService,
     {
       provide: APP_GUARD,
-      useClass: JwtAuthGuard,
+      useClass: JwtOrApiKeyGuard,
     },
   ],
 })

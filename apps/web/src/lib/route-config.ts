@@ -38,6 +38,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/docs/api": {
+    bg: "bg-bg-1",
+    title: "API Documentation",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/resources": {
     bg: "bg-bg-1",
     title: "Resources & Learning",
