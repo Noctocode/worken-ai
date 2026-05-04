@@ -728,6 +728,13 @@ export interface OrgUser {
   status: "pending" | "accepted";
   teams: string[];
   monthlyBudgetCents: number;
+  /**
+   * True when the user finished Managed-Cloud onboarding (has an
+   * OpenRouter key provisioned) but no admin has set a monthly budget
+   * yet — they cannot make AI calls until budget is bumped from 0.
+   * Drives the "N users awaiting approval" banner on Management → Users.
+   */
+  pendingBudgetApproval: boolean;
   spentCents: number;
   projectedCents: number;
   createdAt: string;

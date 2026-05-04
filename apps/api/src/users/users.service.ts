@@ -60,6 +60,7 @@ export class UsersService {
         role: users.role,
         inviteStatus: users.inviteStatus,
         monthlyBudgetCents: users.monthlyBudgetCents,
+        openrouterKeyId: users.openrouterKeyId,
         createdAt: users.createdAt,
       })
       .from(users);
@@ -113,6 +114,13 @@ export class UsersService {
         status: membership?.status ?? 'accepted',
         teams: membership?.teams ?? [],
         monthlyBudgetCents: u.monthlyBudgetCents,
+        // True when the user finished Managed-Cloud onboarding (so they
+        // have a provisioned OpenRouter key) but no admin has set a
+        // budget yet — every chat call would otherwise 402. Drives the
+        // "N users awaiting budget approval" banner on Management →
+        // Users.
+        pendingBudgetApproval:
+          !!u.openrouterKeyId && u.monthlyBudgetCents === 0,
         spentCents: 0, // TODO: integrate with OpenRouter usage API
         projectedCents: 0, // TODO: integrate with OpenRouter usage API
         createdAt: u.createdAt,

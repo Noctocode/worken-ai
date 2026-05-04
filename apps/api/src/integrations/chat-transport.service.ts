@@ -1,10 +1,24 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
-import { integrations, modelConfigs } from '@worken/database/schema';
+import {
+  integrations,
+  modelConfigs,
+  projects,
+  teams,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
+
+/**
+ * Marker string the FE chat-error humanizer matches on to render the
+ * "ask your admin to approve a budget" message instead of the generic
+ * "monthly budget exhausted" one. Exported so it stays a single source
+ * of truth on both sides.
+ */
+export const PENDING_APPROVAL_MARKER = 'BUDGET_PENDING_APPROVAL';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -181,6 +195,72 @@ export class ChatTransportService {
       source: 'openrouter',
       kind: 'openai-sdk',
     };
+  }
+
+  /**
+   * Pending-approval gate for Managed Cloud (OpenRouter-routed) calls.
+   *
+   * After onboarding sets up an OpenRouter sub-account with `limit: 0`,
+   * the user has a real key but can't actually spend until an admin
+   * raises the budget in Management → Users. Without this gate the user
+   * would hit a generic 402 from OpenRouter and the FE humanizer would
+   * say "monthly budget exhausted" — confusing, since they never had a
+   * budget to begin with.
+   *
+   * Skip for BYOK / Custom routes — those have their own external
+   * billing and don't go through our budget tracking.
+   */
+  async assertManagedBudgetApproved(
+    transport: ChatTransport,
+    userId: string,
+    projectId?: string | null,
+  ): Promise<void> {
+    if (transport.source !== 'openrouter') return;
+
+    // Project under a team → team budget gates the spend.
+    if (projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+
+      if (proj?.teamId) {
+        const [team] = await this.db
+          .select({
+            budgetCents: teams.monthlyBudgetCents,
+            keyId: teams.openrouterKeyId,
+          })
+          .from(teams)
+          .where(eq(teams.id, proj.teamId))
+          .limit(1);
+
+        if (team?.keyId && team.budgetCents === 0) {
+          throw new HttpException(
+            `${PENDING_APPROVAL_MARKER}: This team is pending budget approval. Ask an admin to set a monthly budget in Management → Teams so members can use AI.`,
+            402,
+          );
+        }
+        return;
+      }
+    }
+
+    // No project, or project without a team → fall back to per-user budget.
+    const [u] = await this.db
+      .select({
+        budgetCents: users.monthlyBudgetCents,
+        keyId: users.openrouterKeyId,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (u?.keyId && u.budgetCents === 0) {
+      throw new HttpException(
+        `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
+        402,
+      );
+    }
   }
 
   private safeDecrypt(encrypted: string, context: string): string {

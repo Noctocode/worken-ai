@@ -54,6 +54,15 @@ export class ChatController {
       projectId: conversation.projectId,
     });
 
+    // Block calls when the budget-bearing entity (team or user) has
+    // openrouterKeyId set but monthlyBudgetCents = 0 — the "Managed
+    // Cloud, awaiting admin approval" state seeded at onboarding.
+    await this.chatTransport.assertManagedBudgetApproved(
+      transport,
+      user.id,
+      conversation.projectId,
+    );
+
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
