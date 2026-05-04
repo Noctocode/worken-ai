@@ -21,6 +21,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
 import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
+import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
@@ -376,9 +377,7 @@ export default function TeamsPage() {
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
       <PageTabsContent value="my-account">
-        <div className="py-16 text-center text-sm text-text-3">
-          Coming soon.
-        </div>
+        <AccountTab />
       </PageTabsContent>
       <PageTabsContent value="company">
         <CompanyTab />

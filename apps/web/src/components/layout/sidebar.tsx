@@ -334,7 +334,7 @@ export const SidebarContent = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56">
               <DropdownMenuItem asChild>
-                <Link href="/account" className="cursor-pointer">
+                <Link href="/teams?tab=my-account" className="cursor-pointer">
                   <UserIcon className="mr-2 h-4 w-4" />
                   My account
                 </Link>
