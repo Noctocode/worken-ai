@@ -30,7 +30,7 @@ export default function SetupProfileStep3Page() {
               Set up your WorkenAI Identity
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Configure your organizational profile to customize your
+              Tell us a bit about yourself so we can personalize your
               enterprise AI experience.
             </p>
           </div>
