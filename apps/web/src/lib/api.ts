@@ -1863,9 +1863,11 @@ export interface IntegrationCard {
   /** For custom rows: how many model_configs aliases reference this integration. */
   boundAliasCount: number;
   stats: {
-    successRate: number; // 0..1
+    successRate: number; // 0..1 over last 30 days
+    /** Calls in the current calendar month. */
     apiCalls: number;
-    rateLimit: number;
+    /** Peak calls in any single day over the last 30 days. */
+    peakDailyCalls: number;
   };
   createdAt: string | null;
   updatedAt: string | null;

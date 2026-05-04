@@ -201,12 +201,12 @@ function ProviderSettingsDialog({
           </div>
           <div>
             <p className="text-[16px] font-normal text-text-1 mb-0.5">
-              Rate limit:
+              Peak / day:
             </p>
             <p className="text-[18px] font-bold text-text-1">
-              {card.stats.rateLimit.toLocaleString()}
+              {card.stats.peakDailyCalls.toLocaleString()}
               <span className="text-[13px] font-normal text-text-3 ml-2">
-                requests/day
+                calls (30d max)
               </span>
             </p>
           </div>

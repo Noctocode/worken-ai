@@ -20,9 +20,16 @@ import {
 } from './predefined-providers.js';
 
 interface IntegrationStats {
-  successRate: number; // 0..1
+  successRate: number; // 0..1 over last 30 days
+  /** Calls in the current calendar month. */
   apiCalls: number;
-  rateLimit: number;
+  /**
+   * Peak calls in any single day over the last 30 days. Empirical
+   * "burst" signal — replaces a hardcoded provider rate limit because
+   * neither OpenRouter nor the native APIs expose per-key quotas in a
+   * way we can read uniformly.
+   */
+  peakDailyCalls: number;
 }
 
 export interface IntegrationView {
@@ -99,9 +106,36 @@ export class IntegrationsService {
       )
       .groupBy(observabilityEvents.provider);
 
+    // Peak calls in a single day over the last 30 days, per provider.
+    // Two-step aggregate: count per (provider, day), then max over days.
+    const peakRows = await this.db.execute<{
+      provider: string;
+      peak: number;
+    }>(sql`
+      SELECT provider, MAX(daily_count)::int AS peak
+      FROM (
+        SELECT
+          ${observabilityEvents.provider} AS provider,
+          DATE_TRUNC('day', ${observabilityEvents.createdAt}) AS day,
+          COUNT(*) AS daily_count
+        FROM ${observabilityEvents}
+        WHERE
+          ${observabilityEvents.userId} = ${userId}
+          AND ${observabilityEvents.createdAt} >= ${since}
+          AND ${observabilityEvents.provider} IS NOT NULL
+        GROUP BY provider, day
+      ) AS daily
+      GROUP BY provider
+    `);
+
     const statsByProvider = new Map<
       string,
-      { successCount: number; totalCount: number; thisMonth: number }
+      {
+        successCount: number;
+        totalCount: number;
+        thisMonth: number;
+        peakDaily: number;
+      }
     >();
     for (const r of statsRows) {
       if (!r.provider) continue;
@@ -109,17 +143,34 @@ export class IntegrationsService {
         successCount: Number(r.successCount ?? 0),
         totalCount: Number(r.totalCount ?? 0),
         thisMonth: Number(r.thisMonth ?? 0),
+        peakDaily: 0,
       });
     }
+    // peakRows shape varies by drizzle adapter; the typed fields above
+    // are what we expect, but the runtime row may have lowercase keys.
+    const peakRowList = (peakRows as { rows?: unknown[] }).rows ?? peakRows;
+    if (Array.isArray(peakRowList)) {
+      for (const r of peakRowList as { provider: string; peak: number }[]) {
+        if (!r.provider) continue;
+        const existing = statsByProvider.get(r.provider) ?? {
+          successCount: 0,
+          totalCount: 0,
+          thisMonth: 0,
+          peakDaily: 0,
+        };
+        existing.peakDaily = Number(r.peak ?? 0);
+        statsByProvider.set(r.provider, existing);
+      }
+    }
 
-    const buildStats = (providerId: string, rateLimit: number): IntegrationStats => {
+    const buildStats = (providerId: string): IntegrationStats => {
       const s = statsByProvider.get(providerId);
       const successRate =
         s && s.totalCount > 0 ? s.successCount / s.totalCount : 0;
       return {
         successRate,
         apiCalls: s?.thisMonth ?? 0,
-        rateLimit,
+        peakDailyCalls: s?.peakDaily ?? 0,
       };
     };
 
@@ -166,7 +217,7 @@ export class IntegrationsService {
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,
         boundAliasCount: 0,
-        stats: buildStats(p.id, p.defaultRateLimit),
+        stats: buildStats(p.id),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
       });
@@ -197,7 +248,7 @@ export class IntegrationsService {
         openAICompatible: true,
         byokSupported: true,
         boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
-        stats: buildStats('custom', 0),
+        stats: buildStats('custom'),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
       });
