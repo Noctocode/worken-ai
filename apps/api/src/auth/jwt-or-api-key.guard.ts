@@ -16,6 +16,13 @@ import { UsersService } from '../users/users.service.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
 import type { AuthenticatedUser } from './types.js';
 
+export type AuthMethod = 'cookie' | 'apikey';
+
+export interface AuthenticatedRequest {
+  user?: AuthenticatedUser;
+  authMethod?: AuthMethod;
+}
+
 /**
  * Auth guard for the entire app. Tries the existing JWT cookie path
  * first (FE login flow). If no cookie OR JWT is rejected, falls back to
@@ -55,7 +62,10 @@ export class JwtOrApiKeyGuard extends AuthGuard('jwt') {
     if (hasJwtCookie) {
       try {
         const ok = (await super.canActivate(context)) as boolean;
-        if (ok) return true;
+        if (ok) {
+          (req as Request & AuthenticatedRequest).authMethod = 'cookie';
+          return true;
+        }
       } catch {
         // fall through to API key path
       }
@@ -87,7 +97,9 @@ export class JwtOrApiKeyGuard extends AuthGuard('jwt') {
     if (!owner) return null;
 
     const user: AuthenticatedUser = { id: owner.id, email: owner.email };
-    (req as Request & { user?: AuthenticatedUser }).user = user;
+    const authedReq = req as Request & AuthenticatedRequest;
+    authedReq.user = user;
+    authedReq.authMethod = 'apikey';
 
     // Fire-and-forget — never block the request on the timestamp write,
     // and a failure here shouldn't 500 a successful API call.

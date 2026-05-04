@@ -147,9 +147,7 @@ export default function ApiDocsPage() {
   }'`;
 
   const exampleNewConvo = `curl -X POST ${BASE_URL}/projects/<projectId>/conversations \\
-  -H "Authorization: Bearer sk-wai-XXXX..." \\
-  -H "Content-Type: application/json" \\
-  -d '{ "title": "GitHub Action — PR review" }'`;
+  -H "Authorization: Bearer sk-wai-XXXX..."`;
 
   return (
     <div className="flex gap-8 py-6">
@@ -304,7 +302,7 @@ export default function ApiDocsPage() {
               method="POST"
               path="/projects/:projectId/conversations"
               summary="Creates a new conversation in a project."
-              description="Body: { title: string }. Returns the new conversation with an empty message list."
+              description="No body required. Returns the new conversation with an empty message list and an auto-generated title that you can rename later from the UI."
             />
             <Endpoint
               method="GET"

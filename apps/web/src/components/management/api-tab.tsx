@@ -95,7 +95,9 @@ export function ApiTab() {
       await navigator.clipboard.writeText(text);
       setCopyToast(toastKey);
     } catch {
-      // Clipboard API failure (insecure context, etc.) — silent.
+      // Clipboard API rejects in insecure contexts (HTTP origins, sandboxed
+      // iframes) — surface a fallback so the user sees the click registered.
+      setCopyToast(`${toastKey}:err`);
     }
   };
 
@@ -264,12 +266,17 @@ export function ApiTab() {
         </div>
       </div>
 
-      {/* One-time reveal modal — plaintext is only visible right after mint. */}
+      {/* One-time reveal modal — plaintext is only visible right after mint.
+          mintMutation.reset() also wipes the plaintext from React Query's
+          mutation cache so it can't be inspected via devtools after close. */}
       <RevealDialog
         minted={revealed}
         copyToast={copyToast}
         onCopy={(text) => handleCopy(text, "minted")}
-        onClose={() => setRevealed(null)}
+        onClose={() => {
+          setRevealed(null);
+          mintMutation.reset();
+        }}
       />
 
       {/* Revoke confirm */}
@@ -378,10 +385,17 @@ function RevealDialog({
               )}
             </Button>
           </div>
-          <p className="mt-2 text-[11px] text-text-3">
-            Used as <code>Authorization: Bearer &lt;key&gt;</code> in HTTP
-            requests to the WorkenAI API.
-          </p>
+          {copyToast === "minted:err" ? (
+            <p className="mt-2 text-[11px] text-danger-6">
+              Couldn&apos;t copy automatically — select the key manually and
+              copy it.
+            </p>
+          ) : (
+            <p className="mt-2 text-[11px] text-text-3">
+              Used as <code>Authorization: Bearer &lt;key&gt;</code> in HTTP
+              requests to the WorkenAI API.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button onClick={onClose}>I&apos;ve saved it</Button>

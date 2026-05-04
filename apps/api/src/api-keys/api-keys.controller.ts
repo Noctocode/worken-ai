@@ -1,15 +1,18 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { AuthenticatedRequest } from '../auth/jwt-or-api-key.guard.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ApiKeysService } from './api-keys.service.js';
 
@@ -23,19 +26,27 @@ export class ApiKeysController {
   }
 
   /**
-   * Mint a new token. The plaintext is included in the response body
-   * here and ONLY here — the FE shows it in a one-time-reveal modal.
-   * After this, only the prefix can be displayed.
+   * Mint a new token. Plaintext is included in the response body here
+   * and ONLY here — the FE shows it in a one-time-reveal modal. After
+   * this, only the prefix can be displayed.
+   *
+   * Defense in depth: minting is restricted to cookie-authenticated
+   * sessions. If a token leaks, an attacker holding it can't use it to
+   * mint replacement tokens that would survive the victim revoking the
+   * leaked one. They'd need to compromise the actual user account.
    */
   @Post()
   mint(
     @Body() body: { name?: string },
     @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request & AuthenticatedRequest,
   ) {
-    if (typeof body?.name !== 'string') {
-      throw new BadRequestException('`name` is required');
+    if (req.authMethod === 'apikey') {
+      throw new ForbiddenException(
+        'API keys cannot be minted via API key auth. Sign in to the WorkenAI app and create the key from Management → API.',
+      );
     }
-    return this.apiKeys.mint(user.id, body.name);
+    return this.apiKeys.mint(user.id, body?.name ?? '');
   }
 
   @Delete(':id')
