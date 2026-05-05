@@ -29,11 +29,13 @@ import {
 } from "@/components/ui/select";
 import {
   fetchOrgUser,
+  fetchUserActivity,
   removeOrgUser,
   updateMemberRole,
   updateUserBudget,
   updateUserRole,
   type OrgRole,
+  type UserActivityEvent,
 } from "@/lib/api";
 import {
   Dialog,
@@ -125,6 +127,89 @@ function UserRoleControl({
   );
 }
 
+/**
+ * Activity-log row. One per observability event for this user. Compact
+ * grid: time + type pill / model + provider / tokens + cost + latency
+ * + status. Failed events get the danger-tinted dot and surface the
+ * error message; successful ones show only the metrics.
+ */
+function ActivityRow({ event }: { event: UserActivityEvent }) {
+  const when = new Date(event.createdAt);
+  const time = when.toLocaleString(undefined, {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+  const eventLabel = (() => {
+    switch (event.eventType) {
+      case "chat_call":
+        return "Chat";
+      case "arena_call":
+        return "Arena";
+      case "evaluator_call":
+        return "Evaluator";
+      case "guardrail_trigger":
+        return "Guardrail";
+      default:
+        return event.eventType;
+    }
+  })();
+  const cost =
+    event.costUsd != null
+      ? `$${event.costUsd.toFixed(event.costUsd < 1 ? 4 : 2)}`
+      : null;
+
+  return (
+    <li className="flex flex-col gap-1.5 border-b border-bg-1 px-4 py-3 last:border-0">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span
+            className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
+              event.success ? "bg-success-7" : "bg-danger-6"
+            }`}
+            aria-label={event.success ? "Success" : "Failed"}
+          />
+          <span className="rounded bg-bg-1 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-text-2">
+            {eventLabel}
+          </span>
+          {event.model && (
+            <span className="truncate text-[13px] text-text-1">
+              {event.model}
+            </span>
+          )}
+        </div>
+        <span className="shrink-0 text-[12px] text-text-3 whitespace-nowrap">
+          {time}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-text-3 pl-4">
+        {event.provider && <span>{event.provider}</span>}
+        {event.totalTokens != null && (
+          <span>{event.totalTokens.toLocaleString()} tokens</span>
+        )}
+        {cost && <span>{cost}</span>}
+        {event.latencyMs != null && (
+          <span>
+            {event.latencyMs >= 1000
+              ? `${(event.latencyMs / 1000).toFixed(1)}s`
+              : `${event.latencyMs}ms`}
+          </span>
+        )}
+        {event.teamName && <span>· {event.teamName}</span>}
+      </div>
+      {!event.success && event.errorMessage && (
+        <p className="pl-4 text-[12px] text-danger-6 line-clamp-2">
+          {event.errorMessage}
+        </p>
+      )}
+      {event.promptPreview && (
+        <p className="pl-4 text-[12px] text-text-2 line-clamp-2 italic">
+          “{event.promptPreview}”
+        </p>
+      )}
+    </li>
+  );
+}
+
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   const exceeded = spent > budget;
@@ -167,6 +252,17 @@ export default function UserDetailPage({
   const [editBudget, setEditBudget] = useState("");
   const [editRole, setEditRole] = useState<OrgRole>("basic");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
+
+  // Lazy-load: only fetch when the dialog is opened. 50 most recent
+  // events is enough for a glance; if the user wants the full history
+  // they can drill into the Observability dashboard with a userId
+  // filter (separate page, supports search + range).
+  const activityQuery = useQuery({
+    queryKey: ["user-activity", id],
+    queryFn: () => fetchUserActivity(id, { page: 1, pageSize: 50 }),
+    enabled: activityOpen,
+  });
 
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
@@ -371,6 +467,7 @@ export default function UserDetailPage({
             <Button
               variant="outline"
               className="h-10 gap-2 border-border-2 text-[14px] text-text-1"
+              onClick={() => setActivityOpen(true)}
             >
               <LayoutList className="h-4 w-4" />
               Activity Log
@@ -565,6 +662,71 @@ export default function UserDetailPage({
           </div>
         </div>
       </div>
+
+      {/* Activity Log — opened by the page-level Activity Log button.
+          Lazy-fetches the last 50 observability events for this user
+          (chat / arena / evaluator calls, guardrail triggers). Admin
+          can see anyone's activity; non-admins only their own (gated
+          on the BE). */}
+      <Dialog
+        open={activityOpen}
+        onOpenChange={(open) => !open && setActivityOpen(false)}
+      >
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Activity log — {displayName}</DialogTitle>
+            <DialogDescription>
+              Recent AI calls and platform events for this user.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto rounded-md border border-bg-1 bg-bg-white">
+            {activityQuery.isLoading && (
+              <div className="flex items-center justify-center py-10">
+                <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+              </div>
+            )}
+            {activityQuery.isError && (
+              <div className="px-4 py-10 text-center text-sm text-danger-6">
+                {activityQuery.error instanceof Error
+                  ? activityQuery.error.message
+                  : "Failed to load activity log."}
+              </div>
+            )}
+            {activityQuery.data &&
+              !activityQuery.isLoading &&
+              activityQuery.data.events.length === 0 && (
+                <div className="px-4 py-10 text-center text-sm text-text-3">
+                  No activity recorded for this user yet.
+                </div>
+              )}
+            {activityQuery.data &&
+              activityQuery.data.events.length > 0 && (
+                <ul className="flex flex-col">
+                  {activityQuery.data.events.map((e) => (
+                    <ActivityRow key={e.id} event={e} />
+                  ))}
+                </ul>
+              )}
+          </div>
+          {activityQuery.data &&
+            activityQuery.data.total > activityQuery.data.events.length && (
+              <p className="text-[12px] text-text-3">
+                Showing {activityQuery.data.events.length} of{" "}
+                {activityQuery.data.total.toLocaleString()} most recent
+                events. Older events are available in the Observability
+                dashboard.
+              </p>
+            )}
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setActivityOpen(false)}
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Remove user confirm — opened by the appbar Trash2 dispatch.
           Mirrors the dialog UserRow uses on /teams?tab=users; on

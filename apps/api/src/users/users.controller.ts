@@ -9,6 +9,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { UsersService } from './users.service.js';
 import { TeamsService } from '../teams/teams.service.js';
@@ -18,6 +19,7 @@ import { eq } from 'drizzle-orm';
 import { users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 
 @Controller('users')
 export class UsersController {
@@ -26,6 +28,7 @@ export class UsersController {
     private readonly usersService: UsersService,
     private readonly teamsService: TeamsService,
     private readonly mailService: MailService,
+    private readonly observabilityService: ObservabilityService,
   ) {}
 
   @Get()
@@ -39,6 +42,45 @@ export class UsersController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     return this.usersService.findOne(id, caller.id);
+  }
+
+  /**
+   * User-scoped activity log: paginated observability events for the
+   * given user (chat / arena / evaluator calls, with model, cost,
+   * latency, success). Reuses ObservabilityService.listEvents under
+   * the hood with a from=epoch / to=now window so the result is the
+   * full lifetime of the user, not the dashboard's range filter.
+   *
+   * Auth: admin can see anyone's activity; non-admins can only see
+   * their own. Activity contains promptPreview snippets, so we don't
+   * leak it across users at non-admin level.
+   */
+  @Get(':id/activity')
+  async activity(
+    @Param('id') id: string,
+    @CurrentUser() caller: AuthenticatedUser,
+    @Query('page') pageRaw?: string,
+    @Query('pageSize') pageSizeRaw?: string,
+  ) {
+    const [callerUser] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, caller.id));
+    const isAdmin = callerUser?.role === 'admin';
+    if (!isAdmin && caller.id !== id) {
+      throw new ForbiddenException(
+        'You can only view your own activity log.',
+      );
+    }
+    const page = Math.max(1, Number(pageRaw) || 1);
+    const pageSize = Math.max(1, Math.min(Number(pageSizeRaw) || 50, 200));
+    return this.observabilityService.listEvents({
+      from: new Date(0),
+      to: new Date(),
+      userId: id,
+      page,
+      pageSize,
+    });
   }
 
   @Post('invite')

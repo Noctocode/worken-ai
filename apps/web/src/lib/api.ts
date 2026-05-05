@@ -793,6 +793,45 @@ export async function updateUserBudget(
   return res.json();
 }
 
+export interface UserActivityEvent {
+  id: string;
+  createdAt: string;
+  eventType: string;
+  model: string | null;
+  provider: string | null;
+  totalTokens: number | null;
+  costUsd: number | null;
+  latencyMs: number | null;
+  success: boolean;
+  errorMessage: string | null;
+  promptPreview: string | null;
+  teamId: string | null;
+  teamName: string | null;
+}
+
+export interface UserActivityResponse {
+  total: number;
+  page: number;
+  pageSize: number;
+  events: UserActivityEvent[];
+}
+
+export async function fetchUserActivity(
+  userId: string,
+  params: { page?: number; pageSize?: number } = {},
+): Promise<UserActivityResponse> {
+  const qs = new URLSearchParams();
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  const url = `/users/${userId}/activity${qs.toString() ? `?${qs}` : ""}`;
+  const res = await apiFetch(url);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to load activity log");
+  }
+  return res.json();
+}
+
 export type OrgRole = "basic" | "advanced" | "admin";
 
 export async function updateUserRole(
