@@ -211,14 +211,34 @@ export const guardrails = pgTable("guardrails", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const userLlmCredentials = pgTable("user_llm_credentials", {
-  id: uuid("id").primaryKey().defaultRandom(),
+// Legacy `user_llm_credentials` table dropped — see
+// `packages/database/backfill/drop-legacy-user-llm-credentials.sql`.
+// Onboarding step-5 keys now flow into the `integrations` table from
+// commit 595f986 onwards.
+
+/**
+ * Per-user staged onboarding state. Survives sessionStorage loss
+ * (browser crash, cookie clear, device switch) so a user who closed
+ * the tab on step 4 can pick up where they left off on next login.
+ *
+ * Lives only until the user completes onboarding —
+ * `OnboardingService.complete` deletes the row after the atomic
+ * users/credentials/documents transaction commits. ON DELETE CASCADE
+ * to users.id covers GDPR delete + admin user-removal as well.
+ *
+ * Stores the *non-sensitive* scalar fields gathered across steps 2–4:
+ * profile type, company info (name / industry / team size), infra
+ * choice. Step-5 API keys and step-6 file uploads stay out of the
+ * draft on purpose — the keys are an XSS exfiltration vector if
+ * persisted, and the files are large multipart uploads that don't
+ * round-trip cleanly through a JSON column.
+ */
+export const onboardingDrafts = pgTable("onboarding_drafts", {
   userId: uuid("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  provider: text("provider").notNull(), // 'openai' | 'azure' | 'anthropic' | 'private-vpc'
-  apiKeyEncrypted: text("api_key_encrypted").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  partial: jsonb("partial").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
 export const knowledgeDocuments = pgTable("knowledge_documents", {

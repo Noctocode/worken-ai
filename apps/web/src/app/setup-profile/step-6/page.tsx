@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { UploadCloud, FolderClosed, Users, Server, Award, FileText, X } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -31,6 +31,7 @@ function hasAllowedExtension(name: string) {
 
 export default function SetupProfileStep6Page() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { state, files, setFiles, reset } = useOnboarding();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,7 +114,13 @@ export default function SetupProfileStep6Page() {
     onSuccess: () => {
       reset();
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      window.location.href = "/";
+      // Honour ?next= when present — set by the BE Google callback
+      // when the user signed in to accept an invite mid-flow. Has to
+      // be a same-origin path; reject anything else as a redirect
+      // hardening guard.
+      const next = searchParams.get("next");
+      const target = next && next.startsWith("/") ? next : "/";
+      window.location.href = target;
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't save your setup. Please try again.");

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, Appbar } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/components/providers";
@@ -20,8 +21,20 @@ function OnboardingGuard({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, user, router]);
 
-  if (!isLoading && user && !user.onboardingCompleted) {
-    return null;
+  // Hold off rendering ANY of the dashboard chrome until auth has
+  // resolved AND onboardingCompleted is confirmed. The previous
+  // version returned children unconditionally while `isLoading`, so
+  // a Google-callback round-trip flashed the empty dashboard for a
+  // few hundred ms before the redirect to /setup-profile fired. Show
+  // a centered spinner during both the loading frame and the
+  // about-to-redirect frame so there's no flash of unauthorized
+  // content.
+  if (isLoading || (user && !user.onboardingCompleted)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-bg-1">
+        <Loader2 className="h-8 w-8 animate-spin text-text-3" />
+      </div>
+    );
   }
   return <>{children}</>;
 }

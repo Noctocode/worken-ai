@@ -570,6 +570,7 @@ function TeamStep({
                   <img
                     src={m.picture}
                     alt={m.name ?? ""}
+                    referrerPolicy="no-referrer"
                     className="h-9 w-9 shrink-0 rounded-full object-cover"
                   />
                 ) : (

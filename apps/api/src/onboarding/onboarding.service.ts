@@ -16,6 +16,7 @@ import {
   users,
   integrations,
   knowledgeDocuments,
+  onboardingDrafts,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -37,12 +38,39 @@ export interface OnboardingPayload {
   apiKeys?: Partial<Record<Provider, string>>;
 }
 
+/**
+ * Subset of the onboarding state safe to round-trip through the BE
+ * draft. Mirrors `OnboardingPayload` but with every field optional —
+ * a draft can be saved any time during the wizard.
+ *
+ * `apiKeys` is deliberately absent: keys are an XSS exfiltration
+ * vector if persisted server-side without strong scoping, and the
+ * wizard collects them only on the very last step before completion
+ * anyway. Files are also absent — they'd need multipart, not JSON.
+ */
+export interface OnboardingDraft {
+  profileType?: ProfileType;
+  fullName?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+  infraChoice?: InfraChoice;
+}
+
 const VALID_PROVIDERS: Provider[] = [
   'openai',
   'azure',
   'anthropic',
   'private-vpc',
 ];
+
+// Subset of step-5 providers that 1:1 map to predefined providers in
+// the Integration tab catalog, and so can flow straight into the
+// `integrations` table on onboarding completion. Azure / private-vpc
+// need extra fields (deployment URL, VPC endpoint) the wizard never
+// collects, so their keys are deliberately dropped — see comment in
+// completeInner where this list is consulted.
+const SUPPORTED_FOR_INTEGRATION_TABLE: Provider[] = ['openai', 'anthropic'];
 
 // Whitelisted enum values for the company-branch dropdowns. Must stay in
 // sync with apps/web/src/app/setup-profile/step-2/page.tsx — the FE
@@ -221,7 +249,9 @@ export class OnboardingService {
         for (const [provider, key] of Object.entries(payload.apiKeys)) {
           if (!key || !key.trim()) continue;
           if (!VALID_PROVIDERS.includes(provider as Provider)) continue;
-          if (provider !== 'openai' && provider !== 'anthropic') {
+          if (
+            !SUPPORTED_FOR_INTEGRATION_TABLE.includes(provider as Provider)
+          ) {
             this.logger.warn(
               `Onboarding step-5: ${provider} key supplied but no matching predefined provider — skipping. User ${userId} can finish setup in Management → Integration.`,
             );
@@ -277,6 +307,15 @@ export class OnboardingService {
     //      in `key-resolver.resolveUserKey` to make any chat attempt
     //      before approval fail with a 402 + BUDGET_PENDING_APPROVAL
     //      marker rather than silently creating a key.
+
+    // Drop the resume-draft now that the wizard is genuinely done.
+    // Kept outside the transaction because failure here is benign —
+    // the row would just orphan and can be reaped by cron later, no
+    // need to roll back a successful onboarding for it.
+    await this.db
+      .delete(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId))
+      .catch(() => undefined);
   }
 
   /**
@@ -369,6 +408,108 @@ export class OnboardingService {
     };
   }
 
+  /**
+   * Read the user's draft if present. Returns null instead of
+   * throwing 404 because the FE always tries to hydrate; absence is
+   * the common case (fresh signup, or already-completed onboarding
+   * which deletes the row).
+   */
+  async getDraft(userId: string): Promise<OnboardingDraft | null> {
+    const [row] = await this.db
+      .select({ partial: onboardingDrafts.partial })
+      .from(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId))
+      .limit(1);
+    return (row?.partial as OnboardingDraft | undefined) ?? null;
+  }
+
+  /**
+   * Upsert the draft. Validates the partial against the same enum
+   * lists `complete` uses so a malformed POST can't poison the row.
+   *
+   * Behaviour split: unknown top-level keys (anything outside the
+   * OnboardingDraft shape) are silently stripped — the FE always
+   * sends the canonical shape, and a future field added to the BE
+   * shouldn't break older FEs that don't know about it. But if a
+   * known field carries an invalid enum value
+   * (industry: 'lol', teamSize: '999', etc.) we 400 — the FE Selects
+   * are constrained, so an invalid enum from a programmatic caller
+   * is a real bug they want to know about, not silently dropped
+   * data.
+   */
+  async updateDraft(
+    userId: string,
+    input: OnboardingDraft,
+  ): Promise<OnboardingDraft> {
+    const sanitized: OnboardingDraft = {};
+
+    if (input.profileType !== undefined) {
+      if (input.profileType !== 'company' && input.profileType !== 'personal') {
+        throw new BadRequestException(
+          'profileType must be "company" or "personal"',
+        );
+      }
+      sanitized.profileType = input.profileType;
+    }
+    if (typeof input.fullName === 'string') {
+      sanitized.fullName = input.fullName.slice(0, 200);
+    }
+    if (typeof input.companyName === 'string') {
+      sanitized.companyName = input.companyName.slice(0, 200);
+    }
+    if (input.industry !== undefined) {
+      if (
+        typeof input.industry !== 'string' ||
+        !(VALID_INDUSTRIES as readonly string[]).includes(input.industry)
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
+      sanitized.industry = input.industry;
+    }
+    if (input.teamSize !== undefined) {
+      if (
+        typeof input.teamSize !== 'string' ||
+        !(VALID_TEAM_SIZES as readonly string[]).includes(input.teamSize)
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
+      }
+      sanitized.teamSize = input.teamSize;
+    }
+    if (input.infraChoice !== undefined) {
+      if (
+        input.infraChoice !== 'managed' &&
+        input.infraChoice !== 'on-premise'
+      ) {
+        throw new BadRequestException(
+          'infraChoice must be "managed" or "on-premise"',
+        );
+      }
+      sanitized.infraChoice = input.infraChoice;
+    }
+
+    await this.db
+      .insert(onboardingDrafts)
+      .values({ userId, partial: sanitized })
+      .onConflictDoUpdate({
+        target: onboardingDrafts.userId,
+        set: { partial: sanitized, updatedAt: new Date() },
+      });
+
+    return sanitized;
+  }
+
+  /** Soft-delete the draft. Called both from the controller and from
+   *  `complete()` after a successful transaction. */
+  async deleteDraft(userId: string): Promise<void> {
+    await this.db
+      .delete(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId));
+  }
+
   private validate(p: OnboardingPayload) {
     if (p.profileType !== 'company' && p.profileType !== 'personal') {
       throw new BadRequestException(
@@ -386,11 +527,12 @@ export class OnboardingService {
       }
       // industry/teamSize stay optional (Figma shows no asterisk), but
       // when supplied they must be one of the FE dropdown values.
+      // Cast the readonly tuple down to a plain string[] so `.includes`
+      // accepts an arbitrary string at the call site instead of forcing
+      // a tuple-narrowing cast on the input.
       if (
         p.industry &&
-        !VALID_INDUSTRIES.includes(
-          p.industry as (typeof VALID_INDUSTRIES)[number],
-        )
+        !(VALID_INDUSTRIES as readonly string[]).includes(p.industry)
       ) {
         throw new BadRequestException(
           `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
@@ -398,9 +540,7 @@ export class OnboardingService {
       }
       if (
         p.teamSize &&
-        !VALID_TEAM_SIZES.includes(
-          p.teamSize as (typeof VALID_TEAM_SIZES)[number],
-        )
+        !(VALID_TEAM_SIZES as readonly string[]).includes(p.teamSize)
       ) {
         throw new BadRequestException(
           `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,

@@ -86,6 +86,7 @@ function MemberAvatars({
               key={i}
               src={m.picture}
               alt={m.name ?? ""}
+              referrerPolicy="no-referrer"
               className="h-6 w-6 rounded-full border-2 border-bg-white object-cover"
             />
           ) : (

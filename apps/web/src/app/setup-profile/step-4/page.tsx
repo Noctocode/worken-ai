@@ -47,7 +47,7 @@ const INFRA_OPTIONS: Array<{
 
 export default function SetupProfileStep4Page() {
   const router = useRouter();
-  const { state, update } = useOnboarding();
+  const { state, update, saveDraft } = useOnboarding();
   const selected: Infra = state.infraChoice ?? "managed";
 
   return (
@@ -80,7 +80,7 @@ export default function SetupProfileStep4Page() {
                   key={type}
                   type="button"
                   onClick={() => update({ infraChoice: type })}
-                  className={`flex-1 flex flex-col gap-4 rounded bg-bg-white p-6 text-left transition-colors ${
+                  className={`flex-1 flex flex-col gap-4 rounded bg-bg-white p-6 text-left cursor-pointer transition-colors ${
                     isSelected
                       ? "border-[1.5px] border-primary-6"
                       : "border border-border-2 hover:border-primary-6"
@@ -133,6 +133,7 @@ export default function SetupProfileStep4Page() {
                 // cards — otherwise step 6 would see infraChoice undefined
                 // and reject the submit.
                 if (!state.infraChoice) update({ infraChoice: selected });
+                saveDraft({ infraChoice: selected });
                 router.push("/setup-profile/step-5");
               }}
             >

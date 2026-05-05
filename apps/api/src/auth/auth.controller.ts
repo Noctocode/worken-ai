@@ -74,14 +74,31 @@ export class AuthController {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const cookies = req.cookies as Record<string, string> | undefined;
-    const returnTo = cookies?.invite_return_to;
+    const returnToRaw = cookies?.invite_return_to;
+    const returnTo =
+      typeof returnToRaw === 'string' && returnToRaw.startsWith('/')
+        ? returnToRaw
+        : null;
     res.clearCookie('invite_return_to', { path: '/' });
 
-    if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/')) {
-      res.redirect(`${frontendUrl}${returnTo}`);
+    // Three cases:
+    //   1. Onboarding done, no returnTo → "/" (dashboard).
+    //   2. Onboarding done, returnTo set → returnTo (invite landed on
+    //      /invite/:token, the page handles acceptance there).
+    //   3. Onboarding NOT done → "/setup-profile". If a returnTo was
+    //      also set we forward it as `?next=<encoded>` so step-6's
+    //      success handler can finish the wizard AND land the user
+    //      on the original destination, instead of dropping the
+    //      invite link silently.
+    let target: string;
+    if (!user.onboardingCompletedAt) {
+      target = returnTo
+        ? `/setup-profile?next=${encodeURIComponent(returnTo)}`
+        : '/setup-profile';
     } else {
-      res.redirect(frontendUrl);
+      target = returnTo ?? '/';
     }
+    res.redirect(`${frontendUrl}${target}`);
   }
 
   @Public()

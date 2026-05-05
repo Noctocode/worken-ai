@@ -32,6 +32,8 @@
 --   docker exec -i worken-postgres psql -U worken -d worken \
 --     < packages/database/backfill/migrate-legacy-llm-credentials-to-integrations.sql
 
+BEGIN;
+
 INSERT INTO integrations (owner_id, provider_id, api_url, api_key_encrypted, is_enabled, created_at)
 SELECT
   ulc.user_id,
@@ -48,3 +50,5 @@ WHERE ulc.provider IN ('openai', 'anthropic')
       AND i.provider_id = ulc.provider
       AND i.api_url IS NULL
   );
+
+COMMIT;
