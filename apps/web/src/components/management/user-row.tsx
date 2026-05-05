@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MoreVertical, UserX, Eye } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -39,10 +40,12 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 }
 
 export function UserRow({ user }: { user: OrgUser }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const canRemove = currentUser?.role === "admin";
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const detailHref = `/users/${user.id}`;
 
   const removeMutation = useMutation({
     mutationFn: () => removeOrgUser(user.id),
@@ -64,7 +67,19 @@ export function UserRow({ user }: { user: OrgUser }) {
   const overBudget = projected > budget;
 
   return (
-    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
+    <tr
+      role="link"
+      tabIndex={0}
+      aria-label={`Open ${user.name ?? user.email}`}
+      className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-bg-1/50 focus:outline-none focus-visible:bg-bg-1/60 focus-visible:ring-1 focus-visible:ring-primary-6"
+      onClick={() => router.push(detailHref)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          router.push(detailHref);
+        }
+      }}
+    >
       {/* Name */}
       <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         <div className="flex items-center gap-2">
@@ -165,8 +180,12 @@ export function UserRow({ user }: { user: OrgUser }) {
           ) : null}
         </div>
       </td>
-      {/* Actions */}
-      <td className="px-4 align-middle text-right">
+      {/* Actions — stopPropagation so clicking the kebab / Remove
+          button doesn't also fire the row's navigate-to-detail click. */}
+      <td
+        className="px-4 align-middle text-right"
+        onClick={(e) => e.stopPropagation()}
+      >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -179,7 +198,7 @@ export function UserRow({ user }: { user: OrgUser }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem asChild className="gap-2">
-              <Link href={`/users/${user.id}`}>
+              <Link href={detailHref}>
                 <Eye className="h-4 w-4" />
                 View user
               </Link>
