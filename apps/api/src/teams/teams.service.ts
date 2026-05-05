@@ -460,6 +460,17 @@ export class TeamsService {
     email: string,
     role: string,
     userId: string,
+    /**
+     * Optional per-member monthly cap, in cents, applied at invite
+     * time. Same semantics as PATCH /teams/:id/members/:memberId/cap:
+     *   - undefined / null → no individual cap (shares team budget)
+     *   - 0  → invited as suspended (chat blocked at the gate)
+     *   - >0 → enforced cap once they accept
+     * On a re-invite to the same email, this overwrites the existing
+     * cap so admins can adjust during a resend without going to the
+     * Members table afterwards.
+     */
+    monthlyCapCents?: number | null,
   ) {
     // Normalize email so Foo@X.com and foo@x.com can't create two rows or
     // dodge the post-signup sweep, which matches case-sensitively.
@@ -484,6 +495,22 @@ export class TeamsService {
     if (role !== 'editor' && role !== 'viewer') {
       throw new BadRequestException('Role must be editor or viewer');
     }
+
+    if (
+      monthlyCapCents !== undefined &&
+      monthlyCapCents !== null &&
+      (typeof monthlyCapCents !== 'number' ||
+        !Number.isInteger(monthlyCapCents) ||
+        monthlyCapCents < 0)
+    ) {
+      throw new BadRequestException(
+        'monthlyCapCents must be null or a non-negative integer (cents).',
+      );
+    }
+    // null is the explicit "no cap" sentinel from the invite form;
+    // undefined means the caller didn't touch the field. Coalesce so
+    // both land as `null` in the row (shares team budget).
+    const capValue = monthlyCapCents ?? null;
 
     // Look up inviter name
     const [inviter] = await this.db
@@ -514,18 +541,25 @@ export class TeamsService {
         );
       }
 
-      // Resend path: pending/expired/revoked → re-arm token, reset expiry, resend email
+      // Resend path: pending/expired/revoked → re-arm token, reset
+      // expiry, resend email. Overwrite the cap when the caller
+      // explicitly passed one (so admins can adjust during a resend);
+      // leave it untouched on undefined.
       const token = existing.invitationToken ?? randomBytes(32).toString('hex');
+      const updates: Record<string, unknown> = {
+        role,
+        status: 'pending',
+        invitationToken: token,
+        invitationStatus: 'pending',
+        invitationExpiresAt: inviteExpiry(),
+        invitationRevokedAt: null,
+      };
+      if (monthlyCapCents !== undefined) {
+        updates.monthlyCapCents = capValue;
+      }
       const [refreshed] = await this.db
         .update(teamMembers)
-        .set({
-          role,
-          status: 'pending',
-          invitationToken: token,
-          invitationStatus: 'pending',
-          invitationExpiresAt: inviteExpiry(),
-          invitationRevokedAt: null,
-        })
+        .set(updates)
         .where(eq(teamMembers.id, existing.id))
         .returning();
 
@@ -568,6 +602,7 @@ export class TeamsService {
         invitationToken: token,
         invitationStatus: 'pending',
         invitationExpiresAt: inviteExpiry(),
+        monthlyCapCents: capValue,
       })
       .returning();
 

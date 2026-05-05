@@ -37,10 +37,28 @@ function TeamInviteDialog({
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("viewer");
+  // Free-form text so we can keep the field empty (= no cap, shares
+  // team budget) without having to pick between 0 and undefined.
+  const [capUsd, setCapUsd] = useState("");
+  const [capError, setCapError] = useState<string | null>(null);
   const qc = useQueryClient();
 
+  const parseCapToCents = (): number | null | "invalid" => {
+    const trimmed = capUsd.trim();
+    if (!trimmed) return null;
+    const num = parseFloat(trimmed.replace(",", "."));
+    if (!Number.isFinite(num) || num < 0) return "invalid";
+    return Math.round(num * 100);
+  };
+
   const mutation = useMutation({
-    mutationFn: () => inviteTeamMember(teamId, email.trim(), role),
+    mutationFn: () => {
+      const parsed = parseCapToCents();
+      // The submit handler already gates on validity; re-checking
+      // here keeps TS happy and is a cheap safety net.
+      const capCents = parsed === "invalid" ? null : parsed;
+      return inviteTeamMember(teamId, email.trim(), role, capCents);
+    },
     onSuccess: (data) => {
       toast.success(
         data.resent
@@ -50,6 +68,8 @@ function TeamInviteDialog({
       qc.invalidateQueries({ queryKey: ["teams", teamId] });
       setEmail("");
       setRole("viewer");
+      setCapUsd("");
+      setCapError(null);
       setOpen(false);
     },
     onError: (err: Error) => {
@@ -68,7 +88,16 @@ function TeamInviteDialog({
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            if (email.trim()) mutation.mutate();
+            if (!email.trim()) return;
+            const parsed = parseCapToCents();
+            if (parsed === "invalid") {
+              setCapError(
+                "Enter a non-negative number, or leave blank for no cap.",
+              );
+              return;
+            }
+            setCapError(null);
+            mutation.mutate();
           }}
           className="space-y-4"
         >
@@ -98,6 +127,36 @@ function TeamInviteDialog({
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="invite-cap">Monthly cap (optional)</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-text-3">
+                $
+              </span>
+              <Input
+                id="invite-cap"
+                type="number"
+                min="0"
+                step="0.01"
+                placeholder="Leave blank for no cap"
+                value={capUsd}
+                onChange={(e) => {
+                  setCapUsd(e.target.value);
+                  if (capError) setCapError(null);
+                }}
+                className="pl-7"
+              />
+            </div>
+            {capError ? (
+              <p className="text-[12px] text-danger-6">{capError}</p>
+            ) : (
+              <p className="text-[12px] text-text-3">
+                Caps this member&rsquo;s monthly spend inside the team.
+                Leave blank to share the team&rsquo;s overall budget.
+                Enter <strong>0</strong> to invite as suspended.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button

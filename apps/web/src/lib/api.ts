@@ -440,11 +440,12 @@ export async function inviteTeamMember(
   teamId: string,
   email: string,
   role: "editor" | "viewer",
+  monthlyCapCents?: number | null,
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, role }),
+    body: JSON.stringify({ email, role, monthlyCapCents }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

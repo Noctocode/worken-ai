@@ -134,10 +134,23 @@ export class TeamsController {
   @Post(':id/members')
   inviteMember(
     @Param('id') id: string,
-    @Body() body: { email: string; role: string },
+    @Body()
+    body: {
+      email: string;
+      role: string;
+      /** Optional per-member monthly cap in cents. See
+       *  TeamsService.inviteMember for semantics. */
+      monthlyCapCents?: number | null;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.teamsService.inviteMember(id, body.email, body.role, user.id);
+    return this.teamsService.inviteMember(
+      id,
+      body.email,
+      body.role,
+      user.id,
+      body.monthlyCapCents,
+    );
   }
 
   @Patch(':id/members/:memberId')
