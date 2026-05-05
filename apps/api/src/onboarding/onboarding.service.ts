@@ -16,6 +16,7 @@ import {
   users,
   integrations,
   knowledgeDocuments,
+  onboardingDrafts,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -35,6 +36,25 @@ export interface OnboardingPayload {
   infraChoice: InfraChoice;
   // Step 5 — each key is optional; omitted/empty means "skipped"
   apiKeys?: Partial<Record<Provider, string>>;
+}
+
+/**
+ * Subset of the onboarding state safe to round-trip through the BE
+ * draft. Mirrors `OnboardingPayload` but with every field optional —
+ * a draft can be saved any time during the wizard.
+ *
+ * `apiKeys` is deliberately absent: keys are an XSS exfiltration
+ * vector if persisted server-side without strong scoping, and the
+ * wizard collects them only on the very last step before completion
+ * anyway. Files are also absent — they'd need multipart, not JSON.
+ */
+export interface OnboardingDraft {
+  profileType?: ProfileType;
+  fullName?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+  infraChoice?: InfraChoice;
 }
 
 const VALID_PROVIDERS: Provider[] = [
@@ -287,6 +307,15 @@ export class OnboardingService {
     //      in `key-resolver.resolveUserKey` to make any chat attempt
     //      before approval fail with a 402 + BUDGET_PENDING_APPROVAL
     //      marker rather than silently creating a key.
+
+    // Drop the resume-draft now that the wizard is genuinely done.
+    // Kept outside the transaction because failure here is benign —
+    // the row would just orphan and can be reaped by cron later, no
+    // need to roll back a successful onboarding for it.
+    await this.db
+      .delete(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId))
+      .catch(() => undefined);
   }
 
   /**
@@ -377,6 +406,79 @@ export class OnboardingService {
       providers,
       documents,
     };
+  }
+
+  /**
+   * Read the user's draft if present. Returns null instead of
+   * throwing 404 because the FE always tries to hydrate; absence is
+   * the common case (fresh signup, or already-completed onboarding
+   * which deletes the row).
+   */
+  async getDraft(userId: string): Promise<OnboardingDraft | null> {
+    const [row] = await this.db
+      .select({ partial: onboardingDrafts.partial })
+      .from(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId))
+      .limit(1);
+    return (row?.partial as OnboardingDraft | undefined) ?? null;
+  }
+
+  /**
+   * Upsert the draft. Validates the partial against the same enum
+   * lists `complete` uses so a malformed POST can't poison the row.
+   * Sanitises by dropping unknown keys — the user can't smuggle
+   * arbitrary jsonb in via this endpoint.
+   */
+  async updateDraft(
+    userId: string,
+    input: OnboardingDraft,
+  ): Promise<OnboardingDraft> {
+    const sanitized: OnboardingDraft = {};
+    if (input.profileType === 'company' || input.profileType === 'personal') {
+      sanitized.profileType = input.profileType;
+    }
+    if (typeof input.fullName === 'string') {
+      sanitized.fullName = input.fullName.slice(0, 200);
+    }
+    if (typeof input.companyName === 'string') {
+      sanitized.companyName = input.companyName.slice(0, 200);
+    }
+    if (
+      typeof input.industry === 'string' &&
+      (VALID_INDUSTRIES as readonly string[]).includes(input.industry)
+    ) {
+      sanitized.industry = input.industry;
+    }
+    if (
+      typeof input.teamSize === 'string' &&
+      (VALID_TEAM_SIZES as readonly string[]).includes(input.teamSize)
+    ) {
+      sanitized.teamSize = input.teamSize;
+    }
+    if (
+      input.infraChoice === 'managed' ||
+      input.infraChoice === 'on-premise'
+    ) {
+      sanitized.infraChoice = input.infraChoice;
+    }
+
+    await this.db
+      .insert(onboardingDrafts)
+      .values({ userId, partial: sanitized })
+      .onConflictDoUpdate({
+        target: onboardingDrafts.userId,
+        set: { partial: sanitized, updatedAt: new Date() },
+      });
+
+    return sanitized;
+  }
+
+  /** Soft-delete the draft. Called both from the controller and from
+   *  `complete()` after a successful transaction. */
+  async deleteDraft(userId: string): Promise<void> {
+    await this.db
+      .delete(onboardingDrafts)
+      .where(eq(onboardingDrafts.userId, userId));
   }
 
   private validate(p: OnboardingPayload) {

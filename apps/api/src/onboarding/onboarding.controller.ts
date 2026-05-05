@@ -2,8 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Param,
+  Patch,
   Post,
   Res,
   UploadedFiles,
@@ -19,6 +22,7 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import {
   OnboardingService,
+  type OnboardingDraft,
   type OnboardingPayload,
 } from './onboarding.service.js';
 
@@ -42,6 +46,35 @@ export class OnboardingController {
   @Get('profile')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.getProfile(user.id);
+  }
+
+  /**
+   * Resume-flow draft endpoints. The wizard PATCHes its scalar
+   * fields after each Continue so a user who closes the tab can
+   * pick up where they left off on next login. The row is per-user
+   * (PK = userId) and is dropped once `complete` succeeds.
+   */
+  @Get('draft')
+  getDraft(@CurrentUser() user: AuthenticatedUser) {
+    return this.onboardingService
+      .getDraft(user.id)
+      .then((draft) => ({ draft }));
+  }
+
+  @Patch('draft')
+  updateDraft(
+    @Body() body: OnboardingDraft,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.onboardingService
+      .updateDraft(user.id, body ?? {})
+      .then((draft) => ({ draft }));
+  }
+
+  @Delete('draft')
+  @HttpCode(204)
+  async deleteDraft(@CurrentUser() user: AuthenticatedUser) {
+    await this.onboardingService.deleteDraft(user.id);
   }
 
   @Get('documents/:id/download')

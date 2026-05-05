@@ -47,7 +47,7 @@ const INFRA_OPTIONS: Array<{
 
 export default function SetupProfileStep4Page() {
   const router = useRouter();
-  const { state, update } = useOnboarding();
+  const { state, update, saveDraft } = useOnboarding();
   const selected: Infra = state.infraChoice ?? "managed";
 
   return (
@@ -133,6 +133,7 @@ export default function SetupProfileStep4Page() {
                 // cards — otherwise step 6 would see infraChoice undefined
                 // and reject the submit.
                 if (!state.infraChoice) update({ infraChoice: selected });
+                saveDraft({ infraChoice: selected });
                 router.push("/setup-profile/step-5");
               }}
             >

@@ -32,10 +32,13 @@ const OPTIONS: Array<{
 
 export default function SetupProfilePage() {
   const router = useRouter();
-  const { update } = useOnboarding();
+  const { update, saveDraft } = useOnboarding();
 
   const pick = (type: ProfileType) => {
     update({ profileType: type });
+    // Pass the patch so the BE snapshot picks up the just-set value
+    // even though `update`'s setState hasn't flushed yet.
+    saveDraft({ profileType: type });
     router.push(
       type === "company" ? "/setup-profile/step-2" : "/setup-profile/step-3",
     );

@@ -11,7 +11,7 @@ import { useOnboarding } from "../layout";
 
 export default function SetupProfileStep3Page() {
   const router = useRouter();
-  const { state, update } = useOnboarding();
+  const { state, update, saveDraft } = useOnboarding();
   const fullName = state.fullName ?? "";
 
   // Show inline error only after the first failed Continue — same
@@ -25,6 +25,7 @@ export default function SetupProfileStep3Page() {
       setAttempted(true);
       return;
     }
+    saveDraft();
     router.push("/setup-profile/step-4");
   };
 

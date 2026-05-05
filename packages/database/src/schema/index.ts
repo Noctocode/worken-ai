@@ -216,6 +216,31 @@ export const guardrails = pgTable("guardrails", {
 // Onboarding step-5 keys now flow into the `integrations` table from
 // commit 595f986 onwards.
 
+/**
+ * Per-user staged onboarding state. Survives sessionStorage loss
+ * (browser crash, cookie clear, device switch) so a user who closed
+ * the tab on step 4 can pick up where they left off on next login.
+ *
+ * Lives only until the user completes onboarding —
+ * `OnboardingService.complete` deletes the row after the atomic
+ * users/credentials/documents transaction commits. ON DELETE CASCADE
+ * to users.id covers GDPR delete + admin user-removal as well.
+ *
+ * Stores the *non-sensitive* scalar fields gathered across steps 2–4:
+ * profile type, company info (name / industry / team size), infra
+ * choice. Step-5 API keys and step-6 file uploads stay out of the
+ * draft on purpose — the keys are an XSS exfiltration vector if
+ * persisted, and the files are large multipart uploads that don't
+ * round-trip cleanly through a JSON column.
+ */
+export const onboardingDrafts = pgTable("onboarding_drafts", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  partial: jsonb("partial").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const knowledgeDocuments = pgTable("knowledge_documents", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

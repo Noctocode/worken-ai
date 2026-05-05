@@ -1705,6 +1705,45 @@ export async function fetchOnboardingProfile(): Promise<OnboardingProfile> {
   return res.json();
 }
 
+/**
+ * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
+ * optional, no API keys, no files. Persisted server-side per user
+ * (PK = userId) and dropped once onboarding completes.
+ */
+export interface OnboardingDraft {
+  profileType?: "company" | "personal";
+  fullName?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+  infraChoice?: "managed" | "on-premise";
+}
+
+export async function fetchOnboardingDraft(): Promise<OnboardingDraft | null> {
+  const res = await apiFetch("/onboarding/draft", { skipAuthRedirect: true });
+  if (res.status === 401) return null;
+  if (!res.ok) return null;
+  const body = (await res.json()) as { draft: OnboardingDraft | null };
+  return body.draft ?? null;
+}
+
+export async function updateOnboardingDraft(
+  draft: OnboardingDraft,
+): Promise<OnboardingDraft> {
+  const res = await apiFetch("/onboarding/draft", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!res.ok) throw new Error("Failed to save onboarding draft");
+  const body = (await res.json()) as { draft: OnboardingDraft };
+  return body.draft;
+}
+
+export async function deleteOnboardingDraft(): Promise<void> {
+  await apiFetch("/onboarding/draft", { method: "DELETE" });
+}
+
 export interface CompleteOnboardingPayload {
   profileType: "company" | "personal";
   fullName?: string;

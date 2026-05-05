@@ -36,7 +36,7 @@ const TEAM_SIZES = [
 
 export default function SetupProfileStep2Page() {
   const router = useRouter();
-  const { state, update } = useOnboarding();
+  const { state, update, saveDraft } = useOnboarding();
   const companyName = state.companyName ?? "";
   const industry = state.industry ?? "";
   const teamSize = state.teamSize ?? "";
@@ -59,6 +59,9 @@ export default function SetupProfileStep2Page() {
       setAttempted(true);
       return;
     }
+    // All fields already in context via individual onChanges, so a
+    // patchless saveDraft persists exactly what the user sees.
+    saveDraft();
     router.push("/setup-profile/step-4");
   };
 
