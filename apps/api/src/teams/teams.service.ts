@@ -1591,6 +1591,22 @@ export class TeamsService {
         'Integration does not belong to this team',
       );
     }
+    // Custom team integrations have a paired team-scoped alias in
+    // model_configs that's auto-created at upsert time. The FK is
+    // ON DELETE SET NULL — without explicit cleanup the alias would
+    // survive as an orphan with integrationId=null AND a
+    // `team:xxx:slug` modelIdentifier that no provider can serve,
+    // showing up in members' pickers as a dead entry. Drop it.
+    if (row.providerId === 'custom') {
+      await this.db
+        .delete(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.integrationId, integrationId),
+          ),
+        );
+    }
     await this.db
       .delete(integrations)
       .where(eq(integrations.id, integrationId));

@@ -465,7 +465,13 @@ export class ChatTransportService {
       estimatedCostCents?: number;
     } = {},
   ): Promise<void> {
-    if (transport.source === 'custom') return;
+    // Custom routes don't have catalog pricing, so observability
+    // logs cost=null — the spend SUM below naturally counts $0 for
+    // them and the cap-exceeded branch never trips. We still RUN the
+    // gate though, because the suspension state (cap=0) must apply
+    // to every routing source: an admin who sets a member's cap to 0
+    // expects them locked out of every chat path including team
+    // Custom LLMs.
 
     let teamId = options.teamId ?? null;
     if (!teamId && options.projectId) {

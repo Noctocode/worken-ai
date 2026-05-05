@@ -111,11 +111,18 @@ export class ModelsService {
       .from(modelConfigs)
       .where(and(eq(modelConfigs.isActive, true), scopeFilter));
 
-    // Every predefined provider the user has toggled ON, regardless of
-    // whether they've also added a BYOK key. Personal scope only —
-    // team-scoped predefined providers light up models for *team*
-    // chats but the personal model picker stays personal.
-    const enabledRows = await this.db
+    // Every predefined provider that's enabled either personally OR
+    // at the scope of any team the user is in. Without the team
+    // branch, a member of TEAM_X (admin set up Anthropic) couldn't
+    // see Claude in their picker unless they ALSO toggled Anthropic
+    // personally — defeats the point of team-shared keys.
+    //
+    // We enable on isEnabled regardless of whether a key is set: the
+    // BE gate now blocks enable-without-key (see IntegrationsService.
+    // assertEnableHasKey), so any enabled team row has a usable key.
+    // chat-transport picks the right key per call based on the chat's
+    // team scope.
+    const personalEnabledRows = await this.db
       .select({ providerId: integrations.providerId })
       .from(integrations)
       .where(
@@ -125,8 +132,20 @@ export class ModelsService {
           eq(integrations.isEnabled, true),
         ),
       );
+    const teamEnabledRows =
+      teamIds.length > 0
+        ? await this.db
+            .select({ providerId: integrations.providerId })
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.teamId, teamIds),
+                eq(integrations.isEnabled, true),
+              ),
+            )
+        : [];
     const enabledProviders = new Set(
-      enabledRows
+      [...personalEnabledRows, ...teamEnabledRows]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );

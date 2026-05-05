@@ -195,14 +195,41 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
     );
   }
 
-  it('skips when the route is Custom (external billing)', async () => {
-    // Empty rowSets — the gate must short-circuit before any db call.
-    const svc = makeService([]);
+  it('passes Custom routes when cap is null (no catalog pricing → 0 spend)', async () => {
+    // Custom LLMs don't have catalog pricing, so observability never
+    // logs cost for them. The gate still RUNS so we can enforce
+    // suspension (cap=0); when cap is null/positive the spend math
+    // is naturally 0 for custom and the call passes.
+    const svc = makeService([
+      [{ cap: null }], // teamMembers — no per-user cap
+    ]);
     await expect(
       svc.assertTeamMemberCapNotExceeded(TRANSPORT_CUSTOM, USER_ID, {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();
+  });
+
+  it('throws SUSPENDED on Custom routes when cap=0', async () => {
+    // The hole this closes: previously source=custom early-returned,
+    // letting a suspended member chat through team Custom LLMs.
+    const svc = makeService([
+      [{ cap: 0 }], // suspended
+    ]);
+    let caught: unknown;
+    try {
+      await svc.assertTeamMemberCapNotExceeded(
+        TRANSPORT_CUSTOM,
+        USER_ID,
+        { teamId: TEAM_ID },
+      );
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(HttpException);
+    expect((caught as HttpException).message).toContain(
+      MEMBER_SUSPENDED_MARKER,
+    );
   });
 
   it('skips when no team scope is in play (personal chat)', async () => {
