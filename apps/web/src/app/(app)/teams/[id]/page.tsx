@@ -7,6 +7,7 @@ import {
   Trash2,
   MoreVertical,
   UserX,
+  Wallet,
   Info,
   Loader2,
 } from "lucide-react";
@@ -714,29 +715,37 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         )}
                       </td>
                       <td className="bg-bg-white px-4 align-middle w-[180px]">
-                        <button
-                          type="button"
-                          disabled={!canManageTeam || m.status === "pending"}
-                          onClick={() => setCapEditMemberId(m.id)}
-                          className={`text-left text-[14px] ${capTone} ${
-                            canManageTeam && m.status === "accepted"
-                              ? "hover:underline cursor-pointer"
-                              : "cursor-default opacity-80"
-                          }`}
-                          title={
-                            canManageTeam
-                              ? "Click to set / clear / suspend this member's cap"
-                              : "Only team owners or editors can change member caps"
-                          }
+                        <span
+                          className={`text-[14px] ${capTone}`}
+                          title="Use Actions → Change monthly cap to edit"
                         >
                           {capLabel}
-                        </button>
+                        </span>
                       </td>
                       <td className="bg-bg-white px-4 align-middle w-[93px]">
                         <div className="flex justify-center">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2"
+                                disabled={
+                                  !canManageTeam || m.status === "pending"
+                                }
+                                onSelect={(e) => {
+                                  if (
+                                    !canManageTeam ||
+                                    m.status === "pending"
+                                  ) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  setCapEditMemberId(m.id);
+                                }}
+                              >
+                                <Wallet className="h-4 w-4" />
+                                Change monthly cap
+                              </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2 text-danger-6 focus:text-danger-6"
                                 disabled={!canManageTeam}
