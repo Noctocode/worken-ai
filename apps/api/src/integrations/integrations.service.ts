@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -84,10 +84,18 @@ export class IntegrationsService {
    * after, one row each.
    */
   async listForUser(userId: string): Promise<IntegrationView[]> {
+    // Personal scope only — team-scoped rows the same user owns (e.g.
+    // admin configured a team key) belong to the team's Integrations
+    // panel, not the personal one.
     const rows = await this.db
       .select()
       .from(integrations)
-      .where(eq(integrations.ownerId, userId));
+      .where(
+        and(
+          eq(integrations.ownerId, userId),
+          isNull(integrations.teamId),
+        ),
+      );
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
     const statsRows = await this.db
@@ -373,6 +381,16 @@ export class IntegrationsService {
     if (row.ownerId !== userId) {
       throw new ForbiddenException('Not your integration');
     }
+    // Team-scoped rows must go through the team endpoints so the
+    // owner/editor role check fires. Without this guard, an admin
+    // who later lost team-manage rights could keep editing the team
+    // key via /integrations/:id (ownerId is the historical record of
+    // who configured it, not who's currently allowed to manage it).
+    if (row.teamId) {
+      throw new ForbiddenException(
+        'Team-scoped integrations must be edited via /teams/:id/integrations',
+      );
+    }
 
     const updates: Record<string, unknown> = {
       updatedAt: new Date(),
@@ -402,6 +420,11 @@ export class IntegrationsService {
     if (!row) throw new NotFoundException('Integration not found');
     if (row.ownerId !== userId) {
       throw new ForbiddenException('Not your integration');
+    }
+    if (row.teamId) {
+      throw new ForbiddenException(
+        'Team-scoped integrations must be deleted via /teams/:id/integrations',
+      );
     }
     if (row.providerId !== 'custom') {
       throw new BadRequestException(
