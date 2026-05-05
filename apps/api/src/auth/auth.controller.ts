@@ -77,11 +77,19 @@ export class AuthController {
     const returnTo = cookies?.invite_return_to;
     res.clearCookie('invite_return_to', { path: '/' });
 
-    if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/')) {
-      res.redirect(`${frontendUrl}${returnTo}`);
-    } else {
-      res.redirect(frontendUrl);
-    }
+    // Direct-redirect to /setup-profile when the account hasn't
+    // finished onboarding. Without this, the FE landed on `/`,
+    // rendered the dashboard chrome for a few hundred ms while
+    // /auth/me resolved, and only then fired the
+    // OnboardingGuard.replace — a visible flash of unauthorized UI.
+    // The FE guard still does the same check as a safety net (cookie
+    // restore, manual /-typing, etc.).
+    const target = !user.onboardingCompletedAt
+      ? '/setup-profile'
+      : returnTo && typeof returnTo === 'string' && returnTo.startsWith('/')
+        ? returnTo
+        : '/';
+    res.redirect(`${frontendUrl}${target}`);
   }
 
   @Public()
