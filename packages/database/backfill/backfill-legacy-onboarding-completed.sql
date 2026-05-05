@@ -20,7 +20,11 @@
 -- Run from repo root:
 --   docker exec -i worken-postgres psql -U worken -d worken < packages/database/backfill/backfill-legacy-onboarding-completed.sql
 
+BEGIN;
+
 UPDATE users
 SET onboarding_completed_at = COALESCE(updated_at, created_at, now())
 WHERE profile_type IS NOT NULL
   AND onboarding_completed_at IS NULL;
+
+COMMIT;

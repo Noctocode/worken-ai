@@ -44,6 +44,14 @@ const VALID_PROVIDERS: Provider[] = [
   'private-vpc',
 ];
 
+// Subset of step-5 providers that 1:1 map to predefined providers in
+// the Integration tab catalog, and so can flow straight into the
+// `integrations` table on onboarding completion. Azure / private-vpc
+// need extra fields (deployment URL, VPC endpoint) the wizard never
+// collects, so their keys are deliberately dropped — see comment in
+// completeInner where this list is consulted.
+const SUPPORTED_FOR_INTEGRATION_TABLE: Provider[] = ['openai', 'anthropic'];
+
 // Whitelisted enum values for the company-branch dropdowns. Must stay in
 // sync with apps/web/src/app/setup-profile/step-2/page.tsx — the FE
 // dropdown values are the source of truth, and the BE enforces them so
@@ -221,7 +229,9 @@ export class OnboardingService {
         for (const [provider, key] of Object.entries(payload.apiKeys)) {
           if (!key || !key.trim()) continue;
           if (!VALID_PROVIDERS.includes(provider as Provider)) continue;
-          if (provider !== 'openai' && provider !== 'anthropic') {
+          if (
+            !SUPPORTED_FOR_INTEGRATION_TABLE.includes(provider as Provider)
+          ) {
             this.logger.warn(
               `Onboarding step-5: ${provider} key supplied but no matching predefined provider — skipping. User ${userId} can finish setup in Management → Integration.`,
             );
@@ -386,11 +396,12 @@ export class OnboardingService {
       }
       // industry/teamSize stay optional (Figma shows no asterisk), but
       // when supplied they must be one of the FE dropdown values.
+      // Cast the readonly tuple down to a plain string[] so `.includes`
+      // accepts an arbitrary string at the call site instead of forcing
+      // a tuple-narrowing cast on the input.
       if (
         p.industry &&
-        !VALID_INDUSTRIES.includes(
-          p.industry as (typeof VALID_INDUSTRIES)[number],
-        )
+        !(VALID_INDUSTRIES as readonly string[]).includes(p.industry)
       ) {
         throw new BadRequestException(
           `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
@@ -398,9 +409,7 @@ export class OnboardingService {
       }
       if (
         p.teamSize &&
-        !VALID_TEAM_SIZES.includes(
-          p.teamSize as (typeof VALID_TEAM_SIZES)[number],
-        )
+        !(VALID_TEAM_SIZES as readonly string[]).includes(p.teamSize)
       ) {
         throw new BadRequestException(
           `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,

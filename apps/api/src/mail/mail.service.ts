@@ -174,15 +174,18 @@ export class MailService {
     const twitter = this.config.get<string>('TWITTER_URL');
     if (!linkedin && !twitter) return '';
 
+    // Anchor styles are margin-free so a single link centers cleanly
+    // (per-side margin shifted the lone link off-center). Multi-link
+    // cases get a middle-dot separator inserted between siblings.
     const link = (href: string, label: string) =>
-      `<a href="${href}" style="display: inline-block; margin: 0 8px; color: #4E5969; text-decoration: none; font-size: 14px;">${label}</a>`;
+      `<a href="${href}" style="display: inline-block; color: #4E5969; text-decoration: none; font-size: 14px;">${label}</a>`;
 
-    const links = [
-      linkedin ? link(linkedin, 'LinkedIn') : '',
-      twitter ? link(twitter, 'Twitter') : '',
-    ]
-      .filter(Boolean)
-      .join('');
+    const linkParts: string[] = [];
+    if (linkedin) linkParts.push(link(linkedin, 'LinkedIn'));
+    if (twitter) linkParts.push(link(twitter, 'Twitter'));
+    const separator =
+      '<span style="display: inline-block; padding: 0 10px; color: #C9CDD4;">·</span>';
+    const links = linkParts.join(separator);
 
     return `
       <div style="margin-top: 30px; text-align: center;">
