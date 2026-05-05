@@ -135,6 +135,7 @@ function UserAvatar({ name, picture, size = 80 }: { name: string; picture: strin
       <img
         src={picture}
         alt={name}
+        referrerPolicy="no-referrer"
         className="rounded-full object-cover border border-border-2"
         style={{ width: size, height: size }}
       />

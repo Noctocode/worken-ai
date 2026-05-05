@@ -27,11 +27,19 @@ function Avatar({
 
 function AvatarImage({
   className,
+  referrerPolicy = "no-referrer",
   ...props
 }: React.ComponentProps<typeof AvatarPrimitive.Image>) {
+  // Default `no-referrer` so Google profile pictures
+  // (lh3.googleusercontent.com), the most common avatar source we
+  // get from Google OAuth, actually load. Google blocks image
+  // requests whose Referer header points at non-allowed origins
+  // (e.g. localhost during dev), and a stripped referrer is the
+  // standard escape hatch. Callers can still override.
   return (
     <AvatarPrimitive.Image
       data-slot="avatar-image"
+      referrerPolicy={referrerPolicy}
       className={cn("aspect-square size-full", className)}
       {...props}
     />

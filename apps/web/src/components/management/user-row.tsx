@@ -88,6 +88,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             <img
               src={user.picture}
               alt={user.name ?? user.email}
+              referrerPolicy="no-referrer"
               className="h-7 w-7 shrink-0 rounded-full object-cover"
             />
           ) : (

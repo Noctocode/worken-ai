@@ -73,7 +73,7 @@ function UserAvatar({ name, picture, size = 24 }: { name: string; picture: strin
   if (picture) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={picture} alt={name} className="rounded-full object-cover border border-border-2" style={{ width: size, height: size }} />
+      <img src={picture} alt={name} referrerPolicy="no-referrer" className="rounded-full object-cover border border-border-2" style={{ width: size, height: size }} />
     );
   }
   return (
@@ -557,7 +557,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                               {sub.members.slice(0, 4).map((m, i) =>
                                 m.picture ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img key={i} src={m.picture} alt={m.name ?? ""} className="h-6 w-6 rounded-full border-2 border-bg-white object-cover" />
+                                  <img key={i} src={m.picture} alt={m.name ?? ""} referrerPolicy="no-referrer" className="h-6 w-6 rounded-full border-2 border-bg-white object-cover" />
                                 ) : (
                                   <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-bg-white bg-bg-3 text-[9px] font-semibold text-text-3">
                                     {(m.name ?? "?").charAt(0)}
