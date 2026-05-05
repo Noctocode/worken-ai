@@ -251,6 +251,8 @@ export function AddModelDialog({
           open={open}
           onClose={handleClose}
           onApply={handleApply}
+          applyLabel={mutation.isPending ? "Saving…" : "Apply"}
+          applyPending={mutation.isPending}
           title="Add model"
           description="Configure a model to make it available across your workspace."
         >

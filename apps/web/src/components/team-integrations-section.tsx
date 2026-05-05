@@ -157,6 +157,8 @@ function TeamProviderDialog({
       onClose={onClose}
       onApply={canManage ? () => saveMutation.mutate() : undefined}
       applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
+      applyPending={saveMutation.isPending || clearKeyMutation.isPending}
+      applyDisabled={!canManage}
       title={`${card.displayName} (Team)`}
       description={`Configure shared ${card.displayName} integration for this team.`}
       headerIcon={iconForHint(card.iconHint)}

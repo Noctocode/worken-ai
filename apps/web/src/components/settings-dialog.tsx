@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +15,13 @@ interface SettingsDialogProps {
   onApply?: () => void;
   applyLabel?: string;
   applyVariant?: "default" | "danger";
+  /**
+   * Disable the Apply button — used during in-flight mutations to
+   * block spam-clicking. When `applyPending` is true we also overlay
+   * a small spinner.
+   */
+  applyDisabled?: boolean;
+  applyPending?: boolean;
   title: string;
   description?: string;
   headerIcon?: React.ReactNode;
@@ -28,6 +35,8 @@ export function SettingsDialog({
   onApply,
   applyLabel = "Apply",
   applyVariant = "default",
+  applyDisabled = false,
+  applyPending = false,
   title,
   description,
   headerIcon,
@@ -62,18 +71,21 @@ export function SettingsDialog({
           <Button
             variant="outline"
             onClick={onClose}
-            className="h-[43px] border-border-2 text-text-1 text-[16px] font-normal"
+            disabled={applyPending}
+            className="h-[43px] border-border-2 text-text-1 text-[16px] font-normal disabled:opacity-60"
           >
             Cancel
           </Button>
           <Button
             onClick={onApply ?? onClose}
-            className={
+            disabled={applyDisabled || applyPending}
+            className={`${
               applyVariant === "danger"
                 ? "h-[43px] bg-danger-6 text-white text-[16px] font-normal hover:bg-danger-6/90"
                 : "h-[43px] bg-primary-6 text-white text-[16px] font-normal hover:bg-primary-6/90"
-            }
+            } disabled:opacity-60 disabled:cursor-not-allowed`}
           >
+            {applyPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
             {applyLabel}
           </Button>
         </div>

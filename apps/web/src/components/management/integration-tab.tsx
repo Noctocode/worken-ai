@@ -159,6 +159,8 @@ function ProviderSettingsDialog({
       open
       onClose={onClose}
       onApply={() => saveMutation.mutate()}
+      applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
+      applyPending={saveMutation.isPending}
       title={card.displayName}
       description={`Configure ${card.displayName} integration settings.`}
       headerIcon={iconForHint(card.iconHint)}
@@ -348,6 +350,8 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       onApply={() => createMutation.mutate()}
+      applyLabel={createMutation.isPending ? "Adding…" : "Apply"}
+      applyPending={createMutation.isPending}
       title="Add Custom LLM"
     >
       <div className="space-y-4">
@@ -400,6 +404,7 @@ function DeleteCustomLLMDialog({
       onClose={onClose}
       onApply={onConfirm}
       applyLabel={isPending ? "Deleting…" : n > 0 ? "Delete anyway" : "Delete"}
+      applyPending={isPending}
       applyVariant="danger"
       title={`Delete "${card.displayName}"?`}
     >
