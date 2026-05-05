@@ -436,6 +436,14 @@ export default function UserDetailPage({
   // Block editing your own role — BE rejects self-mutation to avoid
   // admin lockout, FE matches that.
   const canEditSelfRole = !isSelf;
+  // The edit affordances should only ever render when an admin asks
+  // for them. `isEditing` can be flipped to true by anyone who knows
+  // to dispatch `user-detail:edit` from devtools (the appbar icon
+  // hides for non-admins, but the event is global). Gating the
+  // rendered controls on isAdmin closes that loophole — non-admins
+  // can't end up looking at editable inputs they have no way to
+  // submit, even if they trip the state.
+  const editing = isAdmin && isEditing;
 
   const cancelEdit = () => {
     setIsEditing(false);
@@ -515,14 +523,12 @@ export default function UserDetailPage({
                   {displayName}
                 </p>
                 <UserRoleControl
-                  role={isEditing ? editRole : user.role}
-                  mode={
-                    isEditing && canEditSelfRole ? "edit" : "view"
-                  }
+                  role={editing ? editRole : user.role}
+                  mode={editing && canEditSelfRole ? "edit" : "view"}
                   onChange={(r) => setEditRole(r)}
                   disabled={isSubmitting}
                 />
-                {isEditing && !canEditSelfRole && (
+                {editing && !canEditSelfRole && (
                   <span className="text-[11px] text-text-3">
                     (you can&apos;t change your own role)
                   </span>
@@ -546,7 +552,7 @@ export default function UserDetailPage({
                 clicking it dispatches a window event the page listens
                 for. Confirm / Cancel are inline because they're
                 contextual to the form state, not chrome. */}
-            {isAdmin && isEditing && (
+            {editing && (
               <>
                 <Button
                   variant="outline"
@@ -579,7 +585,7 @@ export default function UserDetailPage({
           {/* Monthly Budget — text in view mode, input in edit mode. */}
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
-            {isEditing ? (
+            {editing ? (
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
                   $
@@ -614,7 +620,7 @@ export default function UserDetailPage({
                 )}
               </div>
             )}
-            {!isEditing && !isAdmin && (
+            {!editing && !isAdmin && (
               <p className="text-[12px] text-text-3">
                 Only admins can change this — ask an admin to adjust the
                 budget.
