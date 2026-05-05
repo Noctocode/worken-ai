@@ -211,15 +211,10 @@ export const guardrails = pgTable("guardrails", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const userLlmCredentials = pgTable("user_llm_credentials", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  provider: text("provider").notNull(), // 'openai' | 'azure' | 'anthropic' | 'private-vpc'
-  apiKeyEncrypted: text("api_key_encrypted").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+// Legacy `user_llm_credentials` table dropped — see
+// `packages/database/backfill/drop-legacy-user-llm-credentials.sql`.
+// Onboarding step-5 keys now flow into the `integrations` table from
+// commit 595f986 onwards.
 
 export const knowledgeDocuments = pgTable("knowledge_documents", {
   id: uuid("id").primaryKey().defaultRandom(),
