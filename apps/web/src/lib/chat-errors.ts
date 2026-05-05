@@ -43,6 +43,24 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Per-member team caps — distinct from the team-wide budget so the
+  // user gets an actionable message ("your cap" vs "team's budget").
+  // Both surface as 402; markers disambiguate.
+  const memberCapMatch = raw.match(/TEAM_MEMBER_CAP_REACHED:\s*([^\r\n]+)/);
+  if (memberCapMatch) {
+    return (
+      memberCapMatch[1].trim() ||
+      "Your monthly cap for this team is reached. Resets on the 1st of next month, or ask an admin to raise the cap."
+    );
+  }
+  const suspendedMatch = raw.match(/TEAM_MEMBER_SUSPENDED:\s*([^\r\n]+)/);
+  if (suspendedMatch) {
+    return (
+      suspendedMatch[1].trim() ||
+      "Your access to this team is paused. Ask the team admin to set a non-zero monthly cap."
+    );
+  }
+
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code

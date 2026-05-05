@@ -64,6 +64,16 @@ export class ChatController {
       { projectId: conversation.projectId },
     );
 
+    // Per-member team cap. Independent from the team-wide budget gate
+    // above: a team can have $1000/mo total but each member capped at
+    // $20. Fires only when the chat's project belongs to a team and
+    // the user has a non-null cap on that team.
+    await this.chatTransport.assertTeamMemberCapNotExceeded(
+      transport,
+      user.id,
+      { projectId: conversation.projectId },
+    );
+
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',

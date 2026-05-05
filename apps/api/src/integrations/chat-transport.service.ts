@@ -1,9 +1,11 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
+  observabilityEvents,
   projects,
+  teamMembers,
   teams,
   users,
 } from '@worken/database/schema';
@@ -19,6 +21,14 @@ import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
  * of truth on both sides.
  */
 export const PENDING_APPROVAL_MARKER = 'BUDGET_PENDING_APPROVAL';
+
+/**
+ * Marker for the per-member team cap (separate from the team-wide cap).
+ * Surfaced to the FE humanizer so a user who hit *their* cap sees a
+ * different message than one who hit the *team's* shared budget.
+ */
+export const MEMBER_CAP_REACHED_MARKER = 'TEAM_MEMBER_CAP_REACHED';
+export const MEMBER_SUSPENDED_MARKER = 'TEAM_MEMBER_SUSPENDED';
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -133,26 +143,69 @@ export class ChatTransportService {
       );
     }
 
-    // 2. BYOK — user has a key for the model's native provider.
+    // 2. BYOK — team-scoped first (admin-shared key for everyone in the
+    //    team), then user-personal. Resolve the team scope from explicit
+    //    teamId or by looking up the project's team. Without this two-
+    //    step lookup, a team member would always fall through to their
+    //    own BYOK row even when the team has a shared key configured —
+    //    defeating the whole point of "admin sets up Anthropic for
+    //    TEAM X, members just use it".
     const provider = providerOfModel(modelIdentifier);
     if (provider) {
-      const [byok] = await this.db
-        .select()
-        .from(integrations)
-        .where(
-          and(
-            eq(integrations.ownerId, userId),
-            eq(integrations.providerId, provider),
-            eq(integrations.isEnabled, true),
-          ),
-        )
-        .limit(1);
+      let teamScopeId = teamId ?? null;
+      if (!teamScopeId && projectId) {
+        const [proj] = await this.db
+          .select({ teamId: projects.teamId })
+          .from(projects)
+          .where(eq(projects.id, projectId))
+          .limit(1);
+        teamScopeId = proj?.teamId ?? null;
+      }
 
-      if (byok?.apiKeyEncrypted) {
+      let byokRow:
+        | typeof integrations.$inferSelect
+        | undefined;
+
+      if (teamScopeId) {
+        // Predefined providers only — apiUrl IS NULL filter mirrors
+        // the partial unique index that backs the table for team-
+        // scoped BYOK. Custom LLMs aren't supported at team scope yet.
+        const [teamByok] = await this.db
+          .select()
+          .from(integrations)
+          .where(
+            and(
+              eq(integrations.teamId, teamScopeId),
+              eq(integrations.providerId, provider),
+              eq(integrations.isEnabled, true),
+              isNull(integrations.apiUrl),
+            ),
+          )
+          .limit(1);
+        if (teamByok?.apiKeyEncrypted) byokRow = teamByok;
+      }
+
+      if (!byokRow) {
+        const [userByok] = await this.db
+          .select()
+          .from(integrations)
+          .where(
+            and(
+              eq(integrations.ownerId, userId),
+              isNull(integrations.teamId),
+              eq(integrations.providerId, provider),
+              eq(integrations.isEnabled, true),
+            ),
+          )
+          .limit(1);
+        if (userByok?.apiKeyEncrypted) byokRow = userByok;
+      }
+
+      if (byokRow?.apiKeyEncrypted) {
         const native = NATIVE_ENDPOINTS[provider];
         const bareModel = modelIdentifier.slice(provider.length + 1);
         const apiKey = this.safeDecrypt(
-          byok.apiKeyEncrypted,
+          byokRow.apiKeyEncrypted,
           `BYOK ${provider}`,
         );
 
@@ -285,6 +338,104 @@ export class ChatTransportService {
     ) {
       throw new HttpException(
         `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
+        402,
+      );
+    }
+  }
+
+  /**
+   * Per-member team cap gate.
+   *
+   * Sits alongside `assertManagedBudgetApproved`: that one checks
+   * whether the *team* has any budget at all (admin approval); this one
+   * checks whether *this user* has hit *their* per-month cap inside the
+   * team. Both fire for every team-scoped chat — the order doesn't
+   * matter (each throws independently).
+   *
+   * Cap source: `team_members.monthly_cap_cents`.
+   *   - NULL  → no per-user cap (member shares the team budget freely)
+   *   - 0     → suspended in this team (admin disabled them via cap=0)
+   *   - >0    → enforced. Spend = sum of observability_events.cost_usd
+   *             for (userId, teamId, success=true, this calendar month).
+   *
+   * Spend computation runs against `observability_events` (not
+   * OpenRouter's per-key usage API) so it covers all routing sources
+   * uniformly: OpenRouter team key, team-scoped BYOK, project-routed
+   * chats. The same monthly window (`date_trunc('month', now())`) the
+   * Integration tab's "this month" stats use, so admin and user see
+   * the same number.
+   *
+   * Skipped for `source='custom'` — Custom LLM endpoints have their
+   * own external billing and we don't track cost reliably there.
+   *
+   * @param teamId pass when the call is scoped to a specific team
+   *   (compare-models with explicit teamId). For project-routed chats,
+   *   pass `projectId` instead and the team is looked up from there.
+   */
+  async assertTeamMemberCapNotExceeded(
+    transport: ChatTransport,
+    userId: string,
+    options: { projectId?: string | null; teamId?: string | null } = {},
+  ): Promise<void> {
+    if (transport.source === 'custom') return;
+
+    let teamId = options.teamId ?? null;
+    if (!teamId && options.projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, options.projectId))
+        .limit(1);
+      teamId = proj?.teamId ?? null;
+    }
+    if (!teamId) return;
+
+    const [membership] = await this.db
+      .select({ cap: teamMembers.monthlyCapCents })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!membership) return;
+    if (membership.cap == null) return; // no cap configured
+
+    if (membership.cap === 0) {
+      throw new HttpException(
+        `${MEMBER_SUSPENDED_MARKER}: Your access to this team is paused. Ask the team admin to set a non-zero monthly cap in Management → Teams → Members.`,
+        402,
+      );
+    }
+
+    // Sum cost for this user, this team, this calendar month. Only
+    // successful calls count — failed calls aren't billed (the
+    // upstream returned an error before any tokens were charged).
+    // costUsd is numeric(12,6) → drizzle returns string. Coalesce on
+    // the SQL side so an empty result row gives '0' not null.
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const [agg] = await this.db
+      .select({
+        total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.userId, userId),
+          eq(observabilityEvents.teamId, teamId),
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      );
+    const spentUsd = agg ? parseFloat(agg.total) : 0;
+    const spentCents = Math.round(spentUsd * 100);
+    if (spentCents >= membership.cap) {
+      const capUsd = (membership.cap / 100).toFixed(2);
+      const spentUsdStr = (spentCents / 100).toFixed(2);
+      throw new HttpException(
+        `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`,
         402,
       );
     }

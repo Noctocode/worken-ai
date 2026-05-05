@@ -218,6 +218,14 @@ export class CompareModelsController {
             user.id,
             { teamId },
           );
+          // Per-member team cap. Only fires when the composer is
+          // scoped to a specific team — Personal arena runs (teamId
+          // null) don't have a per-team cap concept.
+          await this.chatTransport.assertTeamMemberCapNotExceeded(
+            transport,
+            user.id,
+            { teamId },
+          );
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(
