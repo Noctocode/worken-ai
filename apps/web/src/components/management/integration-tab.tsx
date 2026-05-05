@@ -154,6 +154,18 @@ function ProviderSettingsDialog({
   // IS honored. byokSupported is the right flag to gate on.
   const showCompatibilityNotice = !card.byokSupported && !card.isCustom;
 
+  // Predefined providers can't be enabled without a key — would be
+  // saved would have a key (existing one OR being entered now).
+  // Custom rows are exempt (many self-hosted endpoints accept anon).
+  const willHaveKey = card.isCustom
+    ? true
+    : useOwnKey &&
+      ((card.hasApiKey && !editingKey) || apiKey.trim().length > 0);
+  const switchTitle =
+    !willHaveKey && !enabled
+      ? "Add an API key first, then you can enable this provider."
+      : undefined;
+
   return (
     <SettingsDialog
       open
@@ -165,7 +177,19 @@ function ProviderSettingsDialog({
       description={`Configure ${card.displayName} integration settings.`}
       headerIcon={iconForHint(card.iconHint)}
       headerContent={
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
+        <span title={switchTitle}>
+          <Switch
+            checked={enabled}
+            // Allow disabling at any time (even from an
+            // enabled-no-key legacy state). Block enabling unless a
+            // key exists in the row or is being entered.
+            onCheckedChange={(v) => {
+              if (v && !willHaveKey) return;
+              setEnabled(v);
+            }}
+            disabled={!enabled && !willHaveKey}
+          />
+        </span>
       }
     >
       <div className="space-y-5">
@@ -539,14 +563,41 @@ export function IntegrationTab() {
                     {card.displayName}
                   </span>
                 </div>
-                <Switch
-                  checked={card.isEnabled}
-                  onCheckedChange={(next) =>
-                    toggleMutation.mutate({ card, next })
+                <span
+                  title={
+                    !card.isCustom && !card.hasApiKey && !card.isEnabled
+                      ? "Add an API key first — open Settings."
+                      : undefined
                   }
                   onClick={(e) => e.stopPropagation()}
-                  disabled={toggleMutation.isPending}
-                />
+                >
+                  <Switch
+                    checked={card.isEnabled}
+                    onCheckedChange={(next) => {
+                      // Block direct enable-without-key from the
+                      // grid card. Disabling stays allowed so legacy
+                      // rows (toggled on with no key) can be cleaned
+                      // up without opening Settings.
+                      if (
+                        next &&
+                        !card.isCustom &&
+                        !card.hasApiKey
+                      ) {
+                        toast.error(
+                          `Add an API key for ${card.displayName} before enabling it.`,
+                        );
+                        return;
+                      }
+                      toggleMutation.mutate({ card, next });
+                    }}
+                    disabled={
+                      toggleMutation.isPending ||
+                      (!card.isEnabled &&
+                        !card.isCustom &&
+                        !card.hasApiKey)
+                    }
+                  />
+                </span>
               </div>
 
               {/* Persistent BYOK indicator: a small "Key set" pill so

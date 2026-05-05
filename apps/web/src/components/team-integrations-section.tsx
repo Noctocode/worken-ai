@@ -287,11 +287,45 @@ function TeamProviderDialog({
       description={`Configure shared ${card.displayName} integration for this team.`}
       headerIcon={iconForHint(card.iconHint)}
       headerContent={
-        <Switch
-          checked={enabled}
-          disabled={!canManage}
-          onCheckedChange={setEnabled}
-        />
+        <span
+          title={
+            !card.isCustom &&
+            !((card.hasApiKey && !editingKey) || apiKey.trim().length > 0) &&
+            !enabled
+              ? "Add an API key first, then you can enable this provider."
+              : undefined
+          }
+        >
+          <Switch
+            checked={enabled}
+            // Disable when no key exists / is being entered AND the
+            // toggle is currently off. Disabling is always allowed —
+            // covers any legacy enabled-no-key rows so admins can
+            // recover. Custom team rows are exempt (anonymous OK).
+            disabled={
+              !canManage ||
+              (!enabled &&
+                !card.isCustom &&
+                !(
+                  (card.hasApiKey && !editingKey) ||
+                  apiKey.trim().length > 0
+                ))
+            }
+            onCheckedChange={(v) => {
+              if (
+                v &&
+                !card.isCustom &&
+                !(
+                  (card.hasApiKey && !editingKey) ||
+                  apiKey.trim().length > 0
+                )
+              ) {
+                return;
+              }
+              setEnabled(v);
+            }}
+          />
+        </span>
       }
     >
       <div className="space-y-5">
