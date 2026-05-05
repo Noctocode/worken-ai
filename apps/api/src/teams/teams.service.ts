@@ -9,7 +9,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 
 const INVITE_EXPIRY_DAYS = 7;
 const inviteExpiry = () =>
@@ -20,6 +20,7 @@ import {
   users,
   guardrails,
   integrations,
+  observabilityEvents,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
@@ -1145,6 +1146,95 @@ export class TeamsService {
       .from(integrations)
       .where(eq(integrations.teamId, teamId));
 
+    // Aggregate observability scoped to this team. Same shape as
+    // IntegrationsService.listForUser but the filter is teamId rather
+    // than userId, so cards reflect what the *whole team* spent
+    // through that provider — not whoever last opened the page.
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const statsRows = await this.db
+      .select({
+        provider: observabilityEvents.provider,
+        successCount: sql<number>`count(*) filter (where ${observabilityEvents.success}=true)::int`,
+        totalCount: sql<number>`count(*)::int`,
+        thisMonth: sql<number>`count(*) filter (where ${observabilityEvents.createdAt} >= date_trunc('month', now()))::int`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.teamId, teamId),
+          gte(observabilityEvents.createdAt, since),
+        ),
+      )
+      .groupBy(observabilityEvents.provider);
+
+    const peakRows = await this.db.execute<{
+      provider: string;
+      peak: number;
+    }>(sql`
+      SELECT provider, MAX(daily_count)::int AS peak
+      FROM (
+        SELECT
+          ${observabilityEvents.provider} AS provider,
+          DATE_TRUNC('day', ${observabilityEvents.createdAt}) AS day,
+          COUNT(*) AS daily_count
+        FROM ${observabilityEvents}
+        WHERE
+          ${observabilityEvents.teamId} = ${teamId}
+          AND ${observabilityEvents.createdAt} >= ${since}
+          AND ${observabilityEvents.provider} IS NOT NULL
+        GROUP BY provider, day
+      ) AS daily
+      GROUP BY provider
+    `);
+
+    const statsByProvider = new Map<
+      string,
+      {
+        successCount: number;
+        totalCount: number;
+        thisMonth: number;
+        peakDaily: number;
+      }
+    >();
+    for (const r of statsRows) {
+      if (!r.provider) continue;
+      statsByProvider.set(r.provider, {
+        successCount: Number(r.successCount ?? 0),
+        totalCount: Number(r.totalCount ?? 0),
+        thisMonth: Number(r.thisMonth ?? 0),
+        peakDaily: 0,
+      });
+    }
+    const peakRowList =
+      (peakRows as { rows?: unknown[] }).rows ?? peakRows;
+    if (Array.isArray(peakRowList)) {
+      for (const r of peakRowList as {
+        provider: string;
+        peak: number;
+      }[]) {
+        if (!r.provider) continue;
+        const existing = statsByProvider.get(r.provider) ?? {
+          successCount: 0,
+          totalCount: 0,
+          thisMonth: 0,
+          peakDaily: 0,
+        };
+        existing.peakDaily = Number(r.peak ?? 0);
+        statsByProvider.set(r.provider, existing);
+      }
+    }
+
+    const buildStats = (providerId: string) => {
+      const s = statsByProvider.get(providerId);
+      const successRate =
+        s && s.totalCount > 0 ? s.successCount / s.totalCount : 0;
+      return {
+        successRate,
+        apiCalls: s?.thisMonth ?? 0,
+        peakDailyCalls: s?.peakDaily ?? 0,
+      };
+    };
+
     return PREDEFINED_PROVIDERS.map((p) => {
       const row = rows.find(
         (r) => r.providerId === p.id && r.apiUrl === null,
@@ -1157,18 +1247,12 @@ export class TeamsService {
         iconHint: p.iconHint,
         apiUrl: null,
         hasApiKey: !!row?.apiKeyEncrypted,
-        // Default OFF for providers the team has never touched. Once a
-        // row exists, respect the toggle the admin chose.
         isEnabled: row?.isEnabled ?? false,
         isCustom: false,
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,
         boundAliasCount: 0,
-        // Per-team aggregate stats not implemented in this pass — the
-        // FE shows a dash for now. The personal tab still has rich
-        // stats; a follow-up can add them here once the FE design
-        // settles.
-        stats: { successRate: 0, apiCalls: 0, peakDailyCalls: 0 },
+        stats: buildStats(p.id),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
       };

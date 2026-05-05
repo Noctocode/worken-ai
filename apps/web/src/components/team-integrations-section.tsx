@@ -394,12 +394,22 @@ export function TeamIntegrationsSection({
                   </span>
                 )}
               </div>
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-text-3">
-                    {card.isEnabled ? "Enabled" : "Disabled"}
-                  </span>
-                </div>
+              <div className="flex items-center justify-between text-[12px] text-text-3">
+                <span>{card.isEnabled ? "Enabled" : "Disabled"}</span>
+                {/* Team-scoped usage. Numbers come from
+                    observability_events filtered by team_id, so they
+                    reflect everyone in the team, not just the viewer. */}
+                <span className="tabular-nums">
+                  {card.stats.apiCalls.toLocaleString()} calls/mo
+                  {card.stats.successRate > 0 && (
+                    <>
+                      {" · "}
+                      {(card.stats.successRate * 100).toFixed(0)}% ok
+                    </>
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-end gap-2 -mt-1">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="ghost"
