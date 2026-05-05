@@ -4,11 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import {
   enabledModels,
   integrations,
   modelConfigs,
+  teamMembers,
+  teams,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -71,26 +73,55 @@ export class ModelsService {
    * precedence.
    */
   async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
+    // Aliases the user can pick from = personal aliases (ownerId =
+    // user, no team) UNION team-scoped aliases for any team they're an
+    // accepted member of. The team scope path is what makes Custom
+    // LLMs that admin shared with TEAM_X actually appear in member's
+    // model dropdown.
+    const teamMemberships = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.userId, userId),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+    const ownedTeams = await this.db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.ownerId, userId));
+    const teamIds = Array.from(
+      new Set([
+        ...teamMemberships.map((r) => r.teamId),
+        ...ownedTeams.map((t) => t.id),
+      ]),
+    );
+
+    const personalAliasFilter = and(
+      eq(modelConfigs.ownerId, userId),
+      isNull(modelConfigs.teamId),
+    );
+    const scopeFilter =
+      teamIds.length > 0
+        ? or(personalAliasFilter, inArray(modelConfigs.teamId, teamIds))
+        : personalAliasFilter;
     const aliasRows = await this.db
       .select()
       .from(modelConfigs)
-      .where(
-        and(eq(modelConfigs.ownerId, userId), eq(modelConfigs.isActive, true)),
-      );
+      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
 
     // Every predefined provider the user has toggled ON, regardless of
-    // whether they've also added a BYOK key. With a key, chat-transport
-    // routes directly to the provider's native endpoint; without a key,
-    // the BYOK path falls through and the call goes via the shared
-    // WorkenAI OpenRouter account. Either way the user's intent is
-    // "give me this provider's models in my picker", so the effective
-    // list should reflect that intent independent of key presence.
+    // whether they've also added a BYOK key. Personal scope only —
+    // team-scoped predefined providers light up models for *team*
+    // chats but the personal model picker stays personal.
     const enabledRows = await this.db
       .select({ providerId: integrations.providerId })
       .from(integrations)
       .where(
         and(
           eq(integrations.ownerId, userId),
+          isNull(integrations.teamId),
           eq(integrations.isEnabled, true),
         ),
       );

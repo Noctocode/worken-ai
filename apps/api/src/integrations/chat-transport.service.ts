@@ -103,19 +103,53 @@ export class ChatTransportService {
   }): Promise<ChatTransport> {
     const { userId, modelIdentifier, projectId, teamId } = input;
 
-    // 1. Custom LLM — alias explicitly bound to a Custom integration row.
-    const [alias] = await this.db
-      .select({
-        integrationId: modelConfigs.integrationId,
-      })
-      .from(modelConfigs)
-      .where(
-        and(
-          eq(modelConfigs.ownerId, userId),
-          eq(modelConfigs.modelIdentifier, modelIdentifier),
-        ),
-      )
-      .limit(1);
+    // Resolve team scope ONCE up-front — used by Custom LLM alias
+    // lookup, BYOK lookup, and the OpenRouter fallback billing
+    // decision. Pulled out of the BYOK section because alias lookup
+    // now needs it too (team-scoped aliases bound to team-scoped
+    // Custom integrations).
+    let teamScopeId = teamId ?? null;
+    if (!teamScopeId && projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      teamScopeId = proj?.teamId ?? null;
+    }
+
+    // 1. Custom LLM — alias bound to a Custom integration row. Prefer
+    //    team-scoped alias when the chat is in team context, then fall
+    //    back to user-personal. Without the team-scope branch, an admin
+    //    could not share a Custom LLM endpoint with team members.
+    let alias: { integrationId: string | null } | undefined;
+    if (teamScopeId) {
+      const [teamAlias] = await this.db
+        .select({ integrationId: modelConfigs.integrationId })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamScopeId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (teamAlias) alias = teamAlias;
+    }
+    if (!alias) {
+      const [userAlias] = await this.db
+        .select({ integrationId: modelConfigs.integrationId })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, userId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (userAlias) alias = userAlias;
+    }
 
     if (alias?.integrationId) {
       const [integration] = await this.db
@@ -143,25 +177,14 @@ export class ChatTransportService {
       );
     }
 
-    // 2. BYOK — team-scoped first (admin-shared key for everyone in the
-    //    team), then user-personal. Resolve the team scope from explicit
-    //    teamId or by looking up the project's team. Without this two-
-    //    step lookup, a team member would always fall through to their
-    //    own BYOK row even when the team has a shared key configured —
-    //    defeating the whole point of "admin sets up Anthropic for
-    //    TEAM X, members just use it".
+    // 2. BYOK — team-scoped first (admin-shared key for everyone in
+    //    the team), then user-personal. teamScopeId is already
+    //    resolved at the top. Without the team branch a team member
+    //    would always fall through to their own BYOK row even when the
+    //    team has a shared key configured — defeating the whole point
+    //    of "admin sets up Anthropic for TEAM X, members just use it".
     const provider = providerOfModel(modelIdentifier);
     if (provider) {
-      let teamScopeId = teamId ?? null;
-      if (!teamScopeId && projectId) {
-        const [proj] = await this.db
-          .select({ teamId: projects.teamId })
-          .from(projects)
-          .where(eq(projects.id, projectId))
-          .limit(1);
-        teamScopeId = proj?.teamId ?? null;
-      }
-
       let byokRow:
         | typeof integrations.$inferSelect
         | undefined;

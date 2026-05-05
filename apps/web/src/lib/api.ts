@@ -2087,8 +2087,16 @@ export async function upsertTeamIntegration(
   teamId: string,
   input: {
     providerId: string;
+    /** Required when providerId === "custom": the OpenAI-compatible
+     *  endpoint URL (Ollama / vLLM / Together / …). */
+    apiUrl?: string | null;
     apiKey?: string | null;
     isEnabled?: boolean;
+    /** Required when providerId === "custom": the friendly name
+     *  members see in the model picker. The BE auto-creates a
+     *  team-scoped model_configs alias bound to this integration so
+     *  members can use it without admin touching /catalog. */
+    customName?: string | null;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/teams/${teamId}/integrations`, {

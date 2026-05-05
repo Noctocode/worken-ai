@@ -20,6 +20,7 @@ import {
   users,
   guardrails,
   integrations,
+  modelConfigs,
   observabilityEvents,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -1235,7 +1236,7 @@ export class TeamsService {
       };
     };
 
-    return PREDEFINED_PROVIDERS.map((p) => {
+    const out: IntegrationView[] = PREDEFINED_PROVIDERS.map((p) => {
       const row = rows.find(
         (r) => r.providerId === p.id && r.apiUrl === null,
       );
@@ -1257,6 +1258,61 @@ export class TeamsService {
         updatedAt: row?.updatedAt?.toISOString() ?? null,
       };
     });
+
+    // Custom LLM rows after predefined, sorted by createdAt asc so
+    // the FE order is stable. Each custom row is its own card —
+    // (teamId, providerId='custom') intentionally not unique.
+    const customs = rows
+      .filter((r) => r.providerId === 'custom' && r.apiUrl !== null)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() -
+          new Date(b.createdAt).getTime(),
+      );
+    if (customs.length > 0) {
+      // For each custom row, surface the bound alias's customName so
+      // admin sees "Local Llama" rather than just the URL hostname.
+      const customIds = customs.map((c) => c.id);
+      const aliasRows = await this.db
+        .select({
+          integrationId: modelConfigs.integrationId,
+          customName: modelConfigs.customName,
+        })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            inArray(modelConfigs.integrationId, customIds),
+          ),
+        );
+      const aliasNameByIntegration = new Map<string, string>();
+      for (const a of aliasRows) {
+        if (a.integrationId) {
+          aliasNameByIntegration.set(a.integrationId, a.customName);
+        }
+      }
+      for (const r of customs) {
+        const aliasName = aliasNameByIntegration.get(r.id);
+        out.push({
+          id: r.id,
+          providerId: 'custom',
+          displayName: aliasName ?? deriveCustomDisplayName(r.apiUrl ?? ''),
+          description: r.apiUrl ?? '',
+          iconHint: 'custom',
+          apiUrl: r.apiUrl,
+          hasApiKey: !!r.apiKeyEncrypted,
+          isEnabled: r.isEnabled,
+          isCustom: true,
+          openAICompatible: true,
+          byokSupported: true,
+          boundAliasCount: aliasName ? 1 : 0,
+          stats: buildStats('custom'),
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        });
+      }
+    }
+    return out;
   }
 
   async upsertIntegration(
@@ -1264,8 +1320,14 @@ export class TeamsService {
     callerId: string,
     input: {
       providerId: string;
+      apiUrl?: string | null;
       apiKey?: string | null;
       isEnabled?: boolean;
+      // Required for providerId='custom'. Used as the alias's display
+      // name AND model identifier — members will pick this in the
+      // model dropdown and chat-transport routes the call through the
+      // bound integration.
+      customName?: string | null;
     },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
@@ -1274,12 +1336,8 @@ export class TeamsService {
         'Only team owners or editors can manage team integrations',
       );
     }
-    if (input.providerId === 'custom') {
-      throw new BadRequestException(
-        'Custom LLMs are not supported at team scope.',
-      );
-    }
-    if (!isPredefinedProvider(input.providerId)) {
+    const isCustom = input.providerId === 'custom';
+    if (!isCustom && !isPredefinedProvider(input.providerId)) {
       throw new BadRequestException(
         `Unknown provider: ${input.providerId}`,
       );
@@ -1289,10 +1347,80 @@ export class TeamsService {
       ? this.encryptionService.encrypt(input.apiKey.trim())
       : null;
 
-    // Match the same 3-state semantic the personal upsert uses:
-    //   - undefined → don't touch the field
-    //   - empty string / null → clear
-    //   - non-empty → encrypt and store
+    // Custom LLMs at team scope: every Add creates a new (integration,
+    // alias) pair — admin can register many endpoints (Ollama, vLLM,
+    // Together, …) per team. The alias is what members see in their
+    // model dropdown; chat-transport's team-scoped lookup routes
+    // through the bound integration.
+    if (isCustom) {
+      if (!input.apiUrl?.trim()) {
+        throw new BadRequestException('Custom LLM requires apiUrl');
+      }
+      try {
+        new URL(input.apiUrl);
+      } catch {
+        throw new BadRequestException('apiUrl is not a valid URL');
+      }
+      const customName = input.customName?.trim();
+      if (!customName) {
+        throw new BadRequestException(
+          'Custom LLM requires a name members will see in the model picker',
+        );
+      }
+      const modelIdentifier = teamCustomModelIdentifier(teamId, customName);
+
+      // Reject collisions on (teamId, modelIdentifier) up-front rather
+      // than letting the DB explode at insert time — gives a clean
+      // error message instead of a 500.
+      const [existing] = await this.db
+        .select({ id: modelConfigs.id })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        throw new BadRequestException(
+          `A Custom LLM named "${customName}" already exists for this team. Pick a different name.`,
+        );
+      }
+
+      const [integration] = await this.db
+        .insert(integrations)
+        .values({
+          ownerId: callerId,
+          teamId,
+          providerId: 'custom',
+          apiUrl: input.apiUrl,
+          apiKeyEncrypted,
+          isEnabled: input.isEnabled ?? true,
+        })
+        .returning();
+      // Auto-create the alias so members can immediately pick the
+      // Custom LLM from their model dropdown without admin needing to
+      // touch /catalog separately.
+      await this.db.insert(modelConfigs).values({
+        ownerId: callerId,
+        teamId,
+        customName,
+        modelIdentifier,
+        integrationId: integration.id,
+        isActive: true,
+      });
+
+      const all = await this.listIntegrations(teamId, callerId);
+      const view = all.find((v) => v.id === integration.id);
+      if (!view) {
+        throw new NotFoundException('Custom integration not found after insert');
+      }
+      return view;
+    }
+
+    // Predefined providers: upsert against the team-scoped partial
+    // unique index — at most one row per (team, providerId).
     const conflictUpdates: Record<string, unknown> = {
       updatedAt: new Date(),
     };
@@ -1445,5 +1573,33 @@ export class TeamsService {
       throw new NotFoundException('Member not found');
     }
     return updated;
+  }
+}
+
+/**
+ * Build a stable, namespaced model identifier for a team-scoped Custom
+ * LLM alias. Members see `customName` in the picker; this is what the
+ * chat layer uses internally to look the alias up. Format keeps it
+ * collision-free across teams without exposing a raw UUID.
+ */
+function teamCustomModelIdentifier(teamId: string, customName: string): string {
+  const slug = customName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  // First 8 chars of the team uuid is enough to disambiguate — names
+  // are scoped to (teamId, modelIdentifier) anyway via the upsert
+  // collision check.
+  const teamShort = teamId.slice(0, 8);
+  return `team:${teamShort}:${slug || 'custom'}`;
+}
+
+/** Same fallback the personal Integration tab uses for naming. */
+function deriveCustomDisplayName(url: string): string {
+  try {
+    return new URL(url).hostname || 'Custom LLM';
+  } catch {
+    return 'Custom LLM';
   }
 }

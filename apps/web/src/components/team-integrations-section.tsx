@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Info, KeyRound, Loader2, Plus } from "lucide-react";
+import { BookOpen, Check, Info, KeyRound, Loader2, Plus } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -71,9 +71,133 @@ function iconForHint(hint: string): React.ReactNode {
       return <BrandIcon color="#0078d4" letter="Co" />;
     case "grok":
       return <BrandIcon color="#1a1a1a" letter="X" />;
+    case "custom":
+      return <BrandIcon color="#64748b" letter="·" />;
     default:
       return <BrandIcon color="#64748b" letter="·" />;
   }
+}
+
+/* ─── Add Custom LLM dialog ──────────────────────────────────────────── */
+
+function AddTeamCustomLLMDialog({
+  teamId,
+  onClose,
+}: {
+  teamId: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [customName, setCustomName] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      upsertTeamIntegration(teamId, {
+        providerId: "custom",
+        apiUrl: apiUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+        customName: customName.trim(),
+        isEnabled: true,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["team-integrations", teamId],
+      });
+      // Models picker for team members reads from /models — invalidate
+      // so the new alias shows up without a page reload.
+      queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
+      toast.success(`${customName || "Custom LLM"} added for this team.`);
+      onClose();
+    },
+    onError: (err: Error) =>
+      toast.error(err.message ?? "Couldn't add team Custom LLM."),
+  });
+
+  const canSubmit =
+    customName.trim().length > 0 && apiUrl.trim().length > 0;
+
+  return (
+    <SettingsDialog
+      open
+      onClose={onClose}
+      onApply={() => createMutation.mutate()}
+      applyLabel={createMutation.isPending ? "Adding…" : "Add"}
+      applyPending={createMutation.isPending}
+      applyDisabled={!canSubmit}
+      title="Add Custom LLM (Team)"
+      description="Register an OpenAI-compatible endpoint members can pick from the model dropdown."
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-2 rounded-lg border border-primary-3 bg-primary-1/40 px-3 py-2">
+          <Info className="h-4 w-4 shrink-0 text-primary-7 mt-0.5" />
+          <p className="text-[13px] text-primary-7 leading-snug">
+            Members of this team will see this Custom LLM in their
+            model picker. Chat calls route through the URL below using
+            the (optional) shared API key. Per-member caps still apply.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            Display name
+          </p>
+          <input
+            type="text"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            placeholder="e.g. Local Llama 3.1"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+          <p className="text-[12px] text-text-3 mt-1">
+            What members will see in the model dropdown.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API URL
+          </p>
+          <input
+            type="text"
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            placeholder="https://your-endpoint/v1"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+        </div>
+
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API key (optional)
+          </p>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Leave blank if the endpoint accepts anonymous"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+        </div>
+
+        <button
+          type="button"
+          className="inline-flex h-[40px] items-center gap-2 rounded-md border border-border-2 px-4 text-[14px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
+          onClick={() =>
+            window.open(
+              "https://openrouter.ai/docs/api-reference/overview",
+              "_blank",
+              "noopener,noreferrer",
+            )
+          }
+        >
+          <BookOpen className="h-4 w-4 text-success-7" />
+          Integration documentation
+        </button>
+      </div>
+    </SettingsDialog>
+  );
 }
 
 /* ─── Configure dialog ───────────────────────────────────────────────── */
@@ -313,6 +437,7 @@ export function TeamIntegrationsSection({
   });
 
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
 
   return (
     <div className="space-y-3">
@@ -327,31 +452,43 @@ export function TeamIntegrationsSection({
             personal BYOK or OpenRouter.
           </p>
         </div>
-        {canManage ? (
-          <Button
-            variant="plusAction"
-            className="rounded-lg"
-            disabled={unconfigured.length === 0}
-            onClick={() => setPickerOpen(true)}
-          >
-            <Plus className="h-4 w-4 text-text-white" />
-            Add Provider Key
-          </Button>
-        ) : (
-          <DisabledReasonTooltip
-            disabled
-            reason="Not available for basic users"
-          >
-            <Button
-              variant="plusAction"
-              className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+        <div className="flex items-center gap-2">
+          {canManage ? (
+            <>
+              <Button
+                variant="outline"
+                className="rounded-lg"
+                onClick={() => setCustomDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4" />
+                Add Custom LLM
+              </Button>
+              <Button
+                variant="plusAction"
+                className="rounded-lg"
+                disabled={unconfigured.length === 0}
+                onClick={() => setPickerOpen(true)}
+              >
+                <Plus className="h-4 w-4 text-text-white" />
+                Add Provider Key
+              </Button>
+            </>
+          ) : (
+            <DisabledReasonTooltip
               disabled
+              reason="Not available for basic users"
             >
-              <Plus className="h-4 w-4 text-text-white" />
-              Add Provider Key
-            </Button>
-          </DisabledReasonTooltip>
-        )}
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />
+                Add Provider Key
+              </Button>
+            </DisabledReasonTooltip>
+          )}
+        </div>
       </div>
 
       {isLoading ? (
@@ -411,14 +548,20 @@ export function TeamIntegrationsSection({
               </div>
               <div className="flex items-center justify-end gap-2 -mt-1">
                 <div className="flex items-center gap-2">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[13px]"
-                    onClick={() => setOpenCard(card)}
-                  >
-                    {canManage ? "Configure" : "View"}
-                  </Button>
+                  {/* Custom LLM rows aren't editable inline yet — the
+                      add-form has 4 fields (name/URL/key/enabled)
+                      that don't fit the predefined Settings dialog
+                      cleanly. For now: remove + re-add to change. */}
+                  {!card.isCustom && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-[13px]"
+                      onClick={() => setOpenCard(card)}
+                    >
+                      {canManage ? "Configure" : "View"}
+                    </Button>
+                  )}
                   {canManage && card.id && (
                     <Button
                       variant="ghost"
@@ -426,11 +569,13 @@ export function TeamIntegrationsSection({
                       className="h-7 text-[13px] text-danger-6 hover:text-danger-7"
                       disabled={removeMutation.isPending}
                       onClick={() => {
-                        if (
-                          confirm(
-                            `Remove the ${card.displayName} team key? Members will fall back to their personal keys or OpenRouter.`,
-                          )
-                        ) {
+                        const what = card.isCustom
+                          ? `the "${card.displayName}" Custom LLM`
+                          : `the ${card.displayName} team key`;
+                        const consequence = card.isCustom
+                          ? "Members will lose access to this endpoint."
+                          : "Members will fall back to their personal keys or OpenRouter.";
+                        if (confirm(`Remove ${what}? ${consequence}`)) {
                           removeMutation.mutate({ integrationId: card.id! });
                         }
                       }}
@@ -491,6 +636,13 @@ export function TeamIntegrationsSection({
           card={openCard}
           canManage={canManage}
           onClose={() => setOpenCard(null)}
+        />
+      )}
+
+      {customDialogOpen && (
+        <AddTeamCustomLLMDialog
+          teamId={teamId}
+          onClose={() => setCustomDialogOpen(false)}
         />
       )}
     </div>

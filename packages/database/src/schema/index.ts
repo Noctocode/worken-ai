@@ -395,6 +395,11 @@ export const modelConfigs = pgTable("model_configs", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
+  // When set, the alias is shared with every member of the team —
+  // so a Custom LLM endpoint admin configured for TEAM_X is usable
+  // by every member, not just admin. Cascade so deleting a team
+  // also removes its aliases. NULL = user-personal alias (legacy).
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
   customName: text("custom_name").notNull(),
   modelIdentifier: text("model_identifier").notNull(),
   isActive: boolean("is_active").notNull().default(true),
