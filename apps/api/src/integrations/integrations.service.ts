@@ -308,10 +308,17 @@ export class IntegrationsService {
       });
     } else {
       // Atomic upsert against the partial unique index
-      // `(owner_id, provider_id) WHERE api_url IS NULL`. Replaces an
-      // earlier select-then-insert which had a thin race window where
-      // two concurrent toggles could land on either side of the SELECT
-      // and leave the FE state out of sync.
+      // `(owner_id, provider_id) WHERE api_url IS NULL AND team_id IS NULL`.
+      // Replaces an earlier select-then-insert which had a thin race
+      // window where two concurrent toggles could land on either side
+      // of the SELECT and leave the FE state out of sync.
+      //
+      // The targetWhere must match the index predicate exactly (PG
+      // requires the supplied predicate to imply the index's), so the
+      // `team_id IS NULL` half is needed even though we never insert a
+      // team-scoped row from this path. Without it the upsert falls
+      // back to a different index — or fails with "no unique or
+      // exclusion constraint matching".
       //
       // Build the on-conflict SET clause to preserve the 3-state
       // semantic of `apiKey`:
@@ -333,6 +340,7 @@ export class IntegrationsService {
         .insert(integrations)
         .values({
           ownerId: userId,
+          teamId: null,
           providerId: input.providerId,
           apiUrl: null,
           apiKeyEncrypted,
@@ -340,7 +348,7 @@ export class IntegrationsService {
         })
         .onConflictDoUpdate({
           target: [integrations.ownerId, integrations.providerId],
-          targetWhere: sql`${integrations.apiUrl} IS NULL`,
+          targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
           set: conflictUpdates,
         });
     }
