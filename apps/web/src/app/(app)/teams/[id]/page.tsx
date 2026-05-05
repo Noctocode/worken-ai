@@ -1,7 +1,9 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
+  Check,
   Pencil,
   Plus,
   Trash2,
@@ -10,6 +12,7 @@ import {
   Wallet,
   Info,
   Loader2,
+  X,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -389,6 +392,60 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
   const [capEditMemberId, setCapEditMemberId] = useState<string | null>(null);
 
+  // Inline edit mode (driven by the appbar Pencil) — same pattern as
+  // /users/[id]. Page is read-only by default; clicking the appbar
+  // pencil flips into edit mode, which renders inputs for name +
+  // description + budget. Confirm/Cancel land in the page header.
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editBudget, setEditBudget] = useState("");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const router = useRouter();
+
+  const updateTeamMutation = useMutation({
+    mutationFn: (data: { name?: string; description?: string }) =>
+      updateTeam(id, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
+  });
+
+  const deleteTeamMutation = useMutation({
+    mutationFn: () => deleteTeam(id),
+    onSuccess: () => {
+      toast.success(`Deleted "${team?.name ?? "team"}".`);
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      router.push("/teams");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't delete team.");
+    },
+  });
+
+  // Wire the appbar Pencil/Trash2 to page state via window events —
+  // mirrors /users/[id]. MUST stay above the early-return guards so
+  // hook count is stable across the loading → loaded transition.
+  useEffect(() => {
+    const onEdit = () => {
+      if (!team) return;
+      setEditName(team.name);
+      setEditDescription(team.description ?? "");
+      setEditBudget(
+        (team.monthlyBudgetCents / 100).toLocaleString("de-DE", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      setIsEditing(true);
+    };
+    const onDelete = () => setConfirmDeleteOpen(true);
+    window.addEventListener("team-detail:edit", onEdit);
+    window.addEventListener("team-detail:delete", onDelete);
+    return () => {
+      window.removeEventListener("team-detail:edit", onEdit);
+      window.removeEventListener("team-detail:delete", onDelete);
+    };
+  }, [team]);
+
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
   if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
 
@@ -421,14 +478,86 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     setBudgetInput(null);
   };
 
+  // Render guard for the inline edit affordances. canManageTeam alone
+  // isn't enough — non-managers could still flip isEditing via the
+  // window event, so gate the rendered controls too. BE rejects either
+  // way; this just keeps the UI honest.
+  const editing = isEditing && canManageTeam;
+  const isSavingTeam =
+    updateTeamMutation.isPending || budgetMutation.isPending;
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditName("");
+    setEditDescription("");
+    setEditBudget("");
+  };
+
+  const confirmEdit = async () => {
+    const trimmedName = editName.trim();
+    if (!trimmedName) {
+      toast.error("Team name cannot be empty.");
+      return;
+    }
+    const raw = editBudget.replace(/\./g, "").replace(",", ".");
+    const parsedBudget = parseFloat(raw);
+    if (isNaN(parsedBudget) || parsedBudget < 0) {
+      toast.error("Budget must be a non-negative number.");
+      return;
+    }
+
+    const nameChanged = trimmedName !== team.name;
+    const descriptionChanged =
+      editDescription.trim() !== (team.description ?? "");
+    const budgetChanged = parsedBudget !== budget;
+    if (!nameChanged && !descriptionChanged && !budgetChanged) {
+      setIsEditing(false);
+      return;
+    }
+
+    // Fire the changed mutations in parallel; surface a per-mutation
+    // toast so a partial failure (e.g. name OK but budget rejected)
+    // is visible. Mirrors the /users/[id] confirm pattern.
+    const tasks: Array<Promise<unknown>> = [];
+    if (nameChanged || descriptionChanged) {
+      tasks.push(
+        updateTeamMutation.mutateAsync({
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(descriptionChanged
+            ? { description: editDescription.trim() || undefined }
+            : {}),
+        }).catch((err: Error) => {
+          toast.error(err.message || "Couldn't save team details.");
+          throw err;
+        }),
+      );
+    }
+    if (budgetChanged) {
+      tasks.push(
+        budgetMutation
+          .mutateAsync(parsedBudget)
+          .catch((err: Error) => {
+            toast.error(err.message || "Couldn't save monthly budget.");
+            throw err;
+          }),
+      );
+    }
+
+    const results = await Promise.allSettled(tasks);
+    if (results.every((r) => r.status === "fulfilled")) {
+      toast.success("Team updated.");
+      setIsEditing(false);
+    }
+  };
+
   const memberName = (m: TeamMember) => m.userName ?? m.email;
 
   return (
     <div className="space-y-6">
       {/* ── Description + Budget card ──────────────────────────────── */}
       <div className="bg-bg-white rounded p-4 space-y-[30px]">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full overflow-hidden">
               <svg viewBox="0 0 80 80" className="h-full w-full">
                 <defs><linearGradient id="teamGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f97316" /><stop offset="50%" stopColor="#ef4444" /><stop offset="100%" stopColor="#22c55e" /></linearGradient></defs>
@@ -437,11 +566,60 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 <polygon points="20,20 45,15 35,40" fill="#ef4444" opacity="0.6" />
               </svg>
             </div>
-            <div className="space-y-3">
-              <p className="text-[18px] font-bold text-text-1">{team.name}</p>
-              <p className="text-[16px] text-text-1">{team.description ?? "No description"}</p>
+            <div className="space-y-3 flex-1 min-w-0">
+              {editing ? (
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  placeholder="Team name"
+                  disabled={isSavingTeam}
+                  className="h-10 text-[18px] font-bold"
+                />
+              ) : (
+                <p className="text-[18px] font-bold text-text-1">{team.name}</p>
+              )}
+              {editing ? (
+                <Textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Description (optional)"
+                  rows={2}
+                  disabled={isSavingTeam}
+                />
+              ) : (
+                <p className="text-[16px] text-text-1">{team.description ?? "No description"}</p>
+              )}
             </div>
           </div>
+
+          {/* Inline edit-mode controls — Confirm / Cancel land here so
+              they're contextual to the form state. The "enter edit
+              mode" pencil lives up in the appbar. */}
+          {editing && (
+            <div className="flex items-center gap-2 shrink-0 mt-1">
+              <Button
+                variant="outline"
+                className="h-10 gap-2 border-border-2"
+                onClick={cancelEdit}
+                disabled={isSavingTeam}
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </Button>
+              <Button
+                className="h-10 gap-2 bg-success-7 text-white hover:bg-success-7/90"
+                onClick={confirmEdit}
+                disabled={isSavingTeam}
+              >
+                {isSavingTeam ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                )}
+                Confirm
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -449,7 +627,35 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
             <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
-              <input type="text" value={displayBudget} onChange={(e) => setBudgetInput(e.target.value)} onBlur={handleBudgetBlur} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50" />
+              {editing ? (
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={editBudget}
+                  onChange={(e) => setEditBudget(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmEdit();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                  }}
+                  disabled={isSavingTeam}
+                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60"
+                />
+              ) : (
+                <input
+                  type="text"
+                  value={displayBudget}
+                  onChange={(e) => setBudgetInput(e.target.value)}
+                  onBlur={handleBudgetBlur}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                  readOnly={!canManageTeam}
+                  className={`w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 ${!canManageTeam ? "cursor-default" : ""}`}
+                />
+              )}
             </div>
           </div>
           <div className="space-y-3">
@@ -885,6 +1091,41 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </div>
+
+      {/* Delete team confirmation — driven by the appbar Trash2 via
+          the `team-detail:delete` window event. Mirrors the user
+          detail page pattern. */}
+      <Dialog
+        open={confirmDeleteOpen}
+        onOpenChange={(o) => !o && setConfirmDeleteOpen(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete team</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <strong>{team.name}</strong>?
+              This action cannot be undone and will remove all members and
+              subteams from this team.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={deleteTeamMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteTeamMutation.mutate()}
+              disabled={deleteTeamMutation.isPending}
+            >
+              {deleteTeamMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Per-member cap editor */}
       {capEditMemberId &&
