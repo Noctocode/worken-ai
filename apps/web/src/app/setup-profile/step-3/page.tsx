@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { UserRound, User as UserIcon } from "lucide-react";
@@ -12,6 +13,20 @@ export default function SetupProfileStep3Page() {
   const router = useRouter();
   const { state, update } = useOnboarding();
   const fullName = state.fullName ?? "";
+
+  // Show inline error only after the first failed Continue — same
+  // pattern as step-2 so the form doesn't yell at users the moment
+  // they land. Filling the field clears the error live.
+  const [attempted, setAttempted] = useState(false);
+  const fullNameError = !fullName.trim();
+
+  const handleContinue = () => {
+    if (fullNameError) {
+      setAttempted(true);
+      return;
+    }
+    router.push("/setup-profile/step-4");
+  };
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -52,14 +67,22 @@ export default function SetupProfileStep3Page() {
 
           {/* Form */}
           <div className="flex flex-col gap-4">
-            <div className="relative">
-              <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
-              <Input
-                placeholder="Full name"
-                value={fullName}
-                onChange={(e) => update({ fullName: e.target.value })}
-                className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
-              />
+            <div className="flex flex-col gap-1">
+              <div className="relative">
+                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
+                <Input
+                  placeholder="Full name"
+                  value={fullName}
+                  onChange={(e) => update({ fullName: e.target.value })}
+                  aria-invalid={attempted && fullNameError}
+                  className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
+                />
+              </div>
+              {attempted && fullNameError && (
+                <p className="text-[12px] text-danger-6">
+                  Full name is required.
+                </p>
+              )}
             </div>
 
             <div className="flex justify-between pt-2">
@@ -72,7 +95,7 @@ export default function SetupProfileStep3Page() {
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-                onClick={() => router.push("/setup-profile/step-4")}
+                onClick={handleContinue}
               >
                 Continue
               </Button>

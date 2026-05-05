@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Building2, User as UserIcon } from "lucide-react";
@@ -39,6 +40,27 @@ export default function SetupProfileStep2Page() {
   const companyName = state.companyName ?? "";
   const industry = state.industry ?? "";
   const teamSize = state.teamSize ?? "";
+
+  // Show inline errors only after the user tries to advance — avoids
+  // yelling at them the moment they land on the page. After the first
+  // failed Continue, subsequent renders re-evaluate per-field so
+  // filling a field clears its error live.
+  const [attempted, setAttempted] = useState(false);
+  const errors = {
+    companyName: !companyName.trim(),
+    industry: !industry,
+    teamSize: !teamSize,
+  };
+  const hasError =
+    errors.companyName || errors.industry || errors.teamSize;
+
+  const handleContinue = () => {
+    if (hasError) {
+      setAttempted(true);
+      return;
+    }
+    router.push("/setup-profile/step-4");
+  };
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -80,39 +102,75 @@ export default function SetupProfileStep2Page() {
 
           {/* Form */}
           <div className="flex flex-col gap-4">
-            <div className="relative">
-              <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
-              <Input
-                placeholder="Company Name"
-                value={companyName}
-                onChange={(e) => update({ companyName: e.target.value })}
-                className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
-              />
+            <div className="flex flex-col gap-1">
+              <div className="relative">
+                <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
+                <Input
+                  placeholder="Company Name"
+                  value={companyName}
+                  onChange={(e) => update({ companyName: e.target.value })}
+                  aria-invalid={attempted && errors.companyName}
+                  className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
+                />
+              </div>
+              {attempted && errors.companyName && (
+                <p className="text-[12px] text-danger-6">
+                  Company name is required.
+                </p>
+              )}
             </div>
-            <Select value={industry} onValueChange={(v) => update({ industry: v })}>
-              <SelectTrigger className="h-11 w-full rounded-md border-border-2 text-base">
-                <SelectValue placeholder="Industry" />
-              </SelectTrigger>
-              <SelectContent>
-                {INDUSTRIES.map((i) => (
-                  <SelectItem key={i.value} value={i.value}>
-                    {i.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={teamSize} onValueChange={(v) => update({ teamSize: v })}>
-              <SelectTrigger className="h-11 w-full rounded-md border-border-2 text-base">
-                <SelectValue placeholder="Team Size" />
-              </SelectTrigger>
-              <SelectContent>
-                {TEAM_SIZES.map((t) => (
-                  <SelectItem key={t.value} value={t.value}>
-                    {t.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+
+            <div className="flex flex-col gap-1">
+              <Select
+                value={industry}
+                onValueChange={(v) => update({ industry: v })}
+              >
+                <SelectTrigger
+                  aria-invalid={attempted && errors.industry}
+                  className="h-11 w-full rounded-md border-border-2 text-base"
+                >
+                  <SelectValue placeholder="Industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRIES.map((i) => (
+                    <SelectItem key={i.value} value={i.value}>
+                      {i.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {attempted && errors.industry && (
+                <p className="text-[12px] text-danger-6">
+                  Pick an industry.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Select
+                value={teamSize}
+                onValueChange={(v) => update({ teamSize: v })}
+              >
+                <SelectTrigger
+                  aria-invalid={attempted && errors.teamSize}
+                  className="h-11 w-full rounded-md border-border-2 text-base"
+                >
+                  <SelectValue placeholder="Team Size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_SIZES.map((t) => (
+                    <SelectItem key={t.value} value={t.value}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {attempted && errors.teamSize && (
+                <p className="text-[12px] text-danger-6">
+                  Pick a team size.
+                </p>
+              )}
+            </div>
 
             <div className="flex justify-between pt-2">
               <Button
@@ -124,7 +182,7 @@ export default function SetupProfileStep2Page() {
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-                onClick={() => router.push("/setup-profile/step-4")}
+                onClick={handleContinue}
               >
                 Continue
               </Button>
