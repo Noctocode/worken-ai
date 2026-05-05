@@ -84,6 +84,14 @@ export const teamMembers = pgTable("team_members", {
   invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
   invitationExpiresAt: timestamp("invitation_expires_at", { withTimezone: true }),
   invitationRevokedAt: timestamp("invitation_revoked_at", { withTimezone: true }),
+  // Per-member monthly spend cap, in cents, that gates this user's
+  // chat calls billed against the team. NULL = no individual cap (the
+  // member shares the team's overall budget freely). 0 = suspended for
+  // this team. >0 = enforced cap, checked against the user's
+  // current-month spend in observability_events filtered by teamId.
+  // Cap is enforced regardless of routing: OpenRouter team key, team-
+  // scoped BYOK, or otherwise. Custom LLMs bypass (external billing).
+  monthlyCapCents: integer("monthly_cap_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -455,9 +463,16 @@ export const integrations = pgTable(
   "integrations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Who configured this row. Always set — even on team-scoped rows,
+    // where it tracks the admin who provisioned the team key for audit.
     ownerId: uuid("owner_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
+    // When set, this integration is *team-scoped*: every member of the
+    // team sees the BYOK key (team-shared Anthropic key etc.). When
+    // null, the integration is owner-personal (legacy behaviour).
+    // Cascade so removing a team also drops its provisioned BYOK keys.
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
     providerId: text("provider_id").notNull(),
     apiUrl: text("api_url"),
     apiKeyEncrypted: text("api_key_encrypted"),
@@ -467,9 +482,11 @@ export const integrations = pgTable(
   },
   (table) => [
     // Partial unique index: at most one row per (owner, predefined
-    // provider). Custom LLMs share `providerId='custom'` and need to
-    // stay non-unique (a user can register many custom endpoints), so
-    // the WHERE clause excludes them via `api_url IS NULL`.
+    // provider) for *personal* (non-team) BYOK. Custom LLMs share
+    // `providerId='custom'` and need to stay non-unique (a user can
+    // register many custom endpoints), so the WHERE clause excludes
+    // them via `api_url IS NULL`. team_id IS NULL guards against
+    // collision with team-scoped rows owned by the same admin.
     //
     // Without this, IntegrationsService.upsert (select-then-insert) is
     // racy under concurrent saves and could land two predefined rows
@@ -477,6 +494,12 @@ export const integrations = pgTable(
     // whichever the planner returns first.
     uniqueIndex("integrations_owner_provider_predef_unique")
       .on(table.ownerId, table.providerId)
-      .where(sql`${table.apiUrl} IS NULL`),
+      .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NULL`),
+    // Team-scoped predefined integration uniqueness: at most one row
+    // per (team, predefined provider). Two admins should not be able
+    // to land conflicting Anthropic keys on the same team.
+    uniqueIndex("integrations_team_provider_predef_unique")
+      .on(table.teamId, table.providerId)
+      .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NOT NULL`),
   ],
 );
