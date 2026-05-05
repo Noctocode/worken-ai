@@ -1,7 +1,10 @@
-import { Body, Controller, HttpException, Post } from '@nestjs/common';
+import { Body, Controller, HttpException, Inject, Post } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { projects } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
+import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -25,6 +28,7 @@ export class ChatController {
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
+    @Inject(DATABASE) private readonly db: Database,
   ) {}
 
   @Post()
@@ -95,7 +99,19 @@ export class ChatController {
     }
 
     // 5. Call the chat service (with per-call observability)
-    const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+    //
+    // Tag the event with the chat's actual team scope — derived from
+    // the project, not the user's "primary" team. The OpenRouter key
+    // the spend lands on is the project's team key (or the user key
+    // for personal projects), so observability.team_id needs to mirror
+    // that or the per-team rollups + per-member cap gate go off course
+    // when a user is in multiple teams.
+    const [proj] = await this.db
+      .select({ teamId: projects.teamId })
+      .from(projects)
+      .where(eq(projects.id, conversation.projectId))
+      .limit(1);
+    const teamId = proj?.teamId ?? null;
     const chatStart = Date.now();
     let response;
     try {
