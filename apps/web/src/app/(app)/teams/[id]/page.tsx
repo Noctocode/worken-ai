@@ -61,6 +61,8 @@ import {
   type SubteamListItem,
 } from "@/lib/api";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
+import { TeamIntegrationsSection } from "@/components/team-integrations-section";
+import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
 import { formatCurrency } from "@/lib/utils";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -384,6 +386,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   });
   const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(null);
   const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
+  const [capEditMemberId, setCapEditMemberId] = useState<string | null>(null);
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
   if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
@@ -618,6 +621,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
+      {/* ── AI Provider Keys (team-scoped BYOK) ───────────────────── */}
+      <TeamIntegrationsSection teamId={id} canManage={canManageTeam} />
+
       {/* ── Users ─────────────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
@@ -640,84 +646,118 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[540px]">
+            <table className="w-full min-w-[640px]">
               <thead>
                 <tr>
                   <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Name</th>
                   <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Email</th>
                   <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Role</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px]">Monthly Cap</th>
                   <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {team.members.map((m) => (
-                  <tr key={m.id} className="h-14 border-b border-border-2">
-                    <td className="bg-bg-white px-4 align-middle w-[300px]">
-                      <div className="flex items-center gap-2.5">
-                        <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
-                        <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
-                          {memberName(m)}
-                          {m.userId && m.userId === team.ownerId && (
-                            <Badge className="border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                              Team Owner
-                            </Badge>
-                          )}
-                          {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{m.email}</td>
-                    <td className="bg-bg-white px-4 align-middle">
-                      {m.role === "owner" ? (
-                        <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
-                          Team Owner
-                        </span>
-                      ) : (
-                        <Select
-                          value={m.role}
-                          disabled={!canEditRoles}
-                          onValueChange={(value) =>
-                            roleMutation.mutate({
-                              memberId: m.id,
-                              role: value as "editor" | "viewer",
-                            })
+                {team.members.map((m) => {
+                  const capLabel =
+                    m.monthlyCapCents == null
+                      ? "No cap"
+                      : m.monthlyCapCents === 0
+                        ? "Suspended"
+                        : `${formatCurrency(m.monthlyCapCents / 100)}/mo`;
+                  const capTone =
+                    m.monthlyCapCents === 0
+                      ? "text-danger-6"
+                      : m.monthlyCapCents != null
+                        ? "text-text-1"
+                        : "text-text-3";
+                  return (
+                    <tr key={m.id} className="h-14 border-b border-border-2">
+                      <td className="bg-bg-white px-4 align-middle w-[300px]">
+                        <div className="flex items-center gap-2.5">
+                          <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
+                          <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
+                            {memberName(m)}
+                            {m.userId && m.userId === team.ownerId && (
+                              <Badge className="border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                                Team Owner
+                              </Badge>
+                            )}
+                            {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{m.email}</td>
+                      <td className="bg-bg-white px-4 align-middle">
+                        {m.role === "owner" ? (
+                          <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
+                            Team Owner
+                          </span>
+                        ) : (
+                          <Select
+                            value={m.role}
+                            disabled={!canEditRoles}
+                            onValueChange={(value) =>
+                              roleMutation.mutate({
+                                memberId: m.id,
+                                role: value as "editor" | "viewer",
+                              })
+                            }
+                          >
+                            <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="editor">Editor</SelectItem>
+                              <SelectItem value="viewer">Viewer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle w-[180px]">
+                        <button
+                          type="button"
+                          disabled={!canManageTeam || m.status === "pending"}
+                          onClick={() => setCapEditMemberId(m.id)}
+                          className={`text-left text-[14px] ${capTone} ${
+                            canManageTeam && m.status === "accepted"
+                              ? "hover:underline cursor-pointer"
+                              : "cursor-default opacity-80"
+                          }`}
+                          title={
+                            canManageTeam
+                              ? "Click to set / clear / suspend this member's cap"
+                              : "Only team owners or editors can change member caps"
                           }
                         >
-                          <SelectTrigger className="h-8 w-[130px] border-border-2 text-sm text-text-1 disabled:opacity-60 disabled:cursor-not-allowed">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="viewer">Viewer</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </td>
-                    <td className="bg-bg-white px-4 align-middle w-[93px]">
-                      <div className="flex justify-center">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem
-                              className="gap-2 text-danger-6 focus:text-danger-6"
-                              disabled={!canManageTeam}
-                              onSelect={(e) => {
-                                if (!canManageTeam) {
-                                  e.preventDefault();
-                                  return;
-                                }
-                                removeMutation.mutate(m.id);
-                              }}
-                            >
-                              <UserX className="h-4 w-4" />Remove user
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {team.members.length === 0 && <tr><td colSpan={4} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">No members yet.</td></tr>}
+                          {capLabel}
+                        </button>
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle w-[93px]">
+                        <div className="flex justify-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2 text-danger-6 focus:text-danger-6"
+                                disabled={!canManageTeam}
+                                onSelect={(e) => {
+                                  if (!canManageTeam) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  removeMutation.mutate(m.id);
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />Remove user
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {team.members.length === 0 && <tr><td colSpan={5} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">No members yet.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -836,6 +876,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </div>
+
+      {/* Per-member cap editor */}
+      {capEditMemberId &&
+        (() => {
+          const m = team.members.find((mm) => mm.id === capEditMemberId);
+          if (!m) return null;
+          return (
+            <TeamMemberCapDialog
+              teamId={id}
+              member={m}
+              open
+              onClose={() => setCapEditMemberId(null)}
+            />
+          );
+        })()}
 
       {/* Remove Guardrail Dialog */}
       <Dialog

@@ -340,6 +340,13 @@ export interface TeamMember {
   userId: string | null;
   userName: string | null;
   userPicture: string | null;
+  /**
+   * Per-member monthly spend cap in cents.
+   *  - null  → no individual cap (member shares the team budget)
+   *  - 0     → suspended (chat blocked at the gate)
+   *  - >0    → enforced against the member's current-month spend
+   */
+  monthlyCapCents: number | null;
 }
 
 export interface TeamWithMembers extends Team {
@@ -511,6 +518,30 @@ export async function updateTeamBudget(
     body: JSON.stringify({ budgetUsd }),
   });
   if (!res.ok) throw new Error("Failed to update budget");
+  return res.json();
+}
+
+/**
+ * Per-member monthly spend cap inside a team.
+ *
+ * Pass `null` to clear the cap (member shares the team budget freely).
+ * Pass `0` to suspend (chat-time gate blocks all calls).
+ * Pass `>0` to enforce the cap, in cents.
+ */
+export async function updateTeamMemberCap(
+  teamId: string,
+  memberId: string,
+  monthlyCapCents: number | null,
+): Promise<{ id: string; monthlyCapCents: number | null }> {
+  const res = await apiFetch(`/teams/${teamId}/members/${memberId}/cap`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ monthlyCapCents }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update member cap");
+  }
   return res.json();
 }
 
@@ -2036,6 +2067,73 @@ export async function deleteIntegration(id: string): Promise<void> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message || "Failed to delete integration");
+  }
+}
+
+// ─── Team-scoped integrations (BYOK keys shared across team members) ──────
+
+export async function fetchTeamIntegrations(
+  teamId: string,
+): Promise<IntegrationCard[]> {
+  const res = await apiFetch(`/teams/${teamId}/integrations`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch team integrations");
+  }
+  return res.json();
+}
+
+export async function upsertTeamIntegration(
+  teamId: string,
+  input: {
+    providerId: string;
+    apiKey?: string | null;
+    isEnabled?: boolean;
+  },
+): Promise<IntegrationCard> {
+  const res = await apiFetch(`/teams/${teamId}/integrations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to save team integration");
+  }
+  return res.json();
+}
+
+export async function updateTeamIntegration(
+  teamId: string,
+  integrationId: string,
+  input: { isEnabled?: boolean; apiKey?: string | null },
+): Promise<IntegrationCard> {
+  const res = await apiFetch(
+    `/teams/${teamId}/integrations/${integrationId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update team integration");
+  }
+  return res.json();
+}
+
+export async function deleteTeamIntegration(
+  teamId: string,
+  integrationId: string,
+): Promise<void> {
+  const res = await apiFetch(
+    `/teams/${teamId}/integrations/${integrationId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to delete team integration");
   }
 }
 
