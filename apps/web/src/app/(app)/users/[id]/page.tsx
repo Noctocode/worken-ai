@@ -31,6 +31,7 @@ import {
   fetchOrgUser,
   fetchUserActivity,
   removeOrgUser,
+  removeTeamMember,
   updateMemberRole,
   updateUserBudget,
   updateUserRole,
@@ -322,6 +323,14 @@ export default function UserDetailPage({
   const [editRole, setEditRole] = useState<OrgRole>("basic");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
+  // Pending team-removal target. Triggered by the "Remove from team"
+  // dropdown item in the Teams table; surfaces a confirm dialog
+  // before actually firing the mutation.
+  const [pendingTeamRemoval, setPendingTeamRemoval] = useState<{
+    teamId: string;
+    memberId: string;
+    teamName: string;
+  } | null>(null);
 
   // Lazy-load: only fetch when the dialog is opened. 50 most recent
   // events is enough for a glance; if the user wants the full history
@@ -373,6 +382,26 @@ export default function UserDetailPage({
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't remove user.");
+    },
+  });
+
+  const removeTeamMemberMutation = useMutation({
+    mutationFn: ({
+      teamId,
+      memberId,
+    }: {
+      teamId: string;
+      memberId: string;
+    }) => removeTeamMember(teamId, memberId),
+    onSuccess: () => {
+      toast.success("Removed from team.");
+      queryClient.invalidateQueries({ queryKey: ["users", id] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      setPendingTeamRemoval(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove from team.");
+      setPendingTeamRemoval(null);
     },
   });
 
@@ -711,19 +740,43 @@ export default function UserDetailPage({
                     </td>
                     <td className="bg-bg-white px-4 align-middle w-[93px]">
                       <div className="flex justify-center">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1">
-                              <MoreVertical className="h-5 w-5" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
-                              <Trash2 className="h-4 w-4" />
-                              Remove from team
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                        {/* Kebab only renders for the caller-can-manage
+                            AND not-self path. The BE rejects
+                            self-removal explicitly ("Cannot remove
+                            yourself from the team"), so the row owner
+                            viewing their own page never sees this
+                            action. Admin viewing another user's
+                            membership: shown when `t.canManage` is
+                            true (admin is owner or accepted editor of
+                            the team). */}
+                        {!isSelf && t.canManage && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-text-2 hover:text-text-1"
+                              >
+                                <MoreVertical className="h-5 w-5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2 text-danger-6 focus:text-danger-6"
+                                onClick={() =>
+                                  setPendingTeamRemoval({
+                                    teamId: t.id,
+                                    memberId: t.memberId,
+                                    teamName: t.name,
+                                  })
+                                }
+                              >
+                                <Trash2 className="h-4 w-4" />
+                                Remove from team
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -801,6 +854,50 @@ export default function UserDetailPage({
               onClick={() => setActivityOpen(false)}
             >
               Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Remove-from-team confirm — opened by the per-row dropdown
+          in the Teams table. Stays separate from the org-level
+          "Remove user" dialog below because the action and target
+          are different (team membership vs whole user account). */}
+      <Dialog
+        open={!!pendingTeamRemoval}
+        onOpenChange={(open) => !open && setPendingTeamRemoval(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove from team</DialogTitle>
+            <DialogDescription>
+              Remove <strong>{displayName}</strong> from{" "}
+              <strong>{pendingTeamRemoval?.teamName}</strong>? They&apos;ll
+              lose access to that team&apos;s projects and budget. Their
+              account stays intact.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPendingTeamRemoval(null)}
+              disabled={removeTeamMemberMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingTeamRemoval) {
+                  removeTeamMemberMutation.mutate({
+                    teamId: pendingTeamRemoval.teamId,
+                    memberId: pendingTeamRemoval.memberId,
+                  });
+                }
+              }}
+              disabled={removeTeamMemberMutation.isPending}
+            >
+              {removeTeamMemberMutation.isPending ? "Removing..." : "Remove"}
             </Button>
           </DialogFooter>
         </DialogContent>
