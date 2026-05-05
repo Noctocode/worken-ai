@@ -14,11 +14,22 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 const INVITE_EXPIRY_DAYS = 7;
 const inviteExpiry = () =>
   new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-import { teams, teamMembers, users, guardrails } from '@worken/database/schema';
+import {
+  teams,
+  teamMembers,
+  users,
+  guardrails,
+  integrations,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
+import {
+  PREDEFINED_PROVIDERS,
+  isPredefinedProvider,
+} from '../integrations/predefined-providers.js';
+import type { IntegrationView } from '../integrations/integrations.service.js';
 
 @Injectable()
 export class TeamsService {
@@ -411,6 +422,7 @@ export class TeamsService {
         userId: teamMembers.userId,
         userName: users.name,
         userPicture: users.picture,
+        monthlyCapCents: teamMembers.monthlyCapCents,
       })
       .from(teamMembers)
       .leftJoin(users, eq(teamMembers.userId, users.id))
@@ -1109,5 +1121,245 @@ export class TeamsService {
       );
 
     return { success: true };
+  }
+
+  /**
+   * Team-scoped BYOK integrations. Mirrors the personal Integration tab
+   * but the configured key is shared across every team member: when
+   * one of them chats with a model from this provider, chat-transport
+   * routes through this team key first, before falling back to their
+   * personal BYOK or to OpenRouter. Only predefined providers (Anthropic,
+   * OpenAI, …) — Custom LLMs aren't supported at team scope yet.
+   */
+  async listIntegrations(
+    teamId: string,
+    userId: string,
+  ): Promise<IntegrationView[]> {
+    const role = await this.getUserTeamRole(teamId, userId);
+    if (!role) {
+      throw new ForbiddenException('You are not a member of this team');
+    }
+
+    const rows = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.teamId, teamId));
+
+    return PREDEFINED_PROVIDERS.map((p) => {
+      const row = rows.find(
+        (r) => r.providerId === p.id && r.apiUrl === null,
+      );
+      return {
+        id: row?.id ?? null,
+        providerId: p.id,
+        displayName: p.displayName,
+        description: p.description,
+        iconHint: p.iconHint,
+        apiUrl: null,
+        hasApiKey: !!row?.apiKeyEncrypted,
+        // Default OFF for providers the team has never touched. Once a
+        // row exists, respect the toggle the admin chose.
+        isEnabled: row?.isEnabled ?? false,
+        isCustom: false,
+        openAICompatible: p.openAICompatible,
+        byokSupported: p.byokSupported,
+        boundAliasCount: 0,
+        // Per-team aggregate stats not implemented in this pass — the
+        // FE shows a dash for now. The personal tab still has rich
+        // stats; a follow-up can add them here once the FE design
+        // settles.
+        stats: { successRate: 0, apiCalls: 0, peakDailyCalls: 0 },
+        createdAt: row?.createdAt?.toISOString() ?? null,
+        updatedAt: row?.updatedAt?.toISOString() ?? null,
+      };
+    });
+  }
+
+  async upsertIntegration(
+    teamId: string,
+    callerId: string,
+    input: {
+      providerId: string;
+      apiKey?: string | null;
+      isEnabled?: boolean;
+    },
+  ): Promise<IntegrationView> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    if (input.providerId === 'custom') {
+      throw new BadRequestException(
+        'Custom LLMs are not supported at team scope.',
+      );
+    }
+    if (!isPredefinedProvider(input.providerId)) {
+      throw new BadRequestException(
+        `Unknown provider: ${input.providerId}`,
+      );
+    }
+
+    const apiKeyEncrypted = input.apiKey?.trim()
+      ? this.encryptionService.encrypt(input.apiKey.trim())
+      : null;
+
+    // Match the same 3-state semantic the personal upsert uses:
+    //   - undefined → don't touch the field
+    //   - empty string / null → clear
+    //   - non-empty → encrypt and store
+    const conflictUpdates: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+    if (input.isEnabled !== undefined) {
+      conflictUpdates.isEnabled = input.isEnabled;
+    }
+    if (input.apiKey !== undefined) {
+      conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
+    }
+
+    await this.db
+      .insert(integrations)
+      .values({
+        ownerId: callerId,
+        teamId,
+        providerId: input.providerId,
+        apiUrl: null,
+        apiKeyEncrypted,
+        isEnabled: input.isEnabled ?? true,
+      })
+      .onConflictDoUpdate({
+        target: [integrations.teamId, integrations.providerId],
+        targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NOT NULL`,
+        set: conflictUpdates,
+      });
+
+    const all = await this.listIntegrations(teamId, callerId);
+    const view = all.find((v) => v.providerId === input.providerId);
+    if (!view) {
+      throw new NotFoundException('Integration not found after upsert');
+    }
+    return view;
+  }
+
+  async updateIntegration(
+    teamId: string,
+    callerId: string,
+    integrationId: string,
+    input: { isEnabled?: boolean; apiKey?: string | null },
+  ): Promise<IntegrationView> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, integrationId));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.teamId !== teamId) {
+      throw new BadRequestException(
+        'Integration does not belong to this team',
+      );
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
+    if (input.apiKey !== undefined) {
+      updates.apiKeyEncrypted = input.apiKey
+        ? this.encryptionService.encrypt(input.apiKey)
+        : null;
+    }
+    await this.db
+      .update(integrations)
+      .set(updates)
+      .where(eq(integrations.id, integrationId));
+
+    const all = await this.listIntegrations(teamId, callerId);
+    const view = all.find((v) => v.providerId === row.providerId);
+    if (!view) {
+      throw new NotFoundException('Integration not found after update');
+    }
+    return view;
+  }
+
+  async removeIntegration(
+    teamId: string,
+    callerId: string,
+    integrationId: string,
+  ): Promise<{ success: true }> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, integrationId));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.teamId !== teamId) {
+      throw new BadRequestException(
+        'Integration does not belong to this team',
+      );
+    }
+    await this.db
+      .delete(integrations)
+      .where(eq(integrations.id, integrationId));
+    return { success: true };
+  }
+
+  /**
+   * Set the per-member monthly spend cap inside this team. The cap
+   * gates this user's chat calls against the team's spend, regardless
+   * of whether routing lands on the team OpenRouter key or a team-
+   * scoped BYOK key. Cap semantics:
+   *   - null → no individual cap (member shares the team budget)
+   *   - 0    → suspended (chat blocked at the gate)
+   *   - >0   → enforced against current-month observability spend
+   */
+  async updateMemberCap(
+    teamId: string,
+    memberId: string,
+    monthlyCapCents: number | null,
+    callerId: string,
+  ) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can set member caps',
+      );
+    }
+    if (
+      monthlyCapCents !== null &&
+      (typeof monthlyCapCents !== 'number' ||
+        !Number.isInteger(monthlyCapCents) ||
+        monthlyCapCents < 0)
+    ) {
+      throw new BadRequestException(
+        'monthlyCapCents must be null or a non-negative integer (cents).',
+      );
+    }
+    const [updated] = await this.db
+      .update(teamMembers)
+      .set({ monthlyCapCents })
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      )
+      .returning({
+        id: teamMembers.id,
+        monthlyCapCents: teamMembers.monthlyCapCents,
+      });
+    if (!updated) {
+      throw new NotFoundException('Member not found');
+    }
+    return updated;
   }
 }
