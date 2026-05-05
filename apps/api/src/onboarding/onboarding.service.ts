@@ -426,15 +426,29 @@ export class OnboardingService {
   /**
    * Upsert the draft. Validates the partial against the same enum
    * lists `complete` uses so a malformed POST can't poison the row.
-   * Sanitises by dropping unknown keys — the user can't smuggle
-   * arbitrary jsonb in via this endpoint.
+   *
+   * Behaviour split: unknown top-level keys (anything outside the
+   * OnboardingDraft shape) are silently stripped — the FE always
+   * sends the canonical shape, and a future field added to the BE
+   * shouldn't break older FEs that don't know about it. But if a
+   * known field carries an invalid enum value
+   * (industry: 'lol', teamSize: '999', etc.) we 400 — the FE Selects
+   * are constrained, so an invalid enum from a programmatic caller
+   * is a real bug they want to know about, not silently dropped
+   * data.
    */
   async updateDraft(
     userId: string,
     input: OnboardingDraft,
   ): Promise<OnboardingDraft> {
     const sanitized: OnboardingDraft = {};
-    if (input.profileType === 'company' || input.profileType === 'personal') {
+
+    if (input.profileType !== undefined) {
+      if (input.profileType !== 'company' && input.profileType !== 'personal') {
+        throw new BadRequestException(
+          'profileType must be "company" or "personal"',
+        );
+      }
       sanitized.profileType = input.profileType;
     }
     if (typeof input.fullName === 'string') {
@@ -443,22 +457,37 @@ export class OnboardingService {
     if (typeof input.companyName === 'string') {
       sanitized.companyName = input.companyName.slice(0, 200);
     }
-    if (
-      typeof input.industry === 'string' &&
-      (VALID_INDUSTRIES as readonly string[]).includes(input.industry)
-    ) {
+    if (input.industry !== undefined) {
+      if (
+        typeof input.industry !== 'string' ||
+        !(VALID_INDUSTRIES as readonly string[]).includes(input.industry)
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
       sanitized.industry = input.industry;
     }
-    if (
-      typeof input.teamSize === 'string' &&
-      (VALID_TEAM_SIZES as readonly string[]).includes(input.teamSize)
-    ) {
+    if (input.teamSize !== undefined) {
+      if (
+        typeof input.teamSize !== 'string' ||
+        !(VALID_TEAM_SIZES as readonly string[]).includes(input.teamSize)
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
+      }
       sanitized.teamSize = input.teamSize;
     }
-    if (
-      input.infraChoice === 'managed' ||
-      input.infraChoice === 'on-premise'
-    ) {
+    if (input.infraChoice !== undefined) {
+      if (
+        input.infraChoice !== 'managed' &&
+        input.infraChoice !== 'on-premise'
+      ) {
+        throw new BadRequestException(
+          'infraChoice must be "managed" or "on-premise"',
+        );
+      }
       sanitized.infraChoice = input.infraChoice;
     }
 

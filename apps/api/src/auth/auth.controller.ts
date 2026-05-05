@@ -74,21 +74,30 @@ export class AuthController {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
     const cookies = req.cookies as Record<string, string> | undefined;
-    const returnTo = cookies?.invite_return_to;
+    const returnToRaw = cookies?.invite_return_to;
+    const returnTo =
+      typeof returnToRaw === 'string' && returnToRaw.startsWith('/')
+        ? returnToRaw
+        : null;
     res.clearCookie('invite_return_to', { path: '/' });
 
-    // Direct-redirect to /setup-profile when the account hasn't
-    // finished onboarding. Without this, the FE landed on `/`,
-    // rendered the dashboard chrome for a few hundred ms while
-    // /auth/me resolved, and only then fired the
-    // OnboardingGuard.replace — a visible flash of unauthorized UI.
-    // The FE guard still does the same check as a safety net (cookie
-    // restore, manual /-typing, etc.).
-    const target = !user.onboardingCompletedAt
-      ? '/setup-profile'
-      : returnTo && typeof returnTo === 'string' && returnTo.startsWith('/')
-        ? returnTo
-        : '/';
+    // Three cases:
+    //   1. Onboarding done, no returnTo → "/" (dashboard).
+    //   2. Onboarding done, returnTo set → returnTo (invite landed on
+    //      /invite/:token, the page handles acceptance there).
+    //   3. Onboarding NOT done → "/setup-profile". If a returnTo was
+    //      also set we forward it as `?next=<encoded>` so step-6's
+    //      success handler can finish the wizard AND land the user
+    //      on the original destination, instead of dropping the
+    //      invite link silently.
+    let target: string;
+    if (!user.onboardingCompletedAt) {
+      target = returnTo
+        ? `/setup-profile?next=${encodeURIComponent(returnTo)}`
+        : '/setup-profile';
+    } else {
+      target = returnTo ?? '/';
+    }
     res.redirect(`${frontendUrl}${target}`);
   }
 
