@@ -54,13 +54,25 @@ export class OpenRouterProvisioningService {
   async updateKey(hash: string, creditLimitUsd: number): Promise<void> {
     this.assertProvisioningKey('update OpenRouter key');
 
+    // Always re-send `limit_reset: 'monthly'` alongside the new
+    // limit. OpenRouter's PATCH semantics for omitted fields are not
+    // explicitly documented — most REST APIs preserve unsent fields,
+    // but if their PATCH resets `limit_reset` to a default ("never"
+    // or empty), every admin-driven budget update would silently
+    // turn the monthly cap into a lifetime cap. The first month
+    // would look fine, but the user would never get a fresh budget
+    // on the 1st of next month. Sending it on every update is a
+    // no-op when preserved and a fix when not.
     const response = await fetch(`https://openrouter.ai/api/v1/keys/${hash}`, {
       method: 'PATCH',
       headers: {
         Authorization: `Bearer ${this.provisioningKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ limit: creditLimitUsd }),
+      body: JSON.stringify({
+        limit: creditLimitUsd,
+        limit_reset: 'monthly',
+      }),
     });
 
     if (!response.ok) {

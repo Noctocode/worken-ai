@@ -28,6 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   fetchOrgUser,
   fetchUserActivity,
   removeOrgUser,
@@ -612,9 +617,28 @@ export default function UserDetailPage({
 
         {/* Budget row */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Monthly Budget — text in view mode, input in edit mode. */}
+          {/* Personal Monthly Budget — text in view mode, input in edit mode. */}
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-[18px] font-bold text-text-1">
+                Personal Monthly Budget
+              </p>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Info
+                    className="h-3.5 w-3.5 text-text-3 cursor-help"
+                    aria-label="What this budget covers"
+                  />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs">
+                  Caps spend on personal projects and the Compare Models
+                  arena. Project chats inside a team bill against the
+                  team budget instead. BYOK calls (your own provider
+                  keys configured in Management → Integration) bill
+                  externally and don&apos;t count here.
+                </TooltipContent>
+              </Tooltip>
+            </div>
             {editing ? (
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">

@@ -81,10 +81,17 @@ export class ChatTransportService {
     userId: string;
     modelIdentifier: string;
     /** Optional. When set, used to resolve the OpenRouter key for the
-     *  fallback path (team key vs user key). */
+     *  fallback path: project's team key when the project has a team,
+     *  user key otherwise. */
     projectId?: string | null;
+    /** Optional. Explicit team scope for callers that don't have a
+     *  projectId (compare-models composer, etc.). When set, the
+     *  OpenRouter fallback uses the team's key directly — so the
+     *  spend gets billed to the team budget, matching what the
+     *  pending-approval gate checks. */
+    teamId?: string | null;
   }): Promise<ChatTransport> {
-    const { userId, modelIdentifier, projectId } = input;
+    const { userId, modelIdentifier, projectId, teamId } = input;
 
     // 1. Custom LLM — alias explicitly bound to a Custom integration row.
     const [alias] = await this.db
@@ -182,10 +189,16 @@ export class ChatTransportService {
       }
     }
 
-    // 3. OpenRouter fallback.
-    const apiKey = projectId
-      ? await this.keyResolverService.resolveForProject(projectId, userId)
-      : await this.keyResolverService.resolveUserKey(userId);
+    // 3. OpenRouter fallback. Order of precedence for which key to
+    // bill the spend against: explicit teamId (compare-models with
+    // a team picker) > projectId (chat in a project that may have
+    // a team) > user. Aligns with how
+    // assertManagedBudgetApproved decides which budget to gate on.
+    const apiKey = teamId
+      ? await this.keyResolverService.resolveTeamKey(teamId)
+      : projectId
+        ? await this.keyResolverService.resolveForProject(projectId, userId)
+        : await this.keyResolverService.resolveUserKey(userId);
 
     return {
       baseURL: OPENROUTER_BASE_URL,
