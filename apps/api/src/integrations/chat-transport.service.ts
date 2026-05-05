@@ -398,7 +398,21 @@ export class ChatTransportService {
   async assertTeamMemberCapNotExceeded(
     transport: ChatTransport,
     userId: string,
-    options: { projectId?: string | null; teamId?: string | null } = {},
+    options: {
+      projectId?: string | null;
+      teamId?: string | null;
+      /**
+       * Upper-bound cost estimate (cents) for the call about to happen.
+       * Compared against `cap - currentSpend`; if the call would push
+       * the member past their cap, blocked pre-flight. Pass 0 (or omit)
+       * to skip the pre-flight check — gate then only fires once
+       * post-flight spend already crosses the cap.
+       *
+       * Caller computes from catalog pricing + prompt length so the
+       * gate stays decoupled from the model catalog service.
+       */
+      estimatedCostCents?: number;
+    } = {},
   ): Promise<void> {
     if (transport.source === 'custom') return;
 
@@ -454,11 +468,24 @@ export class ChatTransportService {
       );
     const spentUsd = agg ? parseFloat(agg.total) : 0;
     const spentCents = Math.round(spentUsd * 100);
-    if (spentCents >= membership.cap) {
+    const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
+    const projectedCents = spentCents + estimateCents;
+
+    // Block when projected post-call spend would exceed the cap.
+    // estimateCents=0 reduces to the post-flight check (spent >= cap).
+    if (projectedCents >= membership.cap) {
       const capUsd = (membership.cap / 100).toFixed(2);
       const spentUsdStr = (spentCents / 100).toFixed(2);
+      // Two messages so the FE humanizer can tell pre-flight
+      // ("would push you over") apart from post-flight ("already
+      // over"). Pre-flight is the gentler of the two — caller can
+      // shorten the prompt or pick a smaller model.
+      const isPreflight = estimateCents > 0 && spentCents < membership.cap;
+      const detail = isPreflight
+        ? `would push you to ~$${(projectedCents / 100).toFixed(2)} (cap $${capUsd}, currently $${spentUsdStr}). Try a smaller prompt or a cheaper model.`
+        : `is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`;
       throw new HttpException(
-        `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`,
+        `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team ${detail}`,
         402,
       );
     }

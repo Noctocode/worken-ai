@@ -72,10 +72,30 @@ export class ChatController {
     // above: a team can have $1000/mo total but each member capped at
     // $20. Fires only when the chat's project belongs to a team and
     // the user has a non-null cap on that team.
+    //
+    // Pre-flight estimate so the call that would push spend over the
+    // cap is blocked before it actually happens, not just after. ~4
+    // chars/token is the standard rule of thumb for English-ish text;
+    // 4096 completion tokens is a conservative upper bound (most chat
+    // models default well below that). estimateCost returns null for
+    // models without catalog pricing — those degrade to post-flight
+    // only.
+    const promptForEstimate = body.content ?? '';
+    const promptTokens = Math.ceil(promptForEstimate.length / 4);
+    const estimatedCostUsd = await this.catalogService.estimateCost(
+      body.model ?? 'moonshotai/kimi-k2.5',
+      promptTokens,
+      4096,
+    );
+    const estimatedCostCents =
+      estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
     await this.chatTransport.assertTeamMemberCapNotExceeded(
       transport,
       user.id,
-      { projectId: conversation.projectId },
+      {
+        projectId: conversation.projectId,
+        estimatedCostCents,
+      },
     );
 
     // 3. Map stored messages to OpenRouter format
