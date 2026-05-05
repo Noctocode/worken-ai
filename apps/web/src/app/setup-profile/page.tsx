@@ -72,7 +72,7 @@ export default function SetupProfilePage() {
                 key={type}
                 type="button"
                 onClick={() => pick(type)}
-                className="flex items-start gap-4 rounded border border-border-2 bg-bg-white p-6 text-left transition-colors hover:border-primary-6"
+                className="flex items-start gap-4 rounded border border-border-2 bg-bg-white p-6 text-left cursor-pointer transition-colors hover:border-primary-6"
               >
                 <div className="h-10 w-10 shrink-0 rounded bg-bg-1 flex items-center justify-center">
                   <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />

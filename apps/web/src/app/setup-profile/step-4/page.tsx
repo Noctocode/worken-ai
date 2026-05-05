@@ -80,7 +80,7 @@ export default function SetupProfileStep4Page() {
                   key={type}
                   type="button"
                   onClick={() => update({ infraChoice: type })}
-                  className={`flex-1 flex flex-col gap-4 rounded bg-bg-white p-6 text-left transition-colors ${
+                  className={`flex-1 flex flex-col gap-4 rounded bg-bg-white p-6 text-left cursor-pointer transition-colors ${
                     isSelected
                       ? "border-[1.5px] border-primary-6"
                       : "border border-border-2 hover:border-primary-6"
