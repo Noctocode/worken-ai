@@ -71,29 +71,48 @@ export const teams = pgTable("teams", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const teamMembers = pgTable("team_members", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  teamId: uuid("team_id")
-    .references(() => teams.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: uuid("user_id").references(() => users.id),
-  email: text("email").notNull(),
-  role: text("role").notNull(), // 'owner' | 'editor' | 'viewer'
-  status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
-  invitationToken: text("invitation_token"),
-  invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
-  invitationExpiresAt: timestamp("invitation_expires_at", { withTimezone: true }),
-  invitationRevokedAt: timestamp("invitation_revoked_at", { withTimezone: true }),
-  // Per-member monthly spend cap, in cents, that gates this user's
-  // chat calls billed against the team. NULL = no individual cap (the
-  // member shares the team's overall budget freely). 0 = suspended for
-  // this team. >0 = enforced cap, checked against the user's
-  // current-month spend in observability_events filtered by teamId.
-  // Cap is enforced regardless of routing: OpenRouter team key, team-
-  // scoped BYOK, or otherwise. Custom LLMs bypass (external billing).
-  monthlyCapCents: integer("monthly_cap_cents"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id").references(() => users.id),
+    email: text("email").notNull(),
+    role: text("role").notNull(), // 'owner' | 'editor' | 'viewer'
+    status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
+    invitationToken: text("invitation_token"),
+    invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
+    invitationExpiresAt: timestamp("invitation_expires_at", {
+      withTimezone: true,
+    }),
+    invitationRevokedAt: timestamp("invitation_revoked_at", {
+      withTimezone: true,
+    }),
+    // Per-member monthly spend cap, in cents, that gates this user's
+    // chat calls billed against the team. NULL = no individual cap (the
+    // member shares the team's overall budget freely). 0 = suspended for
+    // this team. >0 = enforced cap, checked against the user's
+    // current-month spend in observability_events filtered by teamId.
+    // Cap is enforced regardless of routing: OpenRouter team key, team-
+    // scoped BYOK, or otherwise. Custom LLMs bypass (external billing).
+    monthlyCapCents: integer("monthly_cap_cents"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // A user can be in a team at most once. Partial because user_id is
+    // nullable (invitations to emails without a registered account
+    // store user_id = null until the invitee signs up + accepts) — and
+    // multiple null rows must be allowed (different emails, same team).
+    // Once user_id is set, the (team, user) pair is unique regardless
+    // of status (pending vs accepted) so an admin can't accidentally
+    // queue a second invite on top of an active membership.
+    uniqueIndex("team_members_team_user_unique")
+      .on(table.teamId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+  ],
+);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
