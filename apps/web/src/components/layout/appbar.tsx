@@ -269,7 +269,7 @@ export const Appbar = () => {
             </SheetContent>
           </Sheet>
 
-          <Link href="/teams">
+          <Link href="/teams?tab=users">
             <Button
               variant="ghost"
               size="icon"
