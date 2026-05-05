@@ -30,6 +30,57 @@ export const PENDING_APPROVAL_MARKER = 'BUDGET_PENDING_APPROVAL';
 export const MEMBER_CAP_REACHED_MARKER = 'TEAM_MEMBER_CAP_REACHED';
 export const MEMBER_SUSPENDED_MARKER = 'TEAM_MEMBER_SUSPENDED';
 
+/**
+ * Pure decision function for the per-member cap gate. Returns either
+ * `{ pass: true }` or `{ pass: false, message }` so the IO-bound caller
+ * can throw uniformly while the policy stays unit-testable without a
+ * database.
+ *
+ * Rules:
+ *   - cap === null → no per-user cap configured, always pass
+ *   - cap === 0   → member suspended in this team, always block
+ *   - cap > 0     → block when (spent + estimate) >= cap. Pre-flight
+ *                   (spent < cap, estimate pushes over) gets a softer
+ *                   "try a smaller prompt" message; post-flight
+ *                   (spent >= cap, estimate ignored) tells them
+ *                   they're locked out for the month.
+ */
+export function decideCapAction(input: {
+  capCents: number | null;
+  spentCents: number;
+  estimatedCostCents: number;
+}):
+  | { pass: true }
+  | { pass: false; marker: string; message: string } {
+  const { capCents, spentCents } = input;
+  const estimateCents = Math.max(input.estimatedCostCents, 0);
+
+  if (capCents == null) return { pass: true };
+
+  if (capCents === 0) {
+    return {
+      pass: false,
+      marker: MEMBER_SUSPENDED_MARKER,
+      message: `${MEMBER_SUSPENDED_MARKER}: Your access to this team is paused. Ask the team admin to set a non-zero monthly cap in Management → Teams → Members.`,
+    };
+  }
+
+  const projectedCents = spentCents + estimateCents;
+  if (projectedCents < capCents) return { pass: true };
+
+  const capUsd = (capCents / 100).toFixed(2);
+  const spentUsdStr = (spentCents / 100).toFixed(2);
+  const isPreflight = estimateCents > 0 && spentCents < capCents;
+  const detail = isPreflight
+    ? `would push you to ~$${(projectedCents / 100).toFixed(2)} (cap $${capUsd}, currently $${spentUsdStr}). Try a smaller prompt or a cheaper model.`
+    : `is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`;
+  return {
+    pass: false,
+    marker: MEMBER_CAP_REACHED_MARKER,
+    message: `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team ${detail}`,
+  };
+}
+
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export type ChatRoutingSource = 'openrouter' | 'byok' | 'custom';
@@ -468,26 +519,14 @@ export class ChatTransportService {
       );
     const spentUsd = agg ? parseFloat(agg.total) : 0;
     const spentCents = Math.round(spentUsd * 100);
-    const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
-    const projectedCents = spentCents + estimateCents;
 
-    // Block when projected post-call spend would exceed the cap.
-    // estimateCents=0 reduces to the post-flight check (spent >= cap).
-    if (projectedCents >= membership.cap) {
-      const capUsd = (membership.cap / 100).toFixed(2);
-      const spentUsdStr = (spentCents / 100).toFixed(2);
-      // Two messages so the FE humanizer can tell pre-flight
-      // ("would push you over") apart from post-flight ("already
-      // over"). Pre-flight is the gentler of the two — caller can
-      // shorten the prompt or pick a smaller model.
-      const isPreflight = estimateCents > 0 && spentCents < membership.cap;
-      const detail = isPreflight
-        ? `would push you to ~$${(projectedCents / 100).toFixed(2)} (cap $${capUsd}, currently $${spentUsdStr}). Try a smaller prompt or a cheaper model.`
-        : `is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`;
-      throw new HttpException(
-        `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team ${detail}`,
-        402,
-      );
+    const decision = decideCapAction({
+      capCents: membership.cap,
+      spentCents,
+      estimatedCostCents: options.estimatedCostCents ?? 0,
+    });
+    if (!decision.pass) {
+      throw new HttpException(decision.message, 402);
     }
   }
 
