@@ -7,6 +7,9 @@ import {
   Info,
   LayoutList,
   Loader2,
+  Pencil,
+  Check,
+  X,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
@@ -69,42 +72,37 @@ function UserAvatar({ name, picture, size = 80 }: { name: string; picture: strin
 }
 
 /**
- * Role indicator + admin-only role select. Non-admin viewers see a
- * read-only badge. Admins viewing other users see a Select that
- * mutates `users.role`. Admins viewing THEMSELVES still see a badge —
- * the BE blocks self-mutation (lockout prevention) so the FE doesn't
- * offer the affordance either.
+ * Role indicator. In view mode (or for non-editable callers) shows a
+ * read-only Badge. In edit mode shows a controlled Select; the parent
+ * owns the staged value and decides when to commit on Confirm.
  */
 function UserRoleControl({
-  user,
-  canEdit,
+  role,
+  mode,
   onChange,
-  pending,
+  disabled,
 }: {
-  user: { role: "basic" | "advanced" | "admin" };
-  canEdit: boolean;
-  onChange: (role: OrgRole) => void;
-  pending: boolean;
+  role: OrgRole;
+  mode: "view" | "edit";
+  onChange?: (role: OrgRole) => void;
+  disabled?: boolean;
 }) {
   const badgeClass =
-    user.role === "admin"
+    role === "admin"
       ? "border-transparent bg-danger-1 text-danger-6 uppercase tracking-wide text-[10px] px-1.5 py-0"
-      : user.role === "advanced"
+      : role === "advanced"
         ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0"
         : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0";
 
-  if (!canEdit) {
-    return <Badge className={badgeClass}>{user.role}</Badge>;
+  if (mode === "view") {
+    return <Badge className={badgeClass}>{role}</Badge>;
   }
 
   return (
     <Select
-      value={user.role}
-      onValueChange={(v) => {
-        if (v === user.role) return;
-        onChange(v as OrgRole);
-      }}
-      disabled={pending}
+      value={role}
+      onValueChange={(v) => onChange?.(v as OrgRole)}
+      disabled={disabled}
     >
       <SelectTrigger className="h-7 w-[110px] rounded-full border-border-3 bg-bg-1 px-2.5 text-[11px] font-semibold uppercase tracking-wide text-text-2">
         <SelectValue />
@@ -142,28 +140,34 @@ export default function UserDetailPage({
   const { id } = use(params);
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
-  // Mirrors the BE guard on PATCH /users/:id/budget — only admins may
-  // change a user's spend cap, since the cap is enforced upstream on
-  // OpenRouter and basic / advanced users letting each other lift it
-  // would defeat the whole point of the budget.
-  const canEditBudget = currentUser?.role === "admin";
+  const isAdmin = currentUser?.role === "admin";
+  const isSelf = currentUser?.id === id;
 
   const { data: user, isLoading, error } = useQuery({
     queryKey: ["users", id],
     queryFn: () => fetchOrgUser(id),
   });
 
-  // Budget editing
-  const [budgetInput, setBudgetInput] = useState<string | null>(null);
+  // Edit mode — the page is read-only by default. Admins flip into
+  // edit mode via the green pencil; both Monthly Budget and the
+  // organization role are staged locally and committed atomically
+  // on Confirm. Cancel discards the staged values.
+  const [isEditing, setIsEditing] = useState(false);
+  const [editBudget, setEditBudget] = useState("");
+  const [editRole, setEditRole] = useState<OrgRole>("basic");
+
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["users", id] }),
-    onError: (err: Error) => {
-      toast.error(err.message || "Couldn't update budget.");
-    },
   });
 
-  const roleMutation = useMutation({
+  const orgRoleMutation = useMutation({
+    mutationFn: (role: OrgRole) => updateUserRole(id, role),
+  });
+
+  // Team-member role mutation kept separate — that table has its own
+  // inline Select per row (Editor / Viewer) and doesn't go through the
+  // edit-mode flow.
+  const teamRoleMutation = useMutation({
     mutationFn: ({
       teamId,
       memberId,
@@ -176,20 +180,6 @@ export default function UserDetailPage({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
       toast.success("Role updated.");
-    },
-    onError: (err: Error) => {
-      toast.error(err.message || "Couldn't update role.");
-    },
-  });
-
-  const orgRoleMutation = useMutation({
-    mutationFn: (role: OrgRole) => updateUserRole(id, role),
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["users", id] });
-      // Refresh the org-users list so the role badge in Management →
-      // Users updates immediately without a hard reload.
-      queryClient.invalidateQueries({ queryKey: ["org-users"] });
-      toast.success(`Role updated to ${data.role}.`);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't update role.");
@@ -219,22 +209,84 @@ export default function UserDetailPage({
   const projected = user.projectedCents / 100;
   const onTrack = projected <= budget;
 
-  const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", {
+  const formattedBudget = budget.toLocaleString("de-DE", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 
-  const handleBudgetBlur = () => {
-    if (budgetInput === null) return;
-    const raw = budgetInput.replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(raw);
-    // Allow 0 — that's the "suspend" gesture (admin blocks all spend
-    // for this user until they raise the budget again). BE enforces
-    // non-negative.
-    if (!isNaN(num) && num >= 0 && num !== budget) {
-      budgetMutation.mutate(num);
+  const isSubmitting = budgetMutation.isPending || orgRoleMutation.isPending;
+  // Block editing your own role — BE rejects self-mutation to avoid
+  // admin lockout, FE matches that.
+  const canEditSelfRole = !isSelf;
+
+  const enterEditMode = () => {
+    setEditBudget(formattedBudget);
+    setEditRole(user.role);
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setIsEditing(false);
+    setEditBudget("");
+  };
+
+  const confirmEdit = async () => {
+    // Parse budget — accept "1.234,56" (de-DE), "1234.56", "0".
+    const raw = editBudget.replace(/\./g, "").replace(",", ".");
+    const parsed = parseFloat(raw);
+    if (isNaN(parsed) || parsed < 0) {
+      toast.error("Budget must be a non-negative number.");
+      return;
     }
-    setBudgetInput(null);
+
+    const budgetChanged = parsed !== budget;
+    const roleChanged = editRole !== user.role;
+    if (!budgetChanged && !roleChanged) {
+      setIsEditing(false);
+      return;
+    }
+
+    // Fire the changed mutations in parallel; surface a per-mutation
+    // toast so a partial failure (e.g. budget OK but role rejected) is
+    // visible. React Query refetches the user on success; the staged
+    // values are cleared regardless so the next edit starts fresh.
+    const tasks: Array<Promise<unknown>> = [];
+    if (budgetChanged) {
+      tasks.push(
+        budgetMutation
+          .mutateAsync(parsed)
+          .then(() => toast.success("Budget updated."))
+          .catch((err: Error) => {
+            toast.error(err.message || "Couldn't update budget.");
+            throw err;
+          }),
+      );
+    }
+    if (roleChanged) {
+      tasks.push(
+        orgRoleMutation
+          .mutateAsync(editRole)
+          .then((data) =>
+            toast.success(`Role updated to ${data.role}.`),
+          )
+          .catch((err: Error) => {
+            toast.error(err.message || "Couldn't update role.");
+            throw err;
+          }),
+      );
+    }
+
+    const results = await Promise.allSettled(tasks);
+    queryClient.invalidateQueries({ queryKey: ["users", id] });
+    queryClient.invalidateQueries({ queryKey: ["org-users"] });
+
+    // Stay in edit mode if anything failed so the user can retry / see
+    // their staged values; exit only on a fully clean run.
+    const allOk = results.every((r) => r.status === "fulfilled");
+    if (allOk) {
+      setIsEditing(false);
+      setEditBudget("");
+    }
   };
 
   return (
@@ -247,48 +299,116 @@ export default function UserDetailPage({
             <UserAvatar name={displayName} picture={user.picture} size={80} />
             <div className="space-y-3">
               <div className="flex items-center gap-2">
-                <p className="text-[18px] font-bold text-text-1">{displayName}</p>
+                <p className="text-[18px] font-bold text-text-1">
+                  {displayName}
+                </p>
                 <UserRoleControl
-                  user={user}
-                  canEdit={
-                    currentUser?.role === "admin" && currentUser.id !== id
+                  role={isEditing ? editRole : user.role}
+                  mode={
+                    isEditing && canEditSelfRole ? "edit" : "view"
                   }
-                  onChange={(role) => orgRoleMutation.mutate(role)}
-                  pending={orgRoleMutation.isPending}
+                  onChange={(r) => setEditRole(r)}
+                  disabled={isSubmitting}
                 />
+                {isEditing && !canEditSelfRole && (
+                  <span className="text-[11px] text-text-3">
+                    (you can&apos;t change your own role)
+                  </span>
+                )}
               </div>
               <p className="text-[16px] text-text-1">{user.email}</p>
             </div>
           </div>
-          <Button variant="outline" className="h-10 gap-2 border-border-2 text-[14px] text-text-1 shrink-0">
-            <LayoutList className="h-4 w-4" />
-            Activity Log
-          </Button>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              variant="outline"
+              className="h-10 gap-2 border-border-2 text-[14px] text-text-1"
+            >
+              <LayoutList className="h-4 w-4" />
+              Activity Log
+            </Button>
+
+            {/* Admin-only edit toggle. View mode shows a green Pencil
+                icon; clicking it stages the current values and reveals
+                the inputs. Edit mode swaps the icon for a Confirm /
+                Cancel pair. Non-admins never see any of these. */}
+            {isAdmin && !isEditing && (
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 border-success-7/40 text-success-7 hover:bg-success-7/10 hover:text-success-7"
+                onClick={enterEditMode}
+                title="Edit Monthly Budget and role"
+              >
+                <Pencil className="h-4 w-4" strokeWidth={2.5} />
+              </Button>
+            )}
+            {isAdmin && isEditing && (
+              <>
+                <Button
+                  variant="outline"
+                  className="h-10 gap-2 border-border-2"
+                  onClick={cancelEdit}
+                  disabled={isSubmitting}
+                >
+                  <X className="h-4 w-4" />
+                  Cancel
+                </Button>
+                <Button
+                  className="h-10 gap-2 bg-success-7 text-white hover:bg-success-7/90"
+                  onClick={confirmEdit}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Check className="h-4 w-4" strokeWidth={2.5} />
+                  )}
+                  Confirm
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Budget row */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Monthly Budget */}
+          {/* Monthly Budget — text in view mode, input in edit mode. */}
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
-              <input
-                type="text"
-                value={displayBudget}
-                onChange={(e) => setBudgetInput(e.target.value)}
-                onBlur={handleBudgetBlur}
-                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                disabled={!canEditBudget}
-                title={
-                  canEditBudget
-                    ? undefined
-                    : "Only admins can change a user's monthly budget."
-                }
-                className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-              />
-            </div>
-            {!canEditBudget && (
+            {isEditing ? (
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
+                  $
+                </span>
+                <input
+                  type="text"
+                  value={editBudget}
+                  onChange={(e) => setEditBudget(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmEdit();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                  }}
+                  disabled={isSubmitting}
+                  autoFocus
+                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </div>
+            ) : (
+              <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+                {budget > 0 ? (
+                  <span>{formatCurrency(budget)}</span>
+                ) : (
+                  <span className="text-text-3">Not set</span>
+                )}
+              </div>
+            )}
+            {!isEditing && !isAdmin && (
               <p className="text-[12px] text-text-3">
                 Only admins can change this — ask an admin to adjust the
                 budget.
@@ -359,7 +479,7 @@ export default function UserDetailPage({
                           value={t.role}
                           disabled={!t.canManage}
                           onValueChange={(value) =>
-                            roleMutation.mutate({
+                            teamRoleMutation.mutate({
                               teamId: t.id,
                               memberId: t.memberId,
                               role: value as "editor" | "viewer",
