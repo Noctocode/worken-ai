@@ -211,6 +211,40 @@ export default function UserDetailPage({
     },
   });
 
+  // The appbar's Pencil / Trash2 buttons fire `user-detail:edit` and
+  // `user-detail:delete` window events (see appbar.tsx — same pattern
+  // as the other appbar actions). Wire them here so the chrome
+  // controls drive page state without prop-drilling through the
+  // layout. Admin gating lives on the appbar side; if a non-admin
+  // somehow dispatches the event, the BE would reject anyway.
+  //
+  // MUST stay above the early-return guards below — React's rules of
+  // hooks require the hook count to match across every render, so
+  // placing this after `if (isLoading) return ...` would crash the
+  // page on the first load → loaded transition.
+  useEffect(() => {
+    const onEdit = () => {
+      if (!user) return;
+      setEditBudget(
+        (user.monthlyBudgetCents / 100).toLocaleString("de-DE", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      setEditRole(user.role);
+      setIsEditing(true);
+    };
+    const onDelete = () => {
+      setConfirmDeleteOpen(true);
+    };
+    window.addEventListener("user-detail:edit", onEdit);
+    window.addEventListener("user-detail:delete", onDelete);
+    return () => {
+      window.removeEventListener("user-detail:edit", onEdit);
+      window.removeEventListener("user-detail:delete", onDelete);
+    };
+  }, [user]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -302,35 +336,6 @@ export default function UserDetailPage({
       setEditBudget("");
     }
   };
-
-  // The appbar's Pencil / Trash2 buttons fire `user-detail:edit` and
-  // `user-detail:delete` window events (see appbar.tsx — same pattern
-  // as the other appbar actions). Wire them here so the chrome
-  // controls drive page state without prop-drilling through the
-  // layout. Admin gating lives on the appbar side; if a non-admin
-  // somehow dispatches the event, the BE would reject anyway.
-  useEffect(() => {
-    const onEdit = () => {
-      if (!user) return;
-      setEditBudget(
-        (user.monthlyBudgetCents / 100).toLocaleString("de-DE", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        }),
-      );
-      setEditRole(user.role);
-      setIsEditing(true);
-    };
-    const onDelete = () => {
-      setConfirmDeleteOpen(true);
-    };
-    window.addEventListener("user-detail:edit", onEdit);
-    window.addEventListener("user-detail:delete", onDelete);
-    return () => {
-      window.removeEventListener("user-detail:edit", onEdit);
-      window.removeEventListener("user-detail:delete", onDelete);
-    };
-  }, [user]);
 
   return (
     <div className="space-y-6">
