@@ -1,13 +1,13 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   MoreVertical,
   Trash2,
   Info,
   LayoutList,
   Loader2,
-  Pencil,
   Check,
   X,
 } from "lucide-react";
@@ -29,11 +29,20 @@ import {
 } from "@/components/ui/select";
 import {
   fetchOrgUser,
+  removeOrgUser,
   updateMemberRole,
   updateUserBudget,
   updateUserRole,
   type OrgRole,
 } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/components/providers";
@@ -138,6 +147,7 @@ export default function UserDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
@@ -149,12 +159,14 @@ export default function UserDetailPage({
   });
 
   // Edit mode — the page is read-only by default. Admins flip into
-  // edit mode via the green pencil; both Monthly Budget and the
-  // organization role are staged locally and committed atomically
-  // on Confirm. Cancel discards the staged values.
+  // edit mode via the appbar pencil (which dispatches user-detail:edit
+  // on the window); both Monthly Budget and the organization role are
+  // staged locally and committed atomically on Confirm. Cancel
+  // discards the staged values.
   const [isEditing, setIsEditing] = useState(false);
   const [editBudget, setEditBudget] = useState("");
   const [editRole, setEditRole] = useState<OrgRole>("basic");
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
 
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateUserBudget(id, budgetUsd),
@@ -186,6 +198,19 @@ export default function UserDetailPage({
     },
   });
 
+  const removeMutation = useMutation({
+    mutationFn: () => removeOrgUser(id),
+    onSuccess: () => {
+      toast.success("User removed.");
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      router.push("/teams?tab=users");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove user.");
+    },
+  });
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -209,21 +234,10 @@ export default function UserDetailPage({
   const projected = user.projectedCents / 100;
   const onTrack = projected <= budget;
 
-  const formattedBudget = budget.toLocaleString("de-DE", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-
   const isSubmitting = budgetMutation.isPending || orgRoleMutation.isPending;
   // Block editing your own role — BE rejects self-mutation to avoid
   // admin lockout, FE matches that.
   const canEditSelfRole = !isSelf;
-
-  const enterEditMode = () => {
-    setEditBudget(formattedBudget);
-    setEditRole(user.role);
-    setIsEditing(true);
-  };
 
   const cancelEdit = () => {
     setIsEditing(false);
@@ -289,6 +303,35 @@ export default function UserDetailPage({
     }
   };
 
+  // The appbar's Pencil / Trash2 buttons fire `user-detail:edit` and
+  // `user-detail:delete` window events (see appbar.tsx — same pattern
+  // as the other appbar actions). Wire them here so the chrome
+  // controls drive page state without prop-drilling through the
+  // layout. Admin gating lives on the appbar side; if a non-admin
+  // somehow dispatches the event, the BE would reject anyway.
+  useEffect(() => {
+    const onEdit = () => {
+      if (!user) return;
+      setEditBudget(
+        (user.monthlyBudgetCents / 100).toLocaleString("de-DE", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        }),
+      );
+      setEditRole(user.role);
+      setIsEditing(true);
+    };
+    const onDelete = () => {
+      setConfirmDeleteOpen(true);
+    };
+    window.addEventListener("user-detail:edit", onEdit);
+    window.addEventListener("user-detail:delete", onDelete);
+    return () => {
+      window.removeEventListener("user-detail:edit", onEdit);
+      window.removeEventListener("user-detail:delete", onDelete);
+    };
+  }, [user]);
+
   return (
     <div className="space-y-6">
       {/* ── User info + Budget card ──────────────────────────────── */}
@@ -328,21 +371,11 @@ export default function UserDetailPage({
               Activity Log
             </Button>
 
-            {/* Admin-only edit toggle. View mode shows a green Pencil
-                icon; clicking it stages the current values and reveals
-                the inputs. Edit mode swaps the icon for a Confirm /
-                Cancel pair. Non-admins never see any of these. */}
-            {isAdmin && !isEditing && (
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 border-success-7/40 text-success-7 hover:bg-success-7/10 hover:text-success-7"
-                onClick={enterEditMode}
-                title="Edit Monthly Budget and role"
-              >
-                <Pencil className="h-4 w-4" strokeWidth={2.5} />
-              </Button>
-            )}
+            {/* Edit-mode controls. The "enter edit mode" pencil lives
+                up in the appbar (see appbar.tsx — userDetail variant);
+                clicking it dispatches a window event the page listens
+                for. Confirm / Cancel are inline because they're
+                contextual to the form state, not chrome. */}
             {isAdmin && isEditing && (
               <>
                 <Button
@@ -527,6 +560,41 @@ export default function UserDetailPage({
           </div>
         </div>
       </div>
+
+      {/* Remove user confirm — opened by the appbar Trash2 dispatch.
+          Mirrors the dialog UserRow uses on /teams?tab=users; on
+          success we route back to the Users tab. */}
+      <Dialog
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => !open && setConfirmDeleteOpen(false)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove user</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove{" "}
+              <strong>{displayName}</strong> from the organization? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setConfirmDeleteOpen(false)}
+              disabled={removeMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => removeMutation.mutate()}
+              disabled={removeMutation.isPending}
+            >
+              {removeMutation.isPending ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
