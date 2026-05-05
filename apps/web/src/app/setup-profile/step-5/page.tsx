@@ -130,9 +130,13 @@ export default function SetupProfileStep5Page() {
                       </label>
                       <Input
                         type="password"
-                        placeholder={
-                          available ? placeholder : "Coming soon — not active yet"
-                        }
+                        // Format-specific placeholder stays visible even
+                        // for the coming-soon providers — the
+                        // disabled input + the yellow pill on the
+                        // header + the help text below already convey
+                        // the not-active-yet state, so we can keep the
+                        // format hint front and centre.
+                        placeholder={placeholder}
                         value={apiKeys[id] ?? ""}
                         onChange={(e) => setApiKey(id, e.target.value)}
                         disabled={!available}
