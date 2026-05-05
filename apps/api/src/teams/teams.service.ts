@@ -76,11 +76,20 @@ export class TeamsService {
     // in that team will fail until the key is re-provisioned (which now
     // happens automatically the next time the owner saves a budget; see
     // updateBudget below).
+    //
+    // Floor at $0.01 when the admin explicitly creates a team with a
+    // 0-budget (suspended state). Same rationale as users.service /
+    // teams.service.updateBudget: OpenRouter's behaviour for `limit:
+    // 0` is undocumented, so we never send it. The chat-time gate
+    // (`assertManagedBudgetApproved`) blocks all calls regardless;
+    // the floor is defense-in-depth in case the gate is ever
+    // bypassed.
     const budgetUsd = budgetCents / 100;
+    const upstreamLimitUsd = budgetUsd === 0 ? 0.01 : budgetUsd;
     try {
       const { key, hash } = await this.provisioningService.createKey(
         `team-${team.id}`,
-        budgetUsd,
+        upstreamLimitUsd,
       );
       const encrypted = this.encryptionService.encrypt(key);
       await this.db
