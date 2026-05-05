@@ -200,16 +200,19 @@ export class CompareModelsController {
         body.models.map(async (model) => {
           // Each model resolves its own transport independently — one
           // arena run can mix OpenRouter, BYOK, and Custom routes.
+          // Pass the team scope so when the user picked a team in the
+          // composer, the OpenRouter fallback bills against the
+          // team's key (matches what the pending-approval gate
+          // checks below — keeps the gate and the actual spend on
+          // the same budget).
           const transport = await this.chatTransport.resolve({
             userId: user.id,
             modelIdentifier: model,
+            teamId,
           });
           // Same pending-approval gate as /chat — blocks Managed Cloud
           // calls until an admin sets a budget. BYOK/Custom routes
-          // skip the gate (their billing is external). Pass the
-          // resolved teamId (if the user picked one in the composer)
-          // so the gate uses the team budget rather than the user's
-          // personal one.
+          // skip the gate (their billing is external).
           await this.chatTransport.assertManagedBudgetApproved(
             transport,
             user.id,
