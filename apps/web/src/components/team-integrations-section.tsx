@@ -668,9 +668,11 @@ export function TeamIntegrationsSection({
       toast.error(err.message ?? "Couldn't remove team integration."),
   });
 
-  // Direct-from-card toggle. Same shape as the personal Integration
-  // tab: PATCH if the row exists, upsert otherwise so the first toggle
-  // on an unconfigured provider creates the team row.
+  // Direct-from-card toggle with optimistic update. Same shape as the
+  // personal Integration tab: PATCH if the row exists, upsert
+  // otherwise so the first toggle on an unconfigured provider creates
+  // the team row. Cache flips ahead of the request so the Switch
+  // never shows its disabled cursor-not-allowed state mid-flight.
   const toggleMutation = useMutation({
     mutationFn: ({ card, next }: { card: IntegrationCard; next: boolean }) => {
       if (card.id) {
@@ -681,13 +683,32 @@ export function TeamIntegrationsSection({
         isEnabled: next,
       });
     },
-    onSuccess: () => {
+    onMutate: async ({ card, next }) => {
+      const key = ["team-integrations", teamId];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<IntegrationCard[]>(key);
+      queryClient.setQueryData<IntegrationCard[]>(key, (old) =>
+        old?.map((c) =>
+          c.providerId === card.providerId && c.id === card.id
+            ? { ...c, isEnabled: next }
+            : c,
+        ),
+      );
+      return { previous };
+    },
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(
+          ["team-integrations", teamId],
+          ctx.previous,
+        );
+      }
+      toast.error(err.message ?? "Couldn't toggle integration.");
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: ["team-integrations", teamId],
       });
-    },
-    onError: (err: Error) => {
-      toast.error(err.message ?? "Couldn't toggle integration.");
     },
   });
 
@@ -766,11 +787,6 @@ export function TeamIntegrationsSection({
             // transitions from null → uuid on first save would
             // unmount/remount, visible as a flicker.
             const cardKey = card.isCustom ? card.id! : card.providerId;
-            // Per-card disable: only the in-flight switch is locked.
-            const inFlight =
-              toggleMutation.isPending &&
-              toggleMutation.variables?.card.providerId === card.providerId &&
-              toggleMutation.variables?.card.id === card.id;
             return (
               <div
                 key={cardKey}
@@ -791,7 +807,7 @@ export function TeamIntegrationsSection({
                       onCheckedChange={(next) =>
                         toggleMutation.mutate({ card, next })
                       }
-                      disabled={!canManage || inFlight}
+                      disabled={!canManage}
                     />
                   </span>
                 </div>

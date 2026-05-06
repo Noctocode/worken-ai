@@ -499,7 +499,10 @@ export function IntegrationTab() {
     queryFn: fetchIntegrations,
   });
 
-  // Optimistic-ish toggle: PATCH and let React Query refetch.
+  // Optimistic toggle. Flips isEnabled in the cache before the
+  // request lands so the Switch never enters its disabled cursor-
+  // not-allowed state during the round trip. On error we roll the
+  // cache back; onSettled refetches to catch any drift.
   const toggleMutation = useMutation({
     mutationFn: ({ card, next }: { card: IntegrationCard; next: boolean }) => {
       if (card.id) {
@@ -510,11 +513,28 @@ export function IntegrationTab() {
         isEnabled: next,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    onMutate: async ({ card, next }) => {
+      await queryClient.cancelQueries({ queryKey: ["integrations"] });
+      const previous = queryClient.getQueryData<IntegrationCard[]>([
+        "integrations",
+      ]);
+      queryClient.setQueryData<IntegrationCard[]>(["integrations"], (old) =>
+        old?.map((c) =>
+          c.providerId === card.providerId && c.id === card.id
+            ? { ...c, isEnabled: next }
+            : c,
+        ),
+      );
+      return { previous };
     },
-    onError: (err: Error) => {
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(["integrations"], ctx.previous);
+      }
       toast.error(err.message ?? "Couldn't toggle integration.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
     },
   });
 
@@ -577,13 +597,6 @@ export function IntegrationTab() {
             // creates a DB row (id: null → uuid), unmounting and
             // remounting the card — visible as a blink.
             const cardKey = card.isCustom ? card.id! : card.providerId;
-            // Only disable the switch that is currently in-flight,
-            // not every card. The shared mutation's `variables` carry
-            // the in-flight card identity.
-            const inFlight =
-              toggleMutation.isPending &&
-              toggleMutation.variables?.card.providerId === card.providerId &&
-              toggleMutation.variables?.card.id === card.id;
             return (
             <div
               key={cardKey}
@@ -604,7 +617,6 @@ export function IntegrationTab() {
                     onCheckedChange={(next) =>
                       toggleMutation.mutate({ card, next })
                     }
-                    disabled={inFlight}
                   />
                 </span>
               </div>
