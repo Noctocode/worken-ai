@@ -1520,7 +1520,16 @@ export class TeamsService {
     teamId: string,
     callerId: string,
     integrationId: string,
-    input: { isEnabled?: boolean; apiKey?: string | null },
+    input: {
+      isEnabled?: boolean;
+      apiKey?: string | null;
+      /** Custom rows only — new endpoint URL. Validated as URL. */
+      apiUrl?: string;
+      /** Custom rows only — display name in the model picker. The
+       *  underlying modelIdentifier stays stable so ongoing chats
+       *  bound to the alias don't break. */
+      customName?: string;
+    },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
     if (role !== 'owner' && role !== 'editor') {
@@ -1539,6 +1548,16 @@ export class TeamsService {
       );
     }
 
+    // Custom-only fields (apiUrl, customName) are nonsense on
+    // predefined rows — reject up-front so admins don't accidentally
+    // think they renamed Anthropic.
+    const isCustom = row.providerId === 'custom';
+    if (!isCustom && (input.apiUrl !== undefined || input.customName !== undefined)) {
+      throw new BadRequestException(
+        'apiUrl and customName can only be set on Custom LLM integrations.',
+      );
+    }
+
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
     let nextApiKeyEncrypted: string | null = null;
@@ -1548,7 +1567,19 @@ export class TeamsService {
         : null;
       updates.apiKeyEncrypted = nextApiKeyEncrypted;
     }
-    if (row.providerId !== 'custom') {
+    if (input.apiUrl !== undefined) {
+      const trimmed = input.apiUrl.trim();
+      if (!trimmed) {
+        throw new BadRequestException('apiUrl cannot be empty.');
+      }
+      try {
+        new URL(trimmed);
+      } catch {
+        throw new BadRequestException('apiUrl is not a valid URL.');
+      }
+      updates.apiUrl = trimmed;
+    }
+    if (!isCustom) {
       assertTeamEnableHasKey({
         existingKey: row.apiKeyEncrypted,
         existingEnabled: row.isEnabled,
@@ -1562,8 +1593,30 @@ export class TeamsService {
       .set(updates)
       .where(eq(integrations.id, integrationId));
 
+    // Custom name lives on the bound alias (model_configs.custom_name),
+    // not on the integration row. Update it there. modelIdentifier
+    // stays untouched on purpose: it's the stable handle members'
+    // chats / conversations are bound to.
+    if (isCustom && input.customName !== undefined) {
+      const trimmedName = input.customName.trim();
+      if (!trimmedName) {
+        throw new BadRequestException('customName cannot be empty.');
+      }
+      await this.db
+        .update(modelConfigs)
+        .set({ customName: trimmedName, updatedAt: new Date() })
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.integrationId, integrationId),
+          ),
+        );
+    }
+
     const all = await this.listIntegrations(teamId, callerId);
-    const view = all.find((v) => v.providerId === row.providerId);
+    const view = isCustom
+      ? all.find((v) => v.id === integrationId)
+      : all.find((v) => v.providerId === row.providerId);
     if (!view) {
       throw new NotFoundException('Integration not found after update');
     }

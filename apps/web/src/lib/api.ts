@@ -2115,7 +2115,15 @@ export async function upsertTeamIntegration(
 export async function updateTeamIntegration(
   teamId: string,
   integrationId: string,
-  input: { isEnabled?: boolean; apiKey?: string | null },
+  input: {
+    isEnabled?: boolean;
+    apiKey?: string | null;
+    /** Custom LLM rows only — new endpoint URL. */
+    apiUrl?: string;
+    /** Custom LLM rows only — new display name. The underlying
+     *  modelIdentifier stays stable so ongoing chats keep working. */
+    customName?: string;
+  },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(
     `/teams/${teamId}/integrations/${integrationId}`,

@@ -78,6 +78,195 @@ function iconForHint(hint: string): React.ReactNode {
   }
 }
 
+/* ─── Edit Custom LLM dialog ─────────────────────────────────────────── */
+
+function EditTeamCustomLLMDialog({
+  teamId,
+  card,
+  canManage,
+  onClose,
+}: {
+  teamId: string;
+  card: IntegrationCard;
+  canManage: boolean;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  // Seed the form from the saved values. apiKey starts blank because
+  // we never expose the stored secret — same pattern as the predefined
+  // dialog (Replace flow).
+  const [customName, setCustomName] = useState(card.displayName);
+  const [apiUrl, setApiUrl] = useState(card.apiUrl ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [enabled, setEnabled] = useState(card.isEnabled);
+  // Same hide-saved-key pattern as the predefined dialog. Reveal the
+  // input on Replace; Cancel reverts without touching the saved key.
+  const [editingKey, setEditingKey] = useState(!card.hasApiKey);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!card.id) {
+        throw new Error("Internal: custom card has no id.");
+      }
+      // Send only fields the admin actually changed. Sending undefined
+      // tells the BE to leave that field alone (matches the personal
+      // tab's update semantic).
+      const apiKeyForBE: string | null | undefined = !canManage
+        ? undefined
+        : editingKey && apiKey
+          ? apiKey
+          : undefined;
+      return updateTeamIntegration(teamId, card.id, {
+        isEnabled: enabled !== card.isEnabled ? enabled : undefined,
+        apiUrl:
+          apiUrl.trim() && apiUrl.trim() !== card.apiUrl
+            ? apiUrl.trim()
+            : undefined,
+        customName:
+          customName.trim() && customName.trim() !== card.displayName
+            ? customName.trim()
+            : undefined,
+        apiKey: apiKeyForBE,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["team-integrations", teamId],
+      });
+      // Member pickers read effective models — refresh so the renamed
+      // alias label propagates.
+      queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
+      toast.success(`${customName || "Custom LLM"} updated.`);
+      onClose();
+    },
+    onError: (err: Error) =>
+      toast.error(err.message ?? "Couldn't save Custom LLM."),
+  });
+
+  const canSubmit =
+    customName.trim().length > 0 && apiUrl.trim().length > 0;
+
+  return (
+    <SettingsDialog
+      open
+      onClose={onClose}
+      onApply={canManage ? () => saveMutation.mutate() : undefined}
+      applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
+      applyPending={saveMutation.isPending}
+      applyDisabled={!canManage || !canSubmit}
+      title={`${card.displayName} (Team Custom LLM)`}
+      description="Update the URL, key, or display name. The underlying model identifier is preserved so ongoing chats keep working."
+      headerIcon={iconForHint(card.iconHint)}
+      headerContent={
+        <Switch
+          checked={enabled}
+          disabled={!canManage}
+          onCheckedChange={setEnabled}
+        />
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-2 rounded-lg border border-primary-3 bg-primary-1/40 px-3 py-2">
+          <Info className="h-4 w-4 shrink-0 text-primary-7 mt-0.5" />
+          <p className="text-[13px] text-primary-7 leading-snug">
+            Renaming changes only the label members see in the dropdown.
+            The model identifier stays the same so existing
+            conversations bound to it keep working.
+          </p>
+        </div>
+
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            Display name
+          </p>
+          <input
+            type="text"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            disabled={!canManage}
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+        </div>
+
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API URL
+          </p>
+          <input
+            type="text"
+            value={apiUrl}
+            onChange={(e) => setApiUrl(e.target.value)}
+            disabled={!canManage}
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60 disabled:cursor-not-allowed"
+          />
+        </div>
+
+        <div className="space-y-2">
+          <p className="text-[14px] font-normal text-text-2">API key</p>
+          {card.hasApiKey && !editingKey && (
+            <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
+                <Check className="h-4 w-4" strokeWidth={2.5} />
+              </span>
+              <div className="flex min-w-0 flex-1 flex-col">
+                <span className="text-[13px] font-semibold text-success-7">
+                  API key configured
+                </span>
+                <span className="flex items-center gap-1.5 text-[13px] text-text-2">
+                  <KeyRound className="h-3.5 w-3.5 text-text-3" />
+                  <span className="font-mono tracking-wide">
+                    ••••••••••••••••
+                  </span>
+                </span>
+              </div>
+              {canManage && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(true);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
+                >
+                  Replace
+                </button>
+              )}
+            </div>
+          )}
+          {(editingKey || !card.hasApiKey) && (
+            <>
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder={
+                  card.hasApiKey
+                    ? "Enter a new key to replace the saved one"
+                    : "Optional — leave blank for anonymous endpoints"
+                }
+                disabled={!canManage}
+                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60 disabled:cursor-not-allowed"
+              />
+              {card.hasApiKey && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(false);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] text-text-3 hover:underline"
+                >
+                  Cancel — keep the saved key
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </SettingsDialog>
+  );
+}
+
 /* ─── Add Custom LLM dialog ──────────────────────────────────────────── */
 
 function AddTeamCustomLLMDialog({
@@ -582,20 +771,19 @@ export function TeamIntegrationsSection({
               </div>
               <div className="flex items-center justify-end gap-2 -mt-1">
                 <div className="flex items-center gap-2">
-                  {/* Custom LLM rows aren't editable inline yet — the
-                      add-form has 4 fields (name/URL/key/enabled)
-                      that don't fit the predefined Settings dialog
-                      cleanly. For now: remove + re-add to change. */}
-                  {!card.isCustom && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-[13px]"
-                      onClick={() => setOpenCard(card)}
-                    >
-                      {canManage ? "Configure" : "View"}
-                    </Button>
-                  )}
+                  {/* Configure routes to a different dialog for custom
+                      vs predefined: predefined edits the BYOK key for
+                      a fixed provider; custom edits URL + display name
+                      + key. Both flows preserve the underlying
+                      modelIdentifier so ongoing chats keep working. */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-[13px]"
+                    onClick={() => setOpenCard(card)}
+                  >
+                    {canManage ? "Configure" : "View"}
+                  </Button>
                   {canManage && card.id && (
                     <Button
                       variant="ghost"
@@ -664,14 +852,22 @@ export function TeamIntegrationsSection({
         </SettingsDialog>
       )}
 
-      {openCard && (
-        <TeamProviderDialog
-          teamId={teamId}
-          card={openCard}
-          canManage={canManage}
-          onClose={() => setOpenCard(null)}
-        />
-      )}
+      {openCard &&
+        (openCard.isCustom ? (
+          <EditTeamCustomLLMDialog
+            teamId={teamId}
+            card={openCard}
+            canManage={canManage}
+            onClose={() => setOpenCard(null)}
+          />
+        ) : (
+          <TeamProviderDialog
+            teamId={teamId}
+            card={openCard}
+            canManage={canManage}
+            onClose={() => setOpenCard(null)}
+          />
+        ))}
 
       {customDialogOpen && (
         <AddTeamCustomLLMDialog
