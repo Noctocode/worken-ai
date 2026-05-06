@@ -91,6 +91,13 @@ export class ChatController {
       projectId: conversation.projectId,
       estimatedCostCents,
     });
+    // Team budget covers BYOK + Custom routes too (OpenRouter sub-
+    // account limit can't see those). Sits between per-member and org
+    // so the most actionable error fires first.
+    await this.chatTransport.assertTeamBudgetNotExceeded({
+      projectId: conversation.projectId,
+      estimatedCostCents,
+    });
     // Org-wide budget gate fires last so per-team / per-member caps
     // surface their actionable wording first (those are easier for an
     // admin to fix than the company-level target).

@@ -4,6 +4,8 @@ import {
   MEMBER_CAP_REACHED_MARKER,
   MEMBER_SUSPENDED_MARKER,
   ORG_BUDGET_EXCEEDED_MARKER,
+  TEAM_BUDGET_EXCEEDED_MARKER,
+  TEAM_SUSPENDED_MARKER,
   decideCapAction,
 } from './chat-transport.service.js';
 
@@ -347,5 +349,73 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
     await expect(
       svc.assertOrgBudgetNotExceeded({ estimatedCostCents: 500 }), // +$5 → $503
     ).rejects.toThrow(/would push the company past/);
+  });
+});
+
+/* ─── assertTeamBudgetNotExceeded (with mocked db) ────────────────── */
+
+describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
+  const TEAM_ID = 'team-id';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(db as never, {} as never, {} as never);
+  }
+
+  it('skips when no team is in scope (personal chat)', async () => {
+    const svc = makeService([]);
+    await expect(svc.assertTeamBudgetNotExceeded()).resolves.toBeUndefined();
+  });
+
+  it('passes when team row is gone (race with deletion)', async () => {
+    const svc = makeService([
+      [], // teams — no row
+    ]);
+    await expect(
+      svc.assertTeamBudgetNotExceeded({ teamId: TEAM_ID }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws TEAM_SUSPENDED when budget is 0', async () => {
+    const svc = makeService([[{ budget: 0, name: 'Engineering' }]]);
+    await expect(
+      svc.assertTeamBudgetNotExceeded({ teamId: TEAM_ID }),
+    ).rejects.toThrow(TEAM_SUSPENDED_MARKER);
+  });
+
+  it('passes when projected stays under the budget', async () => {
+    const svc = makeService([
+      [{ budget: 50000, name: 'Engineering' }], // $500
+      [{ total: '100.00' }], // $100 spent
+    ]);
+    await expect(
+      svc.assertTeamBudgetNotExceeded({
+        teamId: TEAM_ID,
+        estimatedCostCents: 100, // +$1
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws TEAM_BUDGET_EXCEEDED post-flight when spend already crosses budget', async () => {
+    const svc = makeService([
+      [{ budget: 50000, name: 'Engineering' }], // $500
+      [{ total: '512.00' }], // $512 — over
+    ]);
+    await expect(
+      svc.assertTeamBudgetNotExceeded({ teamId: TEAM_ID }),
+    ).rejects.toThrow(TEAM_BUDGET_EXCEEDED_MARKER);
+  });
+
+  it('throws TEAM_BUDGET_EXCEEDED pre-flight when the estimate would push over', async () => {
+    const svc = makeService([
+      [{ budget: 50000, name: 'Engineering' }], // $500
+      [{ total: '498.00' }], // $498
+    ]);
+    await expect(
+      svc.assertTeamBudgetNotExceeded({
+        teamId: TEAM_ID,
+        estimatedCostCents: 500, // +$5 → $503
+      }),
+    ).rejects.toThrow(/would push the team past/);
   });
 });

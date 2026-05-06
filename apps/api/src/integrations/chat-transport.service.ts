@@ -32,11 +32,22 @@ export const MEMBER_CAP_REACHED_MARKER = 'TEAM_MEMBER_CAP_REACHED';
 export const MEMBER_SUSPENDED_MARKER = 'TEAM_MEMBER_SUSPENDED';
 
 /**
+ * Marker for the team-wide budget cap, fired by our own gate (not
+ * OpenRouter). The OpenRouter sub-account limit only sees calls that
+ * actually flow through OpenRouter — BYOK / Custom routes bypass it.
+ * This marker covers the "I'm over the team budget *across all
+ * routes*" case so admins can't accidentally exceed their team budget
+ * just by routing through their own Anthropic key.
+ */
+export const TEAM_BUDGET_EXCEEDED_MARKER = 'TEAM_BUDGET_EXCEEDED';
+export const TEAM_SUSPENDED_MARKER = 'TEAM_SUSPENDED';
+
+/**
  * Marker for the org-wide monthly budget gate. Distinct from the
- * team-wide budget exhausted hit (raised by OpenRouter against a team's
- * sub-account) and from the per-member cap above. Lets the FE
- * humanizer route the user to "ask an admin to raise the company
- * budget" instead of "raise your personal cap".
+ * team-wide budget exhausted hit (raised by our own assertTeam… or
+ * by OpenRouter against a team's sub-account) and from the per-member
+ * cap above. Lets the FE humanizer route the user to "ask an admin to
+ * raise the company budget" instead of "raise your personal cap".
  */
 export const ORG_BUDGET_EXCEEDED_MARKER = 'ORG_BUDGET_EXCEEDED';
 
@@ -539,6 +550,91 @@ export class ChatTransportService {
     if (!decision.pass) {
       throw new HttpException(decision.message, 402);
     }
+  }
+
+  /**
+   * Team-wide monthly budget gate. Mirrors the per-member shape but
+   * scoped to the whole team — sums every observability event tagged
+   * with this team's id for the current calendar month and compares
+   * against `teams.monthlyBudgetCents`.
+   *
+   * Why we duplicate logic OpenRouter already does on its sub-account
+   * side: BYOK and Custom routes bypass OpenRouter entirely, so the
+   * sub-account limit only sees a fraction of the team's traffic. An
+   * admin who flips on a team-shared Anthropic key would otherwise
+   * watch the team blow past its monthly budget without anything
+   * stopping them. This gate plugs that hole — every team-routed call
+   * (regardless of source) is subject to the same cap.
+   *
+   * Custom LLM cost rows are null in observability, so they don't
+   * *consume* the budget, but `monthlyBudgetCents=0` (admin set the
+   * team to suspended) still blocks them just like the member gate
+   * does.
+   */
+  async assertTeamBudgetNotExceeded(
+    options: {
+      projectId?: string | null;
+      teamId?: string | null;
+      /** Pre-flight cost estimate (cents). Same semantics as the per-
+       *  member gate; pass 0 / omit to skip the pre-flight branch. */
+      estimatedCostCents?: number;
+    } = {},
+  ): Promise<void> {
+    let teamId = options.teamId ?? null;
+    if (!teamId && options.projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, options.projectId))
+        .limit(1);
+      teamId = proj?.teamId ?? null;
+    }
+    if (!teamId) return; // personal-scope chat — nothing to enforce here
+
+    const [team] = await this.db
+      .select({ budget: teams.monthlyBudgetCents, name: teams.name })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
+    if (!team) return; // race with team deletion — let the call proceed
+
+    if (team.budget === 0) {
+      throw new HttpException(
+        `${TEAM_SUSPENDED_MARKER}: Team "${team.name}" is suspended (budget set to $0). Ask an admin to raise the team's Monthly Budget in /teams/${teamId}.`,
+        402,
+      );
+    }
+
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const [agg] = await this.db
+      .select({
+        total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.teamId, teamId),
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      );
+    const spentUsd = agg ? parseFloat(agg.total) : 0;
+    const spentCents = Math.round(spentUsd * 100);
+
+    const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
+    const projectedCents = spentCents + estimateCents;
+    if (projectedCents < team.budget) return;
+
+    const capUsd = (team.budget / 100).toFixed(2);
+    const spentUsdStr = (spentCents / 100).toFixed(2);
+    const isPreflight = estimateCents > 0 && spentCents < team.budget;
+    const detail = isPreflight
+      ? `would push the team past ~$${(projectedCents / 100).toFixed(2)} (budget $${capUsd}, currently $${spentUsdStr}). Try a smaller prompt or wait for next month.`
+      : `is reached (spent $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise it in /teams/${teamId}.`;
+    throw new HttpException(
+      `${TEAM_BUDGET_EXCEEDED_MARKER}: Team "${team.name}"'s monthly budget of $${capUsd} ${detail}`,
+      402,
+    );
   }
 
   /**

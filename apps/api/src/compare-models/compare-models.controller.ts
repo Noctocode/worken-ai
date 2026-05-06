@@ -243,6 +243,10 @@ export class CompareModelsController {
             teamId,
             estimatedCostCents,
           });
+          await this.chatTransport.assertTeamBudgetNotExceeded({
+            teamId,
+            estimatedCostCents,
+          });
           await this.chatTransport.assertOrgBudgetNotExceeded({
             estimatedCostCents,
           });

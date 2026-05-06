@@ -61,6 +61,25 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Team-level budget gate (our own). Distinct from OpenRouter's
+  // budget-exhausted hit below — this fires for BYOK / Custom routes
+  // too, where OpenRouter doesn't see the call. Lets the user know
+  // the *team* is over, not the workspace as a whole.
+  const teamBudgetMatch = raw.match(/TEAM_BUDGET_EXCEEDED:\s*([^\r\n]+)/);
+  if (teamBudgetMatch) {
+    return (
+      teamBudgetMatch[1].trim() ||
+      "Your team's monthly budget is reached. Resets on the 1st of next month, or ask an admin to raise the team's Monthly Budget."
+    );
+  }
+  const teamSuspendedMatch = raw.match(/TEAM_SUSPENDED:\s*([^\r\n]+)/);
+  if (teamSuspendedMatch) {
+    return (
+      teamSuspendedMatch[1].trim() ||
+      "This team is suspended (budget set to $0). Ask an admin to raise the team's Monthly Budget."
+    );
+  }
+
   // Org-wide monthly budget. Fires after per-team / per-member caps
   // pass — the call would tip the *company* over its admin-set
   // target. Different message than the workspace-budget-exhausted
