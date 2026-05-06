@@ -432,15 +432,21 @@ export class ChatTransportService {
    *   - >0    → enforced. Spend = sum of observability_events.cost_usd
    *             for (userId, teamId, success=true, this calendar month).
    *
-   * Spend computation runs against `observability_events` (not
-   * OpenRouter's per-key usage API) so it covers all routing sources
-   * uniformly: OpenRouter team key, team-scoped BYOK, project-routed
-   * chats. The same monthly window (`date_trunc('month', now())`) the
-   * Integration tab's "this month" stats use, so admin and user see
-   * the same number.
+   * Spend computation runs against `observability_events` so it
+   * covers all routing sources uniformly: WorkenAI default, team-
+   * scoped BYOK, project-routed chats. The same monthly window
+   * (`date_trunc('month', now())`) the Integration tab's "this
+   * month" stats use, so admin and user see the same number.
    *
-   * Skipped for `source='custom'` — Custom LLM endpoints have their
-   * own external billing and we don't track cost reliably there.
+   * `source='custom'` still goes through this gate so the
+   * suspension state (cap=0) and the already-cap-reached state
+   * apply uniformly to every routing path. The spend math is
+   * naturally $0 for Custom routes though — observability logs
+   * cost=null when there's no catalog pricing for the model, so the
+   * SUM contributes nothing and the cap-exceeded branch never trips
+   * from Custom usage alone. In other words: Custom LLMs never
+   * *consume* the cap, but they're blocked when the member is
+   * suspended or has already exceeded the cap via other routes.
    *
    * @param teamId pass when the call is scoped to a specific team
    *   (compare-models with explicit teamId). For project-routed chats,
