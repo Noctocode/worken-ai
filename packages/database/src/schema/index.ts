@@ -534,3 +534,23 @@ export const integrations = pgTable(
       .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NOT NULL`),
   ],
 );
+
+// Org-level singleton settings. The Company tab on the FE renders a
+// "Company Monthly Budget" target the admin sets here; future org-wide
+// flags (logo URL, default infraChoice, branding overrides…) will land
+// on the same row instead of needing one table per setting. We don't
+// enforce singleton via a partial unique index — the get/upsert logic
+// in the service deterministically reads the oldest row, so an
+// accidental second row would just be hidden, not cause data loss.
+//
+// Default monthlyBudgetCents=0 means "no company target set" (UI hides
+// over-budget banner / projected pill until admin types a number). A
+// future hard-cap gate in chat-transport may treat 0 differently
+// (likely "unlimited" to avoid breaking deployments that never set
+// one) — settled when phase 2 lands.
+export const orgSettings = pgTable("org_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

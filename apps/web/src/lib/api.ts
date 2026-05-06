@@ -1779,6 +1779,40 @@ export async function deleteCompanyProfile(): Promise<{
   return res.json();
 }
 
+// ─── Org-level settings (singleton, currently just monthly budget) ──
+
+export interface OrgSettings {
+  id: string;
+  /** Monthly company-wide budget target (cents). 0 = no target set. */
+  monthlyBudgetCents: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchOrgSettings(): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch org settings");
+  }
+  return res.json();
+}
+
+export async function updateOrgSettings(input: {
+  monthlyBudgetCents?: number;
+}): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update org settings");
+  }
+  return res.json();
+}
+
 /**
  * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
  * optional, no API keys, no files. Persisted server-side per user
