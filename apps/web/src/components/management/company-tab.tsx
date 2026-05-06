@@ -39,6 +39,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/providers";
 import {
+  deleteCompanyProfile,
   fetchOnboardingProfile,
   fetchOrgUsers,
   fetchTeams,
@@ -120,7 +121,8 @@ export function CompanyTab() {
   const [editCompanyName, setEditCompanyName] = useState("");
   const [editIndustry, setEditIndustry] = useState("");
   const [editTeamSize, setEditTeamSize] = useState("");
-  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const [guardrails, setGuardrails] =
     useState<CompanyGuardrail[]>(DEMO_GUARDRAILS);
@@ -143,20 +145,30 @@ export function CompanyTab() {
       toast.error(err.message || "Couldn't remove user.");
     },
   });
-  const resetMutation = useMutation({
-    mutationFn: () =>
-      updateOnboardingProfile({
-        companyName: profile?.companyName ?? "",
-        industry: "",
-        teamSize: "",
-      }),
-    onSuccess: () => {
+  const deleteCompanyMutation = useMutation({
+    mutationFn: deleteCompanyProfile,
+    onSuccess: (result) => {
+      toast.success(
+        `Company deleted. Removed ${result.deletedTeamCount} team${
+          result.deletedTeamCount === 1 ? "" : "s"
+        }; ${result.affectedUserCount} user${
+          result.affectedUserCount === 1 ? "" : "s"
+        } now need to re-onboard.`,
+      );
+      // Bust every cache that just had its underlying rows wiped or
+      // mutated. The onboarding-profile + auth.me invalidations make
+      // OnboardingGuard re-evaluate and redirect the current admin to
+      // /setup-profile, since their onboardingCompletedAt was cleared
+      // on the server.
       queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
-      toast.success("Company profile reset.");
-      setConfirmResetOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["teams"] });
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      setConfirmDeleteOpen(false);
+      setDeleteConfirmText("");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't reset company.");
+      toast.error(err.message || "Couldn't delete company.");
     },
   });
 
@@ -213,7 +225,7 @@ export function CompanyTab() {
   // hook count is stable across loading transitions.
   useEffect(() => {
     const onEdit = () => enterEdit();
-    const onDelete = () => setConfirmResetOpen(true);
+    const onDelete = () => setConfirmDeleteOpen(true);
     window.addEventListener("company:edit", onEdit);
     window.addEventListener("company:delete", onDelete);
     return () => {
@@ -347,8 +359,8 @@ export function CompanyTab() {
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 text-success-7 hover:text-success-7/80"
-                    onClick={() => setConfirmResetOpen(true)}
-                    title="Reset industry / team size"
+                    onClick={() => setConfirmDeleteOpen(true)}
+                    title="Delete company"
                   >
                     <Trash2 className="h-6 w-6" />
                   </Button>
@@ -758,36 +770,104 @@ export function CompanyTab() {
         </div>
       </div>
 
-      {/* Reset confirmation. Trash2 only blanks out industry + team
-          size — companyName stays so the workspace doesn't become
-          unidentifiable. */}
+      {/* Delete-company confirmation. Tear-down is broad (every team,
+          team-scoped integration, and onboarding profile org-wide),
+          so the dialog enumerates the impact and gates the destructive
+          button behind a type-to-confirm match against the company
+          name. User accounts themselves stay alive — see the BE
+          OnboardingService.deleteCompany comment for the exact scope. */}
       <Dialog
-        open={confirmResetOpen}
-        onOpenChange={(open) => !open && setConfirmResetOpen(false)}
+        open={confirmDeleteOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmDeleteOpen(false);
+            setDeleteConfirmText("");
+          }
+        }}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset profile fields</DialogTitle>
+            <DialogTitle className="text-danger-6">Delete company</DialogTitle>
             <DialogDescription>
-              This clears the industry and team size for{" "}
-              <strong>{companyDisplay}</strong>. Admins, teams, and budgets
-              are not affected.
+              This permanently tears down the workspace for{" "}
+              <strong>{companyDisplay}</strong>.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3 space-y-2">
+              <p className="text-[13px] font-semibold text-danger-6">
+                What will be deleted:
+              </p>
+              <ul className="list-disc pl-5 text-[13px] text-text-1 space-y-1">
+                <li>
+                  All <strong>{teams.length}</strong> team
+                  {teams.length === 1 ? "" : "s"} (including sub-teams,
+                  members, projects, and team-shared API keys)
+                </li>
+                <li>
+                  Company profile (name, industry, team size) on every
+                  user — <strong>{orgUsers.length}</strong>{" "}
+                  account{orgUsers.length === 1 ? "" : "s"} will be sent
+                  back through onboarding on next login
+                </li>
+              </ul>
+              <p className="text-[13px] font-semibold text-danger-6 pt-2">
+                What stays:
+              </p>
+              <ul className="list-disc pl-5 text-[13px] text-text-1 space-y-1">
+                <li>
+                  All user accounts, roles, plans, and personal API keys
+                </li>
+                <li>Personal chats, conversations, and projects</li>
+              </ul>
+            </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="company-delete-confirm"
+                className="text-[13px] text-text-1"
+              >
+                Type{" "}
+                <span className="font-mono font-semibold">
+                  {companyDisplay}
+                </span>{" "}
+                to confirm:
+              </label>
+              <input
+                id="company-delete-confirm"
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                placeholder={companyDisplay}
+                disabled={deleteCompanyMutation.isPending}
+                className="w-full h-10 rounded border border-border-4 bg-transparent px-3 text-[14px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+              />
+            </div>
+            <p className="text-[12px] text-text-3">
+              This action cannot be undone.
+            </p>
+          </div>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setConfirmResetOpen(false)}
-              disabled={resetMutation.isPending}
+              onClick={() => {
+                setConfirmDeleteOpen(false);
+                setDeleteConfirmText("");
+              }}
+              disabled={deleteCompanyMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={() => resetMutation.mutate()}
-              disabled={resetMutation.isPending}
+              onClick={() => deleteCompanyMutation.mutate()}
+              disabled={
+                deleteCompanyMutation.isPending ||
+                deleteConfirmText.trim() !== companyDisplay
+              }
             >
-              {resetMutation.isPending ? "Resetting..." : "Reset"}
+              {deleteCompanyMutation.isPending
+                ? "Deleting..."
+                : "Delete company"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1762,6 +1762,24 @@ export async function updateOnboardingProfile(input: {
 }
 
 /**
+ * Tear down the workspace: drops every team + team-scoped integration
+ * and resets the company-shaped onboarding fields on every user.
+ * Admin-only. Returns counts so the FE can show what was actually
+ * removed in the success toast.
+ */
+export async function deleteCompanyProfile(): Promise<{
+  deletedTeamCount: number;
+  affectedUserCount: number;
+}> {
+  const res = await apiFetch("/onboarding/company", { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to delete company");
+  }
+  return res.json();
+}
+
+/**
  * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
  * optional, no API keys, no files. Persisted server-side per user
  * (PK = userId) and dropped once onboarding completes.
