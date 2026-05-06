@@ -403,8 +403,9 @@ function TeamProviderDialog({
   onClose: () => void;
 }) {
   const queryClient = useQueryClient();
-  const [enabled, setEnabled] = useState(card.isEnabled);
+  const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
+  const [enabled, setEnabled] = useState(card.isEnabled);
   // Mirror the personal Integration tab pattern: when a key is already
   // saved, show a "configured" status panel by default and only reveal
   // the input on Replace. Avoids overtyping a working key by accident.
@@ -412,20 +413,24 @@ function TeamProviderDialog({
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      // No DB row yet — POST will insert.
-      if (!card.id) {
-        return upsertTeamIntegration(teamId, {
-          providerId: card.providerId,
-          apiKey: apiKey ? apiKey : undefined,
+      if (card.id) {
+        return updateTeamIntegration(teamId, card.id, {
           isEnabled: enabled,
+          // Same 3-state semantic as the personal dialog: undefined →
+          // leave the saved key alone; null → explicit clear (when the
+          // admin unticks "Use the team's own API KEY"); string → save
+          // a new key.
+          apiKey: !useOwnKey
+            ? null
+            : editingKey && apiKey
+              ? apiKey
+              : undefined,
         });
       }
-      // Existing row — PATCH only the fields that changed.
-      return updateTeamIntegration(teamId, card.id, {
+      return upsertTeamIntegration(teamId, {
+        providerId: card.providerId,
+        apiKey: useOwnKey && apiKey ? apiKey : undefined,
         isEnabled: enabled,
-        // Send apiKey only when the user is actually replacing it.
-        // undefined → leave the saved key alone; null → explicit clear.
-        apiKey: editingKey && apiKey ? apiKey : undefined,
       });
     },
     onSuccess: () => {
@@ -433,7 +438,7 @@ function TeamProviderDialog({
         queryKey: ["team-integrations", teamId],
       });
       toast.success(
-        editingKey && apiKey
+        editingKey && apiKey && useOwnKey
           ? `${card.displayName} key saved for this team.`
           : `${card.displayName} settings saved.`,
       );
@@ -443,26 +448,11 @@ function TeamProviderDialog({
       toast.error(err.message ?? "Couldn't save team integration."),
   });
 
-  const clearKeyMutation = useMutation({
-    mutationFn: async () => {
-      if (!card.id) return;
-      return updateTeamIntegration(teamId, card.id, { apiKey: null });
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["team-integrations", teamId],
-      });
-      toast.success(`${card.displayName} key removed for this team.`);
-      onClose();
-    },
-    onError: (err: Error) =>
-      toast.error(err.message ?? "Couldn't clear team integration key."),
-  });
-
+  const successRatePct = (card.stats.successRate * 100).toFixed(1);
   // Disclaimer when the provider's BYOK can't be honored end-to-end yet
   // (Anthropic native, Google native, …). The key is stored but chat
   // routing falls back to OpenRouter — surface that to the admin.
-  const showCompatibilityNotice = !card.byokSupported;
+  const showCompatibilityNotice = !card.byokSupported && !card.isCustom;
 
   return (
     <SettingsDialog
@@ -470,7 +460,7 @@ function TeamProviderDialog({
       onClose={onClose}
       onApply={canManage ? () => saveMutation.mutate() : undefined}
       applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
-      applyPending={saveMutation.isPending || clearKeyMutation.isPending}
+      applyPending={saveMutation.isPending}
       applyDisabled={!canManage}
       title={`${card.displayName} (Team)`}
       description={`Configure shared ${card.displayName} integration for this team.`}
@@ -484,16 +474,6 @@ function TeamProviderDialog({
       }
     >
       <div className="space-y-5">
-        <div className="flex items-start gap-2 rounded-lg border border-primary-3 bg-primary-1/40 px-3 py-2">
-          <Info className="h-4 w-4 shrink-0 text-primary-7 mt-0.5" />
-          <p className="text-[13px] text-primary-7 leading-snug">
-            This key is shared with every member of this team. When a
-            member chats with a {card.displayName} model, the call routes
-            through this key first — billed to your{" "}
-            {card.displayName} account, not WorkenAI.
-          </p>
-        </div>
-
         {showCompatibilityNotice && (
           <div className="flex items-start gap-2 rounded-lg border border-warning-3 bg-warning-1/40 px-3 py-2">
             <Info className="h-4 w-4 shrink-0 text-warning-7 mt-0.5" />
@@ -506,12 +486,72 @@ function TeamProviderDialog({
           </div>
         )}
 
-        <div className="space-y-2">
-          <p className="text-[14px] font-normal leading-[20px] text-text-2">
-            API key
-          </p>
+        {/* Stats row */}
+        <div className="flex items-start gap-8">
+          <div>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              Success rate:
+            </p>
+            <p className="text-[18px] font-bold text-text-1">{successRatePct}%</p>
+          </div>
+          <div>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              API calls:
+            </p>
+            <p className="text-[18px] font-bold text-text-1">
+              {card.stats.apiCalls.toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-[16px] font-normal text-text-1 mb-0.5">
+              Peak / day:
+            </p>
+            <p className="text-[18px] font-bold text-text-1">
+              {card.stats.peakDailyCalls.toLocaleString()}
+              <span className="text-[13px] font-normal text-text-3 ml-2">
+                calls (30d max)
+              </span>
+            </p>
+          </div>
+        </div>
 
-          {card.hasApiKey && !editingKey && (
+        {/* WorkenAI default note */}
+        <div>
+          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+            Use WORKENAI API
+          </p>
+          <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
+            Additional costs on the WorkenAI subscription will be added.
+          </div>
+        </div>
+
+        {/* Team's own API key */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={useOwnKey}
+              disabled={!canManage}
+              onChange={(e) => {
+                setUseOwnKey(e.target.checked);
+                // Toggling off and back on resets the editor — keeps
+                // the "key already saved" path visible until the admin
+                // explicitly clicks Replace.
+                if (!e.target.checked) {
+                  setEditingKey(true);
+                  setApiKey("");
+                } else {
+                  setEditingKey(!card.hasApiKey);
+                }
+              }}
+              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer disabled:cursor-not-allowed"
+            />
+            <span className="text-[14px] font-normal leading-[20px] text-text-2">
+              Use the team&rsquo;s own API KEY
+            </span>
+          </label>
+
+          {useOwnKey && card.hasApiKey && !editingKey && (
             <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
                 <Check className="h-4 w-4" strokeWidth={2.5} />
@@ -528,31 +568,21 @@ function TeamProviderDialog({
                 </span>
               </div>
               {canManage && (
-                <div className="flex flex-col gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingKey(true);
-                      setApiKey("");
-                    }}
-                    className="text-[13px] font-medium text-primary-6 hover:underline"
-                  >
-                    Replace
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => clearKeyMutation.mutate()}
-                    disabled={clearKeyMutation.isPending}
-                    className="text-[13px] text-danger-6 hover:underline"
-                  >
-                    Remove
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(true);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
+                >
+                  Replace
+                </button>
               )}
             </div>
           )}
 
-          {(editingKey || !card.hasApiKey) && (
+          {useOwnKey && (editingKey || !card.hasApiKey) && (
             <>
               <input
                 type="password"
@@ -581,6 +611,10 @@ function TeamProviderDialog({
             </>
           )}
         </div>
+
+        <p className="text-[16px] font-normal leading-[24px] text-text-1">
+          API calls will incur a small Technology fee.
+        </p>
       </div>
     </SettingsDialog>
   );
