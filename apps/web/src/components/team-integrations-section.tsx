@@ -1,7 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { BookOpen, Check, Info, KeyRound, Loader2, Plus } from "lucide-react";
+import {
+  BookOpen,
+  Check,
+  Info,
+  KeyRound,
+  Loader2,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -645,7 +653,8 @@ export function TeamIntegrationsSection({
 
   // Cleanup: remove the row entirely. Drops the team's BYOK config for
   // that provider — chat routing falls back to user-personal BYOK or
-  // OpenRouter on the next call.
+  // OpenRouter on the next call. Surfaced as a trash icon on Custom
+  // LLM cards (mirrors the personal Integration tab).
   const removeMutation = useMutation({
     mutationFn: ({ integrationId }: { integrationId: string }) =>
       deleteTeamIntegration(teamId, integrationId),
@@ -657,6 +666,29 @@ export function TeamIntegrationsSection({
     },
     onError: (err: Error) =>
       toast.error(err.message ?? "Couldn't remove team integration."),
+  });
+
+  // Direct-from-card toggle. Same shape as the personal Integration
+  // tab: PATCH if the row exists, upsert otherwise so the first toggle
+  // on an unconfigured provider creates the team row.
+  const toggleMutation = useMutation({
+    mutationFn: ({ card, next }: { card: IntegrationCard; next: boolean }) => {
+      if (card.id) {
+        return updateTeamIntegration(teamId, card.id, { isEnabled: next });
+      }
+      return upsertTeamIntegration(teamId, {
+        providerId: card.providerId,
+        isEnabled: next,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["team-integrations", teamId],
+      });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message ?? "Couldn't toggle integration.");
+    },
   });
 
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -726,93 +758,97 @@ export function TeamIntegrationsSection({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {configured.map((card) => (
-            // `card.id` is non-null here because `configured` filters
-            // for it; falling back to providerId would collide for
-            // multiple Custom LLMs (all share providerId="custom"),
-            // so always prefer the row id.
-            <div
-              key={card.id ?? card.providerId}
-              className="bg-bg-white rounded p-4 space-y-3"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  {iconForHint(card.iconHint)}
-                  <div className="min-w-0">
-                    <p className="text-[15px] font-semibold text-text-1 truncate">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {configured.map((card) => {
+            // Stable key: predefined → providerId (unique per team),
+            // custom → row id (multiple Custom LLMs share
+            // providerId="custom"). Without this, a card whose id
+            // transitions from null → uuid on first save would
+            // unmount/remount, visible as a flicker.
+            const cardKey = card.isCustom ? card.id! : card.providerId;
+            // Per-card disable: only the in-flight switch is locked.
+            const inFlight =
+              toggleMutation.isPending &&
+              toggleMutation.variables?.card.providerId === card.providerId &&
+              toggleMutation.variables?.card.id === card.id;
+            return (
+              <div
+                key={cardKey}
+                className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
+                onClick={() => setOpenCard(card)}
+              >
+                {/* Header: icon + name + toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {iconForHint(card.iconHint)}
+                    <span className="truncate text-[16px] font-normal text-text-1">
                       {card.displayName}
-                    </p>
-                    <p className="text-[12px] text-text-3 truncate">
-                      {card.description}
-                    </p>
+                    </span>
                   </div>
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <Switch
+                      checked={card.isEnabled}
+                      onCheckedChange={(next) =>
+                        toggleMutation.mutate({ card, next })
+                      }
+                      disabled={!canManage || inFlight}
+                    />
+                  </span>
                 </div>
-                {card.hasApiKey ? (
-                  <span className="rounded-md bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7 whitespace-nowrap">
+
+                {/* Persistent BYOK indicator */}
+                {card.hasApiKey && (
+                  <span
+                    className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7"
+                    title="A team-shared API key is saved for this provider"
+                  >
+                    <Check className="h-3 w-3" strokeWidth={2.5} />
                     Key set
                   </span>
-                ) : (
-                  <span className="rounded-md bg-bg-2 px-2 py-0.5 text-[11px] text-text-3 whitespace-nowrap">
-                    No key
-                  </span>
                 )}
-              </div>
-              <div className="flex items-center justify-between text-[12px] text-text-3">
-                <span>{card.isEnabled ? "Enabled" : "Disabled"}</span>
-                {/* Team-scoped usage. Numbers come from
-                    observability_events filtered by team_id, so they
-                    reflect everyone in the team, not just the viewer. */}
-                <span className="tabular-nums">
-                  {card.stats.apiCalls.toLocaleString()} calls/mo
-                  {card.stats.successRate > 0 && (
-                    <>
-                      {" · "}
-                      {(card.stats.successRate * 100).toFixed(0)}% ok
-                    </>
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center justify-end gap-2 -mt-1">
-                <div className="flex items-center gap-2">
-                  {/* Configure routes to a different dialog for custom
-                      vs predefined: predefined edits the BYOK key for
-                      a fixed provider; custom edits URL + display name
-                      + key. Both flows preserve the underlying
-                      modelIdentifier so ongoing chats keep working. */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 text-[13px]"
-                    onClick={() => setOpenCard(card)}
-                  >
-                    {canManage ? "Configure" : "View"}
-                  </Button>
-                  {canManage && card.id && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 text-[13px] text-danger-6 hover:text-danger-7"
-                      disabled={removeMutation.isPending}
-                      onClick={() => {
-                        const what = card.isCustom
-                          ? `the "${card.displayName}" Custom LLM`
-                          : `the ${card.displayName} team key`;
-                        const consequence = card.isCustom
-                          ? "Members will lose access to this endpoint."
-                          : "Members will fall back to their personal keys or the WorkenAI default.";
-                        if (confirm(`Remove ${what}? ${consequence}`)) {
+
+                {/* Description */}
+                <p className="mt-2 text-[14px] font-normal text-text-2 line-clamp-2">
+                  {card.description}
+                </p>
+
+                {/* Footer: custom-only delete + Settings link */}
+                <div className="mt-auto flex items-center justify-between">
+                  {card.isCustom && card.id && canManage ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (
+                          confirm(
+                            `Remove the "${card.displayName}" Custom LLM? Members will lose access to this endpoint.`,
+                          )
+                        ) {
                           removeMutation.mutate({ integrationId: card.id! });
                         }
                       }}
+                      disabled={removeMutation.isPending}
+                      className="text-[13px] text-danger-6 hover:underline inline-flex items-center gap-1 disabled:opacity-60"
+                      title="Delete custom LLM"
                     >
-                      Remove
-                    </Button>
+                      <Trash2 className="h-3.5 w-3.5" />
+                      Delete
+                      {card.boundAliasCount > 0 && (
+                        <span className="ml-1 rounded-full bg-danger-1 px-1.5 py-0 text-[10px] font-medium text-danger-6">
+                          {card.boundAliasCount}
+                        </span>
+                      )}
+                    </button>
+                  ) : (
+                    <span />
                   )}
+                  <span className="text-[14px] font-normal text-text-3">
+                    {canManage ? "Settings" : "View"}
+                  </span>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
