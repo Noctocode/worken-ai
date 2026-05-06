@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import {
   enabledModels,
   integrations,
@@ -54,7 +54,18 @@ export class ModelsService {
   ) {}
 
   async findAll() {
-    return this.db.select().from(modelConfigs);
+    // Stable ORDER so the FE table doesn't jump rows around when a
+    // user toggles isActive (or anything else). Postgres returns
+    // rows in arbitrary heap order without ORDER BY, and the order
+    // can shift after each UPDATE — the user perceives the table as
+    // "jumping". `createdAt ASC` is stable per row, doesn't change
+    // on update, and matches what the user-facing list typically
+    // shows (oldest first). `id` as a secondary key handles the
+    // tiebreak when two rows share a createdAt.
+    return this.db
+      .select()
+      .from(modelConfigs)
+      .orderBy(asc(modelConfigs.createdAt), asc(modelConfigs.id));
   }
 
   /**
