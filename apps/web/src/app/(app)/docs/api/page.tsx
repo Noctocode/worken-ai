@@ -327,7 +327,7 @@ export default function ApiDocsPage() {
               method="POST"
               path="/chat"
               summary="Sends a user message to the model and returns the assistant's reply."
-              description='Body: { conversationId, content, model?, projectId?, enableReasoning? }. The conversation must already exist. Routes through your BYOK provider if /models/effective marks the model as BYOK; otherwise routes through OpenRouter under your team budget.'
+              description='Body: { conversationId, content, model?, projectId?, enableReasoning? }. The conversation must already exist. Routes through your BYOK provider if /models/effective marks the model as BYOK; otherwise routes through the WorkenAI default under your team budget.'
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
@@ -408,7 +408,7 @@ export default function ApiDocsPage() {
             <li>
               <strong className="font-mono text-[12px] text-danger-6">5xx</strong>{" "}
               <span className="text-text-2">
-                — Upstream provider (OpenRouter, Anthropic, etc.) error or
+                — Upstream provider (Anthropic, OpenAI, etc.) error or
                 internal failure. Safe to retry with backoff.
               </span>
             </li>

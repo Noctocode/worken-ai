@@ -104,7 +104,7 @@ export function humanizeChatError(err: unknown): string {
 
   if (/no endpoints found/i.test(raw)) {
     return withModel(
-      (m) => `${m} is no longer available on OpenRouter. Pick a different model in the project header.`,
+      (m) => `${m} is no longer available in the catalog. Pick a different model in the project header.`,
     );
   }
 
@@ -120,11 +120,15 @@ export function humanizeChatError(err: unknown): string {
   }
 
   if (
-    /openrouter key (unavailable|missing|not set)/i.test(raw) ||
-    /could not obtain an openrouter key/i.test(raw) ||
+    // Patterns match both the new "AI gateway / AI usage key" wording
+    // and the legacy "openrouter" mentions so log lines from older
+    // BE deploys still humanize correctly.
+    /(?:openrouter|ai gateway|ai usage) key (unavailable|missing|not set)/i.test(raw) ||
+    /no (?:openrouter|ai gateway|ai usage) key available/i.test(raw) ||
+    /could not obtain an? (?:openrouter|ai gateway|ai usage) key/i.test(raw) ||
     /provisioning failed/i.test(raw)
   ) {
-    return "OpenRouter isn't configured on the server. Please contact an admin.";
+    return "The AI gateway isn't configured on the server. Please contact an admin.";
   }
 
   if (/evaluator/i.test(raw)) {

@@ -247,7 +247,7 @@ export class TeamsService {
           `Failed to provision OpenRouter key for team ${teamId}: ${msg}`,
         );
         throw new ServiceUnavailableException(
-          'Could not provision an OpenRouter key for this team. Please try again in a moment.',
+          'Could not provision an AI usage key for this team. Please try again in a moment.',
         );
       }
     } else if (openrouterKeyId) {

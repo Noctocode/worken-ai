@@ -235,7 +235,7 @@ export class ModelsService {
     const catalog = await this.catalogService.list();
     if (!catalog.some((m) => m.id === modelIdentifier)) {
       throw new NotFoundException(
-        `Model "${modelIdentifier}" not found in OpenRouter catalog`,
+        `Model "${modelIdentifier}" not found in the AI model catalog`,
       );
     }
 

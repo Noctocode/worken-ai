@@ -24,7 +24,7 @@ export class KeyResolverService {
   private requireKey(key: string, context: string): string {
     if (!key) {
       throw new Error(
-        `No OpenRouter key available for ${context}. Set OPENROUTER_API_KEY as a fallback, or configure OPENROUTER_PROVISIONING_KEY so per-user/team keys can be created.`,
+        `No AI gateway key available for ${context}. Set OPENROUTER_API_KEY as a fallback, or configure OPENROUTER_PROVISIONING_KEY so per-user/team keys can be created.`,
       );
     }
     return key;
@@ -36,7 +36,7 @@ export class KeyResolverService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
-        `Failed to decrypt stored OpenRouter key for ${context}: ${msg}. OPENROUTER_ENCRYPTION_KEY may have changed since the key was stored.`,
+        `Failed to decrypt stored AI gateway key for ${context}: ${msg}. OPENROUTER_ENCRYPTION_KEY may have changed since the key was stored.`,
       );
     }
   }
@@ -103,7 +103,7 @@ export class KeyResolverService {
     const budgetUsd = (user.monthlyBudgetCents ?? 0) / 100;
     if (budgetUsd <= 0) {
       throw new Error(
-        `Could not obtain an OpenRouter key for user ${userId}: monthly budget is 0. An admin must approve a budget in Management → Users before this user can make AI calls.`,
+        `Could not obtain an AI gateway key for user ${userId}: monthly budget is 0. An admin must approve a budget in Management → Users before this user can make AI calls.`,
       );
     }
 
@@ -130,7 +130,7 @@ export class KeyResolverService {
         return this.fallbackKey;
       }
       throw new Error(
-        `Could not obtain an OpenRouter key for user ${userId}. Provisioning failed (${msg}) and OPENROUTER_API_KEY fallback is not set.`,
+        `Could not obtain an AI gateway key for user ${userId}. Provisioning failed (${msg}) and OPENROUTER_API_KEY fallback is not set.`,
       );
     }
   }

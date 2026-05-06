@@ -375,7 +375,7 @@ function AddTeamCustomLLMDialog({
           className="inline-flex h-[40px] items-center gap-2 rounded-md border border-border-2 px-4 text-[14px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
           onClick={() =>
             window.open(
-              "https://openrouter.ai/docs/api-reference/overview",
+              "https://platform.openai.com/docs/api-reference/chat",
               "_blank",
               "noopener,noreferrer",
             )
@@ -524,7 +524,7 @@ function TeamProviderDialog({
             This key is shared with every member of this team. When a
             member chats with a {card.displayName} model, the call routes
             through this key first — billed to your{" "}
-            {card.displayName} account, not OpenRouter.
+            {card.displayName} account, not WorkenAI.
           </p>
         </div>
 
@@ -534,8 +534,8 @@ function TeamProviderDialog({
             <p className="text-[13px] text-warning-7 leading-snug">
               {card.displayName}&rsquo;s native API isn&rsquo;t
               OpenAI-compatible yet, so a BYOK key here is stored but chat
-              calls still route through OpenRouter. We&rsquo;ll honor it
-              directly once native support lands.
+              calls still route through the WorkenAI default. We&rsquo;ll
+              honor it directly once native support lands.
             </p>
           </div>
         )}
@@ -672,7 +672,7 @@ export function TeamIntegrationsSection({
           <p className="text-[13px] text-text-3">
             Share an API key with the whole team. Chat calls from any
             member route through this key before falling back to their
-            personal BYOK or OpenRouter.
+            personal BYOK or the WorkenAI default.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -796,7 +796,7 @@ export function TeamIntegrationsSection({
                           : `the ${card.displayName} team key`;
                         const consequence = card.isCustom
                           ? "Members will lose access to this endpoint."
-                          : "Members will fall back to their personal keys or OpenRouter.";
+                          : "Members will fall back to their personal keys or the WorkenAI default.";
                         if (confirm(`Remove ${what}? ${consequence}`)) {
                           removeMutation.mutate({ integrationId: card.id! });
                         }

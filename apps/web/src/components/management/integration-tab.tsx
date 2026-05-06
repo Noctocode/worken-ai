@@ -203,8 +203,8 @@ function ProviderSettingsDialog({
             <p className="text-[13px] text-warning-7 leading-snug">
               {card.displayName}&rsquo;s native API isn&rsquo;t OpenAI-compatible
               yet, so a BYOK key here is stored but chat calls still route
-              through OpenRouter. We&rsquo;ll honor it directly once native
-              support lands.
+              through the WorkenAI default. We&rsquo;ll honor it directly
+              once native support lands.
             </p>
           </div>
         )}
@@ -394,7 +394,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
           className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
           onClick={() =>
             window.open(
-              "https://openrouter.ai/docs/api-reference/overview",
+              "https://platform.openai.com/docs/api-reference/chat",
               "_blank",
               "noopener,noreferrer",
             )
@@ -440,8 +440,8 @@ function DeleteCustomLLMDialog({
               <strong>{n}</strong> model alias{n === 1 ? "" : "es"} currently
               route to this Custom LLM. Deleting it will{" "}
               <strong>unlink them</strong> — those aliases will fall back to
-              the default routing (OpenRouter), which will likely fail until
-              you point them at another endpoint or remove them.
+              the WorkenAI default routing, which will likely fail until you
+              point them at another endpoint or remove them.
             </p>
           </div>
         ) : (

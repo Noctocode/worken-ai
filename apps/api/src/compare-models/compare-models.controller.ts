@@ -174,7 +174,7 @@ export class CompareModelsController {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
-      throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
+      throw new ServiceUnavailableException(`AI gateway key unavailable: ${msg}`);
     }
 
     // Personal-by-default scoping. If the body carries an explicit
@@ -534,7 +534,7 @@ export class CompareModelsController {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new ServiceUnavailableException(
-          `OpenRouter key unavailable for OCR: ${msg}`,
+          `AI gateway key unavailable for OCR: ${msg}`,
         );
       }
 

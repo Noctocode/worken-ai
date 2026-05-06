@@ -78,8 +78,8 @@ export function TeamMemberCapDialog({
           <DialogDescription>
             Cap this member&rsquo;s monthly spend inside this team. The
             limit is enforced against their successful chat calls billed
-            through the team key (OpenRouter or team-shared BYOK). Resets
-            on the 1st.
+            through the team key (WorkenAI default or team-shared BYOK).
+            Resets on the 1st.
           </DialogDescription>
         </DialogHeader>
 
