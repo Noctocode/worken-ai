@@ -1161,12 +1161,19 @@ export class TeamsService {
   }
 
   /**
-   * Team-scoped BYOK integrations. Mirrors the personal Integration tab
+   * Team-scoped integrations. Mirrors the personal Integration tab
    * but the configured key is shared across every team member: when
    * one of them chats with a model from this provider, chat-transport
    * routes through this team key first, before falling back to their
-   * personal BYOK or to OpenRouter. Only predefined providers (Anthropic,
-   * OpenAI, …) — Custom LLMs aren't supported at team scope yet.
+   * personal BYOK or the WorkenAI default.
+   *
+   * Returns both:
+   *   - Predefined providers (Anthropic, OpenAI, …) — at most one row
+   *     per (team, provider). Untouched providers appear with id=null.
+   *   - Team-scoped Custom LLM rows — each is its own card; the bound
+   *     model_configs alias is auto-created at upsert time so members
+   *     see the endpoint in their picker without admin touching
+   *     /catalog separately.
    */
   async listIntegrations(
     teamId: string,
