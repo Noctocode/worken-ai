@@ -462,8 +462,8 @@ function TeamProviderDialog({
       applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
       applyPending={saveMutation.isPending}
       applyDisabled={!canManage}
-      title={`${card.displayName} (Team)`}
-      description={`Configure shared ${card.displayName} integration for this team.`}
+      title={card.displayName}
+      description={`Configure ${card.displayName} integration settings.`}
       headerIcon={iconForHint(card.iconHint)}
       headerContent={
         <Switch
@@ -547,7 +547,7 @@ function TeamProviderDialog({
               className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer disabled:cursor-not-allowed"
             />
             <span className="text-[14px] font-normal leading-[20px] text-text-2">
-              Use the team&rsquo;s own API KEY
+              Use your own API KEY
             </span>
           </label>
 
@@ -558,7 +558,7 @@ function TeamProviderDialog({
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[13px] font-semibold text-success-7">
-                  Team key configured
+                  API key configured
                 </span>
                 <span className="flex items-center gap-1.5 text-[13px] text-text-2">
                   <KeyRound className="h-3.5 w-3.5 text-text-3" />
@@ -592,7 +592,7 @@ function TeamProviderDialog({
                 placeholder={
                   card.hasApiKey
                     ? "Enter a new key to replace the saved one"
-                    : `Enter the team's ${card.displayName} API key`
+                    : "Enter your API key"
                 }
                 className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60 disabled:cursor-not-allowed"
               />
