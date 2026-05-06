@@ -1738,6 +1738,30 @@ export async function fetchOnboardingProfile(): Promise<OnboardingProfile> {
 }
 
 /**
+ * Edit the company-branch fields (name + companyName + industry +
+ * teamSize) after onboarding has completed. Drives the Pencil flow on
+ * the Company tab — backed by PATCH /onboarding/profile, which only
+ * accepts company-profile users.
+ */
+export async function updateOnboardingProfile(input: {
+  name?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+}): Promise<OnboardingProfile> {
+  const res = await apiFetch("/onboarding/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update profile");
+  }
+  return res.json();
+}
+
+/**
  * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
  * optional, no API keys, no files. Persisted server-side per user
  * (PK = userId) and dropped once onboarding completes.
@@ -2206,50 +2230,3 @@ export async function revokeApiKey(id: string): Promise<void> {
   }
 }
 
-// ─── Company (org-level singleton) ───────────────────────────────────
-
-export interface Company {
-  id: string;
-  name: string;
-  contactEmail: string | null;
-  monthlyBudgetCents: number;
-  spentCents: number;
-  projectedCents: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export async function fetchCompany(): Promise<Company> {
-  const res = await apiFetch("/companies/current");
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to fetch company");
-  }
-  return res.json();
-}
-
-export async function updateCompany(input: {
-  name?: string;
-  contactEmail?: string | null;
-  monthlyBudgetCents?: number;
-}): Promise<Company> {
-  const res = await apiFetch("/companies/current", {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to update company");
-  }
-  return res.json();
-}
-
-export async function deleteCompany(): Promise<Company> {
-  const res = await apiFetch("/companies/current", { method: "DELETE" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to reset company");
-  }
-  return res.json();
-}

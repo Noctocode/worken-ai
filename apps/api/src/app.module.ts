@@ -7,7 +7,6 @@ import { AppService } from './app.service';
 import { AuthModule } from './auth/auth.module';
 import { JwtOrApiKeyGuard } from './auth/jwt-or-api-key.guard';
 import { ChatModule } from './chat/chat.module';
-import { CompaniesModule } from './companies/companies.module';
 import { CompareModelsModule } from './compare-models/compare-models.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
@@ -34,7 +33,6 @@ import { UsersModule } from './users/users.module';
     ApiKeysModule,
     AuthModule,
     ChatModule,
-    CompaniesModule,
     CompareModelsModule,
     ConversationsModule,
     DocumentsModule,

@@ -534,19 +534,3 @@ export const integrations = pgTable(
       .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NOT NULL`),
   ],
 );
-
-// Org-level "Company" settings. Single-tenant for now: the table is
-// expected to hold exactly one row, surfaced on the Company tab so an
-// admin can edit the workspace's display name, contact email, and
-// monthly budget cap. We don't enforce singleton via a partial unique
-// index because the seed/get logic in CompaniesService already picks
-// the oldest row deterministically — a stray second row would just be
-// hidden, not corrupt.
-export const companies = pgTable("companies", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull().default(""),
-  contactEmail: text("contact_email"),
-  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});

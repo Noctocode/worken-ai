@@ -29,15 +29,43 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/providers";
 import {
-  deleteCompany,
-  fetchCompany,
+  fetchOnboardingProfile,
   fetchOrgUsers,
-  updateCompany,
+  fetchTeams,
+  updateOnboardingProfile,
 } from "@/lib/api";
-import { formatBudgetInput, formatCurrency } from "@/lib/utils";
+import { formatCurrency } from "@/lib/utils";
+
+// Mirror the wizard step-2 dropdowns so the post-onboarding edit flow
+// offers the same options. Source of truth: setup-profile/step-2 (BE
+// validates against the same enum).
+const INDUSTRIES = [
+  { value: "technology", label: "Technology" },
+  { value: "finance", label: "Finance" },
+  { value: "healthcare", label: "Healthcare" },
+  { value: "government", label: "Government" },
+  { value: "manufacturing", label: "Manufacturing" },
+  { value: "retail", label: "Retail" },
+  { value: "other", label: "Other" },
+];
+
+const TEAM_SIZES = [
+  { value: "1-10", label: "1 – 10" },
+  { value: "11-50", label: "11 – 50" },
+  { value: "51-200", label: "51 – 200" },
+  { value: "201-1000", label: "201 – 1,000" },
+  { value: "1000+", label: "1,000+" },
+];
 
 interface CompanyGuardrail {
   id: string;
@@ -48,14 +76,19 @@ interface CompanyGuardrail {
   active: boolean;
 }
 
-// Guardrails on this tab still mirror the static design; the org-level
-// guardrails BE isn't there yet, so they stay as DEMO_GUARDRAILS until
-// that work lands. The Company card above is fully wired to /companies/current.
+// Org-level guardrails BE isn't there yet — these stay as static demo
+// rows until that work lands. Profile + budget aggregates above are
+// fully wired to real data.
 const DEMO_GUARDRAILS: CompanyGuardrail[] = [
   { id: "1", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
   { id: "2", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
   { id: "3", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
 ];
+
+const labelFor = (
+  options: Array<{ value: string; label: string }>,
+  value: string | null,
+) => options.find((o) => o.value === value)?.label ?? value;
 
 export function CompanyTab() {
   const { user: currentUser } = useAuth();
@@ -63,25 +96,27 @@ export function CompanyTab() {
   const queryClient = useQueryClient();
 
   const {
-    data: company,
-    isLoading,
-    error,
-  } = useQuery({ queryKey: ["company"], queryFn: fetchCompany });
+    data: profile,
+    isLoading: profileLoading,
+    error: profileError,
+  } = useQuery({
+    queryKey: ["onboarding-profile"],
+    queryFn: fetchOnboardingProfile,
+  });
   const { data: orgUsers = [] } = useQuery({
     queryKey: ["org-users"],
     queryFn: fetchOrgUsers,
   });
+  const { data: teams = [] } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+  });
 
-  // Edit mode mirrors the user/team detail pattern: the page is read-
-  // only by default; admin clicks Pencil to flip into edit mode, which
-  // stages local copies of name / contact email / budget. Cancel
-  // discards the staged values; Confirm fires updateCompany. Delete
-  // (Trash2) opens a confirmation dialog and resets the row to defaults.
   const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editEmail, setEditEmail] = useState("");
-  const [editBudget, setEditBudget] = useState("");
-  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [editCompanyName, setEditCompanyName] = useState("");
+  const [editIndustry, setEditIndustry] = useState("");
+  const [editTeamSize, setEditTeamSize] = useState("");
+  const [confirmResetOpen, setConfirmResetOpen] = useState(false);
 
   const [guardrails, setGuardrails] =
     useState<CompanyGuardrail[]>(DEMO_GUARDRAILS);
@@ -92,14 +127,19 @@ export function CompanyTab() {
   };
 
   const updateMutation = useMutation({
-    mutationFn: updateCompany,
+    mutationFn: updateOnboardingProfile,
   });
-  const deleteMutation = useMutation({
-    mutationFn: deleteCompany,
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      updateOnboardingProfile({
+        companyName: profile?.companyName ?? "",
+        industry: "",
+        teamSize: "",
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["company"] });
-      toast.success("Company settings reset.");
-      setConfirmDeleteOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
+      toast.success("Company profile reset.");
+      setConfirmResetOpen(false);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't reset company.");
@@ -110,78 +150,56 @@ export function CompanyTab() {
   const isSaving = updateMutation.isPending;
 
   const enterEdit = () => {
-    if (!company) return;
-    setEditName(company.name);
-    setEditEmail(company.contactEmail ?? "");
-    setEditBudget(
-      (company.monthlyBudgetCents / 100).toLocaleString("de-DE", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }),
-    );
+    if (!profile) return;
+    setEditCompanyName(profile.companyName ?? "");
+    setEditIndustry(profile.industry ?? "");
+    setEditTeamSize(profile.teamSize ?? "");
     setIsEditing(true);
   };
 
   const cancelEdit = () => {
     setIsEditing(false);
-    setEditName("");
-    setEditEmail("");
-    setEditBudget("");
+    setEditCompanyName("");
+    setEditIndustry("");
+    setEditTeamSize("");
   };
 
   const confirmEdit = async () => {
-    if (!company) return;
-    const trimmedName = editName.trim();
+    if (!profile) return;
+    const trimmedName = editCompanyName.trim();
     if (!trimmedName) {
       toast.error("Company name cannot be empty.");
       return;
     }
-    const trimmedEmail = editEmail.trim();
-    if (
-      trimmedEmail.length > 0 &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)
-    ) {
-      toast.error("Contact email is not a valid address.");
-      return;
-    }
-    const raw = editBudget.replace(/\./g, "").replace(",", ".");
-    const parsed = parseFloat(raw);
-    if (isNaN(parsed) || parsed < 0) {
-      toast.error("Budget must be a non-negative number.");
-      return;
-    }
 
-    const nameChanged = trimmedName !== company.name;
-    const emailChanged = trimmedEmail !== (company.contactEmail ?? "");
-    const budgetCents = Math.round(parsed * 100);
-    const budgetChanged = budgetCents !== company.monthlyBudgetCents;
-    if (!nameChanged && !emailChanged && !budgetChanged) {
+    const nameChanged = trimmedName !== (profile.companyName ?? "");
+    const industryChanged = editIndustry !== (profile.industry ?? "");
+    const teamSizeChanged = editTeamSize !== (profile.teamSize ?? "");
+    if (!nameChanged && !industryChanged && !teamSizeChanged) {
       setIsEditing(false);
       return;
     }
 
     try {
       await updateMutation.mutateAsync({
-        ...(nameChanged ? { name: trimmedName } : {}),
-        ...(emailChanged ? { contactEmail: trimmedEmail || null } : {}),
-        ...(budgetChanged ? { monthlyBudgetCents: budgetCents } : {}),
+        ...(nameChanged ? { companyName: trimmedName } : {}),
+        ...(industryChanged ? { industry: editIndustry } : {}),
+        ...(teamSizeChanged ? { teamSize: editTeamSize } : {}),
       });
-      toast.success("Company updated.");
-      queryClient.invalidateQueries({ queryKey: ["company"] });
+      toast.success("Company profile updated.");
+      queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
       setIsEditing(false);
     } catch (err) {
       toast.error((err as Error).message || "Couldn't update company.");
     }
   };
 
-  // Pencil/Trash2 in this card live inline (the Company tab doesn't
-  // have its own appbar slot), but we still listen for the same
-  // `company:edit` / `company:delete` window events so future appbar
-  // wiring stays drop-in. MUST stay above the early returns so hooks
-  // count is stable across loading transitions.
+  // Same window-event hook future-proofs us if the appbar grows a
+  // Pencil/Trash2 slot for this tab. MUST stay above early returns so
+  // hook count is stable across loading transitions.
   useEffect(() => {
     const onEdit = () => enterEdit();
-    const onDelete = () => setConfirmDeleteOpen(true);
+    const onDelete = () => setConfirmResetOpen(true);
     window.addEventListener("company:edit", onEdit);
     window.addEventListener("company:delete", onDelete);
     return () => {
@@ -189,9 +207,9 @@ export function CompanyTab() {
       window.removeEventListener("company:delete", onDelete);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company]);
+  }, [profile]);
 
-  if (isLoading) {
+  if (profileLoading) {
     return (
       <div className="flex items-center justify-center py-24">
         <Loader2 className="h-8 w-8 animate-spin text-text-3" />
@@ -199,24 +217,49 @@ export function CompanyTab() {
     );
   }
 
-  if (error || !company) {
+  if (profileError || !profile) {
     return (
       <div className="flex items-center justify-center py-24">
-        <p className="text-text-3">Failed to load company.</p>
+        <p className="text-text-3">Failed to load company profile.</p>
       </div>
     );
   }
 
-  const budget = company.monthlyBudgetCents / 100;
-  const spent = company.spentCents / 100;
+  // Personal-profile users get a clear empty state instead of an
+  // editor that would silently no-op (BE rejects PATCH with 400). The
+  // Account tab has the same wording for parity.
+  if (profile.profileType !== "company") {
+    return (
+      <div className="py-12 text-center text-[14px] text-text-3">
+        This workspace is registered as a personal profile, so there&rsquo;s
+        no company information to show. Visit My Account to update your
+        profile type.
+      </div>
+    );
+  }
+
+  // Org-wide rollups. Per-user spentCents covers personal projects +
+  // arena; per-team spentCents covers team-routed chats. They
+  // partition the org's spend so summing them is safe.
+  const totalBudgetCents =
+    teams.reduce((acc, t) => acc + (t.monthlyBudgetCents ?? 0), 0) +
+    orgUsers.reduce((acc, u) => acc + (u.monthlyBudgetCents ?? 0), 0);
+  const totalSpentCents =
+    teams.reduce((acc, t) => acc + (t.spentCents ?? 0), 0) +
+    orgUsers.reduce((acc, u) => acc + (u.spentCents ?? 0), 0);
+  const totalProjectedCents =
+    teams.reduce((acc, t) => acc + (t.projectedCents ?? 0), 0) +
+    orgUsers.reduce((acc, u) => acc + (u.projectedCents ?? 0), 0);
+
+  const budget = totalBudgetCents / 100;
+  const spent = totalSpentCents / 100;
   const remaining = budget - spent;
-  const projected = company.projectedCents / 100;
+  const projected = totalProjectedCents / 100;
   const onTrack = projected <= budget;
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
 
-  // Admin list comes from /users; owners of the org carry role='admin'.
-  // Same source as the Users tab so the two views stay consistent.
   const admins = orgUsers.filter((u) => u.role === "admin");
+  const companyDisplay = profile.companyName?.trim() || "Unnamed company";
 
   return (
     <div className="py-6 space-y-6">
@@ -225,14 +268,14 @@ export function CompanyTab() {
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full bg-bg-3 text-text-3 text-2xl font-bold">
-              {(company.name || "C").charAt(0).toUpperCase()}
+              {companyDisplay.charAt(0).toUpperCase()}
             </div>
             <div className="space-y-3 flex-1 min-w-0">
               {editing ? (
                 <input
                   type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  value={editCompanyName}
+                  onChange={(e) => setEditCompanyName(e.target.value)}
                   placeholder="Company name"
                   disabled={isSaving}
                   className="w-full h-10 rounded border border-border-4 bg-transparent px-3 text-[18px] font-bold text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -240,25 +283,10 @@ export function CompanyTab() {
                 />
               ) : (
                 <p className="text-[18px] font-bold text-text-1">
-                  {company.name || "Unnamed company"}
+                  {companyDisplay}
                 </p>
               )}
-              {editing ? (
-                <input
-                  type="email"
-                  value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
-                  placeholder="Contact email (optional)"
-                  disabled={isSaving}
-                  className="w-full h-10 rounded border border-border-4 bg-transparent px-3 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              ) : (
-                <p className="text-[16px] text-text-1">
-                  {company.contactEmail ?? (
-                    <span className="text-text-3">No contact email</span>
-                  )}
-                </p>
-              )}
+              <p className="text-[16px] text-text-1">{profile.email}</p>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -294,7 +322,7 @@ export function CompanyTab() {
                     size="icon"
                     className="h-6 w-6 text-success-7 hover:text-success-7/80"
                     onClick={enterEdit}
-                    title="Edit company"
+                    title="Edit company profile"
                   >
                     <Pencil className="h-6 w-6" />
                   </Button>
@@ -302,8 +330,8 @@ export function CompanyTab() {
                     variant="ghost"
                     size="icon"
                     className="h-6 w-6 text-success-7 hover:text-success-7/80"
-                    onClick={() => setConfirmDeleteOpen(true)}
-                    title="Reset company settings"
+                    onClick={() => setConfirmResetOpen(true)}
+                    title="Reset industry / team size"
                   >
                     <Trash2 className="h-6 w-6" />
                   </Button>
@@ -313,53 +341,82 @@ export function CompanyTab() {
           </div>
         </div>
 
+        {/* Profile fields row */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Monthly Budget */}
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
+            <p className="text-[18px] font-bold text-text-1">Industry</p>
             {editing ? (
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
-                  $
-                </span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={editBudget}
-                  onChange={(e) =>
-                    setEditBudget(formatBudgetInput(e.target.value))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      void confirmEdit();
-                    } else if (e.key === "Escape") {
-                      e.preventDefault();
-                      cancelEdit();
-                    }
-                  }}
-                  disabled={isSaving}
-                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
-                />
-              </div>
+              <Select value={editIndustry || undefined} onValueChange={setEditIndustry}>
+                <SelectTrigger className="h-[56px] border-border-4 text-[16px] text-text-1">
+                  <SelectValue placeholder="Select industry" />
+                </SelectTrigger>
+                <SelectContent>
+                  {INDUSTRIES.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             ) : (
               <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
-                {budget > 0 ? (
-                  <span>{formatCurrency(budget)}</span>
+                {profile.industry ? (
+                  <span>{labelFor(INDUSTRIES, profile.industry)}</span>
                 ) : (
                   <span className="text-text-3">Not set</span>
                 )}
               </div>
             )}
-            {!editing && !isAdmin && (
-              <p className="text-[12px] text-text-3">
-                Only admins can change this — ask an admin to adjust the
-                budget.
-              </p>
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-[18px] font-bold text-text-1">Team size</p>
+            {editing ? (
+              <Select value={editTeamSize || undefined} onValueChange={setEditTeamSize}>
+                <SelectTrigger className="h-[56px] border-border-4 text-[16px] text-text-1">
+                  <SelectValue placeholder="Select team size" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TEAM_SIZES.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+                {profile.teamSize ? (
+                  <span>{labelFor(TEAM_SIZES, profile.teamSize)}</span>
+                ) : (
+                  <span className="text-text-3">Not set</span>
+                )}
+              </div>
             )}
           </div>
 
-          {/* Spent / Remaining */}
+          <div className="space-y-3">
+            <p className="text-[18px] font-bold text-text-1">Plan</p>
+            <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1 capitalize">
+              {profile.plan}
+            </div>
+          </div>
+        </div>
+
+        {/* Budget aggregate row — derived from existing teams + users
+            data, no separate org-level cap. */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-3">
+            <p className="text-[18px] font-bold text-text-1">Total Budget</p>
+            <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+              {budget > 0 ? (
+                <span>{formatCurrency(budget)}</span>
+              ) : (
+                <span className="text-text-3">No budgets configured</span>
+              )}
+            </div>
+          </div>
+
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">Spent / Remaining</p>
             <div className="flex items-center gap-3 h-[56px]">
@@ -377,7 +434,6 @@ export function CompanyTab() {
             </div>
           </div>
 
-          {/* Projected */}
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <p className="text-[18px] font-bold text-text-1">Projected</p>
@@ -472,7 +528,7 @@ export function CompanyTab() {
         </div>
       </div>
 
-      {/* Primary Guardrails */}
+      {/* Primary Guardrails — DEMO data, awaiting org-level guardrails BE */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Primary Guardrails</p>
@@ -552,35 +608,36 @@ export function CompanyTab() {
         </div>
       </div>
 
-      {/* Reset confirmation. Trash2 doesn't drop the singleton row —
-          companies.service.ts only clears the fields back to defaults
-          so createdAt + audit history stay intact. */}
+      {/* Reset confirmation. Trash2 only blanks out industry + team
+          size — companyName stays so the workspace doesn't become
+          unidentifiable. */}
       <Dialog
-        open={confirmDeleteOpen}
-        onOpenChange={(open) => !open && setConfirmDeleteOpen(false)}
+        open={confirmResetOpen}
+        onOpenChange={(open) => !open && setConfirmResetOpen(false)}
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Reset company settings</DialogTitle>
+            <DialogTitle>Reset profile fields</DialogTitle>
             <DialogDescription>
-              This clears the company name, contact email, and monthly budget
-              back to defaults. Admins and team data are not affected.
+              This clears the industry and team size for{" "}
+              <strong>{companyDisplay}</strong>. Admins, teams, and budgets
+              are not affected.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setConfirmDeleteOpen(false)}
-              disabled={deleteMutation.isPending}
+              onClick={() => setConfirmResetOpen(false)}
+              disabled={resetMutation.isPending}
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
-              onClick={() => deleteMutation.mutate()}
-              disabled={deleteMutation.isPending}
+              onClick={() => resetMutation.mutate()}
+              disabled={resetMutation.isPending}
             >
-              {deleteMutation.isPending ? "Resetting..." : "Reset"}
+              {resetMutation.isPending ? "Resetting..." : "Reset"}
             </Button>
           </DialogFooter>
         </DialogContent>

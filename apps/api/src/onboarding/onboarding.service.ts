@@ -510,6 +510,83 @@ export class OnboardingService {
       .where(eq(onboardingDrafts.userId, userId));
   }
 
+  /**
+   * Post-onboarding profile patch. Lets an admin edit the company-
+   * branch fields (`name`, `companyName`, `industry`, `teamSize`)
+   * after `complete` already ran — drives the Pencil flow on the
+   * Company tab so the displayed values stay editable without
+   * walking the user back through the wizard.
+   *
+   * Only company-profile users can hit this path: the Company tab
+   * isn't surfaced for personal accounts, and we don't want a
+   * personal-profile user to silently flip into company-shaped state.
+   */
+  async updateProfile(
+    userId: string,
+    input: {
+      name?: string;
+      companyName?: string;
+      industry?: string;
+      teamSize?: string;
+    },
+  ) {
+    const [current] = await this.db
+      .select({
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!current) throw new NotFoundException('User not found');
+    if (current.profileType !== 'company') {
+      throw new BadRequestException(
+        'Profile editing here only applies to company-profile accounts.',
+      );
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (input.name !== undefined) {
+      const trimmed = input.name.trim();
+      // Empty name is permitted — clears it. Onboarding "fullName"
+      // wasn't required for company branch, so don't enforce here.
+      updates.name = trimmed.length > 0 ? trimmed : null;
+    }
+    if (input.companyName !== undefined) {
+      const trimmed = input.companyName.trim();
+      if (!trimmed) {
+        throw new BadRequestException('Company name cannot be empty.');
+      }
+      updates.companyName = trimmed;
+    }
+    if (input.industry !== undefined) {
+      const trimmed = input.industry.trim();
+      if (
+        trimmed &&
+        !(VALID_INDUSTRIES as readonly string[]).includes(trimmed)
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
+      updates.industry = trimmed.length > 0 ? trimmed : null;
+    }
+    if (input.teamSize !== undefined) {
+      const trimmed = input.teamSize.trim();
+      if (
+        trimmed &&
+        !(VALID_TEAM_SIZES as readonly string[]).includes(trimmed)
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
+      }
+      updates.teamSize = trimmed.length > 0 ? trimmed : null;
+    }
+
+    await this.db.update(users).set(updates).where(eq(users.id, userId));
+    return this.getProfile(userId);
+  }
+
   private validate(p: OnboardingPayload) {
     if (p.profileType !== 'company' && p.profileType !== 'personal') {
       throw new BadRequestException(
