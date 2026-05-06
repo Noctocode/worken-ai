@@ -351,34 +351,9 @@ export class TeamsService {
       membersMap.set(row.teamId, arr);
     }
 
-    // Fetch usage data for each team's OpenRouter key
-    const usageMap = new Map<
-      string,
-      { spentCents: number; projectedCents: number }
-    >();
-    for (const t of allTeams) {
-      if (t.openrouterKeyId) {
-        const usage = await this.provisioningService.getKeyUsage(
-          t.openrouterKeyId,
-        );
-        if (usage) {
-          const dayOfMonth = new Date().getDate();
-          const daysInMonth = new Date(
-            new Date().getFullYear(),
-            new Date().getMonth() + 1,
-            0,
-          ).getDate();
-          const projectedCents =
-            dayOfMonth > 0
-              ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
-              : usage.usageCents;
-          usageMap.set(t.id, {
-            spentCents: usage.usageCents,
-            projectedCents,
-          });
-        }
-      }
-    }
+    // Per-team spent / projected from observability_events — see
+    // computeTeamUsageMap for why this replaced the OpenRouter lookup.
+    const usageMap = await this.computeTeamUsageMap(allTeams.map((t) => t.id));
 
     return allTeams.map((t) => {
       const usage = usageMap.get(t.id);
@@ -430,29 +405,16 @@ export class TeamsService {
       .leftJoin(users, eq(teamMembers.userId, users.id))
       .where(eq(teamMembers.teamId, teamId));
 
-    // Fetch usage data from OpenRouter key
-    let spentCents = 0;
-    let projectedCents = 0;
-    if (team.openrouterKeyId) {
-      const usage = await this.provisioningService.getKeyUsage(
-        team.openrouterKeyId,
-      );
-      if (usage) {
-        spentCents = usage.usageCents;
-        const dayOfMonth = new Date().getDate();
-        const daysInMonth = new Date(
-          new Date().getFullYear(),
-          new Date().getMonth() + 1,
-          0,
-        ).getDate();
-        projectedCents =
-          dayOfMonth > 0
-            ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
-            : usage.usageCents;
-      }
-    }
-
-    return { ...team, members, spentCents, projectedCents };
+    // Per-team spent / projected from observability_events — same
+    // shape as findAll, see computeTeamUsageMap for rationale.
+    const usageMap = await this.computeTeamUsageMap([team.id]);
+    const usage = usageMap.get(team.id);
+    return {
+      ...team,
+      members,
+      spentCents: usage?.spentCents ?? 0,
+      projectedCents: usage?.projectedCents ?? 0,
+    };
   }
 
   async inviteMember(
@@ -1013,33 +975,9 @@ export class TeamsService {
       membersMap.set(row.teamId, arr);
     }
 
-    // Usage data per subteam
-    const usageMap = new Map<
-      string,
-      { spentCents: number; projectedCents: number }
-    >();
-    for (const t of subteams) {
-      if (t.openrouterKeyId) {
-        const usage = await this.provisioningService.getKeyUsage(
-          t.openrouterKeyId,
-        );
-        if (usage) {
-          const dayOfMonth = new Date().getDate();
-          const daysInMonth = new Date(
-            new Date().getFullYear(),
-            new Date().getMonth() + 1,
-            0,
-          ).getDate();
-          usageMap.set(t.id, {
-            spentCents: usage.usageCents,
-            projectedCents:
-              dayOfMonth > 0
-                ? Math.round((usage.usageCents / dayOfMonth) * daysInMonth)
-                : usage.usageCents,
-          });
-        }
-      }
-    }
+    // Per-subteam spent / projected from observability_events — same
+    // shape as findAll, see computeTeamUsageMap for rationale.
+    const usageMap = await this.computeTeamUsageMap(subteams.map((t) => t.id));
 
     return subteams.map((t) => {
       const usage = usageMap.get(t.id);
@@ -1684,6 +1622,67 @@ export class TeamsService {
       throw new NotFoundException('Member not found');
     }
     return updated;
+  }
+
+  /**
+   * Per-team spent + projected for the current calendar month, sourced
+   * from `observability_events`. Replaces the older
+   * `provisioningService.getKeyUsage()` lookup so the numbers shown on
+   * the Teams listing + detail pages match what the chat-time gate
+   * actually enforces (which also reads observability and therefore
+   * counts BYOK + Custom routes that bypass OpenRouter's sub-account
+   * limit). Catalog-priced cost is approximate vs OpenRouter's "actual
+   * billed" number — the trade-off is consistency with enforcement,
+   * which matters more than dollar-perfect display.
+   *
+   * Custom routes log cost=null and contribute $0 to the sum, same as
+   * in the chat gate. Projection is the existing linear extrapolation
+   * (current spend × daysInMonth / dayOfMonth).
+   */
+  private async computeTeamUsageMap(
+    teamIds: string[],
+  ): Promise<Map<string, { spentCents: number; projectedCents: number }>> {
+    const usage = new Map<
+      string,
+      { spentCents: number; projectedCents: number }
+    >();
+    if (teamIds.length === 0) return usage;
+
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const rows = await this.db
+      .select({
+        teamId: observabilityEvents.teamId,
+        total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          inArray(observabilityEvents.teamId, teamIds),
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      )
+      .groupBy(observabilityEvents.teamId);
+
+    const now = new Date();
+    const dayOfMonth = now.getDate();
+    const daysInMonth = new Date(
+      now.getFullYear(),
+      now.getMonth() + 1,
+      0,
+    ).getDate();
+
+    for (const row of rows) {
+      if (!row.teamId) continue; // teamId is nullable on the table — skip orgless events
+      const spentUsd = parseFloat(row.total);
+      const spentCents = Math.round(spentUsd * 100);
+      const projectedCents =
+        dayOfMonth > 0
+          ? Math.round((spentCents / dayOfMonth) * daysInMonth)
+          : spentCents;
+      usage.set(row.teamId, { spentCents, projectedCents });
+    }
+    return usage;
   }
 }
 
