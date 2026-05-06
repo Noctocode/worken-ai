@@ -4,11 +4,13 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import {
   enabledModels,
   integrations,
   modelConfigs,
+  teamMembers,
+  teams,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -52,7 +54,18 @@ export class ModelsService {
   ) {}
 
   async findAll() {
-    return this.db.select().from(modelConfigs);
+    // Stable ORDER so the FE table doesn't jump rows around when a
+    // user toggles isActive (or anything else). Postgres returns
+    // rows in arbitrary heap order without ORDER BY, and the order
+    // can shift after each UPDATE — the user perceives the table as
+    // "jumping". `createdAt ASC` is stable per row, doesn't change
+    // on update, and matches what the user-facing list typically
+    // shows (oldest first). `id` as a secondary key handles the
+    // tiebreak when two rows share a createdAt.
+    return this.db
+      .select()
+      .from(modelConfigs)
+      .orderBy(asc(modelConfigs.createdAt), asc(modelConfigs.id));
   }
 
   /**
@@ -71,31 +84,80 @@ export class ModelsService {
    * precedence.
    */
   async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
+    // Aliases the user can pick from = personal aliases (ownerId =
+    // user, no team) UNION team-scoped aliases for any team they're an
+    // accepted member of. The team scope path is what makes Custom
+    // LLMs that admin shared with TEAM_X actually appear in member's
+    // model dropdown.
+    const teamMemberships = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.userId, userId),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+    const ownedTeams = await this.db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.ownerId, userId));
+    const teamIds = Array.from(
+      new Set([
+        ...teamMemberships.map((r) => r.teamId),
+        ...ownedTeams.map((t) => t.id),
+      ]),
+    );
+
+    const personalAliasFilter = and(
+      eq(modelConfigs.ownerId, userId),
+      isNull(modelConfigs.teamId),
+    );
+    const scopeFilter =
+      teamIds.length > 0
+        ? or(personalAliasFilter, inArray(modelConfigs.teamId, teamIds))
+        : personalAliasFilter;
     const aliasRows = await this.db
       .select()
       .from(modelConfigs)
-      .where(
-        and(eq(modelConfigs.ownerId, userId), eq(modelConfigs.isActive, true)),
-      );
+      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
 
-    // Every predefined provider the user has toggled ON, regardless of
-    // whether they've also added a BYOK key. With a key, chat-transport
-    // routes directly to the provider's native endpoint; without a key,
-    // the BYOK path falls through and the call goes via the shared
-    // WorkenAI OpenRouter account. Either way the user's intent is
-    // "give me this provider's models in my picker", so the effective
-    // list should reflect that intent independent of key presence.
-    const enabledRows = await this.db
+    // Every predefined provider that's enabled either personally OR
+    // at the scope of any team the user is in. Without the team
+    // branch, a member of TEAM_X (admin set up Anthropic) couldn't
+    // see Claude in their picker unless they ALSO toggled Anthropic
+    // personally — defeats the point of team-shared keys.
+    //
+    // We enable on isEnabled regardless of whether a key is set:
+    // an enabled row without a BYOK key falls back to the WorkenAI
+    // default route in chat-transport (OpenRouter), which is a
+    // first-class option the user opted into via the "Use WORKENAI
+    // API" path. chat-transport picks the right key per call based
+    // on the chat's team scope.
+    const personalEnabledRows = await this.db
       .select({ providerId: integrations.providerId })
       .from(integrations)
       .where(
         and(
           eq(integrations.ownerId, userId),
+          isNull(integrations.teamId),
           eq(integrations.isEnabled, true),
         ),
       );
+    const teamEnabledRows =
+      teamIds.length > 0
+        ? await this.db
+            .select({ providerId: integrations.providerId })
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.teamId, teamIds),
+                eq(integrations.isEnabled, true),
+              ),
+            )
+        : [];
     const enabledProviders = new Set(
-      enabledRows
+      [...personalEnabledRows, ...teamEnabledRows]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -185,7 +247,7 @@ export class ModelsService {
     const catalog = await this.catalogService.list();
     if (!catalog.some((m) => m.id === modelIdentifier)) {
       throw new NotFoundException(
-        `Model "${modelIdentifier}" not found in OpenRouter catalog`,
+        `Model "${modelIdentifier}" not found in the AI model catalog`,
       );
     }
 

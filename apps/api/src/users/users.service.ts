@@ -311,7 +311,7 @@ export class UsersService {
           `Failed to provision OpenRouter key for user ${userId}: ${msg}`,
         );
         throw new ServiceUnavailableException(
-          'Could not provision an OpenRouter key for this user. Please try again in a moment.',
+          'Could not provision an AI usage key for this user. Please try again in a moment.',
         );
       }
     }

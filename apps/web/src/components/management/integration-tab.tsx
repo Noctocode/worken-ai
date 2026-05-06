@@ -159,11 +159,16 @@ function ProviderSettingsDialog({
       open
       onClose={onClose}
       onApply={() => saveMutation.mutate()}
+      applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
+      applyPending={saveMutation.isPending}
       title={card.displayName}
       description={`Configure ${card.displayName} integration settings.`}
       headerIcon={iconForHint(card.iconHint)}
       headerContent={
-        <Switch checked={enabled} onCheckedChange={setEnabled} />
+        <Switch
+          checked={enabled}
+          onCheckedChange={setEnabled}
+        />
       }
     >
       <div className="space-y-5">
@@ -177,8 +182,8 @@ function ProviderSettingsDialog({
             <p className="text-[13px] text-warning-7 leading-snug">
               {card.displayName}&rsquo;s native API isn&rsquo;t OpenAI-compatible
               yet, so a BYOK key here is stored but chat calls still route
-              through OpenRouter. We&rsquo;ll honor it directly once native
-              support lands.
+              through the WorkenAI default. We&rsquo;ll honor it directly
+              once native support lands.
             </p>
           </div>
         )}
@@ -324,7 +329,9 @@ function ProviderSettingsDialog({
 /* ─── Add Custom LLM dialog ─────────────────────────────────────────── */
 
 function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
+  const [customName, setCustomName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -332,10 +339,15 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       upsertIntegration({
         providerId: "custom",
         apiUrl: apiUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+        customName: customName.trim(),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      toast.success("Custom LLM added.");
+      // Models picker reads from /models — invalidate so the auto-
+      // created alias shows up immediately without a refresh.
+      queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
+      toast.success(`${customName || "Custom LLM"} added.`);
       onClose();
     },
     onError: (err: Error) => {
@@ -343,30 +355,66 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
     },
   });
 
+  const canSubmit =
+    customName.trim().length > 0 && apiUrl.trim().length > 0;
+
   return (
     <SettingsDialog
       open
       onClose={onClose}
       onApply={() => createMutation.mutate()}
+      applyLabel={createMutation.isPending ? "Adding…" : "Apply"}
+      applyPending={createMutation.isPending}
+      applyDisabled={!canSubmit}
       title="Add Custom LLM"
+      description="Register an OpenAI-compatible endpoint and pick the name you'll see in the model dropdown."
     >
       <div className="space-y-4">
         <div>
-          <p className="text-[14px] font-normal text-text-2 mb-1.5">API Link</p>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            Display name
+          </p>
+          <input
+            type="text"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            placeholder="e.g. Local Llama 3.1"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+          <p className="text-[12px] text-text-3 mt-1">
+            What you&rsquo;ll see in the model dropdown.
+          </p>
+        </div>
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API URL
+          </p>
           <input
             type="text"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
-            placeholder="Put link here"
+            placeholder="https://your-endpoint/v1"
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+        </div>
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API key (optional)
+          </p>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Leave blank if the endpoint accepts anonymous"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
         <button
           type="button"
-          className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
+          className="inline-flex h-[40px] items-center gap-2 rounded-md border border-border-2 px-4 text-[14px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
           onClick={() =>
             window.open(
-              "https://openrouter.ai/docs/api-reference/overview",
+              "https://platform.openai.com/docs/api-reference/chat",
               "_blank",
               "noopener,noreferrer",
             )
@@ -400,6 +448,7 @@ function DeleteCustomLLMDialog({
       onClose={onClose}
       onApply={onConfirm}
       applyLabel={isPending ? "Deleting…" : n > 0 ? "Delete anyway" : "Delete"}
+      applyPending={isPending}
       applyVariant="danger"
       title={`Delete "${card.displayName}"?`}
     >
@@ -411,8 +460,8 @@ function DeleteCustomLLMDialog({
               <strong>{n}</strong> model alias{n === 1 ? "" : "es"} currently
               route to this Custom LLM. Deleting it will{" "}
               <strong>unlink them</strong> — those aliases will fall back to
-              the default routing (OpenRouter), which will likely fail until
-              you point them at another endpoint or remove them.
+              the WorkenAI default routing, which will likely fail until you
+              point them at another endpoint or remove them.
             </p>
           </div>
         ) : (
@@ -450,7 +499,10 @@ export function IntegrationTab() {
     queryFn: fetchIntegrations,
   });
 
-  // Optimistic-ish toggle: PATCH and let React Query refetch.
+  // Optimistic toggle. Flips isEnabled in the cache before the
+  // request lands so the Switch never enters its disabled cursor-
+  // not-allowed state during the round trip. On error we roll the
+  // cache back; onSettled refetches to catch any drift.
   const toggleMutation = useMutation({
     mutationFn: ({ card, next }: { card: IntegrationCard; next: boolean }) => {
       if (card.id) {
@@ -461,11 +513,28 @@ export function IntegrationTab() {
         isEnabled: next,
       });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+    onMutate: async ({ card, next }) => {
+      await queryClient.cancelQueries({ queryKey: ["integrations"] });
+      const previous = queryClient.getQueryData<IntegrationCard[]>([
+        "integrations",
+      ]);
+      queryClient.setQueryData<IntegrationCard[]>(["integrations"], (old) =>
+        old?.map((c) =>
+          c.providerId === card.providerId && c.id === card.id
+            ? { ...c, isEnabled: next }
+            : c,
+        ),
+      );
+      return { previous };
     },
-    onError: (err: Error) => {
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(["integrations"], ctx.previous);
+      }
       toast.error(err.message ?? "Couldn't toggle integration.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
     },
   });
 
@@ -520,9 +589,17 @@ export function IntegrationTab() {
       {/* Grid */}
       {!isLoading && !error && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((card) => (
+          {filtered.map((card) => {
+            // Stable key across the lifecycle: predefined rows are
+            // identified by providerId (unique per user), custom rows
+            // by their UUID. Without this, an untouched predefined
+            // card would change key the moment its first toggle
+            // creates a DB row (id: null → uuid), unmounting and
+            // remounting the card — visible as a blink.
+            const cardKey = card.isCustom ? card.id! : card.providerId;
+            return (
             <div
-              key={`${card.providerId}-${card.id ?? "new"}`}
+              key={cardKey}
               className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
               onClick={() => setSelected(card)}
             >
@@ -534,14 +611,14 @@ export function IntegrationTab() {
                     {card.displayName}
                   </span>
                 </div>
-                <Switch
-                  checked={card.isEnabled}
-                  onCheckedChange={(next) =>
-                    toggleMutation.mutate({ card, next })
-                  }
-                  onClick={(e) => e.stopPropagation()}
-                  disabled={toggleMutation.isPending}
-                />
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Switch
+                    checked={card.isEnabled}
+                    onCheckedChange={(next) =>
+                      toggleMutation.mutate({ card, next })
+                    }
+                  />
+                </span>
               </div>
 
               {/* Persistent BYOK indicator: a small "Key set" pill so
@@ -590,7 +667,8 @@ export function IntegrationTab() {
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {filtered.length === 0 && (
             <div className="col-span-full py-12 text-center text-sm text-text-3">

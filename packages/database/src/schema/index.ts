@@ -71,21 +71,55 @@ export const teams = pgTable("teams", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const teamMembers = pgTable("team_members", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  teamId: uuid("team_id")
-    .references(() => teams.id, { onDelete: "cascade" })
-    .notNull(),
-  userId: uuid("user_id").references(() => users.id),
-  email: text("email").notNull(),
-  role: text("role").notNull(), // 'owner' | 'editor' | 'viewer'
-  status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
-  invitationToken: text("invitation_token"),
-  invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
-  invitationExpiresAt: timestamp("invitation_expires_at", { withTimezone: true }),
-  invitationRevokedAt: timestamp("invitation_revoked_at", { withTimezone: true }),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+export const teamMembers = pgTable(
+  "team_members",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id").references(() => users.id),
+    email: text("email").notNull(),
+    role: text("role").notNull(), // 'owner' | 'editor' | 'viewer'
+    status: text("status").notNull().default("pending"), // 'pending' | 'accepted'
+    invitationToken: text("invitation_token"),
+    invitationStatus: text("invitation_status"), // 'pending' | 'accepted' | 'expired' | 'revoked' (null for legacy rows w/o invite)
+    invitationExpiresAt: timestamp("invitation_expires_at", {
+      withTimezone: true,
+    }),
+    invitationRevokedAt: timestamp("invitation_revoked_at", {
+      withTimezone: true,
+    }),
+    // Per-member monthly spend cap, in cents, that gates this user's
+    // chat calls billed against the team. NULL = no individual cap (the
+    // member shares the team's overall budget freely). 0 = suspended for
+    // this team. >0 = enforced cap, checked against the user's
+    // current-month spend in observability_events filtered by teamId.
+    //
+    // Gate fires uniformly across every routing path — WorkenAI default,
+    // team-scoped BYOK, team-scoped Custom LLM. The suspension state
+    // (cap=0) and the already-cap-reached state apply regardless. Only
+    // the *spend accumulation* effectively skips Custom routes: those
+    // log cost_usd=null because the model has no catalog pricing, so
+    // their usage doesn't add to the SUM the gate checks against.
+    // Net effect: Custom usage doesn't consume the cap, but a suspended
+    // or already-over-cap member is still blocked from Custom calls.
+    monthlyCapCents: integer("monthly_cap_cents"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // A user can be in a team at most once. Partial because user_id is
+    // nullable (invitations to emails without a registered account
+    // store user_id = null until the invitee signs up + accepts) — and
+    // multiple null rows must be allowed (different emails, same team).
+    // Once user_id is set, the (team, user) pair is unique regardless
+    // of status (pending vs accepted) so an admin can't accidentally
+    // queue a second invite on top of an active membership.
+    uniqueIndex("team_members_team_user_unique")
+      .on(table.teamId, table.userId)
+      .where(sql`${table.userId} IS NOT NULL`),
+  ],
+);
 
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -368,6 +402,11 @@ export const modelConfigs = pgTable("model_configs", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
+  // When set, the alias is shared with every member of the team —
+  // so a Custom LLM endpoint admin configured for TEAM_X is usable
+  // by every member, not just admin. Cascade so deleting a team
+  // also removes its aliases. NULL = user-personal alias (legacy).
+  teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
   customName: text("custom_name").notNull(),
   modelIdentifier: text("model_identifier").notNull(),
   isActive: boolean("is_active").notNull().default(true),
@@ -455,9 +494,16 @@ export const integrations = pgTable(
   "integrations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    // Who configured this row. Always set — even on team-scoped rows,
+    // where it tracks the admin who provisioned the team key for audit.
     ownerId: uuid("owner_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
+    // When set, this integration is *team-scoped*: every member of the
+    // team sees the BYOK key (team-shared Anthropic key etc.). When
+    // null, the integration is owner-personal (legacy behaviour).
+    // Cascade so removing a team also drops its provisioned BYOK keys.
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
     providerId: text("provider_id").notNull(),
     apiUrl: text("api_url"),
     apiKeyEncrypted: text("api_key_encrypted"),
@@ -467,9 +513,11 @@ export const integrations = pgTable(
   },
   (table) => [
     // Partial unique index: at most one row per (owner, predefined
-    // provider). Custom LLMs share `providerId='custom'` and need to
-    // stay non-unique (a user can register many custom endpoints), so
-    // the WHERE clause excludes them via `api_url IS NULL`.
+    // provider) for *personal* (non-team) BYOK. Custom LLMs share
+    // `providerId='custom'` and need to stay non-unique (a user can
+    // register many custom endpoints), so the WHERE clause excludes
+    // them via `api_url IS NULL`. team_id IS NULL guards against
+    // collision with team-scoped rows owned by the same admin.
     //
     // Without this, IntegrationsService.upsert (select-then-insert) is
     // racy under concurrent saves and could land two predefined rows
@@ -477,6 +525,12 @@ export const integrations = pgTable(
     // whichever the planner returns first.
     uniqueIndex("integrations_owner_provider_predef_unique")
       .on(table.ownerId, table.providerId)
-      .where(sql`${table.apiUrl} IS NULL`),
+      .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NULL`),
+    // Team-scoped predefined integration uniqueness: at most one row
+    // per (team, predefined provider). Two admins should not be able
+    // to land conflicting Anthropic keys on the same team.
+    uniqueIndex("integrations_team_provider_predef_unique")
+      .on(table.teamId, table.providerId)
+      .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NOT NULL`),
   ],
 );

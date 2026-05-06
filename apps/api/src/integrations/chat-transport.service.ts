@@ -1,9 +1,11 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, gte, isNull, sql } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
+  observabilityEvents,
   projects,
+  teamMembers,
   teams,
   users,
 } from '@worken/database/schema';
@@ -19,6 +21,65 @@ import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
  * of truth on both sides.
  */
 export const PENDING_APPROVAL_MARKER = 'BUDGET_PENDING_APPROVAL';
+
+/**
+ * Marker for the per-member team cap (separate from the team-wide cap).
+ * Surfaced to the FE humanizer so a user who hit *their* cap sees a
+ * different message than one who hit the *team's* shared budget.
+ */
+export const MEMBER_CAP_REACHED_MARKER = 'TEAM_MEMBER_CAP_REACHED';
+export const MEMBER_SUSPENDED_MARKER = 'TEAM_MEMBER_SUSPENDED';
+
+/**
+ * Pure decision function for the per-member cap gate. Returns either
+ * `{ pass: true }` or `{ pass: false, message }` so the IO-bound caller
+ * can throw uniformly while the policy stays unit-testable without a
+ * database.
+ *
+ * Rules:
+ *   - cap === null → no per-user cap configured, always pass
+ *   - cap === 0   → member suspended in this team, always block
+ *   - cap > 0     → block when (spent + estimate) >= cap. Pre-flight
+ *                   (spent < cap, estimate pushes over) gets a softer
+ *                   "try a smaller prompt" message; post-flight
+ *                   (spent >= cap, estimate ignored) tells them
+ *                   they're locked out for the month.
+ */
+export function decideCapAction(input: {
+  capCents: number | null;
+  spentCents: number;
+  estimatedCostCents: number;
+}):
+  | { pass: true }
+  | { pass: false; marker: string; message: string } {
+  const { capCents, spentCents } = input;
+  const estimateCents = Math.max(input.estimatedCostCents, 0);
+
+  if (capCents == null) return { pass: true };
+
+  if (capCents === 0) {
+    return {
+      pass: false,
+      marker: MEMBER_SUSPENDED_MARKER,
+      message: `${MEMBER_SUSPENDED_MARKER}: Your access to this team is paused. Ask the team admin to set a non-zero monthly cap in Management → Teams → Members.`,
+    };
+  }
+
+  const projectedCents = spentCents + estimateCents;
+  if (projectedCents < capCents) return { pass: true };
+
+  const capUsd = (capCents / 100).toFixed(2);
+  const spentUsdStr = (spentCents / 100).toFixed(2);
+  const isPreflight = estimateCents > 0 && spentCents < capCents;
+  const detail = isPreflight
+    ? `would push you to ~$${(projectedCents / 100).toFixed(2)} (cap $${capUsd}, currently $${spentUsdStr}). Try a smaller prompt or a cheaper model.`
+    : `is reached (used $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the cap.`;
+  return {
+    pass: false,
+    marker: MEMBER_CAP_REACHED_MARKER,
+    message: `${MEMBER_CAP_REACHED_MARKER}: Your monthly cap of $${capUsd} for this team ${detail}`,
+  };
+}
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
@@ -93,19 +154,53 @@ export class ChatTransportService {
   }): Promise<ChatTransport> {
     const { userId, modelIdentifier, projectId, teamId } = input;
 
-    // 1. Custom LLM — alias explicitly bound to a Custom integration row.
-    const [alias] = await this.db
-      .select({
-        integrationId: modelConfigs.integrationId,
-      })
-      .from(modelConfigs)
-      .where(
-        and(
-          eq(modelConfigs.ownerId, userId),
-          eq(modelConfigs.modelIdentifier, modelIdentifier),
-        ),
-      )
-      .limit(1);
+    // Resolve team scope ONCE up-front — used by Custom LLM alias
+    // lookup, BYOK lookup, and the OpenRouter fallback billing
+    // decision. Pulled out of the BYOK section because alias lookup
+    // now needs it too (team-scoped aliases bound to team-scoped
+    // Custom integrations).
+    let teamScopeId = teamId ?? null;
+    if (!teamScopeId && projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      teamScopeId = proj?.teamId ?? null;
+    }
+
+    // 1. Custom LLM — alias bound to a Custom integration row. Prefer
+    //    team-scoped alias when the chat is in team context, then fall
+    //    back to user-personal. Without the team-scope branch, an admin
+    //    could not share a Custom LLM endpoint with team members.
+    let alias: { integrationId: string | null } | undefined;
+    if (teamScopeId) {
+      const [teamAlias] = await this.db
+        .select({ integrationId: modelConfigs.integrationId })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamScopeId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (teamAlias) alias = teamAlias;
+    }
+    if (!alias) {
+      const [userAlias] = await this.db
+        .select({ integrationId: modelConfigs.integrationId })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, userId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (userAlias) alias = userAlias;
+    }
 
     if (alias?.integrationId) {
       const [integration] = await this.db
@@ -133,26 +228,58 @@ export class ChatTransportService {
       );
     }
 
-    // 2. BYOK — user has a key for the model's native provider.
+    // 2. BYOK — team-scoped first (admin-shared key for everyone in
+    //    the team), then user-personal. teamScopeId is already
+    //    resolved at the top. Without the team branch a team member
+    //    would always fall through to their own BYOK row even when the
+    //    team has a shared key configured — defeating the whole point
+    //    of "admin sets up Anthropic for TEAM X, members just use it".
     const provider = providerOfModel(modelIdentifier);
     if (provider) {
-      const [byok] = await this.db
-        .select()
-        .from(integrations)
-        .where(
-          and(
-            eq(integrations.ownerId, userId),
-            eq(integrations.providerId, provider),
-            eq(integrations.isEnabled, true),
-          ),
-        )
-        .limit(1);
+      let byokRow:
+        | typeof integrations.$inferSelect
+        | undefined;
 
-      if (byok?.apiKeyEncrypted) {
+      if (teamScopeId) {
+        // Predefined providers only — apiUrl IS NULL filter mirrors
+        // the partial unique index that backs the table for team-
+        // scoped BYOK. Custom LLMs aren't supported at team scope yet.
+        const [teamByok] = await this.db
+          .select()
+          .from(integrations)
+          .where(
+            and(
+              eq(integrations.teamId, teamScopeId),
+              eq(integrations.providerId, provider),
+              eq(integrations.isEnabled, true),
+              isNull(integrations.apiUrl),
+            ),
+          )
+          .limit(1);
+        if (teamByok?.apiKeyEncrypted) byokRow = teamByok;
+      }
+
+      if (!byokRow) {
+        const [userByok] = await this.db
+          .select()
+          .from(integrations)
+          .where(
+            and(
+              eq(integrations.ownerId, userId),
+              isNull(integrations.teamId),
+              eq(integrations.providerId, provider),
+              eq(integrations.isEnabled, true),
+            ),
+          )
+          .limit(1);
+        if (userByok?.apiKeyEncrypted) byokRow = userByok;
+      }
+
+      if (byokRow?.apiKeyEncrypted) {
         const native = NATIVE_ENDPOINTS[provider];
         const bareModel = modelIdentifier.slice(provider.length + 1);
         const apiKey = this.safeDecrypt(
-          byok.apiKeyEncrypted,
+          byokRow.apiKeyEncrypted,
           `BYOK ${provider}`,
         );
 
@@ -287,6 +414,130 @@ export class ChatTransportService {
         `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
         402,
       );
+    }
+  }
+
+  /**
+   * Per-member team cap gate.
+   *
+   * Sits alongside `assertManagedBudgetApproved`: that one checks
+   * whether the *team* has any budget at all (admin approval); this one
+   * checks whether *this user* has hit *their* per-month cap inside the
+   * team. Both fire for every team-scoped chat — the order doesn't
+   * matter (each throws independently).
+   *
+   * Cap source: `team_members.monthly_cap_cents`.
+   *   - NULL  → no per-user cap (member shares the team budget freely)
+   *   - 0     → suspended in this team (admin disabled them via cap=0)
+   *   - >0    → enforced. Spend = sum of observability_events.cost_usd
+   *             for (userId, teamId, success=true, this calendar month).
+   *
+   * Spend computation runs against `observability_events` so it
+   * covers all routing sources uniformly: WorkenAI default, team-
+   * scoped BYOK, project-routed chats. The same monthly window
+   * (`date_trunc('month', now())`) the Integration tab's "this
+   * month" stats use, so admin and user see the same number.
+   *
+   * The gate fires regardless of the call's routing source so the
+   * suspension state (cap=0) and the already-cap-reached state
+   * apply uniformly to every routing path. The spend math is
+   * naturally $0 for Custom routes though — observability logs
+   * cost=null when there's no catalog pricing for the model, so the
+   * SUM contributes nothing and the cap-exceeded branch never trips
+   * from Custom usage alone. In other words: Custom LLMs never
+   * *consume* the cap, but they're blocked when the member is
+   * suspended or has already exceeded the cap via other routes.
+   *
+   * @param teamId pass when the call is scoped to a specific team
+   *   (compare-models with explicit teamId). For project-routed chats,
+   *   pass `projectId` instead and the team is looked up from there.
+   */
+  async assertTeamMemberCapNotExceeded(
+    userId: string,
+    options: {
+      projectId?: string | null;
+      teamId?: string | null;
+      /**
+       * Upper-bound cost estimate (cents) for the call about to happen.
+       * Compared against `cap - currentSpend`; if the call would push
+       * the member past their cap, blocked pre-flight. Pass 0 (or omit)
+       * to skip the pre-flight check — gate then only fires once
+       * post-flight spend already crosses the cap.
+       *
+       * Caller computes from catalog pricing + prompt length so the
+       * gate stays decoupled from the model catalog service.
+       */
+      estimatedCostCents?: number;
+    } = {},
+  ): Promise<void> {
+    // Custom routes don't have catalog pricing, so observability
+    // logs cost=null — the spend SUM below naturally counts $0 for
+    // them and the cap-exceeded branch never trips. We still RUN the
+    // gate though, because the suspension state (cap=0) must apply
+    // to every routing source: an admin who sets a member's cap to 0
+    // expects them locked out of every chat path including team
+    // Custom LLMs.
+
+    let teamId = options.teamId ?? null;
+    if (!teamId && options.projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, options.projectId))
+        .limit(1);
+      teamId = proj?.teamId ?? null;
+    }
+    if (!teamId) return;
+
+    const [membership] = await this.db
+      .select({ cap: teamMembers.monthlyCapCents })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+    if (!membership) return;
+    if (membership.cap == null) return; // no cap configured
+
+    if (membership.cap === 0) {
+      throw new HttpException(
+        `${MEMBER_SUSPENDED_MARKER}: Your access to this team is paused. Ask the team admin to set a non-zero monthly cap in Management → Teams → Members.`,
+        402,
+      );
+    }
+
+    // Sum cost for this user, this team, this calendar month. Only
+    // successful calls count — failed calls aren't billed (the
+    // upstream returned an error before any tokens were charged).
+    // costUsd is numeric(12,6) → drizzle returns string. Coalesce on
+    // the SQL side so an empty result row gives '0' not null.
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const [agg] = await this.db
+      .select({
+        total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.userId, userId),
+          eq(observabilityEvents.teamId, teamId),
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      );
+    const spentUsd = agg ? parseFloat(agg.total) : 0;
+    const spentCents = Math.round(spentUsd * 100);
+
+    const decision = decideCapAction({
+      capCents: membership.cap,
+      spentCents,
+      estimatedCostCents: options.estimatedCostCents ?? 0,
+    });
+    if (!decision.pass) {
+      throw new HttpException(decision.message, 402);
     }
   }
 

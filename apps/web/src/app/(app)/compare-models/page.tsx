@@ -1726,7 +1726,7 @@ function AddModelDialog({
 
                 <p className="text-[13px] leading-[1.5] text-text-2">
                   {selected.description ??
-                    "Available via OpenRouter. Used to compare answers against other models in the arena."}
+                    "Available in the WorkenAI catalog. Used to compare answers against other models in the arena."}
                 </p>
 
                 <div className="grid grid-cols-2 gap-2">

@@ -159,15 +159,15 @@ export function CatalogTab() {
   if (error) {
     return (
       <div className="py-16 text-center text-sm text-danger-6">
-        Failed to load OpenRouter catalog. Make sure you&apos;re an admin and
-        the API is reachable.
+        Failed to load the AI model catalog. Make sure you&apos;re an admin
+        and the API is reachable.
       </div>
     );
   }
   if (!catalog || catalog.length === 0) {
     return (
       <div className="py-16 text-center text-sm text-text-3">
-        OpenRouter returned an empty catalog.
+        The AI model catalog is empty.
       </div>
     );
   }

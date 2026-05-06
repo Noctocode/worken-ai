@@ -9,16 +9,29 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { randomBytes } from 'crypto';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 
 const INVITE_EXPIRY_DAYS = 7;
 const inviteExpiry = () =>
   new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-import { teams, teamMembers, users, guardrails } from '@worken/database/schema';
+import {
+  teams,
+  teamMembers,
+  users,
+  guardrails,
+  integrations,
+  modelConfigs,
+  observabilityEvents,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
+import {
+  PREDEFINED_PROVIDERS,
+  isPredefinedProvider,
+} from '../integrations/predefined-providers.js';
+import type { IntegrationView } from '../integrations/integrations.service.js';
 
 @Injectable()
 export class TeamsService {
@@ -234,7 +247,7 @@ export class TeamsService {
           `Failed to provision OpenRouter key for team ${teamId}: ${msg}`,
         );
         throw new ServiceUnavailableException(
-          'Could not provision an OpenRouter key for this team. Please try again in a moment.',
+          'Could not provision an AI usage key for this team. Please try again in a moment.',
         );
       }
     } else if (openrouterKeyId) {
@@ -411,6 +424,7 @@ export class TeamsService {
         userId: teamMembers.userId,
         userName: users.name,
         userPicture: users.picture,
+        monthlyCapCents: teamMembers.monthlyCapCents,
       })
       .from(teamMembers)
       .leftJoin(users, eq(teamMembers.userId, users.id))
@@ -446,6 +460,17 @@ export class TeamsService {
     email: string,
     role: string,
     userId: string,
+    /**
+     * Optional per-member monthly cap, in cents, applied at invite
+     * time. Same semantics as PATCH /teams/:id/members/:memberId/cap:
+     *   - undefined / null → no individual cap (shares team budget)
+     *   - 0  → invited as suspended (chat blocked at the gate)
+     *   - >0 → enforced cap once they accept
+     * On a re-invite to the same email, this overwrites the existing
+     * cap so admins can adjust during a resend without going to the
+     * Members table afterwards.
+     */
+    monthlyCapCents?: number | null,
   ) {
     // Normalize email so Foo@X.com and foo@x.com can't create two rows or
     // dodge the post-signup sweep, which matches case-sensitively.
@@ -470,6 +495,22 @@ export class TeamsService {
     if (role !== 'editor' && role !== 'viewer') {
       throw new BadRequestException('Role must be editor or viewer');
     }
+
+    if (
+      monthlyCapCents !== undefined &&
+      monthlyCapCents !== null &&
+      (typeof monthlyCapCents !== 'number' ||
+        !Number.isInteger(monthlyCapCents) ||
+        monthlyCapCents < 0)
+    ) {
+      throw new BadRequestException(
+        'monthlyCapCents must be null or a non-negative integer (cents).',
+      );
+    }
+    // null is the explicit "no cap" sentinel from the invite form;
+    // undefined means the caller didn't touch the field. Coalesce so
+    // both land as `null` in the row (shares team budget).
+    const capValue = monthlyCapCents ?? null;
 
     // Look up inviter name
     const [inviter] = await this.db
@@ -500,18 +541,25 @@ export class TeamsService {
         );
       }
 
-      // Resend path: pending/expired/revoked → re-arm token, reset expiry, resend email
+      // Resend path: pending/expired/revoked → re-arm token, reset
+      // expiry, resend email. Overwrite the cap when the caller
+      // explicitly passed one (so admins can adjust during a resend);
+      // leave it untouched on undefined.
       const token = existing.invitationToken ?? randomBytes(32).toString('hex');
+      const updates: Record<string, unknown> = {
+        role,
+        status: 'pending',
+        invitationToken: token,
+        invitationStatus: 'pending',
+        invitationExpiresAt: inviteExpiry(),
+        invitationRevokedAt: null,
+      };
+      if (monthlyCapCents !== undefined) {
+        updates.monthlyCapCents = capValue;
+      }
       const [refreshed] = await this.db
         .update(teamMembers)
-        .set({
-          role,
-          status: 'pending',
-          invitationToken: token,
-          invitationStatus: 'pending',
-          invitationExpiresAt: inviteExpiry(),
-          invitationRevokedAt: null,
-        })
+        .set(updates)
         .where(eq(teamMembers.id, existing.id))
         .returning();
 
@@ -554,6 +602,7 @@ export class TeamsService {
         invitationToken: token,
         invitationStatus: 'pending',
         invitationExpiresAt: inviteExpiry(),
+        monthlyCapCents: capValue,
       })
       .returning();
 
@@ -1109,5 +1158,559 @@ export class TeamsService {
       );
 
     return { success: true };
+  }
+
+  /**
+   * Team-scoped integrations. Mirrors the personal Integration tab
+   * but the configured key is shared across every team member: when
+   * one of them chats with a model from this provider, chat-transport
+   * routes through this team key first, before falling back to their
+   * personal BYOK or the WorkenAI default.
+   *
+   * Returns both:
+   *   - Predefined providers (Anthropic, OpenAI, …) — at most one row
+   *     per (team, provider). Untouched providers appear with id=null.
+   *   - Team-scoped Custom LLM rows — each is its own card; the bound
+   *     model_configs alias is auto-created at upsert time so members
+   *     see the endpoint in their picker without admin touching
+   *     /catalog separately.
+   */
+  async listIntegrations(
+    teamId: string,
+    userId: string,
+  ): Promise<IntegrationView[]> {
+    const role = await this.getUserTeamRole(teamId, userId);
+    if (!role) {
+      throw new ForbiddenException('You are not a member of this team');
+    }
+
+    const rows = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.teamId, teamId));
+
+    // Aggregate observability scoped to this team. Same shape as
+    // IntegrationsService.listForUser but the filter is teamId rather
+    // than userId, so cards reflect what the *whole team* spent
+    // through that provider — not whoever last opened the page.
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const statsRows = await this.db
+      .select({
+        provider: observabilityEvents.provider,
+        successCount: sql<number>`count(*) filter (where ${observabilityEvents.success}=true)::int`,
+        totalCount: sql<number>`count(*)::int`,
+        thisMonth: sql<number>`count(*) filter (where ${observabilityEvents.createdAt} >= date_trunc('month', now()))::int`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.teamId, teamId),
+          gte(observabilityEvents.createdAt, since),
+        ),
+      )
+      .groupBy(observabilityEvents.provider);
+
+    const peakRows = await this.db.execute<{
+      provider: string;
+      peak: number;
+    }>(sql`
+      SELECT provider, MAX(daily_count)::int AS peak
+      FROM (
+        SELECT
+          ${observabilityEvents.provider} AS provider,
+          DATE_TRUNC('day', ${observabilityEvents.createdAt}) AS day,
+          COUNT(*) AS daily_count
+        FROM ${observabilityEvents}
+        WHERE
+          ${observabilityEvents.teamId} = ${teamId}
+          AND ${observabilityEvents.createdAt} >= ${since}
+          AND ${observabilityEvents.provider} IS NOT NULL
+        GROUP BY provider, day
+      ) AS daily
+      GROUP BY provider
+    `);
+
+    const statsByProvider = new Map<
+      string,
+      {
+        successCount: number;
+        totalCount: number;
+        thisMonth: number;
+        peakDaily: number;
+      }
+    >();
+    for (const r of statsRows) {
+      if (!r.provider) continue;
+      statsByProvider.set(r.provider, {
+        successCount: Number(r.successCount ?? 0),
+        totalCount: Number(r.totalCount ?? 0),
+        thisMonth: Number(r.thisMonth ?? 0),
+        peakDaily: 0,
+      });
+    }
+    const peakRowList =
+      (peakRows as { rows?: unknown[] }).rows ?? peakRows;
+    if (Array.isArray(peakRowList)) {
+      for (const r of peakRowList as {
+        provider: string;
+        peak: number;
+      }[]) {
+        if (!r.provider) continue;
+        const existing = statsByProvider.get(r.provider) ?? {
+          successCount: 0,
+          totalCount: 0,
+          thisMonth: 0,
+          peakDaily: 0,
+        };
+        existing.peakDaily = Number(r.peak ?? 0);
+        statsByProvider.set(r.provider, existing);
+      }
+    }
+
+    const buildStats = (providerId: string) => {
+      const s = statsByProvider.get(providerId);
+      const successRate =
+        s && s.totalCount > 0 ? s.successCount / s.totalCount : 0;
+      return {
+        successRate,
+        apiCalls: s?.thisMonth ?? 0,
+        peakDailyCalls: s?.peakDaily ?? 0,
+      };
+    };
+
+    const out: IntegrationView[] = PREDEFINED_PROVIDERS.map((p) => {
+      const row = rows.find(
+        (r) => r.providerId === p.id && r.apiUrl === null,
+      );
+      return {
+        id: row?.id ?? null,
+        providerId: p.id,
+        displayName: p.displayName,
+        description: p.description,
+        iconHint: p.iconHint,
+        apiUrl: null,
+        hasApiKey: !!row?.apiKeyEncrypted,
+        isEnabled: row?.isEnabled ?? false,
+        isCustom: false,
+        openAICompatible: p.openAICompatible,
+        byokSupported: p.byokSupported,
+        boundAliasCount: 0,
+        stats: buildStats(p.id),
+        createdAt: row?.createdAt?.toISOString() ?? null,
+        updatedAt: row?.updatedAt?.toISOString() ?? null,
+      };
+    });
+
+    // Custom LLM rows after predefined, sorted by createdAt asc so
+    // the FE order is stable. Each custom row is its own card —
+    // (teamId, providerId='custom') intentionally not unique.
+    const customs = rows
+      .filter((r) => r.providerId === 'custom' && r.apiUrl !== null)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() -
+          new Date(b.createdAt).getTime(),
+      );
+    if (customs.length > 0) {
+      // For each custom row, surface the bound alias's customName so
+      // admin sees "Local Llama" rather than just the URL hostname.
+      const customIds = customs.map((c) => c.id);
+      const aliasRows = await this.db
+        .select({
+          integrationId: modelConfigs.integrationId,
+          customName: modelConfigs.customName,
+        })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            inArray(modelConfigs.integrationId, customIds),
+          ),
+        );
+      const aliasNameByIntegration = new Map<string, string>();
+      for (const a of aliasRows) {
+        if (a.integrationId) {
+          aliasNameByIntegration.set(a.integrationId, a.customName);
+        }
+      }
+      for (const r of customs) {
+        const aliasName = aliasNameByIntegration.get(r.id);
+        out.push({
+          id: r.id,
+          providerId: 'custom',
+          displayName: aliasName ?? deriveCustomDisplayName(r.apiUrl ?? ''),
+          description: r.apiUrl ?? '',
+          iconHint: 'custom',
+          apiUrl: r.apiUrl,
+          hasApiKey: !!r.apiKeyEncrypted,
+          isEnabled: r.isEnabled,
+          isCustom: true,
+          openAICompatible: true,
+          byokSupported: true,
+          boundAliasCount: aliasName ? 1 : 0,
+          stats: buildStats('custom'),
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        });
+      }
+    }
+    return out;
+  }
+
+  async upsertIntegration(
+    teamId: string,
+    callerId: string,
+    input: {
+      providerId: string;
+      apiUrl?: string | null;
+      apiKey?: string | null;
+      isEnabled?: boolean;
+      // Required for providerId='custom'. Used as the alias's display
+      // name AND model identifier — members will pick this in the
+      // model dropdown and chat-transport routes the call through the
+      // bound integration.
+      customName?: string | null;
+    },
+  ): Promise<IntegrationView> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    const isCustom = input.providerId === 'custom';
+    if (!isCustom && !isPredefinedProvider(input.providerId)) {
+      throw new BadRequestException(
+        `Unknown provider: ${input.providerId}`,
+      );
+    }
+
+    const apiKeyEncrypted = input.apiKey?.trim()
+      ? this.encryptionService.encrypt(input.apiKey.trim())
+      : null;
+
+    // Custom LLMs at team scope: every Add creates a new (integration,
+    // alias) pair — admin can register many endpoints (Ollama, vLLM,
+    // Together, …) per team. The alias is what members see in their
+    // model dropdown; chat-transport's team-scoped lookup routes
+    // through the bound integration.
+    if (isCustom) {
+      if (!input.apiUrl?.trim()) {
+        throw new BadRequestException('Custom LLM requires apiUrl');
+      }
+      try {
+        new URL(input.apiUrl);
+      } catch {
+        throw new BadRequestException('apiUrl is not a valid URL');
+      }
+      const customName = input.customName?.trim();
+      if (!customName) {
+        throw new BadRequestException(
+          'Custom LLM requires a name members will see in the model picker',
+        );
+      }
+      const modelIdentifier = teamCustomModelIdentifier(teamId, customName);
+
+      // Reject collisions on (teamId, modelIdentifier) up-front rather
+      // than letting the DB explode at insert time — gives a clean
+      // error message instead of a 500.
+      const [existing] = await this.db
+        .select({ id: modelConfigs.id })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (existing) {
+        throw new BadRequestException(
+          `A Custom LLM named "${customName}" already exists for this team. Pick a different name.`,
+        );
+      }
+
+      const [integration] = await this.db
+        .insert(integrations)
+        .values({
+          ownerId: callerId,
+          teamId,
+          providerId: 'custom',
+          apiUrl: input.apiUrl,
+          apiKeyEncrypted,
+          isEnabled: input.isEnabled ?? true,
+        })
+        .returning();
+      // Auto-create the alias so members can immediately pick the
+      // Custom LLM from their model dropdown without admin needing to
+      // touch /catalog separately.
+      await this.db.insert(modelConfigs).values({
+        ownerId: callerId,
+        teamId,
+        customName,
+        modelIdentifier,
+        integrationId: integration.id,
+        isActive: true,
+      });
+
+      const all = await this.listIntegrations(teamId, callerId);
+      const view = all.find((v) => v.id === integration.id);
+      if (!view) {
+        throw new NotFoundException('Custom integration not found after insert');
+      }
+      return view;
+    }
+
+    // Predefined providers: upsert against the team-scoped partial
+    // unique index — at most one row per (team, providerId).
+    const conflictUpdates: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+    if (input.isEnabled !== undefined) {
+      conflictUpdates.isEnabled = input.isEnabled;
+    }
+    if (input.apiKey !== undefined) {
+      conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
+    }
+
+    await this.db
+      .insert(integrations)
+      .values({
+        ownerId: callerId,
+        teamId,
+        providerId: input.providerId,
+        apiUrl: null,
+        apiKeyEncrypted,
+        isEnabled: input.isEnabled ?? true,
+      })
+      .onConflictDoUpdate({
+        target: [integrations.teamId, integrations.providerId],
+        targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NOT NULL`,
+        set: conflictUpdates,
+      });
+
+    const all = await this.listIntegrations(teamId, callerId);
+    const view = all.find((v) => v.providerId === input.providerId);
+    if (!view) {
+      throw new NotFoundException('Integration not found after upsert');
+    }
+    return view;
+  }
+
+  async updateIntegration(
+    teamId: string,
+    callerId: string,
+    integrationId: string,
+    input: {
+      isEnabled?: boolean;
+      apiKey?: string | null;
+      /** Custom rows only — new endpoint URL. Validated as URL. */
+      apiUrl?: string;
+      /** Custom rows only — display name in the model picker. The
+       *  underlying modelIdentifier stays stable so ongoing chats
+       *  bound to the alias don't break. */
+      customName?: string;
+    },
+  ): Promise<IntegrationView> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, integrationId));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.teamId !== teamId) {
+      throw new BadRequestException(
+        'Integration does not belong to this team',
+      );
+    }
+
+    // Custom-only fields (apiUrl, customName) are nonsense on
+    // predefined rows — reject up-front so admins don't accidentally
+    // think they renamed Anthropic.
+    const isCustom = row.providerId === 'custom';
+    if (!isCustom && (input.apiUrl !== undefined || input.customName !== undefined)) {
+      throw new BadRequestException(
+        'apiUrl and customName can only be set on Custom LLM integrations.',
+      );
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
+    if (input.apiKey !== undefined) {
+      updates.apiKeyEncrypted = input.apiKey
+        ? this.encryptionService.encrypt(input.apiKey)
+        : null;
+    }
+    if (input.apiUrl !== undefined) {
+      const trimmed = input.apiUrl.trim();
+      if (!trimmed) {
+        throw new BadRequestException('apiUrl cannot be empty.');
+      }
+      try {
+        new URL(trimmed);
+      } catch {
+        throw new BadRequestException('apiUrl is not a valid URL.');
+      }
+      updates.apiUrl = trimmed;
+    }
+    await this.db
+      .update(integrations)
+      .set(updates)
+      .where(eq(integrations.id, integrationId));
+
+    // Custom name lives on the bound alias (model_configs.custom_name),
+    // not on the integration row. Update it there. modelIdentifier
+    // stays untouched on purpose: it's the stable handle members'
+    // chats / conversations are bound to.
+    if (isCustom && input.customName !== undefined) {
+      const trimmedName = input.customName.trim();
+      if (!trimmedName) {
+        throw new BadRequestException('customName cannot be empty.');
+      }
+      await this.db
+        .update(modelConfigs)
+        .set({ customName: trimmedName, updatedAt: new Date() })
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.integrationId, integrationId),
+          ),
+        );
+    }
+
+    const all = await this.listIntegrations(teamId, callerId);
+    const view = isCustom
+      ? all.find((v) => v.id === integrationId)
+      : all.find((v) => v.providerId === row.providerId);
+    if (!view) {
+      throw new NotFoundException('Integration not found after update');
+    }
+    return view;
+  }
+
+  async removeIntegration(
+    teamId: string,
+    callerId: string,
+    integrationId: string,
+  ): Promise<{ success: true }> {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can manage team integrations',
+      );
+    }
+    const [row] = await this.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, integrationId));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.teamId !== teamId) {
+      throw new BadRequestException(
+        'Integration does not belong to this team',
+      );
+    }
+    // Custom team integrations have a paired team-scoped alias in
+    // model_configs that's auto-created at upsert time. The FK is
+    // ON DELETE SET NULL — without explicit cleanup the alias would
+    // survive as an orphan with integrationId=null AND a
+    // `team:xxx:slug` modelIdentifier that no provider can serve,
+    // showing up in members' pickers as a dead entry. Drop it.
+    if (row.providerId === 'custom') {
+      await this.db
+        .delete(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamId),
+            eq(modelConfigs.integrationId, integrationId),
+          ),
+        );
+    }
+    await this.db
+      .delete(integrations)
+      .where(eq(integrations.id, integrationId));
+    return { success: true };
+  }
+
+  /**
+   * Set the per-member monthly spend cap inside this team. The cap
+   * gates this user's chat calls against the team's spend, regardless
+   * of whether routing lands on the team OpenRouter key or a team-
+   * scoped BYOK key. Cap semantics:
+   *   - null → no individual cap (member shares the team budget)
+   *   - 0    → suspended (chat blocked at the gate)
+   *   - >0   → enforced against current-month observability spend
+   */
+  async updateMemberCap(
+    teamId: string,
+    memberId: string,
+    monthlyCapCents: number | null,
+    callerId: string,
+  ) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (role !== 'owner' && role !== 'editor') {
+      throw new ForbiddenException(
+        'Only team owners or editors can set member caps',
+      );
+    }
+    if (
+      monthlyCapCents !== null &&
+      (typeof monthlyCapCents !== 'number' ||
+        !Number.isInteger(monthlyCapCents) ||
+        monthlyCapCents < 0)
+    ) {
+      throw new BadRequestException(
+        'monthlyCapCents must be null or a non-negative integer (cents).',
+      );
+    }
+    const [updated] = await this.db
+      .update(teamMembers)
+      .set({ monthlyCapCents })
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      )
+      .returning({
+        id: teamMembers.id,
+        monthlyCapCents: teamMembers.monthlyCapCents,
+      });
+    if (!updated) {
+      throw new NotFoundException('Member not found');
+    }
+    return updated;
+  }
+}
+
+/**
+ * Build a stable, namespaced model identifier for a team-scoped Custom
+ * LLM alias. Members see `customName` in the picker; this is what the
+ * chat layer uses internally to look the alias up. Format keeps it
+ * collision-free across teams without exposing a raw UUID.
+ */
+function teamCustomModelIdentifier(teamId: string, customName: string): string {
+  const slug = customName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  // First 8 chars of the team uuid is enough to disambiguate — names
+  // are scoped to (teamId, modelIdentifier) anyway via the upsert
+  // collision check.
+  const teamShort = teamId.slice(0, 8);
+  return `team:${teamShort}:${slug || 'custom'}`;
+}
+
+/** Same fallback the personal Integration tab uses for naming. */
+function deriveCustomDisplayName(url: string): string {
+  try {
+    return new URL(url).hostname || 'Custom LLM';
+  } catch {
+    return 'Custom LLM';
   }
 }

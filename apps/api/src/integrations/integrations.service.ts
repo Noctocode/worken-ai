@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -84,10 +84,18 @@ export class IntegrationsService {
    * after, one row each.
    */
   async listForUser(userId: string): Promise<IntegrationView[]> {
+    // Personal scope only — team-scoped rows the same user owns (e.g.
+    // admin configured a team key) belong to the team's Integrations
+    // panel, not the personal one.
     const rows = await this.db
       .select()
       .from(integrations)
-      .where(eq(integrations.ownerId, userId));
+      .where(
+        and(
+          eq(integrations.ownerId, userId),
+          isNull(integrations.teamId),
+        ),
+      );
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
     const statsRows = await this.db
@@ -174,25 +182,35 @@ export class IntegrationsService {
       };
     };
 
-    // For custom rows we surface boundAliasCount so the FE can warn
-    // before deletion ("N aliases will be unlinked"). One query for all
-    // customs at once.
+    // For custom rows we surface boundAliasCount (FE delete warning)
+    // AND the bound alias's customName (used as the card title — the
+    // user-provided name beats the URL hostname fallback). One query
+    // for all customs at once.
     const customIds = rows
       .filter((r) => r.providerId === 'custom')
       .map((r) => r.id);
     const aliasCountByIntegration = new Map<string, number>();
+    const aliasNameByIntegration = new Map<string, string>();
     if (customIds.length > 0) {
       const aliasRows = await this.db
         .select({
           integrationId: modelConfigs.integrationId,
-          count: sql<number>`count(*)::int`,
+          customName: modelConfigs.customName,
         })
         .from(modelConfigs)
-        .where(inArray(modelConfigs.integrationId, customIds))
-        .groupBy(modelConfigs.integrationId);
+        .where(inArray(modelConfigs.integrationId, customIds));
       for (const r of aliasRows) {
-        if (r.integrationId) {
-          aliasCountByIntegration.set(r.integrationId, Number(r.count ?? 0));
+        if (!r.integrationId) continue;
+        aliasCountByIntegration.set(
+          r.integrationId,
+          (aliasCountByIntegration.get(r.integrationId) ?? 0) + 1,
+        );
+        // Take the first alias's name as the canonical display.
+        // Multiple-alias-per-integration is rare in practice (the
+        // upsert flow auto-creates exactly one); the count column
+        // covers the warning case.
+        if (!aliasNameByIntegration.has(r.integrationId)) {
+          aliasNameByIntegration.set(r.integrationId, r.customName);
         }
       }
     }
@@ -239,10 +257,11 @@ export class IntegrationsService {
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
     for (const r of customs) {
+      const aliasName = aliasNameByIntegration.get(r.id);
       out.push({
         id: r.id,
         providerId: 'custom',
-        displayName: deriveCustomDisplayName(r.apiUrl ?? ''),
+        displayName: aliasName ?? deriveCustomDisplayName(r.apiUrl ?? ''),
         description: r.apiUrl ?? '',
         iconHint: 'custom',
         apiUrl: r.apiUrl,
@@ -277,6 +296,12 @@ export class IntegrationsService {
       apiUrl?: string | null;
       apiKey?: string | null;
       isEnabled?: boolean;
+      /** Required when providerId === "custom": the friendly name
+       *  the user sees in the model picker. Mirrors the team-scope
+       *  flow on /teams/:id/integrations — adding a Custom LLM
+       *  auto-creates a bound `model_configs` alias so the user
+       *  doesn't have to take a second trip through /catalog. */
+      customName?: string | null;
     },
   ): Promise<IntegrationView> {
     const isCustom = input.providerId === 'custom';
@@ -292,6 +317,11 @@ export class IntegrationsService {
       } catch {
         throw new BadRequestException('apiUrl is not a valid URL');
       }
+      if (!input.customName?.trim()) {
+        throw new BadRequestException(
+          'Custom LLM requires a name shown in the model picker',
+        );
+      }
     }
 
     const apiKeyEncrypted = input.apiKey?.trim()
@@ -299,20 +329,65 @@ export class IntegrationsService {
       : null;
 
     if (isCustom) {
-      await this.db.insert(integrations).values({
+      const customName = input.customName!.trim();
+      const modelIdentifier = userCustomModelIdentifier(userId, customName);
+
+      // Reject collisions on (ownerId, modelIdentifier) up-front so
+      // adding a second Custom LLM with the same display name fails
+      // cleanly rather than blowing up at chat-transport lookup
+      // time. Mirrors the team flow.
+      const [existingAlias] = await this.db
+        .select({ id: modelConfigs.id })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, userId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (existingAlias) {
+        throw new BadRequestException(
+          `A Custom LLM named "${customName}" already exists. Pick a different name.`,
+        );
+      }
+
+      const [integration] = await this.db
+        .insert(integrations)
+        .values({
+          ownerId: userId,
+          providerId: 'custom',
+          apiUrl: input.apiUrl!,
+          apiKeyEncrypted,
+          isEnabled: input.isEnabled ?? true,
+        })
+        .returning();
+      // Bound alias is what makes the Custom LLM actually appear in
+      // the user's model picker. Without it, the integration row
+      // exists but every chat falls through to the WorkenAI default.
+      await this.db.insert(modelConfigs).values({
         ownerId: userId,
-        providerId: 'custom',
-        apiUrl: input.apiUrl!,
-        apiKeyEncrypted,
-        isEnabled: input.isEnabled ?? true,
+        teamId: null,
+        customName,
+        modelIdentifier,
+        integrationId: integration.id,
+        isActive: true,
       });
     } else {
       // Atomic upsert against the partial unique index
-      // `(owner_id, provider_id) WHERE api_url IS NULL`. Replaces an
-      // earlier select-then-insert which had a thin race window where
-      // two concurrent toggles could land on either side of the SELECT
-      // and leave the FE state out of sync.
+      // `(owner_id, provider_id) WHERE api_url IS NULL AND team_id IS NULL`.
+      // Replaces an earlier select-then-insert which had a thin race
+      // window where two concurrent toggles could land on either side
+      // of the SELECT and leave the FE state out of sync.
       //
+      // The targetWhere must match the index predicate exactly (PG
+      // requires the supplied predicate to imply the index's), so the
+      // `team_id IS NULL` half is needed even though we never insert a
+      // team-scoped row from this path. Without it the upsert falls
+      // back to a different index — or fails with "no unique or
+      // exclusion constraint matching".
+
       // Build the on-conflict SET clause to preserve the 3-state
       // semantic of `apiKey`:
       //   - undefined → don't touch the stored key
@@ -333,6 +408,7 @@ export class IntegrationsService {
         .insert(integrations)
         .values({
           ownerId: userId,
+          teamId: null,
           providerId: input.providerId,
           apiUrl: null,
           apiKeyEncrypted,
@@ -340,7 +416,7 @@ export class IntegrationsService {
         })
         .onConflictDoUpdate({
           target: [integrations.ownerId, integrations.providerId],
-          targetWhere: sql`${integrations.apiUrl} IS NULL`,
+          targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
           set: conflictUpdates,
         });
     }
@@ -364,6 +440,16 @@ export class IntegrationsService {
     if (!row) throw new NotFoundException('Integration not found');
     if (row.ownerId !== userId) {
       throw new ForbiddenException('Not your integration');
+    }
+    // Team-scoped rows must go through the team endpoints so the
+    // owner/editor role check fires. Without this guard, an admin
+    // who later lost team-manage rights could keep editing the team
+    // key via /integrations/:id (ownerId is the historical record of
+    // who configured it, not who's currently allowed to manage it).
+    if (row.teamId) {
+      throw new ForbiddenException(
+        'Team-scoped integrations must be edited via /teams/:id/integrations',
+      );
     }
 
     const updates: Record<string, unknown> = {
@@ -395,19 +481,39 @@ export class IntegrationsService {
     if (row.ownerId !== userId) {
       throw new ForbiddenException('Not your integration');
     }
+    if (row.teamId) {
+      throw new ForbiddenException(
+        'Team-scoped integrations must be deleted via /teams/:id/integrations',
+      );
+    }
     if (row.providerId !== 'custom') {
       throw new BadRequestException(
         'Predefined provider rows cannot be deleted — disable them instead.',
       );
     }
+    // Drop bound aliases first. The FK ON DELETE SET NULL would
+    // otherwise leave orphans with integrationId=null AND a
+    // user:short:slug modelIdentifier no provider can serve, showing
+    // up in the picker as a dead entry. Same pattern as the team-
+    // scope removeIntegration.
+    await this.db
+      .delete(modelConfigs)
+      .where(
+        and(
+          eq(modelConfigs.ownerId, userId),
+          isNull(modelConfigs.teamId),
+          eq(modelConfigs.integrationId, id),
+        ),
+      );
     await this.db.delete(integrations).where(eq(integrations.id, id));
   }
 }
 
 /**
  * "https://api.together.xyz/v1/chat/completions" → "api.together.xyz"
- * Used as a card title for custom LLMs since the dialog doesn't ask for
- * a friendly name (Figma shows only the API Link field).
+ * Used as a card title for custom LLMs created before the upsert flow
+ * required a customName (and as a defensive fallback if the bound
+ * alias somehow goes missing).
  */
 function deriveCustomDisplayName(url: string): string {
   try {
@@ -415,4 +521,24 @@ function deriveCustomDisplayName(url: string): string {
   } catch {
     return 'Custom LLM';
   }
+}
+
+/**
+ * Build a stable, namespaced model identifier for a personal Custom
+ * LLM alias. Mirrors the team variant in TeamsService — the user-
+ * provided customName drives the display label; this gives the chat
+ * layer a stable, collision-free identifier to bind aliases to.
+ *
+ * Format: `user:<userIdShort>:<nameSlug>`. The userIdShort prefix
+ * keeps two users with the same display name from colliding on
+ * (ownerId, modelIdentifier) at the chat-transport lookup layer.
+ */
+function userCustomModelIdentifier(userId: string, customName: string): string {
+  const slug = customName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  const userShort = userId.slice(0, 8);
+  return `user:${userShort}:${slug || 'custom'}`;
 }

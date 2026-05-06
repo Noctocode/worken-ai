@@ -174,7 +174,7 @@ export class CompareModelsController {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
-      throw new ServiceUnavailableException(`OpenRouter key unavailable: ${msg}`);
+      throw new ServiceUnavailableException(`AI gateway key unavailable: ${msg}`);
     }
 
     // Personal-by-default scoping. If the body carries an explicit
@@ -218,6 +218,26 @@ export class CompareModelsController {
             user.id,
             { teamId },
           );
+          // Per-member team cap. Only fires when the composer is
+          // scoped to a specific team — Personal arena runs (teamId
+          // null) don't have a per-team cap concept. Pre-flight
+          // estimate is per-model since arena fans out across many
+          // models and each has its own pricing.
+          const promptForEstimate = body.question ?? '';
+          const promptTokens = Math.ceil(promptForEstimate.length / 4);
+          const estimatedCostUsd = await this.catalogService.estimateCost(
+            model,
+            promptTokens,
+            4096,
+          );
+          const estimatedCostCents =
+            estimatedCostUsd != null
+              ? Math.ceil(estimatedCostUsd * 100)
+              : 0;
+          await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+            teamId,
+            estimatedCostCents,
+          });
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(
@@ -513,7 +533,7 @@ export class CompareModelsController {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new ServiceUnavailableException(
-          `OpenRouter key unavailable for OCR: ${msg}`,
+          `AI gateway key unavailable for OCR: ${msg}`,
         );
       }
 

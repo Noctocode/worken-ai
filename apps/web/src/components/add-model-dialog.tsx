@@ -251,6 +251,8 @@ export function AddModelDialog({
           open={open}
           onClose={handleClose}
           onApply={handleApply}
+          applyLabel={mutation.isPending ? "Saving…" : "Apply"}
+          applyPending={mutation.isPending}
           title="Add model"
           description="Configure a model to make it available across your workspace."
         >
@@ -313,11 +315,11 @@ export function AddModelDialog({
                   }
                 >
                   <SelectTrigger className={modelSelectClass}>
-                    <SelectValue placeholder="OpenRouter (default)" />
+                    <SelectValue placeholder="WorkenAI default" />
                   </SelectTrigger>
                   <SelectContent className="p-0">
                     <SelectItem value="__none__" className={selectItemClass}>
-                      OpenRouter (default)
+                      WorkenAI default
                     </SelectItem>
                     {customIntegrations.map((i) => (
                       <SelectItem
@@ -332,7 +334,7 @@ export function AddModelDialog({
                 </Select>
                 <p className="mt-1 text-[12px] text-text-3">
                   When set, chat calls for this alias route to the selected
-                  Custom LLM endpoint instead of OpenRouter.
+                  Custom LLM endpoint instead of the WorkenAI default.
                 </p>
               </div>
             )}

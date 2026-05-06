@@ -1,7 +1,10 @@
-import { Body, Controller, HttpException, Post } from '@nestjs/common';
+import { Body, Controller, HttpException, Inject, Post } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { projects } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
+import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -25,6 +28,7 @@ export class ChatController {
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
+    @Inject(DATABASE) private readonly db: Database,
   ) {}
 
   @Post()
@@ -64,6 +68,32 @@ export class ChatController {
       { projectId: conversation.projectId },
     );
 
+    // Per-member team cap. Independent from the team-wide budget gate
+    // above: a team can have $1000/mo total but each member capped at
+    // $20. Fires only when the chat's project belongs to a team and
+    // the user has a non-null cap on that team.
+    //
+    // Pre-flight estimate so the call that would push spend over the
+    // cap is blocked before it actually happens, not just after. ~4
+    // chars/token is the standard rule of thumb for English-ish text;
+    // 4096 completion tokens is a conservative upper bound (most chat
+    // models default well below that). estimateCost returns null for
+    // models without catalog pricing — those degrade to post-flight
+    // only.
+    const promptForEstimate = body.content ?? '';
+    const promptTokens = Math.ceil(promptForEstimate.length / 4);
+    const estimatedCostUsd = await this.catalogService.estimateCost(
+      body.model ?? 'moonshotai/kimi-k2.5',
+      promptTokens,
+      4096,
+    );
+    const estimatedCostCents =
+      estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
+    await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+      projectId: conversation.projectId,
+      estimatedCostCents,
+    });
+
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -85,7 +115,19 @@ export class ChatController {
     }
 
     // 5. Call the chat service (with per-call observability)
-    const teamId = await this.observabilityService.getPrimaryTeamId(user.id);
+    //
+    // Tag the event with the chat's actual team scope — derived from
+    // the project, not the user's "primary" team. The OpenRouter key
+    // the spend lands on is the project's team key (or the user key
+    // for personal projects), so observability.team_id needs to mirror
+    // that or the per-team rollups + per-member cap gate go off course
+    // when a user is in multiple teams.
+    const [proj] = await this.db
+      .select({ teamId: projects.teamId })
+      .from(projects)
+      .where(eq(projects.id, conversation.projectId))
+      .limit(1);
+    const teamId = proj?.teamId ?? null;
     const chatStart = Date.now();
     let response;
     try {
