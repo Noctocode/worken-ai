@@ -350,7 +350,9 @@ function ProviderSettingsDialog({
 /* ─── Add Custom LLM dialog ─────────────────────────────────────────── */
 
 function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
+  const [customName, setCustomName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -358,16 +360,24 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       upsertIntegration({
         providerId: "custom",
         apiUrl: apiUrl.trim(),
+        apiKey: apiKey.trim() || undefined,
+        customName: customName.trim(),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      toast.success("Custom LLM added.");
+      // Models picker reads from /models — invalidate so the auto-
+      // created alias shows up immediately without a refresh.
+      queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
+      toast.success(`${customName || "Custom LLM"} added.`);
       onClose();
     },
     onError: (err: Error) => {
       toast.error(err.message ?? "Couldn't add custom LLM.");
     },
   });
+
+  const canSubmit =
+    customName.trim().length > 0 && apiUrl.trim().length > 0;
 
   return (
     <SettingsDialog
@@ -376,22 +386,53 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       onApply={() => createMutation.mutate()}
       applyLabel={createMutation.isPending ? "Adding…" : "Apply"}
       applyPending={createMutation.isPending}
+      applyDisabled={!canSubmit}
       title="Add Custom LLM"
+      description="Register an OpenAI-compatible endpoint and pick the name you'll see in the model dropdown."
     >
       <div className="space-y-4">
         <div>
-          <p className="text-[14px] font-normal text-text-2 mb-1.5">API Link</p>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            Display name
+          </p>
+          <input
+            type="text"
+            value={customName}
+            onChange={(e) => setCustomName(e.target.value)}
+            placeholder="e.g. Local Llama 3.1"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+          <p className="text-[12px] text-text-3 mt-1">
+            What you&rsquo;ll see in the model dropdown.
+          </p>
+        </div>
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API URL
+          </p>
           <input
             type="text"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
-            placeholder="Put link here"
+            placeholder="https://your-endpoint/v1"
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+        </div>
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            API key (optional)
+          </p>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Leave blank if the endpoint accepts anonymous"
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
         <button
           type="button"
-          className="inline-flex h-[48px] items-center gap-2 rounded-md border border-border-2 px-4 text-[16px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
+          className="inline-flex h-[40px] items-center gap-2 rounded-md border border-border-2 px-4 text-[14px] font-normal text-text-1 hover:bg-bg-1 transition-colors"
           onClick={() =>
             window.open(
               "https://platform.openai.com/docs/api-reference/chat",

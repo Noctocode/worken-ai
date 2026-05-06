@@ -2034,6 +2034,10 @@ export async function upsertIntegration(input: {
   apiUrl?: string;
   apiKey?: string;
   isEnabled?: boolean;
+  /** Required when providerId === "custom": the friendly name shown
+   *  in the model picker. The BE auto-creates a bound model_configs
+   *  alias so adding a Custom LLM lands in one step. */
+  customName?: string;
 }): Promise<IntegrationCard> {
   const res = await apiFetch("/integrations", {
     method: "POST",
