@@ -45,6 +45,7 @@ import {
   fetchTeams,
   removeOrgUser,
   updateOnboardingProfile,
+  type OrgUser,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -123,6 +124,12 @@ export function CompanyTab() {
   const [editTeamSize, setEditTeamSize] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  // Pending org-user removal target. Triggered by the per-row "Remove
+  // user" dropdown item; surfaces a Dialog matching the rest of this
+  // page rather than the bare browser confirm() it used to lean on.
+  const [pendingRemoveUser, setPendingRemoveUser] = useState<OrgUser | null>(
+    null,
+  );
 
   const [guardrails, setGuardrails] =
     useState<CompanyGuardrail[]>(DEMO_GUARDRAILS);
@@ -140,9 +147,11 @@ export function CompanyTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
       toast.success("User removed.");
+      setPendingRemoveUser(null);
     },
     onError: (err: Error) => {
       toast.error(err.message || "Couldn't remove user.");
+      setPendingRemoveUser(null);
     },
   });
   const deleteCompanyMutation = useMutation({
@@ -530,7 +539,18 @@ export function CompanyTab() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
-                              <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
+                              {/* Removing admins from this screen is
+                                  intentionally blocked — the action
+                                  is destructive and there's no
+                                  fall-back path here for transferring
+                                  ownership. Demote them to advanced
+                                  on the Users tab first, then remove. */}
+                              <DropdownMenuItem
+                                disabled
+                                className="gap-2 text-danger-6 focus:text-danger-6"
+                                onSelect={(e) => e.preventDefault()}
+                                title="Admins can't be removed from here. Demote them to a non-admin role on the Users tab first."
+                              >
                                 <UserX className="h-4 w-4" />
                                 Remove admin
                               </DropdownMenuItem>
@@ -655,13 +675,7 @@ export function CompanyTab() {
                                     e.preventDefault();
                                     return;
                                   }
-                                  if (
-                                    confirm(
-                                      `Remove ${display} from the organization? This cannot be undone.`,
-                                    )
-                                  ) {
-                                    removeUserMutation.mutate(u.id);
-                                  }
+                                  setPendingRemoveUser(u);
                                 }}
                               >
                                 <UserX className="h-4 w-4" />
@@ -769,6 +783,50 @@ export function CompanyTab() {
           </div>
         </div>
       </div>
+
+      {/* Per-user remove confirmation. Same Dialog shell the rest of
+          this tab uses (Delete company below, Reset profile would
+          have been here too) so the destructive flow looks like one
+          family of actions instead of half of them firing the bare
+          browser confirm(). Mirrors /users/[id]'s "Remove user"
+          dialog. */}
+      <Dialog
+        open={!!pendingRemoveUser}
+        onOpenChange={(open) => !open && setPendingRemoveUser(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Remove user</DialogTitle>
+            <DialogDescription>
+              Remove{" "}
+              <strong>
+                {pendingRemoveUser?.name ?? pendingRemoveUser?.email}
+              </strong>{" "}
+              from the organization? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setPendingRemoveUser(null)}
+              disabled={removeUserMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (pendingRemoveUser) {
+                  removeUserMutation.mutate(pendingRemoveUser.id);
+                }
+              }}
+              disabled={removeUserMutation.isPending}
+            >
+              {removeUserMutation.isPending ? "Removing..." : "Remove"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete-company confirmation. Tear-down is broad (every team,
           team-scoped integration, and onboarding profile org-wide),
