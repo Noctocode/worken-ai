@@ -114,6 +114,29 @@ export class UsersController {
 
     const inviterName = callerUser.name || callerUser.email;
 
+    // Company fields the invitee inherits from the inviter so they
+    // can skip the wizard on first login — they're joining an
+    // existing workspace, the company identity is already known.
+    // Only kicks in when the inviter themselves is a fully-onboarded
+    // company-profile admin/advanced; otherwise we leave the new
+    // user blank and let onboarding fill those fields normally.
+    const inviterCompany = callerUser.companyName?.trim();
+    const inheritsCompany =
+      callerUser.profileType === 'company' && !!inviterCompany;
+    const inheritedFields = inheritsCompany
+      ? {
+          profileType: 'company' as const,
+          companyName: callerUser.companyName,
+          industry: callerUser.industry,
+          teamSize: callerUser.teamSize,
+          infraChoice: callerUser.infraChoice,
+          // Marking onboarding complete short-circuits the
+          // /setup-profile redirect on first login. The user can
+          // still revisit Account → Profile to tweak fields.
+          onboardingCompletedAt: new Date(),
+        }
+      : {};
+
     if (existing) {
       // Block cross-company invites: if the target already onboarded
       // under a different `companyName`, we can't quietly absorb them
@@ -121,7 +144,6 @@ export class UsersController {
       // Pre-onboarding rows (companyName=null) and matching companies
       // pass through. The admin sees a clean 409 instead of two users
       // ending up with mismatched Company-tab views.
-      const inviterCompany = callerUser.companyName?.trim();
       const existingCompany = existing.companyName?.trim();
       if (
         inviterCompany &&
@@ -132,20 +154,32 @@ export class UsersController {
           `${email} already belongs to another company (${existingCompany}). Ask them to leave it before re-inviting.`,
         );
       }
-      // Update role if needed
-      if (existing.role !== body.role) {
-        await this.db
-          .update(users)
-          .set({ role: body.role })
-          .where(eq(users.id, existing.id));
+
+      // Build the patch: always allow the role update; additionally
+      // backfill company fields when the existing row is unsealed
+      // (no companyName yet — likely a stale invite that never
+      // completed onboarding) and the inviter can supply them.
+      const patch: Record<string, unknown> = {};
+      if (existing.role !== body.role) patch.role = body.role;
+      if (inheritsCompany && !existingCompany) {
+        Object.assign(patch, inheritedFields);
+      }
+      if (Object.keys(patch).length > 0) {
+        await this.db.update(users).set(patch).where(eq(users.id, existing.id));
       }
       return { status: 'updated', email, role: body.role };
     }
 
-    // Create new user with the specified role and pending status
+    // Create new user with the specified role and pending status,
+    // pre-seeded with the inviter's company info when available.
     const [created] = await this.db
       .insert(users)
-      .values({ email, role: body.role, inviteStatus: 'pending' })
+      .values({
+        email,
+        role: body.role,
+        inviteStatus: 'pending',
+        ...inheritedFields,
+      })
       .returning();
 
     await this.mailService.sendOrgInvitation({
