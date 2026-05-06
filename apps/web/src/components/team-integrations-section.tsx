@@ -696,8 +696,8 @@ export function TeamIntegrationsSection({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
+      <div className="flex items-center justify-between gap-6">
+        <div className="space-y-1 max-w-2xl">
           <p className="text-[18px] font-bold text-text-1">
             AI Provider Keys
           </p>
@@ -707,7 +707,7 @@ export function TeamIntegrationsSection({
             personal BYOK or the WorkenAI default.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {canManage ? (
             <>
               <Button
