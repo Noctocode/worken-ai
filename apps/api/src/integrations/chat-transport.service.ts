@@ -438,7 +438,7 @@ export class ChatTransportService {
    * (`date_trunc('month', now())`) the Integration tab's "this
    * month" stats use, so admin and user see the same number.
    *
-   * `source='custom'` still goes through this gate so the
+   * The gate fires regardless of the call's routing source so the
    * suspension state (cap=0) and the already-cap-reached state
    * apply uniformly to every routing path. The spend math is
    * naturally $0 for Custom routes though — observability logs
@@ -453,7 +453,6 @@ export class ChatTransportService {
    *   pass `projectId` instead and the team is looked up from there.
    */
   async assertTeamMemberCapNotExceeded(
-    transport: ChatTransport,
     userId: string,
     options: {
       projectId?: string | null;

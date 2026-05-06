@@ -234,11 +234,10 @@ export class CompareModelsController {
             estimatedCostUsd != null
               ? Math.ceil(estimatedCostUsd * 100)
               : 0;
-          await this.chatTransport.assertTeamMemberCapNotExceeded(
-            transport,
-            user.id,
-            { teamId, estimatedCostCents },
-          );
+          await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+            teamId,
+            estimatedCostCents,
+          });
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(

@@ -5,7 +5,6 @@ import {
   MEMBER_SUSPENDED_MARKER,
   decideCapAction,
 } from './chat-transport.service.js';
-import type { ChatTransport } from './chat-transport.service.js';
 
 /* ─── decideCapAction (pure) ───────────────────────────────────────── */
 
@@ -159,24 +158,6 @@ function makeChainableDb(rowSets: unknown[][]) {
   };
 }
 
-const TRANSPORT_OPENROUTER: ChatTransport = {
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: 'sk-or-…',
-  model: 'anthropic/claude-3-5-sonnet',
-  provider: 'anthropic',
-  source: 'openrouter',
-  kind: 'openai-sdk',
-};
-
-const TRANSPORT_CUSTOM: ChatTransport = {
-  baseURL: 'https://my-llm.example.com/v1',
-  apiKey: '',
-  model: 'whatever',
-  provider: 'custom',
-  source: 'custom',
-  kind: 'openai-sdk',
-};
-
 describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
   const USER_ID = 'user-id';
   const TEAM_ID = 'team-id';
@@ -204,7 +185,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [{ cap: null }], // teamMembers — no per-user cap
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_CUSTOM, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();
@@ -218,11 +199,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
     ]);
     let caught: unknown;
     try {
-      await svc.assertTeamMemberCapNotExceeded(
-        TRANSPORT_CUSTOM,
-        USER_ID,
-        { teamId: TEAM_ID },
-      );
+      await svc.assertTeamMemberCapNotExceeded(USER_ID, { teamId: TEAM_ID });
     } catch (err) {
       caught = err;
     }
@@ -235,7 +212,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
   it('skips when no team scope is in play (personal chat)', async () => {
     const svc = makeService([]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {}),
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {}),
     ).resolves.toBeUndefined();
   });
 
@@ -244,7 +221,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [{ cap: null }], // teamMembers row — no cap configured
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();
@@ -256,11 +233,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
     ]);
     let caught: unknown;
     try {
-      await svc.assertTeamMemberCapNotExceeded(
-        TRANSPORT_OPENROUTER,
-        USER_ID,
-        { teamId: TEAM_ID },
-      );
+      await svc.assertTeamMemberCapNotExceeded(USER_ID, { teamId: TEAM_ID });
     } catch (err) {
       caught = err;
     }
@@ -277,7 +250,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [{ total: '5.00' }], // sum(cost_usd) = $5 spent
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();
@@ -289,7 +262,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [{ total: '25.00' }], // already $25 — over
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
       }),
     ).rejects.toThrow(MEMBER_CAP_REACHED_MARKER);
@@ -301,7 +274,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [{ total: '19.00' }], // $19 spent
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
         estimatedCostCents: 200, // $2 — projected $21 ≥ cap
       }),
@@ -313,7 +286,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       [], // no teamMembers row
     ]);
     await expect(
-      svc.assertTeamMemberCapNotExceeded(TRANSPORT_OPENROUTER, USER_ID, {
+      svc.assertTeamMemberCapNotExceeded(USER_ID, {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();

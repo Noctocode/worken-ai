@@ -89,14 +89,10 @@ export class ChatController {
     );
     const estimatedCostCents =
       estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
-    await this.chatTransport.assertTeamMemberCapNotExceeded(
-      transport,
-      user.id,
-      {
-        projectId: conversation.projectId,
-        estimatedCostCents,
-      },
-    );
+    await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+      projectId: conversation.projectId,
+      estimatedCostCents,
+    });
 
     // 3. Map stored messages to OpenRouter format
     const apiMessages = conversation.messages.map((m) => ({
