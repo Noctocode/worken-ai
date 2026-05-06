@@ -3,6 +3,7 @@ import {
   ChatTransportService,
   MEMBER_CAP_REACHED_MARKER,
   MEMBER_SUSPENDED_MARKER,
+  ORG_BUDGET_EXCEEDED_MARKER,
   decideCapAction,
 } from './chat-transport.service.js';
 
@@ -167,11 +168,10 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
     // The ctor needs encryption + key-resolver too; we only exercise
     // the cap gate so stubs are sufficient.
     return new ChatTransportService(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       db as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       {} as any,
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       {} as any,
     );
   }
@@ -290,5 +290,62 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
         teamId: TEAM_ID,
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+/* ─── assertOrgBudgetNotExceeded (with mocked db) ─────────────────── */
+
+describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as any,
+
+      {} as any,
+
+      {} as any,
+    );
+  }
+
+  it('passes when org_settings row is missing (fresh deployment)', async () => {
+    const svc = makeService([
+      [], // org_settings — no row yet
+    ]);
+    await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
+  });
+
+  it('passes when monthlyBudgetCents = 0 ("no target set")', async () => {
+    const svc = makeService([[{ monthlyBudgetCents: 0 }]]);
+    await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
+  });
+
+  it('passes when projected (spent + estimate) stays under the target', async () => {
+    const svc = makeService([
+      [{ monthlyBudgetCents: 50000 }], // $500 target
+      [{ total: '100.00' }], // $100 spent so far
+    ]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({ estimatedCostCents: 100 }), // +$1
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws ORG_BUDGET_EXCEEDED post-flight when spend already crosses target', async () => {
+    const svc = makeService([
+      [{ monthlyBudgetCents: 50000 }], // $500
+      [{ total: '512.00' }], // $512 — over
+    ]);
+    await expect(svc.assertOrgBudgetNotExceeded()).rejects.toThrow(
+      ORG_BUDGET_EXCEEDED_MARKER,
+    );
+  });
+
+  it('throws ORG_BUDGET_EXCEEDED pre-flight when the estimate would push over', async () => {
+    const svc = makeService([
+      [{ monthlyBudgetCents: 50000 }], // $500
+      [{ total: '498.00' }], // $498
+    ]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({ estimatedCostCents: 500 }), // +$5 → $503
+    ).rejects.toThrow(/would push the company past/);
   });
 });

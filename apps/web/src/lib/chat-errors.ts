@@ -61,6 +61,19 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Org-wide monthly budget. Fires after per-team / per-member caps
+  // pass — the call would tip the *company* over its admin-set
+  // target. Different message than the workspace-budget-exhausted
+  // branch below because the admin-actionable surface is different
+  // (Management → Company vs. Management → Teams).
+  const orgBudgetMatch = raw.match(/ORG_BUDGET_EXCEEDED:\s*([^\r\n]+)/);
+  if (orgBudgetMatch) {
+    return (
+      orgBudgetMatch[1].trim() ||
+      "Your company's monthly AI budget is reached. Resets on the 1st of next month, or ask an admin to raise the target in Management → Company."
+    );
+  }
+
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code

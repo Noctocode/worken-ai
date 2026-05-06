@@ -62,11 +62,9 @@ export class ChatController {
     // managed-cloud with monthlyBudgetCents = 0 — awaiting admin
     // approval. Project-scoped chats gate on the team budget; personal
     // chats gate on the user's budget.
-    await this.chatTransport.assertManagedBudgetApproved(
-      transport,
-      user.id,
-      { projectId: conversation.projectId },
-    );
+    await this.chatTransport.assertManagedBudgetApproved(transport, user.id, {
+      projectId: conversation.projectId,
+    });
 
     // Per-member team cap. Independent from the team-wide budget gate
     // above: a team can have $1000/mo total but each member capped at
@@ -91,6 +89,12 @@ export class ChatController {
       estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
     await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
       projectId: conversation.projectId,
+      estimatedCostCents,
+    });
+    // Org-wide budget gate fires last so per-team / per-member caps
+    // surface their actionable wording first (those are easier for an
+    // admin to fix than the company-level target).
+    await this.chatTransport.assertOrgBudgetNotExceeded({
       estimatedCostCents,
     });
 
@@ -219,8 +223,7 @@ export class ChatController {
           message?: string;
           error?: { message?: string };
         };
-        const upstreamMessage =
-          apiErr.error?.message ?? apiErr.message ?? '';
+        const upstreamMessage = apiErr.error?.message ?? apiErr.message ?? '';
 
         // 401 + no-auth placeholder = user registered a Custom LLM
         // without an API key but the endpoint requires one. Surface a

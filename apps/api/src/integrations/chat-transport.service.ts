@@ -1,9 +1,10 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, sql } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
   observabilityEvents,
+  orgSettings,
   projects,
   teamMembers,
   teams,
@@ -31,6 +32,15 @@ export const MEMBER_CAP_REACHED_MARKER = 'TEAM_MEMBER_CAP_REACHED';
 export const MEMBER_SUSPENDED_MARKER = 'TEAM_MEMBER_SUSPENDED';
 
 /**
+ * Marker for the org-wide monthly budget gate. Distinct from the
+ * team-wide budget exhausted hit (raised by OpenRouter against a team's
+ * sub-account) and from the per-member cap above. Lets the FE
+ * humanizer route the user to "ask an admin to raise the company
+ * budget" instead of "raise your personal cap".
+ */
+export const ORG_BUDGET_EXCEEDED_MARKER = 'ORG_BUDGET_EXCEEDED';
+
+/**
  * Pure decision function for the per-member cap gate. Returns either
  * `{ pass: true }` or `{ pass: false, message }` so the IO-bound caller
  * can throw uniformly while the policy stays unit-testable without a
@@ -49,9 +59,7 @@ export function decideCapAction(input: {
   capCents: number | null;
   spentCents: number;
   estimatedCostCents: number;
-}):
-  | { pass: true }
-  | { pass: false; marker: string; message: string } {
+}): { pass: true } | { pass: false; marker: string; message: string } {
   const { capCents, spentCents } = input;
   const estimateCents = Math.max(input.estimatedCostCents, 0);
 
@@ -236,9 +244,7 @@ export class ChatTransportService {
     //    of "admin sets up Anthropic for TEAM X, members just use it".
     const provider = providerOfModel(modelIdentifier);
     if (provider) {
-      let byokRow:
-        | typeof integrations.$inferSelect
-        | undefined;
+      let byokRow: typeof integrations.$inferSelect | undefined;
 
       if (teamScopeId) {
         // Predefined providers only — apiUrl IS NULL filter mirrors
@@ -406,10 +412,7 @@ export class ChatTransportService {
       .where(eq(users.id, userId))
       .limit(1);
 
-    if (
-      u?.infraChoice === 'managed' &&
-      u.budgetCents === 0
-    ) {
+    if (u?.infraChoice === 'managed' && u.budgetCents === 0) {
       throw new HttpException(
         `${PENDING_APPROVAL_MARKER}: Your account is pending budget approval. Ask your admin to set a monthly budget in Management → Users so you can start using AI.`,
         402,
@@ -493,10 +496,7 @@ export class ChatTransportService {
       .select({ cap: teamMembers.monthlyCapCents })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.userId, userId),
-        ),
+        and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)),
       )
       .limit(1);
     if (!membership) return;
@@ -539,6 +539,74 @@ export class ChatTransportService {
     if (!decision.pass) {
       throw new HttpException(decision.message, 402);
     }
+  }
+
+  /**
+   * Org-wide monthly budget gate. Pulls the singleton target from
+   * `org_settings` and compares against aggregate org spend for the
+   * current calendar month, optionally including a pre-flight cost
+   * estimate.
+   *
+   * Rules:
+   *   - target === 0 → "no target set", always pass. Existing
+   *     deployments that never opened the Company tab Pencil keep
+   *     working unchanged.
+   *   - target > 0 → block when (spent + estimate) >= target. Same
+   *     pre-flight vs post-flight wording split as decideCapAction
+   *     so the user sees actionable copy.
+   *
+   * Runs on every chat path (WorkenAI default, BYOK, Custom). Custom
+   * routes have cost=null in observability so they don't *consume*
+   * the cap, but they're still blocked once the target is exhausted
+   * by other routes — same shape as the per-member gate.
+   */
+  async assertOrgBudgetNotExceeded(
+    options: {
+      /**
+       * Upper-bound cost estimate (cents) for the call about to happen.
+       * Same semantics as the per-member gate — pass 0 (or omit) to
+       * skip the pre-flight branch.
+       */
+      estimatedCostCents?: number;
+    } = {},
+  ): Promise<void> {
+    const [settings] = await this.db
+      .select({ monthlyBudgetCents: orgSettings.monthlyBudgetCents })
+      .from(orgSettings)
+      .orderBy(asc(orgSettings.createdAt))
+      .limit(1);
+    const targetCents = settings?.monthlyBudgetCents ?? 0;
+    if (targetCents <= 0) return; // no target set
+
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const [agg] = await this.db
+      .select({
+        total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+      })
+      .from(observabilityEvents)
+      .where(
+        and(
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      );
+    const spentUsd = agg ? parseFloat(agg.total) : 0;
+    const spentCents = Math.round(spentUsd * 100);
+
+    const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
+    const projectedCents = spentCents + estimateCents;
+    if (projectedCents < targetCents) return;
+
+    const targetUsd = (targetCents / 100).toFixed(2);
+    const spentUsdStr = (spentCents / 100).toFixed(2);
+    const isPreflight = estimateCents > 0 && spentCents < targetCents;
+    const detail = isPreflight
+      ? `would push the company past ~$${(projectedCents / 100).toFixed(2)} (target $${targetUsd}, currently $${spentUsdStr}). Try a smaller prompt or wait for next month.`
+      : `is reached (spent $${spentUsdStr}). Resets on the 1st of next month, or ask an admin to raise the target in Management → Company.`;
+    throw new HttpException(
+      `${ORG_BUDGET_EXCEEDED_MARKER}: Your company's monthly AI budget of $${targetUsd} ${detail}`,
+      402,
+    );
   }
 
   private safeDecrypt(encrypted: string, context: string): string {

@@ -160,8 +160,13 @@ export class CompareModelsController {
       throw new BadRequestException('`question` is required.');
     }
 
-    if (body.expectedOutput !== undefined && typeof body.expectedOutput !== 'string') {
-      throw new BadRequestException('`expectedOutput` must be a string when provided.');
+    if (
+      body.expectedOutput !== undefined &&
+      typeof body.expectedOutput !== 'string'
+    ) {
+      throw new BadRequestException(
+        '`expectedOutput` must be a string when provided.',
+      );
     }
     body.expectedOutput = body.expectedOutput ?? '';
 
@@ -174,7 +179,9 @@ export class CompareModelsController {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
-      throw new ServiceUnavailableException(`AI gateway key unavailable: ${msg}`);
+      throw new ServiceUnavailableException(
+        `AI gateway key unavailable: ${msg}`,
+      );
     }
 
     // Personal-by-default scoping. If the body carries an explicit
@@ -231,11 +238,12 @@ export class CompareModelsController {
             4096,
           );
           const estimatedCostCents =
-            estimatedCostUsd != null
-              ? Math.ceil(estimatedCostUsd * 100)
-              : 0;
+            estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
           await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
             teamId,
+            estimatedCostCents,
+          });
+          await this.chatTransport.assertOrgBudgetNotExceeded({
             estimatedCostCents,
           });
           const start = Date.now();
@@ -425,7 +433,9 @@ export class CompareModelsController {
       runId = row?.id;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Failed to persist arena run for user ${user.id}: ${msg}`);
+      this.logger.error(
+        `Failed to persist arena run for user ${user.id}: ${msg}`,
+      );
     }
 
     return { runId, comparison: comparisonWithMetrics, responses };
@@ -594,7 +604,10 @@ export class CompareModelsController {
           content = file.buffer.toString('utf8');
         } else {
           const dot = lowerName.lastIndexOf('.');
-          const ext = dot !== -1 && dot < lowerName.length - 1 ? lowerName.slice(dot) : '';
+          const ext =
+            dot !== -1 && dot < lowerName.length - 1
+              ? lowerName.slice(dot)
+              : '';
           const detail = ext
             ? `"${ext}" (${mimetype || 'no MIME type'})`
             : `"${mimetype || 'unknown type'}"`;
