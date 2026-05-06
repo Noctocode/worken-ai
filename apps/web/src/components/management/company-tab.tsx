@@ -42,9 +42,13 @@ import {
   fetchOnboardingProfile,
   fetchOrgUsers,
   fetchTeams,
+  removeOrgUser,
   updateOnboardingProfile,
 } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { InviteUserDialog } from "@/components/invite-user-dialog";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 
 // Mirror the wizard step-2 dropdowns so the post-onboarding edit flow
 // offers the same options. Source of truth: setup-profile/step-2 (BE
@@ -128,6 +132,16 @@ export function CompanyTab() {
 
   const updateMutation = useMutation({
     mutationFn: updateOnboardingProfile,
+  });
+  const removeUserMutation = useMutation({
+    mutationFn: (userId: string) => removeOrgUser(userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      toast.success("User removed.");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't remove user.");
+    },
   });
   const resetMutation = useMutation({
     mutationFn: () =>
@@ -259,6 +273,9 @@ export function CompanyTab() {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
 
   const admins = orgUsers.filter((u) => u.role === "admin");
+  // Everyone who isn't an admin — basic + advanced both land here.
+  // They can view company-wide screens but not mutate org settings.
+  const participants = orgUsers.filter((u) => u.role !== "admin");
   const companyDisplay = profile.companyName?.trim() || "Unnamed company";
 
   return (
@@ -519,6 +536,139 @@ export function CompanyTab() {
                       className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3"
                     >
                       No admins yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Other participants — non-admin org users. Read-only on
+          everything, but visible here so an admin sees the full
+          roster of the company without flipping to the Users tab. */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-[18px] font-bold text-text-1">Other participants</p>
+          {isAdmin ? (
+            <InviteUserDialog>
+              <Button variant="plusAction" className="rounded-lg">
+                <Plus className="h-4 w-4 text-text-white" />
+                Invite User
+              </Button>
+            </InviteUserDialog>
+          ) : (
+            <DisabledReasonTooltip
+              disabled
+              reason="Only admins can invite users"
+            >
+              <Button
+                variant="plusAction"
+                className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />
+                Invite User
+              </Button>
+            </DisabledReasonTooltip>
+          )}
+        </div>
+        <div className="rounded overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[600px]">
+              <thead>
+                <tr>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Name</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Email</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[120px]">Role</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {participants.map((u) => {
+                  const display = u.name ?? u.email;
+                  const badgeClass =
+                    u.role === "advanced"
+                      ? "border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0"
+                      : "border-transparent bg-bg-3 text-text-2 uppercase tracking-wide text-[10px] px-1.5 py-0";
+                  return (
+                    <tr key={u.id} className="h-14">
+                      <td className="bg-bg-white px-4 align-middle w-[300px]">
+                        <div className="flex items-center gap-2.5">
+                          {u.picture ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={u.picture}
+                              alt={display}
+                              referrerPolicy="no-referrer"
+                              className="h-6 w-6 rounded-full object-cover border border-border-2"
+                            />
+                          ) : (
+                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-bg-3 text-[10px] font-semibold text-text-3">
+                              {display.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">
+                            {display}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">
+                        {u.email}
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle w-[120px]">
+                        <Badge className={badgeClass}>{u.role}</Badge>
+                      </td>
+                      <td className="bg-bg-white px-4 align-middle w-[93px]">
+                        <div className="flex justify-center">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 text-text-2 hover:text-text-1"
+                              >
+                                <MoreVertical className="h-5 w-5" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="gap-2 text-danger-6 focus:text-danger-6"
+                                disabled={
+                                  !isAdmin || removeUserMutation.isPending
+                                }
+                                onSelect={(e) => {
+                                  if (!isAdmin) {
+                                    e.preventDefault();
+                                    return;
+                                  }
+                                  if (
+                                    confirm(
+                                      `Remove ${display} from the organization? This cannot be undone.`,
+                                    )
+                                  ) {
+                                    removeUserMutation.mutate(u.id);
+                                  }
+                                }}
+                              >
+                                <UserX className="h-4 w-4" />
+                                Remove user
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {participants.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3"
+                    >
+                      No participants yet.
                     </td>
                   </tr>
                 )}
