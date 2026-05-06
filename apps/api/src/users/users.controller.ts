@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   ForbiddenException,
@@ -114,6 +115,23 @@ export class UsersController {
     const inviterName = callerUser.name || callerUser.email;
 
     if (existing) {
+      // Block cross-company invites: if the target already onboarded
+      // under a different `companyName`, we can't quietly absorb them
+      // into this org without overwriting their workspace identity.
+      // Pre-onboarding rows (companyName=null) and matching companies
+      // pass through. The admin sees a clean 409 instead of two users
+      // ending up with mismatched Company-tab views.
+      const inviterCompany = callerUser.companyName?.trim();
+      const existingCompany = existing.companyName?.trim();
+      if (
+        inviterCompany &&
+        existingCompany &&
+        inviterCompany !== existingCompany
+      ) {
+        throw new ConflictException(
+          `${email} already belongs to another company (${existingCompany}). Ask them to leave it before re-inviting.`,
+        );
+      }
       // Update role if needed
       if (existing.role !== body.role) {
         await this.db
