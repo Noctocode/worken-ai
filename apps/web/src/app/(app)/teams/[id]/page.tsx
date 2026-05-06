@@ -67,7 +67,7 @@ import {
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { TeamIntegrationsSection } from "@/components/team-integrations-section";
 import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
-import { formatCurrency } from "@/lib/utils";
+import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -353,7 +353,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     [rawGuardrails],
   );
 
-  const [budgetInput, setBudgetInput] = useState<string | null>(null);
   const budgetMutation = useMutation({
     mutationFn: (budgetUsd: number) => updateTeamBudget(id, budgetUsd),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
@@ -454,7 +453,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const remaining = budget - spent;
   const projected = team.projectedCents / 100;
   const onTrack = projected <= budget;
-  const displayBudget = budgetInput ?? budget.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const myMembership = team.members.find(
     (m) =>
@@ -467,16 +465,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     (currentUser.id === team.ownerId || myMembership?.role === "owner" || myMembership?.role === "editor");
   // Back-compat alias used by the role Select.
   const canEditRoles = canManageTeam;
-
-  const handleBudgetBlur = () => {
-    if (budgetInput === null) return;
-    const raw = budgetInput.replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(raw);
-    // 0 is allowed as a "suspend" gesture — blocks all spend until the
-    // owner raises the budget again. BE enforces non-negative.
-    if (!isNaN(num) && num >= 0 && num !== budget) budgetMutation.mutate(num);
-    setBudgetInput(null);
-  };
 
   // Render guard for the inline edit affordances. canManageTeam alone
   // isn't enough — non-managers could still flip isEditing via the
@@ -625,14 +613,18 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
-            <div className="relative">
-              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">$</span>
-              {editing ? (
+            {editing ? (
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
+                  $
+                </span>
                 <input
                   type="text"
                   inputMode="decimal"
                   value={editBudget}
-                  onChange={(e) => setEditBudget(e.target.value)}
+                  onChange={(e) =>
+                    setEditBudget(formatBudgetInput(e.target.value))
+                  }
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
@@ -643,20 +635,25 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     }
                   }}
                   disabled={isSavingTeam}
-                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:opacity-60"
+                  autoFocus
+                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
                 />
-              ) : (
-                <input
-                  type="text"
-                  value={displayBudget}
-                  onChange={(e) => setBudgetInput(e.target.value)}
-                  onBlur={handleBudgetBlur}
-                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                  readOnly={!canManageTeam}
-                  className={`w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-2 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 ${!canManageTeam ? "cursor-default" : ""}`}
-                />
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+                {budget > 0 ? (
+                  <span>{formatCurrency(budget)}</span>
+                ) : (
+                  <span className="text-text-3">Not set</span>
+                )}
+              </div>
+            )}
+            {!editing && !canManageTeam && (
+              <p className="text-[12px] text-text-3">
+                Only team owners and editors can change this — ask one to
+                adjust the budget.
+              </p>
+            )}
           </div>
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">Spent / Remaining</p>
