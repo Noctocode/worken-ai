@@ -265,10 +265,13 @@ export class TeamsController {
 
   // Per-member monthly cap. Body accepts a number (cents) or null to
   // remove the cap. 0 = suspend the member (chat-time gate blocks).
+  // memberId is validated as a UUID up-front so a malformed path
+  // segment fails as a clean 400 instead of a Postgres cast error
+  // bubbling up as a 500 from the service-layer query.
   @Patch(':id/members/:memberId/cap')
   updateMemberCap(
     @Param('id') id: string,
-    @Param('memberId') memberId: string,
+    @Param('memberId', new ParseUUIDPipe()) memberId: string,
     @Body() body: { monthlyCapCents: number | null },
     @CurrentUser() user: AuthenticatedUser,
   ) {
