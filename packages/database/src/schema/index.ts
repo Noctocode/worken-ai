@@ -95,8 +95,15 @@ export const teamMembers = pgTable(
     // member shares the team's overall budget freely). 0 = suspended for
     // this team. >0 = enforced cap, checked against the user's
     // current-month spend in observability_events filtered by teamId.
-    // Cap is enforced regardless of routing: OpenRouter team key, team-
-    // scoped BYOK, or otherwise. Custom LLMs bypass (external billing).
+    //
+    // Gate fires uniformly across every routing path — WorkenAI default,
+    // team-scoped BYOK, team-scoped Custom LLM. The suspension state
+    // (cap=0) and the already-cap-reached state apply regardless. Only
+    // the *spend accumulation* effectively skips Custom routes: those
+    // log cost_usd=null because the model has no catalog pricing, so
+    // their usage doesn't add to the SUM the gate checks against.
+    // Net effect: Custom usage doesn't consume the cap, but a suspended
+    // or already-over-cap member is still blocked from Custom calls.
     monthlyCapCents: integer("monthly_cap_cents"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
