@@ -569,9 +569,24 @@ export function IntegrationTab() {
       {/* Grid */}
       {!isLoading && !error && (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filtered.map((card) => (
+          {filtered.map((card) => {
+            // Stable key across the lifecycle: predefined rows are
+            // identified by providerId (unique per user), custom rows
+            // by their UUID. Without this, an untouched predefined
+            // card would change key the moment its first toggle
+            // creates a DB row (id: null → uuid), unmounting and
+            // remounting the card — visible as a blink.
+            const cardKey = card.isCustom ? card.id! : card.providerId;
+            // Only disable the switch that is currently in-flight,
+            // not every card. The shared mutation's `variables` carry
+            // the in-flight card identity.
+            const inFlight =
+              toggleMutation.isPending &&
+              toggleMutation.variables?.card.providerId === card.providerId &&
+              toggleMutation.variables?.card.id === card.id;
+            return (
             <div
-              key={`${card.providerId}-${card.id ?? "new"}`}
+              key={cardKey}
               className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
               onClick={() => setSelected(card)}
             >
@@ -589,7 +604,7 @@ export function IntegrationTab() {
                     onCheckedChange={(next) =>
                       toggleMutation.mutate({ card, next })
                     }
-                    disabled={toggleMutation.isPending}
+                    disabled={inFlight}
                   />
                 </span>
               </div>
@@ -640,7 +655,8 @@ export function IntegrationTab() {
                 </span>
               </div>
             </div>
-          ))}
+            );
+          })}
 
           {filtered.length === 0 && (
             <div className="col-span-full py-12 text-center text-sm text-text-3">
