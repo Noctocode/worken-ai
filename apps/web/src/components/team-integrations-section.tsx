@@ -728,8 +728,12 @@ export function TeamIntegrationsSection({
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {configured.map((card) => (
+            // `card.id` is non-null here because `configured` filters
+            // for it; falling back to providerId would collide for
+            // multiple Custom LLMs (all share providerId="custom"),
+            // so always prefer the row id.
             <div
-              key={card.providerId}
+              key={card.id ?? card.providerId}
               className="bg-bg-white rounded p-4 space-y-3"
             >
               <div className="flex items-start justify-between gap-2">
