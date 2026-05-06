@@ -1463,32 +1463,6 @@ export class TeamsService {
 
     // Predefined providers: upsert against the team-scoped partial
     // unique index — at most one row per (team, providerId).
-
-    // Same enable-requires-key gate the personal Integration tab
-    // enforces — fetch the current row first so the validation sees
-    // the *final* state of (isEnabled, apiKey).
-    const [existing] = await this.db
-      .select({
-        apiKeyEncrypted: integrations.apiKeyEncrypted,
-        isEnabled: integrations.isEnabled,
-      })
-      .from(integrations)
-      .where(
-        and(
-          eq(integrations.teamId, teamId),
-          eq(integrations.providerId, input.providerId),
-          isNull(integrations.apiUrl),
-        ),
-      )
-      .limit(1);
-    assertTeamEnableHasKey({
-      existingKey: existing?.apiKeyEncrypted ?? null,
-      existingEnabled: existing?.isEnabled ?? false,
-      inputApiKey: input.apiKey,
-      nextApiKeyEncrypted: apiKeyEncrypted,
-      inputEnabled: input.isEnabled,
-    });
-
     const conflictUpdates: Record<string, unknown> = {
       updatedAt: new Date(),
     };
@@ -1567,12 +1541,10 @@ export class TeamsService {
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
-    let nextApiKeyEncrypted: string | null = null;
     if (input.apiKey !== undefined) {
-      nextApiKeyEncrypted = input.apiKey
+      updates.apiKeyEncrypted = input.apiKey
         ? this.encryptionService.encrypt(input.apiKey)
         : null;
-      updates.apiKeyEncrypted = nextApiKeyEncrypted;
     }
     if (input.apiUrl !== undefined) {
       const trimmed = input.apiUrl.trim();
@@ -1585,15 +1557,6 @@ export class TeamsService {
         throw new BadRequestException('apiUrl is not a valid URL.');
       }
       updates.apiUrl = trimmed;
-    }
-    if (!isCustom) {
-      assertTeamEnableHasKey({
-        existingKey: row.apiKeyEncrypted,
-        existingEnabled: row.isEnabled,
-        inputApiKey: input.apiKey,
-        nextApiKeyEncrypted,
-        inputEnabled: input.isEnabled,
-      });
     }
     await this.db
       .update(integrations)
@@ -1750,36 +1713,4 @@ function deriveCustomDisplayName(url: string): string {
   } catch {
     return 'Custom LLM';
   }
-}
-
-/**
- * Mirror of IntegrationsService.assertEnableHasKey for team-scoped
- * predefined providers. Lives as a free function rather than a method
- * on TeamsService because that would require duplicating an injected
- * service just to throw a BadRequest. Same rules:
- *   - disabling is always fine
- *   - enabling requires a key after the write (existing OR being set)
- *   - Custom LLMs bypass this upstream — they may legitimately accept
- *     anonymous calls
- */
-function assertTeamEnableHasKey(input: {
-  existingKey: string | null;
-  existingEnabled: boolean;
-  inputApiKey: string | null | undefined;
-  nextApiKeyEncrypted: string | null;
-  inputEnabled: boolean | undefined;
-}): void {
-  const finalEnabled =
-    input.inputEnabled !== undefined
-      ? input.inputEnabled
-      : input.existingEnabled;
-  if (!finalEnabled) return;
-  const finalKey =
-    input.inputApiKey === undefined
-      ? input.existingKey
-      : input.nextApiKeyEncrypted;
-  if (finalKey) return;
-  throw new BadRequestException(
-    'Cannot enable a team provider without an API key. Add a key first, then toggle Enabled on.',
-  );
 }

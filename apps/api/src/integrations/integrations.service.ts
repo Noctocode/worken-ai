@@ -388,37 +388,6 @@ export class IntegrationsService {
       // back to a different index — or fails with "no unique or
       // exclusion constraint matching".
 
-      // Look up the existing row first so we can validate the *final*
-      // state of (isEnabled, apiKey). Predefined providers must not
-      // be enabled without a key — surfacing a provider in the model
-      // picker while the key is missing leads to surprise 401s at
-      // chat time. The check belongs on the BE because both the
-      // personal Integration tab and any future API client run
-      // through this service.
-      const [existing] = await this.db
-        .select({
-          apiKeyEncrypted: integrations.apiKeyEncrypted,
-          isEnabled: integrations.isEnabled,
-        })
-        .from(integrations)
-        .where(
-          and(
-            eq(integrations.ownerId, userId),
-            eq(integrations.providerId, input.providerId),
-            isNull(integrations.apiUrl),
-            isNull(integrations.teamId),
-          ),
-        )
-        .limit(1);
-      this.assertEnableHasKey({
-        providerId: input.providerId,
-        existingKey: existing?.apiKeyEncrypted ?? null,
-        existingEnabled: existing?.isEnabled ?? false,
-        inputApiKey: input.apiKey,
-        nextApiKeyEncrypted: apiKeyEncrypted,
-        inputEnabled: input.isEnabled,
-      });
-
       // Build the on-conflict SET clause to preserve the 3-state
       // semantic of `apiKey`:
       //   - undefined → don't touch the stored key
@@ -487,24 +456,10 @@ export class IntegrationsService {
       updatedAt: new Date(),
     };
     if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
-    let nextApiKeyEncrypted: string | null = null;
     if (input.apiKey !== undefined) {
-      nextApiKeyEncrypted = input.apiKey
+      updates.apiKeyEncrypted = input.apiKey
         ? this.encryptionService.encrypt(input.apiKey)
         : null;
-      updates.apiKeyEncrypted = nextApiKeyEncrypted;
-    }
-    // Predefined providers can't be enabled without a key (Custom LLMs
-    // are exempt — many self-hosted endpoints accept anonymous calls).
-    if (row.providerId !== 'custom') {
-      this.assertEnableHasKey({
-        providerId: row.providerId,
-        existingKey: row.apiKeyEncrypted,
-        existingEnabled: row.isEnabled,
-        inputApiKey: input.apiKey,
-        nextApiKeyEncrypted,
-        inputEnabled: input.isEnabled,
-      });
     }
     await this.db
       .update(integrations)
@@ -515,50 +470,6 @@ export class IntegrationsService {
     const view = all.find((v) => v.id === id);
     if (!view) throw new NotFoundException('Integration not found after update');
     return view;
-  }
-
-  /**
-   * Reject `isEnabled = true` for a predefined-provider row that would
-   * end up without an API key after the upsert/update. "Enabled
-   * without key" used to mean "show this provider's models in my
-   * picker, route via WorkenAI's shared OpenRouter account" — which
-   * led to surprise 401s when a user assumed Enabled meant their key
-   * was active. Now: explicit. Disable-without-key is fine; enable
-   * requires a stored key (already there OR being set in this call).
-   *
-   * Custom LLMs bypass this check upstream — many self-hosted
-   * endpoints (Ollama, vLLM behind a reverse proxy) accept anonymous
-   * requests.
-   */
-  assertEnableHasKey(input: {
-    providerId: string;
-    existingKey: string | null;
-    existingEnabled: boolean;
-    /** Raw `apiKey` field from the request body — distinguishes the
-     *  three call states: undefined / empty / non-empty. */
-    inputApiKey: string | null | undefined;
-    /** What we'd encrypt and write — null when caller cleared, set
-     *  when caller passed a non-empty string. */
-    nextApiKeyEncrypted: string | null;
-    inputEnabled: boolean | undefined;
-  }): void {
-    const finalEnabled =
-      input.inputEnabled !== undefined ? input.inputEnabled : input.existingEnabled;
-    if (!finalEnabled) return; // disabling is always fine
-
-    // What key the row will have after this write:
-    //   inputApiKey === undefined → existing key untouched
-    //   inputApiKey === null/'' → cleared, no key
-    //   inputApiKey === '<value>' → encrypted into nextApiKeyEncrypted
-    const finalKey =
-      input.inputApiKey === undefined
-        ? input.existingKey
-        : input.nextApiKeyEncrypted;
-    if (finalKey) return;
-
-    throw new BadRequestException(
-      'Cannot enable a provider without an API key. Add a key first, then toggle Enabled on.',
-    );
   }
 
   async remove(userId: string, id: string): Promise<void> {

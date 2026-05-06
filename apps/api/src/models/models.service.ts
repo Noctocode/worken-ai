@@ -128,11 +128,12 @@ export class ModelsService {
     // see Claude in their picker unless they ALSO toggled Anthropic
     // personally — defeats the point of team-shared keys.
     //
-    // We enable on isEnabled regardless of whether a key is set: the
-    // BE gate now blocks enable-without-key (see IntegrationsService.
-    // assertEnableHasKey), so any enabled team row has a usable key.
-    // chat-transport picks the right key per call based on the chat's
-    // team scope.
+    // We enable on isEnabled regardless of whether a key is set:
+    // an enabled row without a BYOK key falls back to the WorkenAI
+    // default route in chat-transport (OpenRouter), which is a
+    // first-class option the user opted into via the "Use WORKENAI
+    // API" path. chat-transport picks the right key per call based
+    // on the chat's team scope.
     const personalEnabledRows = await this.db
       .select({ providerId: integrations.providerId })
       .from(integrations)
