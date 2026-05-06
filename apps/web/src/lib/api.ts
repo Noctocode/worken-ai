@@ -2205,3 +2205,51 @@ export async function revokeApiKey(id: string): Promise<void> {
     throw new Error(body.message || "Failed to revoke API key");
   }
 }
+
+// ─── Company (org-level singleton) ───────────────────────────────────
+
+export interface Company {
+  id: string;
+  name: string;
+  contactEmail: string | null;
+  monthlyBudgetCents: number;
+  spentCents: number;
+  projectedCents: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchCompany(): Promise<Company> {
+  const res = await apiFetch("/companies/current");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch company");
+  }
+  return res.json();
+}
+
+export async function updateCompany(input: {
+  name?: string;
+  contactEmail?: string | null;
+  monthlyBudgetCents?: number;
+}): Promise<Company> {
+  const res = await apiFetch("/companies/current", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update company");
+  }
+  return res.json();
+}
+
+export async function deleteCompany(): Promise<Company> {
+  const res = await apiFetch("/companies/current", { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to reset company");
+  }
+  return res.json();
+}
