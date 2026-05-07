@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { guardrails } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 
 export type GuardrailTarget = 'input' | 'output';
 export type GuardrailAction = 'fix' | 'exception';
@@ -135,7 +136,10 @@ function escapeRegex(s: string): string {
 export class GuardrailEvaluatorService {
   private readonly logger = new Logger(GuardrailEvaluatorService.name);
 
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly observability: ObservabilityService,
+  ) {}
 
   /**
    * Run every applicable guardrail rule against `text` and return a
@@ -240,8 +244,9 @@ export class GuardrailEvaluatorService {
       workingText = fixedText;
     }
 
-    // Bump triggers fire-and-forget. Failed update shouldn't break
-    // the chat call — it's audit data, not load-bearing.
+    // Bump triggers + emit audit events fire-and-forget — both are
+    // audit data, neither is load-bearing for the chat path. Logged
+    // errors keep them visible without taking down the call.
     if (violations.length > 0) {
       void this.bumpTriggers(violations.map((v) => v.ruleId)).catch((err) => {
         this.logger.warn(
@@ -250,9 +255,65 @@ export class GuardrailEvaluatorService {
           }`,
         );
       });
+      void this.recordAuditEvents({
+        userId: input.userId,
+        teamId: input.teamId,
+        target: input.target,
+        // workingText is post-fix — the version we'll actually pass
+        // to the LLM (or persist). We log this rather than the raw
+        // input so observability_events doesn't become a PII sink:
+        // emails / cards / etc. are already redacted in the snippet
+        // by the time we record it. Compliance still sees the
+        // shape of what triggered ("[REDACTED:Email Address] in
+        // 'reach me at …'") which is the actual audit need.
+        promptSample: workingText,
+        violations,
+      }).catch((err) => {
+        this.logger.warn(
+          `Failed to emit guardrail audit events: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      });
     }
 
     return { text: workingText, blocked, violations };
+  }
+
+  private async recordAuditEvents(input: {
+    userId: string;
+    teamId: string | null;
+    target: GuardrailTarget;
+    promptSample: string;
+    violations: GuardrailViolation[];
+  }): Promise<void> {
+    // One observability event per violating rule so dashboards can
+    // group / count by rule without unpacking metadata. Sequential
+    // (not Promise.all) — these are audit-side, no need to fan out.
+    for (const v of input.violations) {
+      await this.observability.recordLLMCall({
+        userId: input.userId,
+        teamId: input.teamId,
+        eventType: 'guardrail_trigger',
+        // success flips meaning slightly here: we're not measuring
+        // whether the chat call succeeded but whether the GUARDRAIL
+        // let traffic through. fix → traffic flowed (success); the
+        // exception path → blocked (failure-shaped row). Lets the
+        // observability dashboard render trigger / block columns
+        // separately.
+        success: v.action === 'fix',
+        prompt: input.promptSample,
+        metadata: {
+          ruleId: v.ruleId,
+          ruleName: v.ruleName,
+          validator: v.validator,
+          severity: v.severity,
+          action: v.action,
+          target: input.target,
+          matches: v.matches,
+        },
+      });
+    }
   }
 
   private async loadApplicableRules(scope: {

@@ -40,9 +40,23 @@ function makeChainableDb(rowSets: unknown[][]) {
   };
 }
 
-function svc(rules: Record<string, unknown>[]) {
+function makeSvc(rules: Record<string, unknown>[]) {
   const db = makeChainableDb([rules]);
-  return new GuardrailEvaluatorService(db as never);
+  // Stub observability — recordLLMCall is fire-and-forget audit so
+  // we just resolve without recording. Tests that care about the
+  // audit payload assert against this mock directly.
+  const observability = {
+    recordLLMCall: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new GuardrailEvaluatorService(
+    db as never,
+    observability as never,
+  );
+  return { service, observability };
+}
+
+function svc(rules: Record<string, unknown>[]) {
+  return makeSvc(rules).service;
 }
 
 const USER_ID = 'user-id';
@@ -330,5 +344,80 @@ describe('GuardrailEvaluatorService', () => {
     expect(decision.blocked?.ruleName).toBe('JB Block');
     // PII rule never ran, so the email is still in the (now-irrelevant) text.
     expect(decision.text).toContain('a@b.com');
+  });
+
+  it('emits a guardrail_trigger audit event per violation (success=true on fix)', async () => {
+    const { service, observability } = makeSvc([
+      {
+        id: 'rule-pii',
+        name: 'PII Filter',
+        validatorType: 'no_pii',
+        entities: ['Email Address'],
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]);
+    await service.evaluate({
+      text: 'reach me at a@b.com',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    // Fire-and-forget — wait one tick so the void-await resolves.
+    await new Promise((r) => setImmediate(r));
+    expect(observability.recordLLMCall).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const call = observability.recordLLMCall.mock.calls[0][0] as {
+      eventType: string;
+      success: boolean;
+      prompt: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(call.eventType).toBe('guardrail_trigger');
+    expect(call.success).toBe(true);
+    expect(call.metadata).toMatchObject({
+      ruleId: 'rule-pii',
+      ruleName: 'PII Filter',
+      validator: 'no_pii',
+      action: 'fix',
+      target: 'input',
+      matches: 1,
+    });
+    // Logged snippet is the post-fix (masked) text — observability
+    // never sees the raw email.
+    expect(call.prompt).toContain('[REDACTED:Email Address]');
+    expect(call.prompt).not.toContain('a@b.com');
+  });
+
+  it('audit event for exception action records success=false', async () => {
+    const { service, observability } = makeSvc([
+      {
+        id: 'rule-block',
+        name: 'Hard Block',
+        validatorType: 'no_pii',
+        entities: ['Credit Card'],
+        target: 'output',
+        onFail: 'exception',
+        severity: 'high',
+      },
+    ]);
+    await service.evaluate({
+      text: 'card 4111 1111 1111 1111',
+      target: 'output',
+      userId: USER_ID,
+      teamId: null,
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(observability.recordLLMCall).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const call = observability.recordLLMCall.mock.calls[0][0] as {
+      eventType: string;
+      success: boolean;
+      prompt: string;
+      metadata: Record<string, unknown>;
+    };
+    expect(call.success).toBe(false);
+    expect(call.metadata.action).toBe('exception');
   });
 });
