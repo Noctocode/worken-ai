@@ -33,7 +33,7 @@ export class OrgSettingsController {
   @Patch()
   async update(
     @CurrentUser() caller: AuthenticatedUser,
-    @Body() body: { monthlyBudgetCents?: number },
+    @Body() body: { monthlyBudgetCents?: number | null },
   ) {
     const [callerUser] = await this.db
       .select({ role: users.role })
