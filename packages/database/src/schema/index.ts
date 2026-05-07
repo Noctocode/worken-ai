@@ -208,6 +208,16 @@ export const observabilityEvents = pgTable(
     index("observability_events_team_created_idx").on(table.teamId, table.createdAt),
     index("observability_events_model_created_idx").on(table.model, table.createdAt),
     index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
+    // Org-wide spend aggregate runs on every chat call when an admin
+    // has set a Company Monthly Budget — `assertOrgBudgetNotExceeded`
+    // sums cost_usd filtered by success=true AND createdAt >=
+    // date_trunc('month', now()). The existing per-user / per-team
+    // indexes don't help (no user/team filter on this query), so a
+    // dedicated partial index on (created_at) WHERE success = true
+    // keeps the gate cheap as observability_events grows.
+    index("observability_events_success_created_idx")
+      .on(table.createdAt)
+      .where(sql`${table.success} = true`),
   ],
 );
 
