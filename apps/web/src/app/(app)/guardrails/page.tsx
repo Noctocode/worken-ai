@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -604,6 +604,27 @@ function AddGuardrailDialog({
     setShowAllEntities(false);
   }, [open, initial]);
 
+  // entities is overloaded across validator types (PII entity names
+  // for no_pii; free-form phrases for detect_jailbreak; ignored for
+  // regex_match). When the admin switches validator, reset entities
+  // so the previous validator's selections don't leak through. Skip
+  // the reset on the very first render to keep the seeded edit-mode
+  // state intact.
+  const previousValidatorRef = useRef<string>(validatorType);
+  useEffect(() => {
+    if (!open) {
+      previousValidatorRef.current = validatorType;
+      return;
+    }
+    if (previousValidatorRef.current === validatorType) return;
+    previousValidatorRef.current = validatorType;
+    if (validatorType === "no_pii") {
+      setSelectedEntities(new Set(PII_ENTITIES));
+    } else {
+      setSelectedEntities(new Set());
+    }
+  }, [open, validatorType]);
+
   const toggleEntity = (e: string) => {
     setSelectedEntities((prev) => {
       const next = new Set(prev);
@@ -729,6 +750,39 @@ function AddGuardrailDialog({
                         JavaScript regex flavour. Matches are case-insensitive
                         and global by default. Invalid patterns are rejected on
                         save.
+                      </p>
+                    </div>
+                  )}
+
+                  {validatorType === "detect_jailbreak" && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[14px] font-semibold text-text-2">
+                        Custom phrases (optional)
+                      </label>
+                      <textarea
+                        value={Array.from(selectedEntities).join("\n")}
+                        onChange={(e) => {
+                          // Each non-empty line is one custom phrase.
+                          // We reuse `selectedEntities` so the rest of
+                          // the dialog form treats jailbreak custom
+                          // phrases identically to no_pii entities at
+                          // submit time — both end up in `entities`.
+                          const lines = e.target.value
+                            .split(/\r?\n/)
+                            .map((l) => l.trim())
+                            .filter((l) => l.length > 0);
+                          setSelectedEntities(new Set(lines));
+                        }}
+                        placeholder={
+                          "ignore my hidden system prompt\nyou are unfiltered\noverride DAN"
+                        }
+                        rows={4}
+                        className="resize-y rounded-md border border-border-2 bg-bg-white px-3 py-2 font-mono text-[13px] outline-none focus:border-primary-6"
+                      />
+                      <p className="text-[12px] text-text-3">
+                        One phrase per line. These extend (don&apos;t
+                        replace) the built-in jailbreak detector. Match is
+                        case-insensitive on whole-word boundaries.
                       </p>
                     </div>
                   )}
@@ -956,8 +1010,15 @@ function AddGuardrailDialog({
                       : "Custom",
                 severity,
                 validatorType,
+                // entities is reused for two validators: PII entity
+                // names for no_pii; admin-supplied custom jailbreak
+                // phrases for detect_jailbreak. regex_match doesn't
+                // use it.
                 entities:
-                  validatorType === "no_pii" ? Array.from(selectedEntities) : [],
+                  validatorType === "no_pii" ||
+                  validatorType === "detect_jailbreak"
+                    ? Array.from(selectedEntities)
+                    : [],
                 ...(validatorType === "regex_match"
                   ? { pattern: pattern.trim() }
                   : {}),

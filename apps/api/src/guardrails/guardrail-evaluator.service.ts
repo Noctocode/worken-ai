@@ -187,7 +187,15 @@ export class GuardrailEvaluatorService {
           break;
         }
         case 'detect_jailbreak': {
-          const result = runDetectJailbreak(workingText);
+          // `entities` doubles as the admin's custom blocklist for
+          // this validator — we union it with the built-in 27
+          // phrases rather than replacing them, so admins extend
+          // the curated list instead of losing it. Empty / null
+          // entities → built-in only.
+          const result = runDetectJailbreak(
+            workingText,
+            parseEntities(rule.entities),
+          );
           hits = result.matches;
           fixedText = result.fixed;
           break;
@@ -391,12 +399,28 @@ function runNoPii(
   return { matches, fixed };
 }
 
-function runDetectJailbreak(text: string): {
-  matches: number;
-  fixed: string;
-} {
+function runDetectJailbreak(
+  text: string,
+  customPhrases: string[] = [],
+): { matches: number; fixed: string } {
+  // Union the built-in 27 with the admin's custom blocklist on every
+  // call — cheap because typical N is small, and rebuilding lets
+  // admins toggle phrases without restarting the server. Each custom
+  // entry is regex-escaped + word-boundaried, same shape as built-in.
+  const cleaned = customPhrases
+    .map((p) => p.trim())
+    .filter((p) => p.length > 0);
+  const regex =
+    cleaned.length === 0
+      ? JAILBREAK_REGEX
+      : new RegExp(
+          `\\b(?:${[...JAILBREAK_PHRASES, ...cleaned]
+            .map(escapeRegex)
+            .join('|')})\\b`,
+          'gi',
+        );
   let matches = 0;
-  const fixed = text.replace(JAILBREAK_REGEX, (m) => {
+  const fixed = text.replace(regex, (m) => {
     matches += 1;
     return `[BLOCKED]${' '.repeat(Math.max(0, m.length - 9))}`;
   });
