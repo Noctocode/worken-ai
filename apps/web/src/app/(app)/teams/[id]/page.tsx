@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   Check,
   Pencil,
   Plus,
@@ -454,6 +455,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const projected = team.projectedCents / 100;
   const onTrack = projected <= budget;
 
+  // Sum positive per-member caps. `null` (no cap, shares team budget)
+  // and `0` (suspended) don't allocate any team dollars, so they're
+  // skipped. When the sum exceeds the team budget, surface a soft
+  // warning above the Users table — chat-time gate enforces the
+  // budget anyway, but pre-warning admins about over-allocation
+  // saves a "why is one member blocked while caps look fine"
+  // debugging round-trip.
+  const allocatedCapsCents = team.members.reduce((acc, m) => {
+    const cap = m.monthlyCapCents;
+    return cap != null && cap > 0 ? acc + cap : acc;
+  }, 0);
+  const overAllocated =
+    team.monthlyBudgetCents > 0 &&
+    allocatedCapsCents > team.monthlyBudgetCents;
+
   const myMembership = team.members.find(
     (m) =>
       m.userId &&
@@ -830,6 +846,26 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* ── Users ─────────────────────────────────────────────────── */}
       <div className="space-y-3">
+        {/* Over-allocation soft warning. Soft because chat-time gate
+            already enforces the team budget regardless of member-cap
+            sum — this just gives the admin a heads-up so they don't
+            have to debug "why did Marko hit a cap when his per-member
+            cap looks fine". Only shown when the sum strictly exceeds
+            the team budget (equality is fine). */}
+        {overAllocated && (
+          <div className="flex items-start gap-2 rounded-lg border border-warning-3 bg-warning-1/40 px-3 py-2">
+            <AlertTriangle className="h-4 w-4 shrink-0 text-warning-7 mt-0.5" />
+            <p className="text-[13px] text-warning-7 leading-snug">
+              Member caps total{" "}
+              <strong>{formatCurrency(allocatedCapsCents / 100)}</strong>,
+              over the team&rsquo;s monthly budget of{" "}
+              <strong>{formatCurrency(budget)}</strong>. Members will be
+              blocked once team total reaches the budget regardless of
+              individual caps — trim caps or raise the team budget to
+              line them up.
+            </p>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Users</p>
           {canManageTeam ? (
