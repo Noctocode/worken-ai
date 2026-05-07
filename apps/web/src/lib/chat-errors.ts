@@ -100,6 +100,19 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Guardrail block — input or output rejected by an admin-configured
+  // content rule (PII detected, jailbreak phrase, custom regex). The
+  // BE message already names the rule + validator, so we forward it
+  // verbatim when present. Generic fallback covers stripped error
+  // bodies (proxy filtered, shorter network log, etc.).
+  const guardrailMatch = raw.match(/GUARDRAIL_BLOCKED:\s*([^\r\n]+)/);
+  if (guardrailMatch) {
+    return (
+      guardrailMatch[1].trim() ||
+      "A content guardrail blocked this message. Edit and try again, or ask an admin to adjust the rule in Management → Guardrails."
+    );
+  }
+
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code

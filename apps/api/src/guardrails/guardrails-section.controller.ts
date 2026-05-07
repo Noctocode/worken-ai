@@ -48,18 +48,12 @@ export class GuardrailsSectionController {
   }
 
   @Patch(':id/toggle')
-  toggle(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  toggle(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.toggle(id, user.id);
   }
 
   @Delete(':id')
-  remove(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(id, user.id);
   }
 

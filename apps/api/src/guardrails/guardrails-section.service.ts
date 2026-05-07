@@ -57,11 +57,9 @@ export class GuardrailsSectionService {
   async getStats(userId: string) {
     const [stats] = await this.db
       .select({
-        activeRules:
-          sql<number>`count(*) filter (where ${guardrails.isActive} = true)`,
+        activeRules: sql<number>`count(*) filter (where ${guardrails.isActive} = true)`,
         totalTriggers: sql<number>`coalesce(sum(${guardrails.triggers}), 0)`,
-        criticalRules:
-          sql<number>`count(*) filter (where ${guardrails.severity} = 'high' and ${guardrails.isActive} = true)`,
+        criticalRules: sql<number>`count(*) filter (where ${guardrails.severity} = 'high' and ${guardrails.isActive} = true)`,
         totalRules: sql<number>`count(*)`,
       })
       .from(guardrails)
