@@ -134,6 +134,104 @@ export class GuardrailsSectionService {
     return row;
   }
 
+  /**
+   * Patch an existing rule. Same validation surface as `create`:
+   * name non-empty, severity in the allowlist, regex_match needs a
+   * compileable pattern. Every field is optional — the caller sends
+   * only what changed. Owner check matches `toggle` / `remove` so a
+   * teammate can't edit a rule that doesn't belong to them.
+   */
+  async update(
+    id: string,
+    dto: Partial<CreateGuardrailDto>,
+    userId: string,
+  ) {
+    const [existing] = await this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.id, id));
+    if (!existing) throw new NotFoundException('Guardrail not found');
+    if (existing.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (dto.name !== undefined) {
+      const trimmed = dto.name.trim();
+      if (!trimmed) {
+        throw new BadRequestException('Name cannot be empty.');
+      }
+      updates.name = trimmed;
+    }
+
+    if (dto.severity !== undefined) {
+      const validSeverities = ['high', 'medium', 'low'];
+      if (!validSeverities.includes(dto.severity)) {
+        throw new BadRequestException('Invalid severity');
+      }
+      updates.severity = dto.severity;
+    }
+
+    if (dto.validatorType !== undefined) {
+      updates.validatorType = dto.validatorType || null;
+    }
+
+    if (dto.entities !== undefined) {
+      updates.entities = dto.entities;
+    }
+
+    if (dto.pattern !== undefined) {
+      const trimmed = String(dto.pattern ?? '').trim();
+      updates.pattern = trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (dto.target !== undefined) {
+      updates.target = dto.target || 'both';
+    }
+
+    if (dto.onFail !== undefined) {
+      updates.onFail = dto.onFail || 'fix';
+    }
+
+    if (dto.type !== undefined) {
+      updates.type = dto.type || existing.type;
+    }
+
+    // Re-validate regex when the rule is (or stays as) regex_match.
+    // Use the *resulting* state — ie. dto.validatorType if present,
+    // otherwise the existing one — so `PATCH { pattern }` on an
+    // already-regex_match rule still validates.
+    const finalValidator =
+      dto.validatorType !== undefined
+        ? dto.validatorType
+        : existing.validatorType;
+    const finalPattern =
+      dto.pattern !== undefined
+        ? (updates.pattern as string | null)
+        : existing.pattern;
+    if (finalValidator === 'regex_match') {
+      if (!finalPattern) {
+        throw new BadRequestException(
+          'regex_match guardrail requires a non-empty `pattern`.',
+        );
+      }
+      try {
+        new RegExp(finalPattern, 'gi');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new BadRequestException(`Invalid regex pattern: ${msg}`);
+      }
+    }
+
+    const [row] = await this.db
+      .update(guardrails)
+      .set(updates)
+      .where(eq(guardrails.id, id))
+      .returning();
+    return row;
+  }
+
   async toggle(id: string, userId: string) {
     const [rule] = await this.db
       .select({ ownerId: guardrails.ownerId })

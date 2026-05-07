@@ -48,6 +48,25 @@ export class GuardrailsSectionController {
     return this.service.create(body, user.id);
   }
 
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      type?: string;
+      severity?: string;
+      validatorType?: string;
+      entities?: string[];
+      pattern?: string;
+      target?: string;
+      onFail?: string;
+    },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.update(id, body, user.id);
+  }
+
   @Patch(':id/toggle')
   toggle(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.toggle(id, user.id);

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Eye,
   Loader2,
+  Pencil,
   Search,
   Shield,
   ShieldCheck,
@@ -41,6 +42,7 @@ import {
   fetchGuardrailStats,
   fetchComplianceTemplates,
   createGuardrailItem,
+  updateGuardrailItem,
   toggleGuardrailItem,
   deleteGuardrailItem,
   applyComplianceTemplate,
@@ -131,12 +133,14 @@ function OverviewTab({
   isLoading,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   guardrailsList: GuardrailItem[];
   stats: GuardrailStats | undefined;
   isLoading: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (rule: GuardrailItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState<string>("all");
@@ -327,14 +331,24 @@ function OverviewTab({
                   </button>
                 </td>
                 <td className="px-4 py-6">
-                  <button
-                    type="button"
-                    onClick={() => setDeleteId(g.id)}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onEdit(g)}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-primary-6"
+                      title="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteId(g.id)}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -517,6 +531,11 @@ function AddGuardrailDialog({
   onOpenChange,
   onSubmit,
   isPending,
+  // When set, the dialog flips into edit mode: header copy changes,
+  // submit button reads "Save", and form state is seeded from this
+  // rule on open. The parent decides whether to call createMutation
+  // or updateMutation based on whether `initial` is null.
+  initial,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -531,6 +550,7 @@ function AddGuardrailDialog({
     onFail: "fix" | "exception";
   }) => void;
   isPending: boolean;
+  initial?: GuardrailItem | null;
 }) {
   const [name, setName] = useState("");
   const [severity, setSeverity] = useState<"high" | "medium" | "low">("high");
@@ -549,7 +569,28 @@ function AddGuardrailDialog({
   const [showAllEntities, setShowAllEntities] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (initial) {
+      // Edit mode — seed every field from the existing rule.
+      setName(initial.name);
+      setSeverity(initial.severity);
+      setValidatorType(initial.validatorType ?? "no_pii");
+      setSelectedEntities(new Set(initial.entities ?? []));
+      setPattern(initial.pattern ?? "");
+      setTarget(
+        (initial.target === "input" ||
+        initial.target === "output" ||
+        initial.target === "both"
+          ? initial.target
+          : "both") as "input" | "output" | "both",
+      );
+      setOnFail(
+        (initial.onFail === "exception" ? "exception" : "fix") as
+          | "fix"
+          | "exception",
+      );
+    } else {
+      // Add mode — fresh defaults.
       setName("");
       setSeverity("high");
       setValidatorType("no_pii");
@@ -557,11 +598,11 @@ function AddGuardrailDialog({
       setPattern("");
       setTarget("both");
       setOnFail("fix");
-      setValidatorSearch("");
-      setEntityFilter("");
-      setShowAllEntities(false);
     }
-  }, [open]);
+    setValidatorSearch("");
+    setEntityFilter("");
+    setShowAllEntities(false);
+  }, [open, initial]);
 
   const toggleEntity = (e: string) => {
     setSelectedEntities((prev) => {
@@ -598,7 +639,7 @@ function AddGuardrailDialog({
             <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-[23px] font-bold text-text-1">
-                  Add guardrail
+                  {initial ? "Edit guardrail" : "Add guardrail"}
                 </h2>
                 <button
                   type="button"
@@ -931,7 +972,13 @@ function AddGuardrailDialog({
             }
             className="cursor-pointer bg-primary-6 hover:bg-primary-7"
           >
-            {isPending ? "Adding..." : "Add"}
+            {isPending
+              ? initial
+                ? "Saving..."
+                : "Adding..."
+              : initial
+                ? "Save"
+                : "Add"}
           </Button>
         </div>
       </DialogContent>
@@ -951,6 +998,9 @@ export default function GuardrailsPage() {
     router.replace(`/guardrails?tab=${encodeURIComponent(t)}`, { scroll: false });
   };
   const [addOpen, setAddOpen] = useState(false);
+  // When set, the dialog opens in edit mode pre-seeded with this rule.
+  // Cleared on close so the next "Add" click starts from defaults.
+  const [editingRule, setEditingRule] = useState<GuardrailItem | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -980,6 +1030,20 @@ export default function GuardrailsPage() {
       invalidateAll();
       setAddOpen(false);
       toast.success("Guardrail created.");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (args: {
+      id: string;
+      data: Parameters<typeof updateGuardrailItem>[1];
+    }) => updateGuardrailItem(args.id, args.data),
+    onSuccess: () => {
+      invalidateAll();
+      setEditingRule(null);
+      setAddOpen(false);
+      toast.success("Guardrail updated.");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1066,6 +1130,10 @@ export default function GuardrailsPage() {
           isLoading={listLoading}
           onToggle={(id) => toggleMutation.mutate(id)}
           onDelete={(id) => deleteMutation.mutate(id)}
+          onEdit={(rule) => {
+            setEditingRule(rule);
+            setAddOpen(true);
+          }}
         />
       )}
 
@@ -1079,12 +1147,29 @@ export default function GuardrailsPage() {
         />
       )}
 
-      {/* Add Guardrail Dialog */}
+      {/* Add / Edit Guardrail Dialog. Same component for both —
+          `initial` flips it into edit mode and the parent picks
+          between create + update mutations. Closing also clears
+          editingRule so the next "Add" starts blank. */}
       <AddGuardrailDialog
         open={addOpen}
-        onOpenChange={setAddOpen}
-        onSubmit={(data) => createMutation.mutate(data)}
-        isPending={createMutation.isPending}
+        onOpenChange={(v) => {
+          setAddOpen(v);
+          if (!v) setEditingRule(null);
+        }}
+        onSubmit={(data) => {
+          if (editingRule) {
+            updateMutation.mutate({ id: editingRule.id, data });
+          } else {
+            createMutation.mutate(data);
+          }
+        }}
+        isPending={
+          editingRule
+            ? updateMutation.isPending
+            : createMutation.isPending
+        }
+        initial={editingRule}
       />
     </div>
   );
