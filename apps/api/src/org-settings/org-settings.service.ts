@@ -1,7 +1,14 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { orgSettings } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+
+// Postgres advisory lock key for the singleton seed. Constant on
+// purpose — every fetchOrSeed call grabs the same key, so concurrent
+// first-time-GETs serialize through the lock and only the first
+// transaction inserts the row. Held xact_lock so it auto-releases on
+// commit / rollback.
+const ORG_SETTINGS_SEED_LOCK = 974_184_372;
 
 export interface OrgSettingsView {
   id: string;
@@ -60,6 +67,8 @@ export class OrgSettingsService {
   }
 
   private async fetchOrSeed() {
+    // Fast path: row already exists, common case after the first
+    // call ever. No transaction overhead.
     const [existing] = await this.db
       .select()
       .from(orgSettings)
@@ -67,8 +76,27 @@ export class OrgSettingsService {
       .limit(1);
     if (existing) return existing;
 
-    const [created] = await this.db.insert(orgSettings).values({}).returning();
-    return created;
+    // Race-safe seed: two concurrent first-time GETs would otherwise
+    // both see "no rows", both insert, and leave the table with
+    // duplicates that getCurrent would then read inconsistently.
+    // Wrap the seed in a transaction-scoped advisory lock so only
+    // the first call inserts; the second blocks on the lock, then
+    // re-reads the now-existing row. Schema is left lean (no
+    // singleton constraint) — the lock is the cheaper guard since
+    // contention only happens on first deploy.
+    return await this.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(${ORG_SETTINGS_SEED_LOCK})`,
+      );
+      const [recheck] = await tx
+        .select()
+        .from(orgSettings)
+        .orderBy(asc(orgSettings.createdAt))
+        .limit(1);
+      if (recheck) return recheck;
+      const [created] = await tx.insert(orgSettings).values({}).returning();
+      return created;
+    });
   }
 }
 
