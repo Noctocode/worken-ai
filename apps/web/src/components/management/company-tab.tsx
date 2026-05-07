@@ -588,10 +588,10 @@ export function CompanyTab() {
 
         {/* Budget row.
             - Company Monthly Budget: admin-set target (org_settings).
-              Editable in edit mode; 0 = "no target set". Sub-line
-              shows the seuvent of per-team + per-member caps so the
-              admin can sanity-check that allocation lines up with
-              intent.
+              Tri-state: null = "no target set", 0 = org-wide
+              suspend (kill switch), >0 = enforced. Sub-line shows
+              the sum of per-team + per-member caps so the admin can
+              sanity-check that allocation lines up with intent.
             - Spent / Remaining: comparison against the target. With
               no target the right-hand value falls back to "—" so the
               card doesn't pretend at math it can't do.
@@ -1063,7 +1063,7 @@ export function CompanyTab() {
                 <li>
                   All <strong>{teams.length}</strong> team
                   {teams.length === 1 ? "" : "s"} (including sub-teams,
-                  members, projects, and team-shared API keys)
+                  members, and team-shared API keys)
                 </li>
                 <li>
                   Company profile (name, industry, team size) on every
@@ -1079,7 +1079,11 @@ export function CompanyTab() {
                 <li>
                   All user accounts, roles, plans, and personal API keys
                 </li>
-                <li>Personal chats, conversations, and projects</li>
+                <li>
+                  All chats, conversations, and projects — team-scoped
+                  projects are unassigned from their (now deleted) team
+                  and become personal-scope
+                </li>
               </ul>
             </div>
             <div className="space-y-1.5">

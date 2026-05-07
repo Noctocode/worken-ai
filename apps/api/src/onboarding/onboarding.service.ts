@@ -624,45 +624,54 @@ export class OnboardingService {
       );
     }
 
-    // Snapshot counts before the destructive run so the success
-    // toast can show what was actually torn down. Cheaper than
-    // returning ids and sidesteps drizzle's loose typing on
-    // `.returning()`.
-    const [teamAgg] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(teams);
-    const [userAgg] = await this.db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(users);
+    // Atomic tear-down: wrapping the destructive sequence in one
+    // transaction keeps the workspace from landing in a half-deleted
+    // state if any step fails (e.g. teams partially deleted but
+    // users.profileType still set, or parentTeamId cleared but the
+    // teams themselves still around because the DELETE timed out).
+    return await this.db.transaction(async (tx) => {
+      // Snapshot counts before the destructive run so the success
+      // toast can show what was actually torn down. Cheaper than
+      // returning ids and sidesteps drizzle's loose typing on
+      // `.returning()`.
+      const [teamAgg] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(teams);
+      const [userAgg] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users);
 
-    // Break parent→child team edges before the bulk delete. PG can
-    // trip on a single DELETE that touches both ends of the
-    // self-reference even though parent_team_id is `set null`; pre-
-    // clearing keeps the cascade well-defined.
-    await this.db.update(teams).set({ parentTeamId: null });
+      // Break parent→child team edges before the bulk delete. PG can
+      // trip on a single DELETE that touches both ends of the
+      // self-reference even though parent_team_id is `set null`; pre-
+      // clearing keeps the cascade well-defined.
+      await tx.update(teams).set({ parentTeamId: null });
 
-    // Bulk delete every team. Cascades wipe team_members and team-
-    // scoped integrations; projects.team_id is `set null`, so chat
-    // history under those projects survives but lands in personal
-    // scope.
-    await this.db.delete(teams);
+      // Bulk delete every team. Cascades wipe team_members and team-
+      // scoped integrations; projects.team_id is `set null`, so chat
+      // history under those projects survives but lands in personal
+      // scope.
+      await tx.delete(teams);
 
-    // Reset company-shaped fields org-wide. profileType=null +
-    // onboardingCompletedAt=null means every user (admin and
-    // participant) hits /setup-profile on next render — fresh start.
-    await this.db.update(users).set({
-      profileType: null,
-      companyName: null,
-      industry: null,
-      teamSize: null,
-      infraChoice: null,
-      onboardingCompletedAt: null,
+      // Reset company-shaped fields org-wide. profileType=null +
+      // onboardingCompletedAt=null means every user (admin and
+      // participant) hits /setup-profile on next render — fresh start.
+      // Bumping updatedAt so audit consumers see the change.
+      await tx.update(users).set({
+        profileType: null,
+        companyName: null,
+        industry: null,
+        teamSize: null,
+        infraChoice: null,
+        onboardingCompletedAt: null,
+        updatedAt: new Date(),
+      });
+
+      return {
+        deletedTeamCount: teamAgg?.count ?? 0,
+        affectedUserCount: userAgg?.count ?? 0,
+      };
     });
-
-    return {
-      deletedTeamCount: teamAgg?.count ?? 0,
-      affectedUserCount: userAgg?.count ?? 0,
-    };
   }
 
   private validate(p: OnboardingPayload) {
