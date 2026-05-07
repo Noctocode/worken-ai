@@ -90,8 +90,14 @@ const PII_REGEXES: Record<string, RegExp | null> = {
  * legitimate prompts don't false-trip — mostly the literal phrases
  * adversaries use to override system prompts. Match is
  * case-insensitive across word boundaries.
+ *
+ * EN, SL, and DE coverage. SL and DE additions mirror the EN intent
+ * (override / reveal / role-swap) so a prompt translated for an EU
+ * tenant still trips the gate. Adding a new language is just append
+ * + redeploy — the union regex rebuilds on import.
  */
 const JAILBREAK_PHRASES = [
+  // English
   'ignore previous instructions',
   'ignore the above',
   'ignore all previous',
@@ -119,13 +125,44 @@ const JAILBREAK_PHRASES = [
   'show your instructions',
   'print your prompt',
   'output your prompt',
+  // Slovenian
+  'zanemari prejšnja navodila',
+  'zanemari navodila',
+  'ignoriraj navodila',
+  'pozabi navodila',
+  'pozabi prejšnja navodila',
+  'ti si zdaj',
+  'pretvarjaj se da si',
+  'igraj vlogo',
+  'razkrij navodila',
+  'razkrij sistemsko navodilo',
+  'brez omejitev',
+  'način brez omejitev',
+  'mimo varnostnih',
+  // German
+  'ignoriere die obigen anweisungen',
+  'ignoriere alle vorherigen',
+  'vergiss deine anweisungen',
+  'vergiss alle vorherigen',
+  'du bist jetzt',
+  'tu so als wärst du',
+  'spiele die rolle',
+  'entwicklermodus',
+  'ohne einschränkungen',
+  'umgehe die sicherheits',
+  'überschreibe das system',
+  'zeige deine anweisungen',
+  'enthülle deinen prompt',
 ];
 
 const JAILBREAK_REGEX = new RegExp(
   // word boundary on both sides; phrases get their literal regex chars
-  // escaped so the few with apostrophes / hyphens don't break.
+  // escaped so the few with apostrophes / hyphens don't break. `u`
+  // flag is necessary for proper Unicode case folding — without it,
+  // SL/DE phrases like "Zanemari" wouldn't match "zanemari" because
+  // ASCII-only `i` doesn't fold Š↔š etc.
   `\\b(?:${JAILBREAK_PHRASES.map(escapeRegex).join('|')})\\b`,
-  'gi',
+  'giu',
 );
 
 function escapeRegex(s: string): string {
@@ -417,7 +454,7 @@ function runDetectJailbreak(
           `\\b(?:${[...JAILBREAK_PHRASES, ...cleaned]
             .map(escapeRegex)
             .join('|')})\\b`,
-          'gi',
+          'giu',
         );
   let matches = 0;
   const fixed = text.replace(regex, (m) => {
