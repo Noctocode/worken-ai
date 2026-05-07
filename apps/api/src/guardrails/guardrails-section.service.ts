@@ -141,11 +141,7 @@ export class GuardrailsSectionService {
    * only what changed. Owner check matches `toggle` / `remove` so a
    * teammate can't edit a rule that doesn't belong to them.
    */
-  async update(
-    id: string,
-    dto: Partial<CreateGuardrailDto>,
-    userId: string,
-  ) {
+  async update(id: string, dto: Partial<CreateGuardrailDto>, userId: string) {
     const [existing] = await this.db
       .select()
       .from(guardrails)

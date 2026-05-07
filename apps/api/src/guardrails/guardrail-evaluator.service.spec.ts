@@ -99,6 +99,93 @@ describe('GuardrailEvaluatorService', () => {
     expect(decision.text).not.toContain('jane@example.com');
   });
 
+  it('no_pii heuristic Person matches title-prefixed names', async () => {
+    const decision = await svc([
+      {
+        id: 'rule-person',
+        name: 'Person Filter',
+        validatorType: 'no_pii',
+        entities: ['Person'],
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]).evaluate({
+      text: 'please contact Dr. Marie Curie or Mr. John Smith',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations[0].matches).toBe(2);
+    expect(decision.text).toContain('[REDACTED:Person]');
+    expect(decision.text).not.toContain('Marie Curie');
+  });
+
+  it('no_pii heuristic Person ignores bare capitalized phrases', async () => {
+    // We deliberately don't match "John Smith" without a title —
+    // too many false positives ("New York", "United States",
+    // anything in TitleCase). Pinned with a test so a future
+    // tweak doesn't regress to greedy.
+    const decision = await svc([
+      {
+        id: 'rule-person-strict',
+        name: 'Person Filter',
+        validatorType: 'no_pii',
+        entities: ['Person'],
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]).evaluate({
+      text: 'John Smith works at New York office',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations).toHaveLength(0);
+  });
+
+  it('no_pii heuristic Location matches curated country / city list', async () => {
+    const decision = await svc([
+      {
+        id: 'rule-loc',
+        name: 'Location Filter',
+        validatorType: 'no_pii',
+        entities: ['Location'],
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]).evaluate({
+      text: 'meeting in Berlin and Ljubljana next week',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations[0].matches).toBe(2);
+    expect(decision.text).toContain('[REDACTED:Location]');
+  });
+
+  it('no_pii heuristic NRP matches nationality / religion / party', async () => {
+    const decision = await svc([
+      {
+        id: 'rule-nrp',
+        name: 'NRP Filter',
+        validatorType: 'no_pii',
+        entities: ['NRP'],
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]).evaluate({
+      text: 'a Slovenian Catholic Republican was interviewed',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations[0].matches).toBe(3);
+  });
+
   it('blocks when no_pii rule has onFail=exception and matches', async () => {
     const decision = await svc([
       {

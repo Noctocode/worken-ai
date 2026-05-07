@@ -78,12 +78,214 @@ const PII_REGEXES: Record<string, RegExp | null> = {
   // long alphanumeric strings can false-trip; OK for a guardrail.
   Crypto:
     /\b(?:bc1[a-z0-9]{39,59}|[13][a-km-zA-HJ-NP-Z1-9]{25,34}|0x[a-fA-F0-9]{40})\b/g,
-  // NER-required entities: skipped for v1. The rule still loads but
-  // the validator is a no-op for these names.
-  Person: null,
-  Location: null,
-  NRP: null,
+  // ── Heuristic NER ────────────────────────────────────────────
+  // True NER (Microsoft Presidio, spaCy, an LLM call) catches more,
+  // but adds a service dependency and per-call latency we don't
+  // want on the chat hot path. The heuristics below catch the
+  // obvious cases without false-positiving on every Capitalized
+  // word — admins who need production-grade detection should run
+  // Presidio behind a proxy or stand up an LLM-based pre-filter.
+  //
+  // Person: titles (Mr./Mrs./Ms./Dr./Prof./Sir/Madam) followed by
+  // 1-3 capitalised name parts. Apostrophes / hyphens allowed in
+  // names (O'Brien, Marie-Claire). Bare "John Smith" without a
+  // title is intentionally NOT matched — that pattern false-trips
+  // on countless capitalised pairs ("United States", "New York").
+  Person:
+    /\b(?:Mr|Mrs|Ms|Dr|Prof|Sir|Madam|Mr\.|Mrs\.|Ms\.|Dr\.|Prof\.)\s+[A-ZČŠŽŁ][\wčšžćđüöäßéèáàíìóòúùÀ-ſ'-]{1,}(?:\s+[A-ZČŠŽŁ][\wčšžćđüöäßéèáàíìóòúùÀ-ſ'-]{1,}){0,2}\b/gu,
+  // Location: curated list of countries + major cities. Misses
+  // "Salzburg" (not in the list) but doesn't false-trip on
+  // "Hello World". Gives an admin a starting point that they can
+  // extend via the regex_match validator for org-specific places.
+  Location: buildKeywordRegex(LOCATIONS_LIST()),
+  // NRP (Nationality / Religious / Political): same shape — a
+  // curated list of the most common NRP terms. EU-leaning; admins
+  // in other regions can add via regex_match.
+  NRP: buildKeywordRegex(NRP_LIST()),
 };
+
+function LOCATIONS_LIST(): string[] {
+  return [
+    // Countries (EU + major)
+    'United States',
+    'United Kingdom',
+    'Germany',
+    'France',
+    'Italy',
+    'Spain',
+    'Portugal',
+    'Netherlands',
+    'Belgium',
+    'Luxembourg',
+    'Austria',
+    'Switzerland',
+    'Slovenia',
+    'Croatia',
+    'Serbia',
+    'Bosnia and Herzegovina',
+    'Montenegro',
+    'Hungary',
+    'Czech Republic',
+    'Slovakia',
+    'Poland',
+    'Romania',
+    'Bulgaria',
+    'Greece',
+    'Ireland',
+    'Denmark',
+    'Sweden',
+    'Norway',
+    'Finland',
+    'Iceland',
+    'Estonia',
+    'Latvia',
+    'Lithuania',
+    'Russia',
+    'Ukraine',
+    'Turkey',
+    'Canada',
+    'Mexico',
+    'Brazil',
+    'Argentina',
+    'China',
+    'Japan',
+    'India',
+    'Australia',
+    'New Zealand',
+    'South Africa',
+    // Major cities (capitals + global hubs)
+    'New York',
+    'London',
+    'Paris',
+    'Berlin',
+    'Munich',
+    'Hamburg',
+    'Frankfurt',
+    'Vienna',
+    'Zurich',
+    'Geneva',
+    'Rome',
+    'Milan',
+    'Madrid',
+    'Barcelona',
+    'Lisbon',
+    'Amsterdam',
+    'Brussels',
+    'Copenhagen',
+    'Stockholm',
+    'Oslo',
+    'Helsinki',
+    'Dublin',
+    'Athens',
+    'Istanbul',
+    'Moscow',
+    'Warsaw',
+    'Prague',
+    'Budapest',
+    'Bucharest',
+    'Sofia',
+    'Belgrade',
+    'Zagreb',
+    'Ljubljana',
+    'Sarajevo',
+    'Skopje',
+    'Tokyo',
+    'Beijing',
+    'Shanghai',
+    'Hong Kong',
+    'Mumbai',
+    'Delhi',
+    'Sydney',
+    'Melbourne',
+    'Toronto',
+    'San Francisco',
+    'Los Angeles',
+    'Chicago',
+    'Boston',
+    'Washington',
+    'Seattle',
+  ];
+}
+
+function NRP_LIST(): string[] {
+  return [
+    // Nationalities (English names — covers most reporting / chat use)
+    'American',
+    'British',
+    'English',
+    'Scottish',
+    'Irish',
+    'Welsh',
+    'German',
+    'French',
+    'Italian',
+    'Spanish',
+    'Portuguese',
+    'Dutch',
+    'Belgian',
+    'Austrian',
+    'Swiss',
+    'Slovenian',
+    'Croatian',
+    'Serbian',
+    'Bosnian',
+    'Hungarian',
+    'Czech',
+    'Slovak',
+    'Polish',
+    'Romanian',
+    'Bulgarian',
+    'Greek',
+    'Russian',
+    'Ukrainian',
+    'Turkish',
+    'Canadian',
+    'Mexican',
+    'Brazilian',
+    'Argentinian',
+    'Chinese',
+    'Japanese',
+    'Korean',
+    'Indian',
+    'Pakistani',
+    'Australian',
+    'African',
+    'Asian',
+    'European',
+    // Religions (broad strokes — admins extend via regex_match for
+    // denominations / sects)
+    'Christian',
+    'Catholic',
+    'Protestant',
+    'Orthodox',
+    'Muslim',
+    'Jewish',
+    'Buddhist',
+    'Hindu',
+    'Sikh',
+    'Atheist',
+    'Agnostic',
+    // Political affiliations (English — broad)
+    'Republican',
+    'Democrat',
+    'Liberal',
+    'Conservative',
+    'Socialist',
+    'Communist',
+    'Libertarian',
+    'Green Party',
+  ];
+}
+
+/**
+ * Build a single union regex from a phrase list. `\b` boundaries
+ * keep substring matches out (so "Indian" doesn't match "Indiana"),
+ * `u` flag covers Unicode case folding and lets `\w` include
+ * non-ASCII letters consistently.
+ */
+function buildKeywordRegex(phrases: string[]): RegExp {
+  return new RegExp(`\\b(?:${phrases.map(escapeRegex).join('|')})\\b`, 'giu');
+}
 
 /**
  * Common jailbreak / prompt-injection phrases. Conservative list so
