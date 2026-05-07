@@ -1673,7 +1673,7 @@ export class TeamsService {
     ).getDate();
 
     for (const row of rows) {
-      if (!row.teamId) continue; // teamId is nullable on the table — skip orgless events
+      if (!row.teamId) continue; // teamId is nullable on the table — skip teamless events
       const spentUsd = parseFloat(row.total);
       const spentCents = Math.round(spentUsd * 100);
       const projectedCents =
