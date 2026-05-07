@@ -171,29 +171,103 @@ describe('GuardrailEvaluatorService', () => {
     expect(decision.text).toBe('jane@example.com is my address');
   });
 
-  it('regex_match is a no-op stub (today)', async () => {
-    // The schema has no `pattern` column yet, so the regex_match
-    // validator returns no matches. Test pins the behaviour so a
-    // future patch column doesn't silently break with a no-op
-    // regression.
+  it('regex_match redacts pattern hits with fix action', async () => {
     const decision = await svc([
       {
         id: 'rule-regex',
-        name: 'Custom Regex',
+        name: 'Internal Codes',
         validatorType: 'regex_match',
-        entities: ['some-pattern'],
+        entities: [],
+        pattern: 'PROJECT-\\d{4}',
+        target: 'both',
+        onFail: 'fix',
+        severity: 'medium',
+      },
+    ]).evaluate({
+      text: 'reference PROJECT-1234 and PROJECT-5678 in the report',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations).toHaveLength(1);
+    expect(decision.violations[0].matches).toBe(2);
+    expect(decision.text).toContain('[REDACTED:regex_match]');
+    expect(decision.text).not.toContain('PROJECT-1234');
+  });
+
+  it('regex_match blocks with exception action', async () => {
+    const decision = await svc([
+      {
+        id: 'rule-regex-block',
+        name: 'Hard Block',
+        validatorType: 'regex_match',
+        entities: [],
+        pattern: 'forbidden-word',
+        target: 'output',
+        onFail: 'exception',
+        severity: 'high',
+      },
+    ]).evaluate({
+      text: 'this contains forbidden-word in the response',
+      target: 'output',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.blocked).not.toBeNull();
+    expect(decision.blocked?.validator).toBe('regex_match');
+  });
+
+  it('regex_match with empty pattern is a no-op', async () => {
+    // Defensive: empty string compiles to /(?:)/ which matches every
+    // boundary, so the validator MUST short-circuit instead of
+    // redacting every character of every chat. Pinned with a test.
+    const decision = await svc([
+      {
+        id: 'rule-regex-empty',
+        name: 'Half-set Rule',
+        validatorType: 'regex_match',
+        entities: [],
+        pattern: '',
         target: 'both',
         onFail: 'fix',
         severity: 'low',
       },
     ]).evaluate({
-      text: 'anything goes',
+      text: 'unchanged text',
       target: 'input',
       userId: USER_ID,
       teamId: null,
     });
     expect(decision.violations).toHaveLength(0);
-    expect(decision.text).toBe('anything goes');
+    expect(decision.text).toBe('unchanged text');
+  });
+
+  it('regex_match with invalid regex is logged + skipped (does not crash chat)', async () => {
+    // A typo'd `(?<bad)` shouldn't take down everyone's chat — the
+    // evaluator catches the SyntaxError, warn-logs, and treats the
+    // rule as a no-op for that call.
+    const decision = await svc([
+      {
+        id: 'rule-regex-broken',
+        name: 'Broken Regex',
+        validatorType: 'regex_match',
+        entities: [],
+        pattern: '(?<bad',
+        target: 'both',
+        onFail: 'exception',
+        severity: 'high',
+      },
+    ]).evaluate({
+      text: 'this should pass even though the rule is broken',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations).toHaveLength(0);
+    expect(decision.blocked).toBeNull();
+    expect(decision.text).toBe(
+      'this should pass even though the rule is broken',
+    );
   });
 
   it('fix-rules compose: text from rule N is fed into rule N+1', async () => {

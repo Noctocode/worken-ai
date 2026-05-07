@@ -17,6 +17,10 @@ interface CreateGuardrailDto {
   severity: string;
   validatorType?: string;
   entities?: string[];
+  /** Required when validatorType === 'regex_match'. Free-form regex
+   *  string. Validated lazily by the evaluator (broken regexes are
+   *  logged + skipped at chat time). */
+  pattern?: string;
   target?: string;
   onFail?: string;
 }
@@ -41,6 +45,7 @@ export class GuardrailsSectionService {
         isActive: guardrails.isActive,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
+        pattern: guardrails.pattern,
         target: guardrails.target,
         onFail: guardrails.onFail,
         templateSource: guardrails.templateSource,
@@ -86,6 +91,31 @@ export class GuardrailsSectionService {
       throw new BadRequestException('Invalid severity');
     }
 
+    // regex_match needs a pattern — block at create time so an
+    // admin doesn't ship a silently-no-op rule. Other validators
+    // ignore the pattern field if it's accidentally set.
+    let pattern: string | null = null;
+    if (dto.pattern !== undefined && dto.pattern !== null) {
+      const trimmed = String(dto.pattern).trim();
+      pattern = trimmed.length > 0 ? trimmed : null;
+    }
+    if (dto.validatorType === 'regex_match') {
+      if (!pattern) {
+        throw new BadRequestException(
+          'regex_match guardrail requires a non-empty `pattern`.',
+        );
+      }
+      try {
+        // Compile-once to validate; we don't keep the RegExp because
+        // the evaluator re-compiles per-call (cheap on small N) and
+        // a serialised RegExp object isn't a thing on the wire.
+        new RegExp(pattern, 'gi');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new BadRequestException(`Invalid regex pattern: ${msg}`);
+      }
+    }
+
     const [row] = await this.db
       .insert(guardrails)
       .values({
@@ -95,6 +125,7 @@ export class GuardrailsSectionService {
         severity: dto.severity,
         validatorType: dto.validatorType ?? null,
         entities: dto.entities ?? null,
+        pattern,
         target: dto.target || 'both',
         onFail: dto.onFail || 'fix',
       })

@@ -39,6 +39,7 @@ export class GuardrailsSectionController {
       severity: string;
       validatorType?: string;
       entities?: string[];
+      pattern?: string;
       target?: string;
       onFail?: string;
     },

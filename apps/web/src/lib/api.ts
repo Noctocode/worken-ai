@@ -1573,6 +1573,9 @@ export interface GuardrailItem {
   isActive: boolean;
   validatorType: string | null;
   entities: string[] | null;
+  /** Free-form regex string for validatorType === 'regex_match'. Null
+   *  for other validators. */
+  pattern: string | null;
   target: string | null;
   onFail: string | null;
   templateSource: string | null;
@@ -1622,6 +1625,8 @@ export async function createGuardrailItem(data: {
   severity: "high" | "medium" | "low";
   validatorType?: string;
   entities?: string[];
+  /** Required when validatorType === 'regex_match'. */
+  pattern?: string;
   target?: "input" | "output" | "both";
   onFail?: "fix" | "exception";
 }): Promise<GuardrailItem> {

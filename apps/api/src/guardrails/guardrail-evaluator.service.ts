@@ -47,6 +47,7 @@ interface LoadedRule {
   name: string;
   validatorType: string | null;
   entities: unknown;
+  pattern: string | null;
   target: string;
   onFail: string;
   severity: string;
@@ -188,14 +189,25 @@ export class GuardrailEvaluatorService {
           break;
         }
         case 'regex_match': {
-          // No `pattern` column on the schema today — `entities` is
-          // the closest free-form field but it's typed for entity
-          // names, not regexes. Treat this validator as a no-op for
-          // now; rule still loads so the FE can show its config and
-          // a future schema bump (pattern column) lights it up.
-          this.logger.debug(
-            `regex_match rule ${rule.id} skipped (validator stub — needs a pattern column).`,
+          // Compile the admin-supplied pattern at evaluate time. We
+          // don't cache compiled regexes between calls because:
+          //   - rules can be edited / disabled mid-flight; cache
+          //     invalidation isn't worth the complexity
+          //   - typical N (1–10 active rules) makes per-call compile
+          //     a few microseconds, well under the chat round-trip
+          // Broken patterns are logged + skipped instead of throwing
+          // so a single typo'd rule doesn't take down everyone's
+          // chat. The create path validates patterns up front, but
+          // legacy rows or future bypass paths (manual SQL) might
+          // still slip through.
+          const result = runRegexMatch(
+            workingText,
+            rule.pattern,
+            this.logger,
+            rule.id,
           );
+          hits = result.matches;
+          fixedText = result.fixed;
           break;
         }
         default:
@@ -273,6 +285,7 @@ export class GuardrailEvaluatorService {
         name: guardrails.name,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
+        pattern: guardrails.pattern,
         target: guardrails.target,
         onFail: guardrails.onFail,
         severity: guardrails.severity,
@@ -325,6 +338,41 @@ function runDetectJailbreak(text: string): {
   const fixed = text.replace(JAILBREAK_REGEX, (m) => {
     matches += 1;
     return `[BLOCKED]${' '.repeat(Math.max(0, m.length - 9))}`;
+  });
+  return { matches, fixed };
+}
+
+function runRegexMatch(
+  text: string,
+  pattern: string | null,
+  logger: Logger,
+  ruleId: string,
+): { matches: number; fixed: string } {
+  if (!pattern || pattern.trim().length === 0) {
+    // Empty pattern would compile to /(?:)/ which matches everywhere.
+    // Treat it as a no-op so a half-configured rule doesn't redact
+    // every character of every chat message.
+    return { matches: 0, fixed: text };
+  }
+  let regex: RegExp;
+  try {
+    // 'gi' is the safe default — global so we catch every hit, case-
+    // insensitive so admins don't have to think about uppercase
+    // variants. Admins who need case-sensitive can prefix their
+    // pattern with `(?-i)` (Postgres flavour) — JS engine ignores
+    // that flag silently which keeps the validator forgiving.
+    regex = new RegExp(pattern, 'gi');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      `regex_match rule ${ruleId} has invalid pattern; skipping. (${msg})`,
+    );
+    return { matches: 0, fixed: text };
+  }
+  let matches = 0;
+  const fixed = text.replace(regex, () => {
+    matches += 1;
+    return '[REDACTED:regex_match]';
   });
   return { matches, fixed };
 }

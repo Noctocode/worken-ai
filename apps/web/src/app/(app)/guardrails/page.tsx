@@ -526,6 +526,7 @@ function AddGuardrailDialog({
     severity: "high" | "medium" | "low";
     validatorType: string;
     entities: string[];
+    pattern?: string;
     target: "input" | "output" | "both";
     onFail: "fix" | "exception";
   }) => void;
@@ -537,6 +538,10 @@ function AddGuardrailDialog({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(PII_ENTITIES),
   );
+  // Free-form regex pattern, only meaningful when
+  // validatorType === 'regex_match'. BE rejects empty / invalid
+  // patterns at create time so a half-set rule never persists.
+  const [pattern, setPattern] = useState("");
   const [target, setTarget] = useState<"input" | "output" | "both">("both");
   const [onFail, setOnFail] = useState<"fix" | "exception">("fix");
   const [validatorSearch, setValidatorSearch] = useState("");
@@ -549,6 +554,7 @@ function AddGuardrailDialog({
       setSeverity("high");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
+      setPattern("");
       setTarget("both");
       setOnFail("fix");
       setValidatorSearch("");
@@ -666,6 +672,25 @@ function AddGuardrailDialog({
                       {validator.description}
                     </p>
                   </div>
+
+                  {validatorType === "regex_match" && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[14px] font-semibold text-text-2">
+                        Regex pattern
+                      </label>
+                      <Input
+                        value={pattern}
+                        onChange={(e) => setPattern(e.target.value)}
+                        placeholder="e.g. (?i)\b(secret|confidential)\b"
+                        className="h-10 font-mono text-[13px]"
+                      />
+                      <p className="text-[12px] text-text-3">
+                        JavaScript regex flavour. Matches are case-insensitive
+                        and global by default. Invalid patterns are rejected on
+                        save.
+                      </p>
+                    </div>
+                  )}
 
                   {validatorType === "no_pii" && (
                     <>
@@ -890,12 +915,20 @@ function AddGuardrailDialog({
                       : "Custom",
                 severity,
                 validatorType,
-                entities: validatorType === "no_pii" ? Array.from(selectedEntities) : [],
+                entities:
+                  validatorType === "no_pii" ? Array.from(selectedEntities) : [],
+                ...(validatorType === "regex_match"
+                  ? { pattern: pattern.trim() }
+                  : {}),
                 target,
                 onFail,
               })
             }
-            disabled={!name.trim() || isPending}
+            disabled={
+              !name.trim() ||
+              isPending ||
+              (validatorType === "regex_match" && !pattern.trim())
+            }
             className="cursor-pointer bg-primary-6 hover:bg-primary-7"
           >
             {isPending ? "Adding..." : "Add"}
