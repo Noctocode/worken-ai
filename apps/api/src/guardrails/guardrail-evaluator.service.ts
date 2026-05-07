@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { guardrails } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -371,6 +371,58 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/**
+ * Token chunk size at which a streaming output gate would re-evaluate.
+ * Not used today — chat is non-streaming — but exported as a hint for
+ * the future streaming integration so the constant lives near the
+ * evaluator that owns the policy rather than scattered in chat code.
+ *
+ * Streaming integration plan when it lands:
+ *   1. Caller opens an OpenAI SDK stream
+ *   2. Buffer tokens into a `pending` string
+ *   3. Every STREAM_REEVAL_CHUNK_BYTES received bytes (or on
+ *      newline / sentence boundary, whichever comes first), call
+ *      `evaluate({ text: pending, target: 'output', userId, teamId })`
+ *   4. If `blocked` → close the stream + 422. If violations
+ *      contain only fix-rules → emit the difference between the
+ *      previous fixed text and the new fixed text, then continue.
+ *   5. After the upstream stream closes, run one final evaluate on
+ *      the complete text to catch a violating phrase that straddles
+ *      chunk boundaries.
+ *
+ * The current `evaluate` signature already shape-fits this — it's
+ * pure with respect to the input text, so nothing about the API
+ * needs to change.
+ */
+export const STREAM_REEVAL_CHUNK_BYTES = 256;
+
+/**
+ * Optional external NER endpoint. When the env var is set, the
+ * evaluator calls this URL for Person / Location / NRP entity
+ * detection instead of (or alongside) the heuristic regex
+ * fallbacks below. Recommended backends:
+ *
+ *   - Microsoft Presidio behind a proxy (https://microsoft.github.io/presidio/)
+ *     — production-grade, free, runs locally.
+ *   - Internal LLM-based extractor (a cheap model with a strict
+ *     "extract entities, return JSON" system prompt). Easy to spin
+ *     up but adds per-call cost + latency.
+ *
+ * Endpoint contract: POST { text } → { entities: [{ entity, type
+ * (Person|Location|NRP), start, end }] }. Implementations that
+ * don't conform return any other shape and the evaluator falls
+ * back to heuristics with a warn-log.
+ */
+const EXTERNAL_NER_URL = process.env.GUARDRAIL_NER_URL ?? null;
+const EXTERNAL_NER_TIMEOUT_MS = 1500;
+
+interface ExternalNerEntity {
+  entity: string;
+  type: 'Person' | 'Location' | 'NRP';
+  start: number;
+  end: number;
+}
+
 @Injectable()
 export class GuardrailEvaluatorService {
   private readonly logger = new Logger(GuardrailEvaluatorService.name);
@@ -406,6 +458,25 @@ export class GuardrailEvaluatorService {
     const targetMatches = (rule: LoadedRule) =>
       rule.target === input.target || rule.target === 'both';
 
+    // External NER once per evaluate, only when (a) the env hook is
+    // configured and (b) at least one applicable rule actually asks
+    // for Person/Location/NRP. Cached across rules so a request that
+    // applies two PII rules doesn't pay the network cost twice.
+    let externalNer: ExternalNerEntity[] | null = null;
+    const needsNer =
+      EXTERNAL_NER_URL !== null &&
+      rules.some(
+        (r) =>
+          targetMatches(r) &&
+          r.validatorType === 'no_pii' &&
+          parseEntities(r.entities).some(
+            (e) => e === 'Person' || e === 'Location' || e === 'NRP',
+          ),
+      );
+    if (needsNer) {
+      externalNer = await this.extractExternalNer(input.text);
+    }
+
     let workingText = input.text;
     const violations: GuardrailViolation[] = [];
     let blocked: GuardrailViolation | null = null;
@@ -420,7 +491,7 @@ export class GuardrailEvaluatorService {
 
       switch (rule.validatorType) {
         case 'no_pii': {
-          const result = runNoPii(workingText, rule.entities);
+          const result = runNoPii(workingText, rule.entities, externalNer);
           hits = result.matches;
           fixedText = result.fixed;
           break;
@@ -599,7 +670,87 @@ export class GuardrailEvaluatorService {
         severity: guardrails.severity,
       })
       .from(guardrails)
-      .where(whereClause);
+      .where(whereClause)
+      // Severity-first ordering matters because the evaluator
+      // short-circuits on the first exception-action violation: a
+      // high-severity exception rule should win over a lower-
+      // severity one when both match the same prompt. CASE expr
+      // sorts the string column 'high'/'medium'/'low' as 0/1/2 so
+      // ASC == high-first; createdAt as a tiebreaker keeps ordering
+      // deterministic for two same-severity rules.
+      .orderBy(
+        asc(
+          sql`CASE ${guardrails.severity}
+                WHEN 'high' THEN 0
+                WHEN 'medium' THEN 1
+                ELSE 2
+              END`,
+        ),
+        desc(guardrails.createdAt),
+      );
+  }
+
+  /**
+   * Call the configured external NER endpoint with a hard timeout.
+   * Returns null on any failure (network, non-2xx, malformed body)
+   * so the caller silently falls back to heuristics — production
+   * NER is a quality boost, not load-bearing for the chat path.
+   *
+   * Endpoint contract documented next to EXTERNAL_NER_URL above.
+   */
+  private async extractExternalNer(
+    text: string,
+  ): Promise<ExternalNerEntity[] | null> {
+    if (!EXTERNAL_NER_URL) return null;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), EXTERNAL_NER_TIMEOUT_MS);
+    try {
+      const res = await fetch(EXTERNAL_NER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        this.logger.warn(
+          `External NER returned ${res.status}; falling back to heuristics.`,
+        );
+        return null;
+      }
+      const body: unknown = await res.json();
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        !Array.isArray((body as { entities?: unknown[] }).entities)
+      ) {
+        this.logger.warn(
+          'External NER response missing `entities` array; falling back to heuristics.',
+        );
+        return null;
+      }
+      const raw = (body as { entities: unknown[] }).entities;
+      // Defensive shape check — drop malformed entries instead of
+      // failing the whole call.
+      return raw.filter((e): e is ExternalNerEntity => {
+        if (!e || typeof e !== 'object') return false;
+        const r = e as Record<string, unknown>;
+        return (
+          typeof r.entity === 'string' &&
+          (r.type === 'Person' || r.type === 'Location' || r.type === 'NRP') &&
+          typeof r.start === 'number' &&
+          typeof r.end === 'number' &&
+          r.end > r.start
+        );
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `External NER call failed (${msg}); falling back to heuristics.`,
+      );
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private async bumpTriggers(ruleIds: string[]): Promise<void> {
@@ -623,13 +774,36 @@ export class GuardrailEvaluatorService {
 function runNoPii(
   text: string,
   entitiesRaw: unknown,
+  externalNer: ExternalNerEntity[] | null = null,
 ): { matches: number; fixed: string } {
   const entities = parseEntities(entitiesRaw);
+  const requested = new Set(entities);
   let matches = 0;
   let fixed = text;
+
+  // Phase 1: external NER (when configured + returned). Replace by
+  // offset, processing back-to-front so earlier indices stay valid
+  // through the sequence of slice / concat operations.
+  const nerEntityNames = new Set(['Person', 'Location', 'NRP']);
+  if (externalNer && externalNer.length > 0) {
+    const applicable = externalNer
+      .filter((e) => requested.has(e.type))
+      .sort((a, b) => b.start - a.start);
+    for (const e of applicable) {
+      fixed =
+        fixed.slice(0, e.start) + `[REDACTED:${e.type}]` + fixed.slice(e.end);
+      matches += 1;
+    }
+  }
+
+  // Phase 2: heuristic regex for the rest of the entities. Skip
+  // Person/Location/NRP if external NER already handled them so we
+  // don't double-mask the same span.
+  const externalCovered = externalNer !== null;
   for (const entity of entities) {
+    if (externalCovered && nerEntityNames.has(entity)) continue;
     const regex = PII_REGEXES[entity];
-    if (!regex) continue; // unknown / NER entity — skip
+    if (!regex) continue; // unknown entity — skip
     fixed = fixed.replace(regex, () => {
       matches += 1;
       return `[REDACTED:${entity}]`;
@@ -666,6 +840,14 @@ function runDetectJailbreak(
   return { matches, fixed };
 }
 
+// Hard ceiling on text size for the regex_match validator. Even a
+// pattern that slipped through `assertSafeRegex` at create time
+// can't lock the chat thread for more than a few milliseconds on a
+// payload this size. Set well above realistic chat-message sizes
+// (a 100KB prompt is enormous) but still tight enough that the
+// pathological worst case is bounded.
+const REGEX_MATCH_MAX_INPUT = 100_000;
+
 function runRegexMatch(
   text: string,
   pattern: string | null,
@@ -676,6 +858,17 @@ function runRegexMatch(
     // Empty pattern would compile to /(?:)/ which matches everywhere.
     // Treat it as a no-op so a half-configured rule doesn't redact
     // every character of every chat message.
+    return { matches: 0, fixed: text };
+  }
+  if (text.length > REGEX_MATCH_MAX_INPUT) {
+    // ReDoS defence-in-depth. assertSafeRegex catches bombs at
+    // create time; this caps the blast radius if anything slips
+    // through (legacy rules, future bypass paths, etc.). Skipping
+    // is safer than running pathological regex on huge payloads —
+    // legit prompts virtually never exceed this size.
+    logger.warn(
+      `regex_match rule ${ruleId} skipped: input length ${text.length} > ${REGEX_MATCH_MAX_INPUT}.`,
+    );
     return { matches: 0, fixed: text };
   }
   let regex: RegExp;

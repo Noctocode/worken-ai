@@ -429,6 +429,34 @@ describe('GuardrailEvaluatorService', () => {
     expect(decision.text).toBe('unchanged text');
   });
 
+  it('regex_match skips when input exceeds the size cap', async () => {
+    // Defence-in-depth against ReDoS — even if a bomb pattern slips
+    // through assertSafeRegex (legacy rules, manual SQL bypass), the
+    // evaluator caps blast radius by skipping huge inputs.
+    const decision = await svc([
+      {
+        id: 'rule-regex-cap',
+        name: 'Big Input',
+        validatorType: 'regex_match',
+        entities: [],
+        pattern: 'redact-me',
+        target: 'both',
+        onFail: 'fix',
+        severity: 'low',
+      },
+    ]).evaluate({
+      // 100,001 chars — one over the limit. We slip a "redact-me"
+      // in too; if the cap held, it should NOT be redacted because
+      // the validator skipped the run entirely.
+      text: 'redact-me ' + 'x'.repeat(100_000),
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations).toHaveLength(0);
+    expect(decision.text).toContain('redact-me');
+  });
+
   it('regex_match with invalid regex is logged + skipped (does not crash chat)', async () => {
     // A typo'd `(?<bad)` shouldn't take down everyone's chat — the
     // evaluator catches the SyntaxError, warn-logs, and treats the
