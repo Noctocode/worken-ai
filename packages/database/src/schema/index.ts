@@ -208,6 +208,16 @@ export const observabilityEvents = pgTable(
     index("observability_events_team_created_idx").on(table.teamId, table.createdAt),
     index("observability_events_model_created_idx").on(table.model, table.createdAt),
     index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
+    // Org-wide spend aggregate runs on every chat call when an admin
+    // has set a Company Monthly Budget — `assertOrgBudgetNotExceeded`
+    // sums cost_usd filtered by success=true AND createdAt >=
+    // date_trunc('month', now()). The existing per-user / per-team
+    // indexes don't help (no user/team filter on this query), so a
+    // dedicated partial index on (created_at) WHERE success = true
+    // keeps the gate cheap as observability_events grows.
+    index("observability_events_success_created_idx")
+      .on(table.createdAt)
+      .where(sql`${table.success} = true`),
   ],
 );
 
@@ -534,3 +544,30 @@ export const integrations = pgTable(
       .where(sql`${table.apiUrl} IS NULL AND ${table.teamId} IS NOT NULL`),
   ],
 );
+
+// Org-level singleton settings. The Company tab on the FE renders a
+// "Company Monthly Budget" target the admin sets here; future org-wide
+// flags (logo URL, default infraChoice, branding overrides…) will land
+// on the same row instead of needing one table per setting. We don't
+// enforce singleton via a partial unique index — the get/upsert logic
+// in the service deterministically reads the oldest row, so an
+// accidental second row would just be hidden, not cause data loss.
+//
+// monthlyBudgetCents follows the same tri-state shape as
+// team_members.monthlyCapCents:
+//   - NULL → no company target set (chat-transport gate is a silent
+//     pass, UI shows "No target set" + hides over-budget banner /
+//     projected pill). Default for fresh deployments and lazy-seeded
+//     rows so existing installs that never open the Company tab
+//     keep working unchanged.
+//   - 0    → org-wide chat suspended (every chat call hits the gate
+//     and 402s with ORG_SUSPENDED). Same semantics as team /
+//     member 0 — a deliberate kill switch admins can flip when
+//     something goes wrong.
+//   - >0   → enforced. Gate blocks when org spend + estimate >= cap.
+export const orgSettings = pgTable("org_settings", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  monthlyBudgetCents: integer("monthly_budget_cents"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});

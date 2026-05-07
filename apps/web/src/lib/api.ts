@@ -1779,6 +1779,48 @@ export async function deleteCompanyProfile(): Promise<{
   return res.json();
 }
 
+// ─── Org-level settings (singleton, currently just monthly budget) ──
+
+export interface OrgSettings {
+  id: string;
+  /**
+   * Monthly company-wide budget target (cents). Tri-state, mirrors
+   * team_members.monthlyCapCents:
+   *   - null → no target set (gate silent-passes, UI shows "No target")
+   *   - 0    → org-wide chat suspended (gate 402s)
+   *   - >0   → enforced when org spend + estimate >= cap
+   */
+  monthlyBudgetCents: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchOrgSettings(): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch org settings");
+  }
+  return res.json();
+}
+
+export async function updateOrgSettings(input: {
+  /** undefined → leave alone; null → clear target (no enforcement);
+   *  0 → suspend org-wide chat; >0 → enforced cap. */
+  monthlyBudgetCents?: number | null;
+}): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update org settings");
+  }
+  return res.json();
+}
+
 /**
  * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
  * optional, no API keys, no files. Persisted server-side per user

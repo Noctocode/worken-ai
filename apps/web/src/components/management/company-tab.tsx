@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   Check,
   Info,
   Loader2,
@@ -41,13 +42,15 @@ import { useAuth } from "@/components/providers";
 import {
   deleteCompanyProfile,
   fetchOnboardingProfile,
+  fetchOrgSettings,
   fetchOrgUsers,
   fetchTeams,
   removeOrgUser,
   updateOnboardingProfile,
+  updateOrgSettings,
   type OrgUser,
 } from "@/lib/api";
-import { formatCurrency } from "@/lib/utils";
+import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
@@ -117,11 +120,16 @@ export function CompanyTab() {
     queryKey: ["teams"],
     queryFn: fetchTeams,
   });
+  const { data: orgSettings } = useQuery({
+    queryKey: ["org-settings"],
+    queryFn: fetchOrgSettings,
+  });
 
   const [isEditing, setIsEditing] = useState(false);
   const [editCompanyName, setEditCompanyName] = useState("");
   const [editIndustry, setEditIndustry] = useState("");
   const [editTeamSize, setEditTeamSize] = useState("");
+  const [editBudget, setEditBudget] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   // Pending org-user removal target. Triggered by the per-row "Remove
@@ -141,6 +149,9 @@ export function CompanyTab() {
 
   const updateMutation = useMutation({
     mutationFn: updateOnboardingProfile,
+  });
+  const updateBudgetMutation = useMutation({
+    mutationFn: updateOrgSettings,
   });
   const removeUserMutation = useMutation({
     mutationFn: (userId: string) => removeOrgUser(userId),
@@ -182,13 +193,28 @@ export function CompanyTab() {
   });
 
   const editing = isAdmin && isEditing;
-  const isSaving = updateMutation.isPending;
+  const isSaving =
+    updateMutation.isPending || updateBudgetMutation.isPending;
 
   const enterEdit = () => {
     if (!profile) return;
     setEditCompanyName(profile.companyName ?? "");
     setEditIndustry(profile.industry ?? "");
     setEditTeamSize(profile.teamSize ?? "");
+    // Seed the budget editor from the current org-settings row.
+    //   - null → empty input (= "no target")
+    //   - 0    → "0,00" (= explicit suspend; admin sees their kill
+    //     switch and can clear it back)
+    //   - >0   → formatted currency value
+    const seedBudgetCents = orgSettings?.monthlyBudgetCents ?? null;
+    setEditBudget(
+      seedBudgetCents === null
+        ? ""
+        : (seedBudgetCents / 100).toLocaleString("de-DE", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          }),
+    );
     setIsEditing(true);
   };
 
@@ -197,6 +223,7 @@ export function CompanyTab() {
     setEditCompanyName("");
     setEditIndustry("");
     setEditTeamSize("");
+    setEditBudget("");
   };
 
   const confirmEdit = async () => {
@@ -207,25 +234,75 @@ export function CompanyTab() {
       return;
     }
 
+    // Parse de-DE budget: "1.234,56" → 1234.56.
+    //   empty input → null  (clear the target, no enforcement)
+    //   "0"         → 0     (explicit org-wide suspend)
+    //   "$X"        → cents (enforced)
+    let parsedBudgetCents: number | null;
+    const trimmedBudget = editBudget.trim();
+    if (trimmedBudget.length === 0) {
+      parsedBudgetCents = null;
+    } else {
+      const raw = trimmedBudget.replace(/\./g, "").replace(",", ".");
+      const num = parseFloat(raw);
+      if (!Number.isFinite(num) || num < 0) {
+        toast.error("Budget must be a non-negative number.");
+        return;
+      }
+      parsedBudgetCents = Math.round(num * 100);
+    }
+
     const nameChanged = trimmedName !== (profile.companyName ?? "");
     const industryChanged = editIndustry !== (profile.industry ?? "");
     const teamSizeChanged = editTeamSize !== (profile.teamSize ?? "");
-    if (!nameChanged && !industryChanged && !teamSizeChanged) {
+    const budgetChanged =
+      parsedBudgetCents !== (orgSettings?.monthlyBudgetCents ?? null);
+    if (
+      !nameChanged &&
+      !industryChanged &&
+      !teamSizeChanged &&
+      !budgetChanged
+    ) {
       setIsEditing(false);
       return;
     }
 
-    try {
-      await updateMutation.mutateAsync({
-        ...(nameChanged ? { companyName: trimmedName } : {}),
-        ...(industryChanged ? { industry: editIndustry } : {}),
-        ...(teamSizeChanged ? { teamSize: editTeamSize } : {}),
-      });
-      toast.success("Company profile updated.");
-      queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
+    // Profile + budget land on different endpoints. Fire them in
+    // parallel via Promise.allSettled and surface a single success
+    // toast only when both succeed; partial failures keep edit mode
+    // open so the admin can retry from the staged values.
+    const tasks: Array<Promise<unknown>> = [];
+    if (nameChanged || industryChanged || teamSizeChanged) {
+      tasks.push(
+        updateMutation
+          .mutateAsync({
+            ...(nameChanged ? { companyName: trimmedName } : {}),
+            ...(industryChanged ? { industry: editIndustry } : {}),
+            ...(teamSizeChanged ? { teamSize: editTeamSize } : {}),
+          })
+          .catch((err: Error) => {
+            toast.error(err.message || "Couldn't update company profile.");
+            throw err;
+          }),
+      );
+    }
+    if (budgetChanged) {
+      tasks.push(
+        updateBudgetMutation
+          .mutateAsync({ monthlyBudgetCents: parsedBudgetCents })
+          .catch((err: Error) => {
+            toast.error(err.message || "Couldn't update company budget.");
+            throw err;
+          }),
+      );
+    }
+
+    const results = await Promise.allSettled(tasks);
+    queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
+    queryClient.invalidateQueries({ queryKey: ["org-settings"] });
+    if (results.every((r) => r.status === "fulfilled")) {
+      toast.success("Company updated.");
       setIsEditing(false);
-    } catch (err) {
-      toast.error((err as Error).message || "Couldn't update company.");
     }
   };
 
@@ -273,10 +350,10 @@ export function CompanyTab() {
     );
   }
 
-  // Org-wide rollups. Per-user spentCents covers personal projects +
-  // arena; per-team spentCents covers team-routed chats. They
-  // partition the org's spend so summing them is safe.
-  const totalBudgetCents =
+  // Per-user spentCents covers personal projects + arena; per-team
+  // spentCents covers team-routed chats. They partition the org's
+  // spend so summing them is safe.
+  const allocatedCents =
     teams.reduce((acc, t) => acc + (t.monthlyBudgetCents ?? 0), 0) +
     orgUsers.reduce((acc, u) => acc + (u.monthlyBudgetCents ?? 0), 0);
   const totalSpentCents =
@@ -286,12 +363,25 @@ export function CompanyTab() {
     teams.reduce((acc, t) => acc + (t.projectedCents ?? 0), 0) +
     orgUsers.reduce((acc, u) => acc + (u.projectedCents ?? 0), 0);
 
-  const budget = totalBudgetCents / 100;
+  // Company-level monthly target sourced from /org-settings. Tri-state:
+  //   - null → no target (UI hides budget-comparison affordances and
+  //     falls back to plain spend reporting; chat-transport gate is
+  //     a silent pass).
+  //   - 0    → org-wide chat suspended (the kill switch matches team
+  //     and per-member 0-semantics).
+  //   - >0   → enforced.
+  const targetCents = orgSettings?.monthlyBudgetCents ?? null;
+  const isSuspended = targetCents === 0;
+  const hasTarget = targetCents !== null && targetCents > 0;
+
+  const target = (targetCents ?? 0) / 100;
+  const allocated = allocatedCents / 100;
   const spent = totalSpentCents / 100;
-  const remaining = budget - spent;
+  const remaining = target - spent;
   const projected = totalProjectedCents / 100;
-  const onTrack = projected <= budget;
-  const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
+  const onTrack = !hasTarget || projected <= target;
+  const overBudget = hasTarget && (spent > target || projected > target);
+  const pct = hasTarget ? Math.min((spent / target) * 100, 100) : 0;
 
   const admins = orgUsers.filter((u) => u.role === "admin");
   // Everyone who isn't an admin — basic + advanced both land here.
@@ -301,6 +391,61 @@ export function CompanyTab() {
 
   return (
     <div className="py-6 space-y-6">
+      {/* Suspended banner — separate from over-budget because the
+          fix is different (admin set a $0 kill switch on purpose;
+          they need to clear it, not raise other caps). Shown when
+          the explicit suspend value is in play. */}
+      {isSuspended && (
+        <div className="flex items-start gap-3 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <p className="text-[14px] font-semibold text-danger-6">
+              Org-wide chat is paused
+            </p>
+            <p className="text-[13px] text-text-1">
+              Company Monthly Budget is set to{" "}
+              <strong>$0</strong>, which blocks every chat call across
+              the organization.{" "}
+              {isAdmin
+                ? "Open the Pencil and clear the budget (or set a positive target) to resume."
+                : "Ask an admin to clear the budget or set a positive target to resume."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Over-budget banner. Shows when admin has set a positive
+          target and either current spend or projected spend exceeds
+          it. Sits above every other card so it's the first thing the
+          admin reads when they enter the tab. */}
+      {overBudget && (
+        <div className="flex items-start gap-3 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <p className="text-[14px] font-semibold text-danger-6">
+              Over the company budget
+            </p>
+            <p className="text-[13px] text-text-1">
+              {spent > target ? (
+                <>
+                  Spent <strong>{formatCurrency(spent)}</strong> of the{" "}
+                  <strong>{formatCurrency(target)}</strong> monthly target.
+                </>
+              ) : (
+                <>
+                  Projected to spend <strong>{formatCurrency(projected)}</strong>{" "}
+                  by month-end against a <strong>{formatCurrency(target)}</strong>{" "}
+                  target.
+                </>
+              )}{" "}
+              {isAdmin
+                ? "Raise the target with the Pencil button, or trim per-team / per-member caps."
+                : "Ask an admin to raise the target or trim per-team / per-member caps."}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Company card */}
       <div className="bg-bg-white rounded p-4 space-y-[30px]">
         <div className="flex items-start justify-between gap-3">
@@ -441,18 +586,66 @@ export function CompanyTab() {
           </div>
         </div>
 
-        {/* Budget aggregate row — derived from existing teams + users
-            data, no separate org-level cap. */}
+        {/* Budget row.
+            - Company Monthly Budget: admin-set target (org_settings).
+              Editable in edit mode; 0 = "no target set". Sub-line
+              shows the seuvent of per-team + per-member caps so the
+              admin can sanity-check that allocation lines up with
+              intent.
+            - Spent / Remaining: comparison against the target. With
+              no target the right-hand value falls back to "—" so the
+              card doesn't pretend at math it can't do.
+            - Projected: linear extrapolation already on the rollup
+              data; pill goes red when target is set and projected
+              exceeds it. */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Total Budget</p>
-            <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
-              {budget > 0 ? (
-                <span>{formatCurrency(budget)}</span>
-              ) : (
-                <span className="text-text-3">No budgets configured</span>
-              )}
-            </div>
+            <p className="text-[18px] font-bold text-text-1">
+              Company Monthly Budget
+            </p>
+            {editing ? (
+              <div className="relative">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
+                  $
+                </span>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={editBudget}
+                  onChange={(e) =>
+                    setEditBudget(formatBudgetInput(e.target.value))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void confirmEdit();
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      cancelEdit();
+                    }
+                  }}
+                  placeholder="No target"
+                  disabled={isSaving}
+                  className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+                />
+              </div>
+            ) : (
+              <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+                {isSuspended ? (
+                  <span className="text-danger-6">Suspended ($0)</span>
+                ) : hasTarget ? (
+                  <span>{formatCurrency(target)}</span>
+                ) : (
+                  <span className="text-text-3">No target set</span>
+                )}
+              </div>
+            )}
+            <p className="text-[12px] text-text-3">
+              Allocated across teams + members:{" "}
+              <strong className="text-text-2">
+                {formatCurrency(allocated)}
+              </strong>
+            </p>
           </div>
 
           <div className="space-y-3">
@@ -460,15 +653,21 @@ export function CompanyTab() {
             <div className="flex items-center gap-3 h-[56px]">
               <span className="text-[16px] text-text-2">
                 {formatCurrency(spent)} /{" "}
-                {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
+                {hasTarget
+                  ? remaining > 0
+                    ? formatCurrency(remaining)
+                    : formatCurrency(0)
+                  : "—"}
               </span>
-              <div className="flex items-center h-[7px] w-[68px] shrink-0 rounded-full border border-border-4 overflow-hidden">
-                <div
-                  className={`h-full shrink-0 ${remaining < 0 ? "bg-danger-5" : "bg-success-2"}`}
-                  style={{ width: `${pct}%` }}
-                />
-                <div className="h-full flex-1 bg-bg-white" />
-              </div>
+              {hasTarget && (
+                <div className="flex items-center h-[7px] w-[68px] shrink-0 rounded-full border border-border-4 overflow-hidden">
+                  <div
+                    className={`h-full shrink-0 ${remaining < 0 ? "bg-danger-5" : "bg-success-2"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                  <div className="h-full flex-1 bg-bg-white" />
+                </div>
+              )}
             </div>
           </div>
 
@@ -479,13 +678,17 @@ export function CompanyTab() {
             </div>
             <div className="flex items-center gap-2.5 h-[56px]">
               <span className="text-[16px] text-text-1">{formatCurrency(projected)}</span>
-              <span
-                className={`rounded-lg px-2 py-1 text-[13px] ${
-                  onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"
-                }`}
-              >
-                {onTrack ? "On track" : "Over Budget"}
-              </span>
+              {hasTarget && (
+                <span
+                  className={`rounded-lg px-2 py-1 text-[13px] ${
+                    onTrack
+                      ? "bg-success-1 text-text-1"
+                      : "bg-danger-1 text-danger-6"
+                  }`}
+                >
+                  {onTrack ? "On track" : "Over Budget"}
+                </span>
+              )}
             </div>
           </div>
         </div>
