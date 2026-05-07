@@ -1063,7 +1063,7 @@ export function CompanyTab() {
                 <li>
                   All <strong>{teams.length}</strong> team
                   {teams.length === 1 ? "" : "s"} (including sub-teams,
-                  members, projects, and team-shared API keys)
+                  members, and team-shared API keys)
                 </li>
                 <li>
                   Company profile (name, industry, team size) on every
@@ -1079,7 +1079,11 @@ export function CompanyTab() {
                 <li>
                   All user accounts, roles, plans, and personal API keys
                 </li>
-                <li>Personal chats, conversations, and projects</li>
+                <li>
+                  All chats, conversations, and projects — team-scoped
+                  projects are unassigned from their (now deleted) team
+                  and become personal-scope
+                </li>
               </ul>
             </div>
             <div className="space-y-1.5">
