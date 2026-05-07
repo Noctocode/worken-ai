@@ -588,10 +588,10 @@ export function CompanyTab() {
 
         {/* Budget row.
             - Company Monthly Budget: admin-set target (org_settings).
-              Editable in edit mode; 0 = "no target set". Sub-line
-              shows the seuvent of per-team + per-member caps so the
-              admin can sanity-check that allocation lines up with
-              intent.
+              Tri-state: null = "no target set", 0 = org-wide
+              suspend (kill switch), >0 = enforced. Sub-line shows
+              the sum of per-team + per-member caps so the admin can
+              sanity-check that allocation lines up with intent.
             - Spent / Remaining: comparison against the target. With
               no target the right-hand value falls back to "—" so the
               card doesn't pretend at math it can't do.
