@@ -43,13 +43,14 @@ export const TEAM_BUDGET_EXCEEDED_MARKER = 'TEAM_BUDGET_EXCEEDED';
 export const TEAM_SUSPENDED_MARKER = 'TEAM_SUSPENDED';
 
 /**
- * Marker for the org-wide monthly budget gate. Distinct from the
- * team-wide budget exhausted hit (raised by our own assertTeam… or
- * by OpenRouter against a team's sub-account) and from the per-member
- * cap above. Lets the FE humanizer route the user to "ask an admin to
- * raise the company budget" instead of "raise your personal cap".
+ * Markers for the org-wide monthly budget gate. Two of them, mirror-
+ * shape with TEAM_BUDGET_EXCEEDED / TEAM_SUSPENDED above:
+ *   - ORG_BUDGET_EXCEEDED → cap > 0 and (spent + estimate) >= cap
+ *   - ORG_SUSPENDED       → cap === 0 (admin kill switch)
+ * cap === null is "no target set" → silent pass, no marker.
  */
 export const ORG_BUDGET_EXCEEDED_MARKER = 'ORG_BUDGET_EXCEEDED';
+export const ORG_SUSPENDED_MARKER = 'ORG_SUSPENDED';
 
 /**
  * Pure decision function for the per-member cap gate. Returns either
@@ -643,13 +644,15 @@ export class ChatTransportService {
    * current calendar month, optionally including a pre-flight cost
    * estimate.
    *
-   * Rules:
-   *   - target === 0 → "no target set", always pass. Existing
-   *     deployments that never opened the Company tab Pencil keep
-   *     working unchanged.
-   *   - target > 0 → block when (spent + estimate) >= target. Same
-   *     pre-flight vs post-flight wording split as decideCapAction
-   *     so the user sees actionable copy.
+   * Tri-state, mirrors `team_members.monthlyCapCents`:
+   *   - target === null → "no target set", always pass. Default for
+   *     fresh deployments / lazy-seeded rows so installs that never
+   *     opened the Company tab keep working unchanged.
+   *   - target === 0   → org-wide chat suspended (admin kill switch).
+   *     Throws ORG_SUSPENDED regardless of spend / estimate.
+   *   - target > 0     → block when (spent + estimate) >= target with
+   *     ORG_BUDGET_EXCEEDED. Same pre-flight vs post-flight wording
+   *     split as decideCapAction.
    *
    * Runs on every chat path (WorkenAI default, BYOK, Custom). Custom
    * routes have cost=null in observability so they don't *consume*
@@ -671,8 +674,17 @@ export class ChatTransportService {
       .from(orgSettings)
       .orderBy(asc(orgSettings.createdAt))
       .limit(1);
-    const targetCents = settings?.monthlyBudgetCents ?? 0;
-    if (targetCents <= 0) return; // no target set
+    const targetCents = settings?.monthlyBudgetCents ?? null;
+    // null (or missing row) → no target set, gate is a silent pass.
+    // 0 → admin flipped the org-wide kill switch.
+    // >0 → enforced below.
+    if (targetCents === null) return;
+    if (targetCents === 0) {
+      throw new HttpException(
+        `${ORG_SUSPENDED_MARKER}: Org-wide chat is paused (Company Monthly Budget set to $0). Ask an admin to raise it in Management → Company.`,
+        402,
+      );
+    }
 
     const startOfMonth = sql`date_trunc('month', now())`;
     const [agg] = await this.db

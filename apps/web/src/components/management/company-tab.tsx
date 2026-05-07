@@ -201,17 +201,19 @@ export function CompanyTab() {
     setEditCompanyName(profile.companyName ?? "");
     setEditIndustry(profile.industry ?? "");
     setEditTeamSize(profile.teamSize ?? "");
-    // Seed the budget editor from the current org-settings row. 0 is
-    // the no-target sentinel — show it as an empty string so the
-    // input doesn't read like a deliberate $0/mo target.
-    const seedBudgetCents = orgSettings?.monthlyBudgetCents ?? 0;
+    // Seed the budget editor from the current org-settings row.
+    //   - null → empty input (= "no target")
+    //   - 0    → "0,00" (= explicit suspend; admin sees their kill
+    //     switch and can clear it back)
+    //   - >0   → formatted currency value
+    const seedBudgetCents = orgSettings?.monthlyBudgetCents ?? null;
     setEditBudget(
-      seedBudgetCents > 0
-        ? (seedBudgetCents / 100).toLocaleString("de-DE", {
+      seedBudgetCents === null
+        ? ""
+        : (seedBudgetCents / 100).toLocaleString("de-DE", {
             minimumFractionDigits: 2,
             maximumFractionDigits: 2,
-          })
-        : "",
+          }),
     );
     setIsEditing(true);
   };
@@ -232,12 +234,14 @@ export function CompanyTab() {
       return;
     }
 
-    // Parse de-DE budget: "1.234,56" → 1234.56. Empty string is the
-    // "clear the target" gesture and lands as 0.
-    let parsedBudgetCents = orgSettings?.monthlyBudgetCents ?? 0;
+    // Parse de-DE budget: "1.234,56" → 1234.56.
+    //   empty input → null  (clear the target, no enforcement)
+    //   "0"         → 0     (explicit org-wide suspend)
+    //   "$X"        → cents (enforced)
+    let parsedBudgetCents: number | null;
     const trimmedBudget = editBudget.trim();
     if (trimmedBudget.length === 0) {
-      parsedBudgetCents = 0;
+      parsedBudgetCents = null;
     } else {
       const raw = trimmedBudget.replace(/\./g, "").replace(",", ".");
       const num = parseFloat(raw);
@@ -252,7 +256,7 @@ export function CompanyTab() {
     const industryChanged = editIndustry !== (profile.industry ?? "");
     const teamSizeChanged = editTeamSize !== (profile.teamSize ?? "");
     const budgetChanged =
-      parsedBudgetCents !== (orgSettings?.monthlyBudgetCents ?? 0);
+      parsedBudgetCents !== (orgSettings?.monthlyBudgetCents ?? null);
     if (
       !nameChanged &&
       !industryChanged &&
@@ -359,13 +363,18 @@ export function CompanyTab() {
     teams.reduce((acc, t) => acc + (t.projectedCents ?? 0), 0) +
     orgUsers.reduce((acc, u) => acc + (u.projectedCents ?? 0), 0);
 
-  // Company-level monthly target sourced from /org-settings. 0 means
-  // "no target set" — the UI hides budget-comparison affordances and
-  // falls back to plain spend reporting.
-  const targetCents = orgSettings?.monthlyBudgetCents ?? 0;
-  const hasTarget = targetCents > 0;
+  // Company-level monthly target sourced from /org-settings. Tri-state:
+  //   - null → no target (UI hides budget-comparison affordances and
+  //     falls back to plain spend reporting; chat-transport gate is
+  //     a silent pass).
+  //   - 0    → org-wide chat suspended (the kill switch matches team
+  //     and per-member 0-semantics).
+  //   - >0   → enforced.
+  const targetCents = orgSettings?.monthlyBudgetCents ?? null;
+  const isSuspended = targetCents === 0;
+  const hasTarget = targetCents !== null && targetCents > 0;
 
-  const target = targetCents / 100;
+  const target = (targetCents ?? 0) / 100;
   const allocated = allocatedCents / 100;
   const spent = totalSpentCents / 100;
   const remaining = target - spent;
@@ -382,11 +391,33 @@ export function CompanyTab() {
 
   return (
     <div className="py-6 space-y-6">
-      {/* Over-budget banner. Shows when admin has set a target and
-          either current spend or projected spend exceeds it. Sits
-          above every other card so it's the first thing the admin
-          reads when they enter the tab. Self-dismisses (re-renders
-          out) once the situation resolves. */}
+      {/* Suspended banner — separate from over-budget because the
+          fix is different (admin set a $0 kill switch on purpose;
+          they need to clear it, not raise other caps). Shown when
+          the explicit suspend value is in play. */}
+      {isSuspended && (
+        <div className="flex items-start gap-3 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
+          <div className="flex-1 space-y-1">
+            <p className="text-[14px] font-semibold text-danger-6">
+              Org-wide chat is paused
+            </p>
+            <p className="text-[13px] text-text-1">
+              Company Monthly Budget is set to{" "}
+              <strong>$0</strong>, which blocks every chat call across
+              the organization.{" "}
+              {isAdmin
+                ? "Open the Pencil and clear the budget (or set a positive target) to resume."
+                : "Ask an admin to clear the budget or set a positive target to resume."}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Over-budget banner. Shows when admin has set a positive
+          target and either current spend or projected spend exceeds
+          it. Sits above every other card so it's the first thing the
+          admin reads when they enter the tab. */}
       {overBudget && (
         <div className="flex items-start gap-3 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
           <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
@@ -600,7 +631,9 @@ export function CompanyTab() {
               </div>
             ) : (
               <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
-                {hasTarget ? (
+                {isSuspended ? (
+                  <span className="text-danger-6">Suspended ($0)</span>
+                ) : hasTarget ? (
                   <span>{formatCurrency(target)}</span>
                 ) : (
                   <span className="text-text-3">No target set</span>

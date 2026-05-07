@@ -6,12 +6,13 @@ import { DATABASE, type Database } from '../database/database.module.js';
 export interface OrgSettingsView {
   id: string;
   /**
-   * Monthly company-wide budget target (cents). 0 means "no target
-   * set" — UI hides over-budget banners + Projected pill, future
-   * chat-transport hard-cap gate (phase 2) will treat the same value
-   * as "unlimited".
+   * Monthly company-wide budget target (cents). Tri-state, mirrors
+   * `team_members.monthlyCapCents`:
+   *   - null → no target set (gate silent-passes, UI shows "No target")
+   *   - 0    → org-wide chat suspended (gate 402s with ORG_SUSPENDED)
+   *   - >0   → enforced when org spend + estimate >= cap
    */
-  monthlyBudgetCents: number;
+  monthlyBudgetCents: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -22,30 +23,32 @@ export class OrgSettingsService {
 
   /**
    * Singleton getter: returns the oldest row, lazy-seeding an empty
-   * one on first call. Cheaper than running a migration for fresh
-   * deployments and matches the pattern used by the (defunct)
-   * `companies` table earlier on the branch.
+   * one (monthlyBudgetCents=null) on first call. Cheaper than
+   * running a migration for fresh deployments.
    */
   async getCurrent(): Promise<OrgSettingsView> {
     return toView(await this.fetchOrSeed());
   }
 
   async update(input: {
-    monthlyBudgetCents?: number;
+    /** undefined → leave the saved value alone; null → clear the
+     *  target back to "no enforcement"; integer → save (0 suspends,
+     *  >0 enforces). */
+    monthlyBudgetCents?: number | null;
   }): Promise<OrgSettingsView> {
-    // Validate before any DB call so the BadRequest path is tight and
-    // testable from a stub.
+    // Validate before any DB call so the BadRequest path stays tight
+    // and testable from a stub.
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (input.monthlyBudgetCents !== undefined) {
-      if (
-        !Number.isInteger(input.monthlyBudgetCents) ||
-        input.monthlyBudgetCents < 0
-      ) {
-        throw new BadRequestException(
-          'Monthly budget must be a non-negative integer (cents).',
-        );
+      const next = input.monthlyBudgetCents;
+      if (next !== null) {
+        if (!Number.isInteger(next) || next < 0) {
+          throw new BadRequestException(
+            'Monthly budget must be null or a non-negative integer (cents).',
+          );
+        }
       }
-      updates.monthlyBudgetCents = input.monthlyBudgetCents;
+      updates.monthlyBudgetCents = next;
     }
 
     const current = await this.fetchOrSeed();

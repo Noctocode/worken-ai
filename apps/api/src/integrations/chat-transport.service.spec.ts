@@ -4,6 +4,7 @@ import {
   MEMBER_CAP_REACHED_MARKER,
   MEMBER_SUSPENDED_MARKER,
   ORG_BUDGET_EXCEEDED_MARKER,
+  ORG_SUSPENDED_MARKER,
   TEAM_BUDGET_EXCEEDED_MARKER,
   TEAM_SUSPENDED_MARKER,
   decideCapAction,
@@ -316,9 +317,16 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
     await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
   });
 
-  it('passes when monthlyBudgetCents = 0 ("no target set")', async () => {
-    const svc = makeService([[{ monthlyBudgetCents: 0 }]]);
+  it('passes when monthlyBudgetCents is null ("no target set")', async () => {
+    const svc = makeService([[{ monthlyBudgetCents: null }]]);
     await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
+  });
+
+  it('throws ORG_SUSPENDED when monthlyBudgetCents = 0 (kill switch)', async () => {
+    const svc = makeService([[{ monthlyBudgetCents: 0 }]]);
+    await expect(svc.assertOrgBudgetNotExceeded()).rejects.toThrow(
+      ORG_SUSPENDED_MARKER,
+    );
   });
 
   it('passes when projected (spent + estimate) stays under the target', async () => {

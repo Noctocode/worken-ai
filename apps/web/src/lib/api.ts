@@ -1783,8 +1783,14 @@ export async function deleteCompanyProfile(): Promise<{
 
 export interface OrgSettings {
   id: string;
-  /** Monthly company-wide budget target (cents). 0 = no target set. */
-  monthlyBudgetCents: number;
+  /**
+   * Monthly company-wide budget target (cents). Tri-state, mirrors
+   * team_members.monthlyCapCents:
+   *   - null → no target set (gate silent-passes, UI shows "No target")
+   *   - 0    → org-wide chat suspended (gate 402s)
+   *   - >0   → enforced when org spend + estimate >= cap
+   */
+  monthlyBudgetCents: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1799,7 +1805,9 @@ export async function fetchOrgSettings(): Promise<OrgSettings> {
 }
 
 export async function updateOrgSettings(input: {
-  monthlyBudgetCents?: number;
+  /** undefined → leave alone; null → clear target (no enforcement);
+   *  0 → suspend org-wide chat; >0 → enforced cap. */
+  monthlyBudgetCents?: number | null;
 }): Promise<OrgSettings> {
   const res = await apiFetch("/org-settings", {
     method: "PATCH",

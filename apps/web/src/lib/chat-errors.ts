@@ -92,6 +92,13 @@ export function humanizeChatError(err: unknown): string {
       "Your company's monthly AI budget is reached. Resets on the 1st of next month, or ask an admin to raise the target in Management → Company."
     );
   }
+  const orgSuspendedMatch = raw.match(/ORG_SUSPENDED:\s*([^\r\n]+)/);
+  if (orgSuspendedMatch) {
+    return (
+      orgSuspendedMatch[1].trim() ||
+      "Org-wide chat is paused (Company Monthly Budget set to $0). Ask an admin to clear or raise it in Management → Company."
+    );
+  }
 
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-

@@ -543,14 +543,21 @@ export const integrations = pgTable(
 // in the service deterministically reads the oldest row, so an
 // accidental second row would just be hidden, not cause data loss.
 //
-// Default monthlyBudgetCents=0 means "no company target set" (UI hides
-// over-budget banner / projected pill until admin types a number). A
-// future hard-cap gate in chat-transport may treat 0 differently
-// (likely "unlimited" to avoid breaking deployments that never set
-// one) — settled when phase 2 lands.
+// monthlyBudgetCents follows the same tri-state shape as
+// team_members.monthlyCapCents:
+//   - NULL → no company target set (chat-transport gate is a silent
+//     pass, UI shows "No target set" + hides over-budget banner /
+//     projected pill). Default for fresh deployments and lazy-seeded
+//     rows so existing installs that never open the Company tab
+//     keep working unchanged.
+//   - 0    → org-wide chat suspended (every chat call hits the gate
+//     and 402s with ORG_SUSPENDED). Same semantics as team /
+//     member 0 — a deliberate kill switch admins can flip when
+//     something goes wrong.
+//   - >0   → enforced. Gate blocks when org spend + estimate >= cap.
 export const orgSettings = pgTable("org_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
+  monthlyBudgetCents: integer("monthly_budget_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
