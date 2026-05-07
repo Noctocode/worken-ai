@@ -49,6 +49,38 @@ export class OnboardingController {
   }
 
   /**
+   * Edit the company-profile fields after onboarding completes.
+   * Drives the Company tab Pencil flow — keeps the displayed values
+   * (companyName / industry / teamSize, plus optional display name)
+   * mutable without re-running the full wizard. Service rejects
+   * non-company accounts and re-validates the dropdown enums.
+   */
+  @Patch('profile')
+  updateProfile(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body()
+    body: {
+      name?: string;
+      companyName?: string;
+      industry?: string;
+      teamSize?: string;
+    },
+  ) {
+    return this.onboardingService.updateProfile(user.id, body ?? {});
+  }
+
+  /**
+   * Tear-down endpoint behind the "Delete company" button on the
+   * Company tab. Drops every team + team-scoped integration and
+   * resets company-shaped onboarding fields on every user. Admin-
+   * only; companies-profile-only.
+   */
+  @Delete('company')
+  deleteCompany(@CurrentUser() user: AuthenticatedUser) {
+    return this.onboardingService.deleteCompany(user.id);
+  }
+
+  /**
    * Resume-flow draft endpoints. The wizard PATCHes its scalar
    * fields after each Continue so a user who closes the tab can
    * pick up where they left off on next login. The row is per-user

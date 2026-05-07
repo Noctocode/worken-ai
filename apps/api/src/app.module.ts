@@ -19,6 +19,7 @@ import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
 import { TeamsModule } from './teams/teams.module';
@@ -42,6 +43,7 @@ import { UsersModule } from './users/users.module';
     ModelsModule,
     ObservabilityModule,
     OnboardingModule,
+    OrgSettingsModule,
     ProjectsModule,
     PromptsModule,
     ShortcutsModule,

@@ -1738,6 +1738,90 @@ export async function fetchOnboardingProfile(): Promise<OnboardingProfile> {
 }
 
 /**
+ * Edit the company-branch fields (name + companyName + industry +
+ * teamSize) after onboarding has completed. Drives the Pencil flow on
+ * the Company tab — backed by PATCH /onboarding/profile, which only
+ * accepts company-profile users.
+ */
+export async function updateOnboardingProfile(input: {
+  name?: string;
+  companyName?: string;
+  industry?: string;
+  teamSize?: string;
+}): Promise<OnboardingProfile> {
+  const res = await apiFetch("/onboarding/profile", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update profile");
+  }
+  return res.json();
+}
+
+/**
+ * Tear down the workspace: drops every team + team-scoped integration
+ * and resets the company-shaped onboarding fields on every user.
+ * Admin-only. Returns counts so the FE can show what was actually
+ * removed in the success toast.
+ */
+export async function deleteCompanyProfile(): Promise<{
+  deletedTeamCount: number;
+  affectedUserCount: number;
+}> {
+  const res = await apiFetch("/onboarding/company", { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to delete company");
+  }
+  return res.json();
+}
+
+// ─── Org-level settings (singleton, currently just monthly budget) ──
+
+export interface OrgSettings {
+  id: string;
+  /**
+   * Monthly company-wide budget target (cents). Tri-state, mirrors
+   * team_members.monthlyCapCents:
+   *   - null → no target set (gate silent-passes, UI shows "No target")
+   *   - 0    → org-wide chat suspended (gate 402s)
+   *   - >0   → enforced when org spend + estimate >= cap
+   */
+  monthlyBudgetCents: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export async function fetchOrgSettings(): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch org settings");
+  }
+  return res.json();
+}
+
+export async function updateOrgSettings(input: {
+  /** undefined → leave alone; null → clear target (no enforcement);
+   *  0 → suspend org-wide chat; >0 → enforced cap. */
+  monthlyBudgetCents?: number | null;
+}): Promise<OrgSettings> {
+  const res = await apiFetch("/org-settings", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to update org settings");
+  }
+  return res.json();
+}
+
+/**
  * Resume-flow draft. Mirrors the BE `OnboardingDraft` — every field
  * optional, no API keys, no files. Persisted server-side per user
  * (PK = userId) and dropped once onboarding completes.
@@ -2205,3 +2289,4 @@ export async function revokeApiKey(id: string): Promise<void> {
     throw new Error(body.message || "Failed to revoke API key");
   }
 }
+

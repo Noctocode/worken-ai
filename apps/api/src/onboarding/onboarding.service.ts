@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -14,6 +15,7 @@ import { randomUUID } from 'crypto';
 import { join, posix as pathPosix } from 'path';
 import {
   users,
+  teams,
   integrations,
   knowledgeDocuments,
   onboardingDrafts,
@@ -508,6 +510,168 @@ export class OnboardingService {
     await this.db
       .delete(onboardingDrafts)
       .where(eq(onboardingDrafts.userId, userId));
+  }
+
+  /**
+   * Post-onboarding profile patch. Lets an admin edit the company-
+   * branch fields (`name`, `companyName`, `industry`, `teamSize`)
+   * after `complete` already ran — drives the Pencil flow on the
+   * Company tab so the displayed values stay editable without
+   * walking the user back through the wizard.
+   *
+   * Only company-profile users can hit this path: the Company tab
+   * isn't surfaced for personal accounts, and we don't want a
+   * personal-profile user to silently flip into company-shaped state.
+   */
+  async updateProfile(
+    userId: string,
+    input: {
+      name?: string;
+      companyName?: string;
+      industry?: string;
+      teamSize?: string;
+    },
+  ) {
+    const [current] = await this.db
+      .select({
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!current) throw new NotFoundException('User not found');
+    if (current.profileType !== 'company') {
+      throw new BadRequestException(
+        'Profile editing here only applies to company-profile accounts.',
+      );
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (input.name !== undefined) {
+      const trimmed = input.name.trim();
+      // Empty name is permitted — clears it. Onboarding "fullName"
+      // wasn't required for company branch, so don't enforce here.
+      updates.name = trimmed.length > 0 ? trimmed : null;
+    }
+    if (input.companyName !== undefined) {
+      const trimmed = input.companyName.trim();
+      if (!trimmed) {
+        throw new BadRequestException('Company name cannot be empty.');
+      }
+      updates.companyName = trimmed;
+    }
+    if (input.industry !== undefined) {
+      const trimmed = input.industry.trim();
+      if (
+        trimmed &&
+        !(VALID_INDUSTRIES as readonly string[]).includes(trimmed)
+      ) {
+        throw new BadRequestException(
+          `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
+        );
+      }
+      updates.industry = trimmed.length > 0 ? trimmed : null;
+    }
+    if (input.teamSize !== undefined) {
+      const trimmed = input.teamSize.trim();
+      if (
+        trimmed &&
+        !(VALID_TEAM_SIZES as readonly string[]).includes(trimmed)
+      ) {
+        throw new BadRequestException(
+          `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
+        );
+      }
+      updates.teamSize = trimmed.length > 0 ? trimmed : null;
+    }
+
+    await this.db.update(users).set(updates).where(eq(users.id, userId));
+    return this.getProfile(userId);
+  }
+
+  /**
+   * "Delete company" tear-down for the Trash button on the Company
+   * tab. Single-tenant deployment, so there's no real company entity
+   * — instead we drop every workspace-shaped structure (teams,
+   * sub-teams, team members, team-scoped integrations) and clear the
+   * company-shaped onboarding fields (profileType, companyName,
+   * industry, teamSize, infraChoice, onboardingCompletedAt) on every
+   * user. User accounts, roles, plans, personal API keys, personal
+   * chats / conversations / projects all stay; the next admin login
+   * just lands on /setup-profile to set up a fresh company.
+   *
+   * Admin-only and gated on profileType=company so a personal-profile
+   * caller can't accidentally wipe somebody else's workspace.
+   */
+  async deleteCompany(userId: string): Promise<{
+    deletedTeamCount: number;
+    affectedUserCount: number;
+  }> {
+    const [caller] = await this.db
+      .select({
+        role: users.role,
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (!caller) throw new NotFoundException('User not found');
+    if (caller.role !== 'admin') {
+      throw new ForbiddenException('Only admins can delete the company.');
+    }
+    if (caller.profileType !== 'company') {
+      throw new BadRequestException(
+        'Only company profiles can be deleted from this endpoint.',
+      );
+    }
+
+    // Atomic tear-down: wrapping the destructive sequence in one
+    // transaction keeps the workspace from landing in a half-deleted
+    // state if any step fails (e.g. teams partially deleted but
+    // users.profileType still set, or parentTeamId cleared but the
+    // teams themselves still around because the DELETE timed out).
+    return await this.db.transaction(async (tx) => {
+      // Snapshot counts before the destructive run so the success
+      // toast can show what was actually torn down. Cheaper than
+      // returning ids and sidesteps drizzle's loose typing on
+      // `.returning()`.
+      const [teamAgg] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(teams);
+      const [userAgg] = await tx
+        .select({ count: sql<number>`count(*)::int` })
+        .from(users);
+
+      // Break parent→child team edges before the bulk delete. PG can
+      // trip on a single DELETE that touches both ends of the
+      // self-reference even though parent_team_id is `set null`; pre-
+      // clearing keeps the cascade well-defined.
+      await tx.update(teams).set({ parentTeamId: null });
+
+      // Bulk delete every team. Cascades wipe team_members and team-
+      // scoped integrations; projects.team_id is `set null`, so chat
+      // history under those projects survives but lands in personal
+      // scope.
+      await tx.delete(teams);
+
+      // Reset company-shaped fields org-wide. profileType=null +
+      // onboardingCompletedAt=null means every user (admin and
+      // participant) hits /setup-profile on next render — fresh start.
+      // Bumping updatedAt so audit consumers see the change.
+      await tx.update(users).set({
+        profileType: null,
+        companyName: null,
+        industry: null,
+        teamSize: null,
+        infraChoice: null,
+        onboardingCompletedAt: null,
+        updatedAt: new Date(),
+      });
+
+      return {
+        deletedTeamCount: teamAgg?.count ?? 0,
+        affectedUserCount: userAgg?.count ?? 0,
+      };
+    });
   }
 
   private validate(p: OnboardingPayload) {
