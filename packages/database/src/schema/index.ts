@@ -300,8 +300,70 @@ export const knowledgeDocuments = pgTable("knowledge_documents", {
   storagePath: text("storage_path").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   mimeType: text("mime_type"),
+  // Where the file is in the chunk + embed pipeline. Lives on the
+  // document row (not a separate jobs table) because the lifecycle
+  // is one-shot per upload — `pending` set on insert, `processing`
+  // when the worker picks it up, `done` after chunks land in
+  // knowledge_chunks, `failed` if parse / embed errored. The FE
+  // poll endpoint aggregates over this column.
+  ingestionStatus: text("ingestion_status").notNull().default("pending"),
+  ingestionError: text("ingestion_error"),
+  ingestionCompletedAt: timestamp("ingestion_completed_at"),
+  // RAG visibility for chunks generated from this doc:
+  //   'personal' → only the owner sees them in chat
+  //   'company'  → every user in the deployment sees them (single-
+  //                tenant, so 'company' = org-wide)
+  // Set from `users.profileType` at upload time so the marketing copy
+  // ("train your enterprise AI") actually holds: a company admin's
+  // uploads become accessible to everyone they invite.
+  scope: text("scope").notNull().default("personal"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Chunked + embedded text from knowledge_documents uploads. One row
+// per chunk; `documentId` lets us delete or re-ingest a single file
+// without scanning text content. embedding dimensions match the
+// existing `documents` table so the chat RAG search can compose both
+// sources without re-projecting vectors.
+export const knowledgeChunks = pgTable(
+  "knowledge_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    documentId: uuid("document_id")
+      .references(() => knowledgeDocuments.id, { onDelete: "cascade" })
+      .notNull(),
+    chunkIndex: integer("chunk_index").notNull(),
+    content: text("content").notNull(),
+    embedding: vector("embedding", { dimensions: 384 }),
+    // Mirrored from knowledge_documents.scope. Duplicating the value
+    // keeps the chat-time RAG filter index-friendly (single WHERE,
+    // no JOIN) — RAG search runs on every prompt, the saving adds up.
+    scope: text("scope").notNull().default("personal"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // HNSW for fast cosine similarity at chat time. Same shape as
+    // documents_embedding_idx on the project-level documents table.
+    index("knowledge_chunks_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops"),
+    ),
+    // Per-user filter is the most common access pattern (chat layer
+    // looks up "what does this user know"). Composite with createdAt
+    // so the same index serves "list latest chunks for user".
+    index("knowledge_chunks_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    // Org-wide chunks fetched on every chat for every company user,
+    // so an index on scope by itself pays for the writes. Two-value
+    // column is fine here.
+    index("knowledge_chunks_scope_idx").on(table.scope),
+  ],
+);
 
 export const tenders = pgTable("tenders", {
   id: uuid("id").primaryKey().defaultRandom(),

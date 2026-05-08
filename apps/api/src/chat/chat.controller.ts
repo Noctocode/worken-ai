@@ -11,6 +11,7 @@ import {
   GuardrailEvaluatorService,
 } from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ChatService } from './chat.service.js';
@@ -33,6 +34,7 @@ export class ChatController {
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -155,20 +157,34 @@ export class ChatController {
       content: m.content,
     }));
 
-    // RAG lookup if projectId provided. Search uses the safe prompt
-    // so we don't query the vector store with raw PII.
-    let context: string | undefined;
+    // RAG lookup. Two sources:
+    //  - project documents (only if projectId is supplied — those are
+    //    scoped to the chat's project)
+    //  - the caller's onboarding-uploaded knowledge documents (always
+    //    queryable, regardless of project — they represent personal
+    //    knowledge the user trained the assistant with)
+    // Search uses the safe prompt so we don't query the vector store
+    // with raw PII.
+    const contextChunks: string[] = [];
 
     if (body.projectId) {
       const relevant = await this.documentsService.searchRelevant(
         body.projectId,
         safePrompt,
       );
-
-      if (relevant.length > 0) {
-        context = relevant.map((doc) => doc.content).join('\n\n---\n\n');
-      }
+      for (const doc of relevant) contextChunks.push(doc.content);
     }
+
+    const userKnowledge = await this.knowledgeIngestion.searchAccessibleChunks(
+      user.id,
+      safePrompt,
+    );
+    for (const chunk of userKnowledge) contextChunks.push(chunk.content);
+
+    const context =
+      contextChunks.length > 0
+        ? contextChunks.join('\n\n---\n\n')
+        : undefined;
 
     const chatStart = Date.now();
     let response;

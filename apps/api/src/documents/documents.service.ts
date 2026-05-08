@@ -42,7 +42,10 @@ export class DocumentsService {
     return this.embedder!;
   }
 
-  private chunkText(text: string): string[] {
+  // Public so KnowledgeIngestionService can reuse the same chunking
+  // strategy as project-level documents — keeps embeddings searchable
+  // together at chat time.
+  chunkText(text: string): string[] {
     const paragraphs = text.split(/\n\n+/);
     const chunks: string[] = [];
 
@@ -73,7 +76,7 @@ export class DocumentsService {
     return chunks;
   }
 
-  private async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[]): Promise<number[][]> {
     const embedder = await this.getEmbedder();
     const results: number[][] = [];
     for (const text of texts) {
@@ -225,7 +228,7 @@ export class DocumentsService {
     return this.db.delete(documents).where(eq(documents.id, id)).returning();
   }
 
-  private async parseFile(buffer: Buffer, mimetype: string): Promise<string> {
+  async parseFile(buffer: Buffer, mimetype: string): Promise<string> {
     if (mimetype === 'application/pdf') {
       const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: buffer });
@@ -237,15 +240,21 @@ export class DocumentsService {
       mimetype ===
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
-      console.log('Parsing DOCX file...');
       const mammoth = await import('mammoth');
       const result = await mammoth.extractRawText({ buffer });
-      console.log(result);
       return result.value;
     }
 
+    if (
+      mimetype === 'text/plain' ||
+      mimetype === 'text/markdown' ||
+      mimetype === 'text/csv'
+    ) {
+      return buffer.toString('utf-8');
+    }
+
     throw new BadRequestException(
-      'Unsupported file type. Only PDF and DOCX are allowed.',
+      'Unsupported file type. Only PDF, DOCX, TXT, MD, and CSV are allowed.',
     );
   }
 

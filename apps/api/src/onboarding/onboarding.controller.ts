@@ -25,6 +25,7 @@ import {
   type OnboardingDraft,
   type OnboardingPayload,
 } from './onboarding.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 
 const MAX_FILES = 20;
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
@@ -41,11 +42,25 @@ mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
 @Controller('onboarding')
 export class OnboardingController {
-  constructor(private readonly onboardingService: OnboardingService) {}
+  constructor(
+    private readonly onboardingService: OnboardingService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
+  ) {}
 
   @Get('profile')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.getProfile(user.id);
+  }
+
+  /**
+   * Drives the step-6 "Training your AI…" progress screen. The FE
+   * polls this until `inProgress` is false, then redirects.
+   * Cheap query (single SELECT with COUNT-by-status server-side
+   * folding), so polling at 1-2s cadence is fine.
+   */
+  @Get('ingestion-status')
+  getIngestionStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.knowledgeIngestion.getStatus(user.id);
   }
 
   /**

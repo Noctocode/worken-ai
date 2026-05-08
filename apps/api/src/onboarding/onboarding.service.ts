@@ -22,6 +22,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -117,6 +118,7 @@ export class OnboardingService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
   async complete(
@@ -130,6 +132,14 @@ export class OnboardingService {
     const movedPaths: string[] = [];
     try {
       await this.completeInner(userId, payload, files, movedPaths);
+      // Kick off ingestion AFTER the transaction commits — the worker
+      // queries `knowledge_documents` and would see nothing if invoked
+      // mid-transaction. Fire-and-forget so the HTTP response returns
+      // immediately; the FE polls /onboarding/ingestion-status to
+      // surface progress.
+      if (files.length > 0) {
+        this.knowledgeIngestion.ingestPendingForUser(userId);
+      }
     } catch (err) {
       // Two classes of leftovers to clean up:
       //  1. multer tmp files that never got moved (validation / pre-move
@@ -283,9 +293,17 @@ export class OnboardingService {
         }
       }
 
+      // RAG visibility: company branch → every deployment user can
+      // pull these chunks at chat time; personal branch → only the
+      // uploader. Set per-doc here (not later) so a re-ingest can't
+      // drift the visibility, and so the ingestion worker can copy
+      // the value onto each chunk.
+      const scope =
+        payload.profileType === 'company' ? 'company' : 'personal';
       for (const f of writtenFiles) {
         await tx.insert(knowledgeDocuments).values({
           userId,
+          scope,
           ...f,
         });
       }

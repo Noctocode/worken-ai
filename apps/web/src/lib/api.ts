@@ -1920,6 +1920,39 @@ export async function completeOnboarding(
   }
 }
 
+export type IngestionDocStatus =
+  | "pending"
+  | "processing"
+  | "done"
+  | "failed";
+
+export interface IngestionStatusResponse {
+  total: number;
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+  inProgress: boolean;
+  documents: Array<{
+    id: string;
+    filename: string;
+    status: IngestionDocStatus;
+    error: string | null;
+  }>;
+}
+
+/**
+ * Polled by step-6 progress UI after `completeOnboarding`. Returns the
+ * aggregated ingestion state for the caller's knowledge documents.
+ * `inProgress=false` means the FE can move on (some may still be
+ * `failed`, but no new work is queued).
+ */
+export async function getOnboardingIngestionStatus(): Promise<IngestionStatusResponse> {
+  const res = await apiFetch("/onboarding/ingestion-status");
+  if (!res.ok) throw new Error("Failed to load ingestion status");
+  return (await res.json()) as IngestionStatusResponse;
+}
+
 // ─── Observability ────────────────────────────────────────────────────
 
 export type ObservabilityRange = "24h" | "7d" | "30d" | "90d";
