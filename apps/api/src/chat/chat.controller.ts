@@ -6,6 +6,10 @@ import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import {
+  GUARDRAIL_BLOCKED_MARKER,
+  GuardrailEvaluatorService,
+} from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -28,6 +32,7 @@ export class ChatController {
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
+    private readonly guardrails: GuardrailEvaluatorService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -36,16 +41,53 @@ export class ChatController {
     @Body() body: ChatRequestBody,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // 1. Persist the user message
-    await this.conversationsService.addMessage(
+    // Load conversation first (was step 2 below) so we have the
+    // project / team scope before the guardrail input gate fires —
+    // otherwise we'd persist the user's potentially-blocked message
+    // before checking it.
+    const conversation = await this.conversationsService.findOne(
       body.conversationId,
-      'user',
-      body.content,
       user.id,
     );
 
-    // 2. Load full conversation history
-    const conversation = await this.conversationsService.findOne(
+    // Resolve team scope from the project for both the guardrail
+    // gate and the observability tag below. Cheaper to do once than
+    // re-query at log time.
+    const [proj] = await this.db
+      .select({ teamId: projects.teamId })
+      .from(projects)
+      .where(eq(projects.id, conversation.projectId))
+      .limit(1);
+    const teamId = proj?.teamId ?? null;
+
+    // Guardrail INPUT gate. Runs before persisting the user message
+    // so a blocked prompt never lands in conversation history.
+    // `text` is the (possibly masked) prompt the LLM should see —
+    // when a 'fix'-action rule matches, we send the redacted version
+    // forward instead of throwing.
+    const inputDecision = await this.guardrails.evaluate({
+      text: body.content,
+      target: 'input',
+      userId: user.id,
+      teamId,
+    });
+    if (inputDecision.blocked) {
+      throw new HttpException(
+        `${GUARDRAIL_BLOCKED_MARKER}: "${inputDecision.blocked.ruleName}" blocked your message (${inputDecision.blocked.validator}). Edit the prompt and try again, or ask an admin to adjust the rule in Management → Guardrails.`,
+        422,
+      );
+    }
+    const safePrompt = inputDecision.text;
+
+    // Persist the (safe) user message + reload conversation so the
+    // assistant sees what the LLM actually got.
+    await this.conversationsService.addMessage(
+      body.conversationId,
+      'user',
+      safePrompt,
+      user.id,
+    );
+    const conversationAfterPersist = await this.conversationsService.findOne(
       body.conversationId,
       user.id,
     );
@@ -77,9 +119,9 @@ export class ChatController {
     // 4096 completion tokens is a conservative upper bound (most chat
     // models default well below that). estimateCost returns null for
     // models without catalog pricing — those degrade to post-flight
-    // only.
-    const promptForEstimate = body.content ?? '';
-    const promptTokens = Math.ceil(promptForEstimate.length / 4);
+    // only. Estimate from `safePrompt` (post-guardrail) since that's
+    // what the LLM will actually see.
+    const promptTokens = Math.ceil(safePrompt.length / 4);
     const estimatedCostUsd = await this.catalogService.estimateCost(
       body.model ?? 'moonshotai/kimi-k2.5',
       promptTokens,
@@ -105,19 +147,22 @@ export class ChatController {
       estimatedCostCents,
     });
 
-    // 3. Map stored messages to OpenRouter format
-    const apiMessages = conversation.messages.map((m) => ({
+    // Map stored messages (post-persist) to OpenRouter format. Using
+    // the reloaded conversation so the assistant sees the message
+    // we just persisted — including the post-guardrail safe version.
+    const apiMessages = conversationAfterPersist.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
 
-    // 4. RAG lookup if projectId provided
+    // RAG lookup if projectId provided. Search uses the safe prompt
+    // so we don't query the vector store with raw PII.
     let context: string | undefined;
 
     if (body.projectId) {
       const relevant = await this.documentsService.searchRelevant(
         body.projectId,
-        body.content,
+        safePrompt,
       );
 
       if (relevant.length > 0) {
@@ -125,20 +170,6 @@ export class ChatController {
       }
     }
 
-    // 5. Call the chat service (with per-call observability)
-    //
-    // Tag the event with the chat's actual team scope — derived from
-    // the project, not the user's "primary" team. The OpenRouter key
-    // the spend lands on is the project's team key (or the user key
-    // for personal projects), so observability.team_id needs to mirror
-    // that or the per-team rollups + per-member cap gate go off course
-    // when a user is in multiple teams.
-    const [proj] = await this.db
-      .select({ teamId: projects.teamId })
-      .from(projects)
-      .where(eq(projects.id, conversation.projectId))
-      .limit(1);
-    const teamId = proj?.teamId ?? null;
     const chatStart = Date.now();
     let response;
     try {
@@ -187,7 +218,7 @@ export class ChatController {
         costUsd,
         latencyMs: Date.now() - chatStart,
         success: true,
-        prompt: body.content,
+        prompt: safePrompt,
         metadata: {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
@@ -207,7 +238,7 @@ export class ChatController {
         latencyMs: Date.now() - chatStart,
         success: false,
         errorMessage: msg,
-        prompt: body.content,
+        prompt: safePrompt,
         metadata: {
           conversationId: body.conversationId,
           projectId: body.projectId ?? null,
@@ -246,7 +277,29 @@ export class ChatController {
       throw err;
     }
 
-    // 6. Persist assistant response
+    // Guardrail OUTPUT gate. Same shape as the input gate above —
+    // `text` is the safe (possibly masked) response; `blocked` short-
+    // circuits with a 422 instead of persisting / returning the
+    // offending text. Runs AFTER the LLM call has been logged to
+    // observability (the call did happen and cost real money), but
+    // BEFORE we persist the assistant response into conversation
+    // history so blocked output never leaks into the visible chat.
+    const outputDecision = await this.guardrails.evaluate({
+      text: response.content,
+      target: 'output',
+      userId: user.id,
+      teamId,
+    });
+    if (outputDecision.blocked) {
+      throw new HttpException(
+        `${GUARDRAIL_BLOCKED_MARKER}: "${outputDecision.blocked.ruleName}" blocked the model's response (${outputDecision.blocked.validator}). Try a different prompt, or ask an admin to adjust the rule in Management → Guardrails.`,
+        422,
+      );
+    }
+    const safeResponse = outputDecision.text;
+
+    // Persist assistant response (post-guardrail) so the conversation
+    // matches what we return.
     const metadata = response.reasoning_details
       ? { reasoning_details: response.reasoning_details }
       : undefined;
@@ -254,15 +307,14 @@ export class ChatController {
     await this.conversationsService.addMessage(
       body.conversationId,
       'assistant',
-      response.content,
+      safeResponse,
       null,
       metadata,
     );
 
-    // 7. Return assistant message
     return {
       role: 'assistant',
-      content: response.content,
+      content: safeResponse,
       ...(response.reasoning_details
         ? { reasoning_details: response.reasoning_details }
         : {}),

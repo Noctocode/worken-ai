@@ -39,6 +39,7 @@ export class GuardrailsSectionController {
       severity: string;
       validatorType?: string;
       entities?: string[];
+      pattern?: string;
       target?: string;
       onFail?: string;
     },
@@ -47,19 +48,32 @@ export class GuardrailsSectionController {
     return this.service.create(body, user.id);
   }
 
-  @Patch(':id/toggle')
-  toggle(
+  @Patch(':id')
+  update(
     @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      type?: string;
+      severity?: string;
+      validatorType?: string;
+      entities?: string[];
+      pattern?: string;
+      target?: string;
+      onFail?: string;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    return this.service.update(id, body, user.id);
+  }
+
+  @Patch(':id/toggle')
+  toggle(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.toggle(id, user.id);
   }
 
   @Delete(':id')
-  remove(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.remove(id, user.id);
   }
 

@@ -17,6 +17,10 @@ interface CreateGuardrailDto {
   severity: string;
   validatorType?: string;
   entities?: string[];
+  /** Required when validatorType === 'regex_match'. Free-form regex
+   *  string. Validated lazily by the evaluator (broken regexes are
+   *  logged + skipped at chat time). */
+  pattern?: string;
   target?: string;
   onFail?: string;
 }
@@ -41,6 +45,7 @@ export class GuardrailsSectionService {
         isActive: guardrails.isActive,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
+        pattern: guardrails.pattern,
         target: guardrails.target,
         onFail: guardrails.onFail,
         templateSource: guardrails.templateSource,
@@ -57,11 +62,9 @@ export class GuardrailsSectionService {
   async getStats(userId: string) {
     const [stats] = await this.db
       .select({
-        activeRules:
-          sql<number>`count(*) filter (where ${guardrails.isActive} = true)`,
+        activeRules: sql<number>`count(*) filter (where ${guardrails.isActive} = true)`,
         totalTriggers: sql<number>`coalesce(sum(${guardrails.triggers}), 0)`,
-        criticalRules:
-          sql<number>`count(*) filter (where ${guardrails.severity} = 'high' and ${guardrails.isActive} = true)`,
+        criticalRules: sql<number>`count(*) filter (where ${guardrails.severity} = 'high' and ${guardrails.isActive} = true)`,
         totalRules: sql<number>`count(*)`,
       })
       .from(guardrails)
@@ -88,6 +91,23 @@ export class GuardrailsSectionService {
       throw new BadRequestException('Invalid severity');
     }
 
+    // regex_match needs a pattern — block at create time so an
+    // admin doesn't ship a silently-no-op rule. Other validators
+    // ignore the pattern field if it's accidentally set.
+    let pattern: string | null = null;
+    if (dto.pattern !== undefined && dto.pattern !== null) {
+      const trimmed = String(dto.pattern).trim();
+      pattern = trimmed.length > 0 ? trimmed : null;
+    }
+    if (dto.validatorType === 'regex_match') {
+      if (!pattern) {
+        throw new BadRequestException(
+          'regex_match guardrail requires a non-empty `pattern`.',
+        );
+      }
+      assertSafeRegex(pattern);
+    }
+
     const [row] = await this.db
       .insert(guardrails)
       .values({
@@ -97,11 +117,101 @@ export class GuardrailsSectionService {
         severity: dto.severity,
         validatorType: dto.validatorType ?? null,
         entities: dto.entities ?? null,
+        pattern,
         target: dto.target || 'both',
         onFail: dto.onFail || 'fix',
       })
       .returning();
 
+    return row;
+  }
+
+  /**
+   * Patch an existing rule. Same validation surface as `create`:
+   * name non-empty, severity in the allowlist, regex_match needs a
+   * compileable pattern. Every field is optional — the caller sends
+   * only what changed. Owner check matches `toggle` / `remove` so a
+   * teammate can't edit a rule that doesn't belong to them.
+   */
+  async update(id: string, dto: Partial<CreateGuardrailDto>, userId: string) {
+    const [existing] = await this.db
+      .select()
+      .from(guardrails)
+      .where(eq(guardrails.id, id));
+    if (!existing) throw new NotFoundException('Guardrail not found');
+    if (existing.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+
+    if (dto.name !== undefined) {
+      const trimmed = dto.name.trim();
+      if (!trimmed) {
+        throw new BadRequestException('Name cannot be empty.');
+      }
+      updates.name = trimmed;
+    }
+
+    if (dto.severity !== undefined) {
+      const validSeverities = ['high', 'medium', 'low'];
+      if (!validSeverities.includes(dto.severity)) {
+        throw new BadRequestException('Invalid severity');
+      }
+      updates.severity = dto.severity;
+    }
+
+    if (dto.validatorType !== undefined) {
+      updates.validatorType = dto.validatorType || null;
+    }
+
+    if (dto.entities !== undefined) {
+      updates.entities = dto.entities;
+    }
+
+    if (dto.pattern !== undefined) {
+      const trimmed = String(dto.pattern ?? '').trim();
+      updates.pattern = trimmed.length > 0 ? trimmed : null;
+    }
+
+    if (dto.target !== undefined) {
+      updates.target = dto.target || 'both';
+    }
+
+    if (dto.onFail !== undefined) {
+      updates.onFail = dto.onFail || 'fix';
+    }
+
+    if (dto.type !== undefined) {
+      updates.type = dto.type || existing.type;
+    }
+
+    // Re-validate regex when the rule is (or stays as) regex_match.
+    // Use the *resulting* state — ie. dto.validatorType if present,
+    // otherwise the existing one — so `PATCH { pattern }` on an
+    // already-regex_match rule still validates.
+    const finalValidator =
+      dto.validatorType !== undefined
+        ? dto.validatorType
+        : existing.validatorType;
+    const finalPattern =
+      dto.pattern !== undefined
+        ? (updates.pattern as string | null)
+        : existing.pattern;
+    if (finalValidator === 'regex_match') {
+      if (!finalPattern) {
+        throw new BadRequestException(
+          'regex_match guardrail requires a non-empty `pattern`.',
+        );
+      }
+      assertSafeRegex(finalPattern);
+    }
+
+    const [row] = await this.db
+      .update(guardrails)
+      .set(updates)
+      .where(eq(guardrails.id, id))
+      .returning();
     return row;
   }
 
@@ -260,5 +370,57 @@ export class GuardrailsSectionService {
       .returning();
 
     return { templateId, rulesRemoved: deleted.length };
+  }
+}
+
+/**
+ * Reject obvious ReDoS bombs at create / update time. Pure-JS,
+ * conservative — catches the textbook patterns that adversarial
+ * admins might paste in (nested quantifiers, alternations with
+ * overlap, polynomial repetition) without false-tripping on
+ * legitimate complex regexes.
+ *
+ * Not bulletproof — the only fully safe path is a non-backtracking
+ * engine like RE2. This is the cheap defence: rejects 90% of bombs
+ * with zero deps. The evaluator pairs it with an input-size cap so
+ * even a regex that slipped through can't lock the chat thread.
+ *
+ * Three checks:
+ *   1. Length cap — patterns over 500 chars are usually wrong or
+ *      malicious; legit patterns are short.
+ *   2. Compileability — let the JS engine parse it. Catches
+ *      malformed quantifiers / unmatched groups for free.
+ *   3. Heuristic bomb detection — nested quantifiers like
+ *      `(a+)+`, `(a*)*`, alternations with overlap.
+ */
+function assertSafeRegex(pattern: string): void {
+  if (pattern.length > 500) {
+    throw new BadRequestException(
+      'Regex pattern is too long (>500 chars). Tighten it or split into multiple rules.',
+    );
+  }
+  try {
+    new RegExp(pattern, 'gi');
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new BadRequestException(`Invalid regex pattern: ${msg}`);
+  }
+  // Bomb heuristics. Anchored at the meta-pattern level — we look
+  // at the regex source, not what it matches.
+  //   - nested quantifiers: `(...+)+`, `(...*)*`, `(...+)*`
+  //   - polynomial alternation overlap: `(a|a)+`, `(a|ab)*`
+  // We reject the textbook cases. False-positives here are OK
+  // because the admin can rewrite the pattern.
+  const NESTED_QUANTIFIER = /\([^)]*[+*][^)]*\)\s*[+*]/;
+  if (NESTED_QUANTIFIER.test(pattern)) {
+    throw new BadRequestException(
+      'Regex pattern contains nested quantifiers (e.g. (a+)+) that can cause exponential matching. Rewrite to avoid them.',
+    );
+  }
+  const REPEATED_ALTERNATION = /\(([^|)]+)\|\1[^)]*\)\s*[+*]/;
+  if (REPEATED_ALTERNATION.test(pattern)) {
+    throw new BadRequestException(
+      'Regex pattern contains alternations with overlapping branches that can cause exponential matching.',
+    );
   }
 }

@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
   Inject,
   Logger,
   NotFoundException,
@@ -23,6 +24,10 @@ import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
+import {
+  GUARDRAIL_BLOCKED_MARKER,
+  GuardrailEvaluatorService,
+} from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -90,6 +95,7 @@ export class CompareModelsController {
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
+    private readonly guardrails: GuardrailEvaluatorService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -201,6 +207,26 @@ export class CompareModelsController {
       teamId = requested;
     }
 
+    // Guardrail INPUT gate. Same prompt is fanned out to every
+    // model, so we only need to evaluate it once. Block here saves
+    // every per-model LLM call instead of failing N times below.
+    // 422 (not 400) for parity with /chat — both surfaces produce
+    // the same GUARDRAIL_BLOCKED marker, so the FE humanizer is
+    // status-agnostic but logs / metrics treat them as one class.
+    const inputDecision = await this.guardrails.evaluate({
+      text: body.question,
+      target: 'input',
+      userId: user.id,
+      teamId,
+    });
+    if (inputDecision.blocked) {
+      throw new HttpException(
+        `${GUARDRAIL_BLOCKED_MARKER}: "${inputDecision.blocked.ruleName}" blocked your question (${inputDecision.blocked.validator}). Edit it and try again, or ask an admin to adjust the rule in Management → Guardrails.`,
+        422,
+      );
+    }
+    const safeQuestion = inputDecision.text;
+
     let responses: ModelResponse[];
     try {
       responses = await Promise.all(
@@ -230,8 +256,7 @@ export class CompareModelsController {
           // null) don't have a per-team cap concept. Pre-flight
           // estimate is per-model since arena fans out across many
           // models and each has its own pricing.
-          const promptForEstimate = body.question ?? '';
-          const promptTokens = Math.ceil(promptForEstimate.length / 4);
+          const promptTokens = Math.ceil(safeQuestion.length / 4);
           const estimatedCostUsd = await this.catalogService.estimateCost(
             model,
             promptTokens,
@@ -253,7 +278,7 @@ export class CompareModelsController {
           const start = Date.now();
           try {
             const response = await this.compareModelsService.sendQuestion(
-              body.question,
+              safeQuestion,
               transport.model,
               false,
               body.context,
@@ -262,6 +287,25 @@ export class CompareModelsController {
               transport.kind,
             );
             const latencyMs = Date.now() - start;
+
+            // Per-model output guardrail. A blocked output for one
+            // model doesn't sink the whole arena run — Promise.all's
+            // map catch below already turns it into a per-model
+            // failure card on the FE. The redacted version (when a
+            // 'fix'-action rule fires) replaces the LLM text before
+            // we return / persist the arena response.
+            const outputDecision = await this.guardrails.evaluate({
+              text: response.content,
+              target: 'output',
+              userId: user.id,
+              teamId,
+            });
+            if (outputDecision.blocked) {
+              throw new Error(
+                `${GUARDRAIL_BLOCKED_MARKER}: "${outputDecision.blocked.ruleName}" blocked the model's response (${outputDecision.blocked.validator}).`,
+              );
+            }
+            response.content = outputDecision.text;
 
             // Estimate cost when the route bypassed OpenRouter (BYOK /
             // Custom). Same logic as chat.controller — see commentary
@@ -298,7 +342,7 @@ export class CompareModelsController {
               costUsd,
               latencyMs,
               success: true,
-              prompt: body.question,
+              prompt: safeQuestion,
               metadata: {
                 hasContext: Boolean(body.context),
                 routingSource: transport.source,
@@ -324,7 +368,7 @@ export class CompareModelsController {
               latencyMs,
               success: false,
               errorMessage: msg,
-              prompt: body.question,
+              prompt: safeQuestion,
               metadata: {
                 hasContext: Boolean(body.context),
                 routingSource: transport.source,

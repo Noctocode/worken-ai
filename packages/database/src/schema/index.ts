@@ -248,6 +248,12 @@ export const guardrails = pgTable("guardrails", {
   teamIsActive: boolean("team_is_active").notNull().default(true),
   validatorType: text("validator_type"),
   entities: jsonb("entities"),
+  // Free-form regex used by the `regex_match` validator. Nullable
+  // since `no_pii` and `detect_jailbreak` rules don't need it. Kept
+  // as text rather than serialised to a typed structure so admins
+  // can paste patterns from elsewhere (PCRE-ish flavour, JS engine
+  // does the actual matching).
+  pattern: text("pattern"),
   target: text("target").notNull().default("both"),
   onFail: text("on_fail").notNull().default("fix"),
   templateSource: text("template_source"),

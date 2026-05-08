@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   AlertTriangle,
@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Eye,
   Loader2,
+  Pencil,
   Search,
   Shield,
   ShieldCheck,
@@ -41,6 +42,7 @@ import {
   fetchGuardrailStats,
   fetchComplianceTemplates,
   createGuardrailItem,
+  updateGuardrailItem,
   toggleGuardrailItem,
   deleteGuardrailItem,
   applyComplianceTemplate,
@@ -57,6 +59,27 @@ const SEVERITY_STYLES: Record<Severity, string> = {
   high: "bg-danger-1 text-danger-6",
   medium: "bg-warning-1 text-warning-6",
   low: "bg-success-1 text-success-7",
+};
+
+// Left-border accent that runs the height of each row in the
+// guardrails table. Mirrors the severity pill colours so the row
+// reads as "this is a high-severity rule" at a glance, without
+// shouting on lower-severity rows. Empty for low so the table
+// stays calm by default.
+const SEVERITY_ROW_ACCENT: Record<Severity, string> = {
+  high: "border-l-4 border-l-danger-6",
+  medium: "border-l-4 border-l-warning-6",
+  low: "border-l-4 border-l-transparent",
+};
+
+// Numeric weight used by the FE sort. Mirrors the CASE expression
+// in GuardrailEvaluatorService.loadApplicableRules so the order
+// admins see in the management list matches what the chat-time
+// gate is going to evaluate.
+const SEVERITY_WEIGHT: Record<Severity, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
 };
 
 const PAGE_SIZE = 10;
@@ -131,12 +154,14 @@ function OverviewTab({
   isLoading,
   onToggle,
   onDelete,
+  onEdit,
 }: {
   guardrailsList: GuardrailItem[];
   stats: GuardrailStats | undefined;
   isLoading: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (rule: GuardrailItem) => void;
 }) {
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState<string>("all");
@@ -170,11 +195,21 @@ function OverviewTab({
           g.type.toLowerCase().includes(q),
       );
     }
-    return [...list].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
-        a.id.localeCompare(b.id),
-    );
+    // Default sort matches the BE evaluator: severity high → low
+    // first, then newest within the same severity. Keeps the
+    // management list in the same order chat-time rules fire so
+    // admins debugging "why did rule X win" don't have to mentally
+    // re-sort. id is the deterministic tiebreaker for two rules
+    // created at the same instant (rare, but possible on bulk-
+    // applied templates).
+    return [...list].sort((a, b) => {
+      const sevDelta = SEVERITY_WEIGHT[a.severity] - SEVERITY_WEIGHT[b.severity];
+      if (sevDelta !== 0) return sevDelta;
+      const dateDelta =
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (dateDelta !== 0) return dateDelta;
+      return a.id.localeCompare(b.id);
+    });
   }, [guardrailsList, query, severity, timeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -285,7 +320,7 @@ function OverviewTab({
             {paginated.map((g) => (
               <tr
                 key={g.id}
-                className="border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1"
+                className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${SEVERITY_ROW_ACCENT[g.severity]}`}
               >
                 <td className="px-4 py-6">
                   <div className="flex flex-col">
@@ -327,14 +362,24 @@ function OverviewTab({
                   </button>
                 </td>
                 <td className="px-4 py-6">
-                  <button
-                    type="button"
-                    onClick={() => setDeleteId(g.id)}
-                    className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                    title="Delete"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onEdit(g)}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-primary-6"
+                      title="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteId(g.id)}
+                      className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -517,6 +562,11 @@ function AddGuardrailDialog({
   onOpenChange,
   onSubmit,
   isPending,
+  // When set, the dialog flips into edit mode: header copy changes,
+  // submit button reads "Save", and form state is seeded from this
+  // rule on open. The parent decides whether to call createMutation
+  // or updateMutation based on whether `initial` is null.
+  initial,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -526,10 +576,12 @@ function AddGuardrailDialog({
     severity: "high" | "medium" | "low";
     validatorType: string;
     entities: string[];
+    pattern?: string;
     target: "input" | "output" | "both";
     onFail: "fix" | "exception";
   }) => void;
   isPending: boolean;
+  initial?: GuardrailItem | null;
 }) {
   const [name, setName] = useState("");
   const [severity, setSeverity] = useState<"high" | "medium" | "low">("high");
@@ -537,6 +589,10 @@ function AddGuardrailDialog({
   const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
     new Set(PII_ENTITIES),
   );
+  // Free-form regex pattern, only meaningful when
+  // validatorType === 'regex_match'. BE rejects empty / invalid
+  // patterns at create time so a half-set rule never persists.
+  const [pattern, setPattern] = useState("");
   const [target, setTarget] = useState<"input" | "output" | "both">("both");
   const [onFail, setOnFail] = useState<"fix" | "exception">("fix");
   const [validatorSearch, setValidatorSearch] = useState("");
@@ -544,18 +600,61 @@ function AddGuardrailDialog({
   const [showAllEntities, setShowAllEntities] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    if (initial) {
+      // Edit mode — seed every field from the existing rule.
+      setName(initial.name);
+      setSeverity(initial.severity);
+      setValidatorType(initial.validatorType ?? "no_pii");
+      setSelectedEntities(new Set(initial.entities ?? []));
+      setPattern(initial.pattern ?? "");
+      setTarget(
+        (initial.target === "input" ||
+        initial.target === "output" ||
+        initial.target === "both"
+          ? initial.target
+          : "both") as "input" | "output" | "both",
+      );
+      setOnFail(
+        (initial.onFail === "exception" ? "exception" : "fix") as
+          | "fix"
+          | "exception",
+      );
+    } else {
+      // Add mode — fresh defaults.
       setName("");
       setSeverity("high");
       setValidatorType("no_pii");
       setSelectedEntities(new Set(PII_ENTITIES));
+      setPattern("");
       setTarget("both");
       setOnFail("fix");
-      setValidatorSearch("");
-      setEntityFilter("");
-      setShowAllEntities(false);
     }
-  }, [open]);
+    setValidatorSearch("");
+    setEntityFilter("");
+    setShowAllEntities(false);
+  }, [open, initial]);
+
+  // entities is overloaded across validator types (PII entity names
+  // for no_pii; free-form phrases for detect_jailbreak; ignored for
+  // regex_match). When the admin switches validator, reset entities
+  // so the previous validator's selections don't leak through. Skip
+  // the reset on the very first render to keep the seeded edit-mode
+  // state intact.
+  const previousValidatorRef = useRef<string>(validatorType);
+  useEffect(() => {
+    if (!open) {
+      previousValidatorRef.current = validatorType;
+      return;
+    }
+    if (previousValidatorRef.current === validatorType) return;
+    previousValidatorRef.current = validatorType;
+    if (validatorType === "no_pii") {
+      setSelectedEntities(new Set(PII_ENTITIES));
+    } else {
+      setSelectedEntities(new Set());
+    }
+  }, [open, validatorType]);
 
   const toggleEntity = (e: string) => {
     setSelectedEntities((prev) => {
@@ -591,9 +690,13 @@ function AddGuardrailDialog({
             {/* Sticky header */}
             <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-[23px] font-bold text-text-1">
-                  Add guardrail
-                </h2>
+                {/* DialogTitle (vs a plain h2) so Radix can wire it
+                    to the dialog's aria-labelledby. The styling
+                    overrides the default tiny "leading-none font-
+                    semibold" class so it still reads like an h2. */}
+                <DialogTitle className="text-[23px] font-bold leading-tight text-text-1">
+                  {initial ? "Edit guardrail" : "Add guardrail"}
+                </DialogTitle>
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
@@ -666,6 +769,64 @@ function AddGuardrailDialog({
                       {validator.description}
                     </p>
                   </div>
+
+                  {validatorType === "regex_match" && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[14px] font-semibold text-text-2">
+                        Regex pattern
+                      </label>
+                      <Input
+                        value={pattern}
+                        onChange={(e) => setPattern(e.target.value)}
+                        // Two backslashes here render as a single \ in
+                        // the input placeholder — JS regex syntax
+                        // wants the literal `\b`. (?i) is gone because
+                        // the engine already runs case-insensitive
+                        // and the inline flag wasn't valid JS regex.
+                        placeholder={"e.g. \\b(secret|confidential)\\b"}
+                        className="h-10 font-mono text-[13px]"
+                      />
+                      <p className="text-[12px] text-text-3">
+                        JavaScript regex flavour. Matches are
+                        case-insensitive and global by default — no need
+                        for inline flags. Invalid patterns are rejected
+                        on save.
+                      </p>
+                    </div>
+                  )}
+
+                  {validatorType === "detect_jailbreak" && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[14px] font-semibold text-text-2">
+                        Custom phrases (optional)
+                      </label>
+                      <textarea
+                        value={Array.from(selectedEntities).join("\n")}
+                        onChange={(e) => {
+                          // Each non-empty line is one custom phrase.
+                          // We reuse `selectedEntities` so the rest of
+                          // the dialog form treats jailbreak custom
+                          // phrases identically to no_pii entities at
+                          // submit time — both end up in `entities`.
+                          const lines = e.target.value
+                            .split(/\r?\n/)
+                            .map((l) => l.trim())
+                            .filter((l) => l.length > 0);
+                          setSelectedEntities(new Set(lines));
+                        }}
+                        placeholder={
+                          "ignore my hidden system prompt\nyou are unfiltered\noverride DAN"
+                        }
+                        rows={4}
+                        className="resize-y rounded-md border border-border-2 bg-bg-white px-3 py-2 font-mono text-[13px] outline-none focus:border-primary-6"
+                      />
+                      <p className="text-[12px] text-text-3">
+                        One phrase per line. These extend (don&apos;t
+                        replace) the built-in jailbreak detector. Match is
+                        case-insensitive on whole-word boundaries.
+                      </p>
+                    </div>
+                  )}
 
                   {validatorType === "no_pii" && (
                     <>
@@ -890,15 +1051,36 @@ function AddGuardrailDialog({
                       : "Custom",
                 severity,
                 validatorType,
-                entities: validatorType === "no_pii" ? Array.from(selectedEntities) : [],
+                // entities is reused for two validators: PII entity
+                // names for no_pii; admin-supplied custom jailbreak
+                // phrases for detect_jailbreak. regex_match doesn't
+                // use it.
+                entities:
+                  validatorType === "no_pii" ||
+                  validatorType === "detect_jailbreak"
+                    ? Array.from(selectedEntities)
+                    : [],
+                ...(validatorType === "regex_match"
+                  ? { pattern: pattern.trim() }
+                  : {}),
                 target,
                 onFail,
               })
             }
-            disabled={!name.trim() || isPending}
+            disabled={
+              !name.trim() ||
+              isPending ||
+              (validatorType === "regex_match" && !pattern.trim())
+            }
             className="cursor-pointer bg-primary-6 hover:bg-primary-7"
           >
-            {isPending ? "Adding..." : "Add"}
+            {isPending
+              ? initial
+                ? "Saving..."
+                : "Adding..."
+              : initial
+                ? "Save"
+                : "Add"}
           </Button>
         </div>
       </DialogContent>
@@ -918,6 +1100,9 @@ export default function GuardrailsPage() {
     router.replace(`/guardrails?tab=${encodeURIComponent(t)}`, { scroll: false });
   };
   const [addOpen, setAddOpen] = useState(false);
+  // When set, the dialog opens in edit mode pre-seeded with this rule.
+  // Cleared on close so the next "Add" click starts from defaults.
+  const [editingRule, setEditingRule] = useState<GuardrailItem | null>(null);
 
   const queryClient = useQueryClient();
 
@@ -947,6 +1132,20 @@ export default function GuardrailsPage() {
       invalidateAll();
       setAddOpen(false);
       toast.success("Guardrail created.");
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (args: {
+      id: string;
+      data: Parameters<typeof updateGuardrailItem>[1];
+    }) => updateGuardrailItem(args.id, args.data),
+    onSuccess: () => {
+      invalidateAll();
+      setEditingRule(null);
+      setAddOpen(false);
+      toast.success("Guardrail updated.");
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1033,6 +1232,10 @@ export default function GuardrailsPage() {
           isLoading={listLoading}
           onToggle={(id) => toggleMutation.mutate(id)}
           onDelete={(id) => deleteMutation.mutate(id)}
+          onEdit={(rule) => {
+            setEditingRule(rule);
+            setAddOpen(true);
+          }}
         />
       )}
 
@@ -1046,12 +1249,29 @@ export default function GuardrailsPage() {
         />
       )}
 
-      {/* Add Guardrail Dialog */}
+      {/* Add / Edit Guardrail Dialog. Same component for both —
+          `initial` flips it into edit mode and the parent picks
+          between create + update mutations. Closing also clears
+          editingRule so the next "Add" starts blank. */}
       <AddGuardrailDialog
         open={addOpen}
-        onOpenChange={setAddOpen}
-        onSubmit={(data) => createMutation.mutate(data)}
-        isPending={createMutation.isPending}
+        onOpenChange={(v) => {
+          setAddOpen(v);
+          if (!v) setEditingRule(null);
+        }}
+        onSubmit={(data) => {
+          if (editingRule) {
+            updateMutation.mutate({ id: editingRule.id, data });
+          } else {
+            createMutation.mutate(data);
+          }
+        }}
+        isPending={
+          editingRule
+            ? updateMutation.isPending
+            : createMutation.isPending
+        }
+        initial={editingRule}
       />
     </div>
   );

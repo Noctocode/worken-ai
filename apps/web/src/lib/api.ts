@@ -1573,6 +1573,9 @@ export interface GuardrailItem {
   isActive: boolean;
   validatorType: string | null;
   entities: string[] | null;
+  /** Free-form regex string for validatorType === 'regex_match'. Null
+   *  for other validators. */
+  pattern: string | null;
   target: string | null;
   onFail: string | null;
   templateSource: string | null;
@@ -1622,6 +1625,8 @@ export async function createGuardrailItem(data: {
   severity: "high" | "medium" | "low";
   validatorType?: string;
   entities?: string[];
+  /** Required when validatorType === 'regex_match'. */
+  pattern?: string;
   target?: "input" | "output" | "both";
   onFail?: "fix" | "exception";
 }): Promise<GuardrailItem> {
@@ -1633,6 +1638,31 @@ export async function createGuardrailItem(data: {
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.message || "Failed to create guardrail");
+  }
+  return res.json();
+}
+
+export async function updateGuardrailItem(
+  id: string,
+  data: {
+    name?: string;
+    type?: string;
+    severity?: "high" | "medium" | "low";
+    validatorType?: string;
+    entities?: string[];
+    pattern?: string;
+    target?: "input" | "output" | "both";
+    onFail?: "fix" | "exception";
+  },
+): Promise<GuardrailItem> {
+  const res = await apiFetch(`/guardrails-section/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Failed to update guardrail");
   }
   return res.json();
 }

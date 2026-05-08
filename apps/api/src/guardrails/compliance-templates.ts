@@ -21,8 +21,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
     id: 'hipaa',
     name: 'Healthcare (HIPAA)',
 
-    description:
-      'Healthcare-specific compliance for HIPAA requirements',
+    description: 'Healthcare-specific compliance for HIPAA requirements',
     features: [
       'PHI detection',
       'Medical record protection',
@@ -34,7 +33,13 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
         type: 'PII Protection',
         severity: 'high',
         validatorType: 'no_pii',
-        entities: ['Person', 'Date Time', 'Phone Number', 'Email Address', 'Location'],
+        entities: [
+          'Person',
+          'Date Time',
+          'Phone Number',
+          'Email Address',
+          'Location',
+        ],
         target: 'both',
         onFail: 'fix',
       },
@@ -62,8 +67,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
     id: 'sox',
     name: 'Financial Services (SOX)',
 
-    description:
-      'Compliance standards for Sarbanes-Oxley Act in finance',
+    description: 'Compliance standards for Sarbanes-Oxley Act in finance',
     features: [
       'Transaction auditing',
       'Financial data integrity',
@@ -94,8 +98,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
     id: 'gdpr',
     name: 'GDPR Data Protection',
 
-    description:
-      'European Union regulations for data privacy and protection',
+    description: 'European Union regulations for data privacy and protection',
     features: [
       'Personal data anonymization',
       'User consent management',
@@ -142,8 +145,7 @@ export const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
     id: 'pci_dss',
     name: 'PCI DSS Compliance',
 
-    description:
-      'Payment card industry data security standards',
+    description: 'Payment card industry data security standards',
     features: [
       'Credit card data encryption',
       'Access control measures',
