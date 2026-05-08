@@ -778,13 +778,19 @@ function AddGuardrailDialog({
                       <Input
                         value={pattern}
                         onChange={(e) => setPattern(e.target.value)}
-                        placeholder="e.g. (?i)\b(secret|confidential)\b"
+                        // Two backslashes here render as a single \ in
+                        // the input placeholder — JS regex syntax
+                        // wants the literal `\b`. (?i) is gone because
+                        // the engine already runs case-insensitive
+                        // and the inline flag wasn't valid JS regex.
+                        placeholder={"e.g. \\b(secret|confidential)\\b"}
                         className="h-10 font-mono text-[13px]"
                       />
                       <p className="text-[12px] text-text-3">
-                        JavaScript regex flavour. Matches are case-insensitive
-                        and global by default. Invalid patterns are rejected on
-                        save.
+                        JavaScript regex flavour. Matches are
+                        case-insensitive and global by default — no need
+                        for inline flags. Invalid patterns are rejected
+                        on save.
                       </p>
                     </div>
                   )}

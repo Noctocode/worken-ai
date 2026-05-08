@@ -591,6 +591,38 @@ describe('GuardrailEvaluatorService', () => {
     expect(call.prompt).not.toContain('a@b.com');
   });
 
+  it('audit event for exception action still logs the redacted text (no raw PII leak)', async () => {
+    // Regression guard: an earlier shape kept workingText pinned to
+    // the raw input on exception path because the loop broke before
+    // workingText was updated to fixedText. observability_events
+    // ended up holding the email it was supposed to keep out.
+    const { service, observability } = makeSvc([
+      {
+        id: 'rule-block-pii',
+        name: 'Email Hard Block',
+        validatorType: 'no_pii',
+        entities: ['Email Address'],
+        target: 'input',
+        onFail: 'exception',
+        severity: 'high',
+      },
+    ]);
+    await service.evaluate({
+      text: 'reach me at jane@example.com',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    await new Promise((r) => setImmediate(r));
+    expect(observability.recordLLMCall).toHaveBeenCalledTimes(1);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const call = observability.recordLLMCall.mock.calls[0][0] as {
+      prompt: string;
+    };
+    expect(call.prompt).toContain('[REDACTED:Email Address]');
+    expect(call.prompt).not.toContain('jane@example.com');
+  });
+
   it('audit event for exception action records success=false', async () => {
     const { service, observability } = makeSvc([
       {

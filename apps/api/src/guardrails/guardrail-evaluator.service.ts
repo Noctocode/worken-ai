@@ -551,15 +551,20 @@ export class GuardrailEvaluatorService {
       };
       violations.push(violation);
 
+      // Carry the masked text forward in BOTH paths. For 'fix' it's
+      // necessary so the next rule sees the redacted text. For
+      // 'exception' it isn't load-bearing for the chat layer (we're
+      // about to refuse the message anyway), but the audit log
+      // downstream uses workingText as its `promptSample` — keeping
+      // the masked version means observability_events doesn't end
+      // up holding the raw PII that triggered the block.
+      workingText = fixedText;
       if (action === 'exception') {
         // First exception wins — short-circuit so we don't keep
         // masking text we're about to refuse anyway.
         blocked = violation;
         break;
       }
-      // 'fix' → carry the masked text into the next rule so multiple
-      // rules compose (e.g. PII filter + jailbreak filter both apply).
-      workingText = fixedText;
     }
 
     // Bump triggers + emit audit events fire-and-forget — both are
@@ -676,8 +681,10 @@ export class GuardrailEvaluatorService {
       // high-severity exception rule should win over a lower-
       // severity one when both match the same prompt. CASE expr
       // sorts the string column 'high'/'medium'/'low' as 0/1/2 so
-      // ASC == high-first; createdAt as a tiebreaker keeps ordering
-      // deterministic for two same-severity rules.
+      // ASC == high-first. createdAt narrows it down further;
+      // guardrails.id as the final tiebreaker guarantees the same
+      // ordering across calls even when bulk inserts (template
+      // application) land two rules in the same microsecond.
       .orderBy(
         asc(
           sql`CASE ${guardrails.severity}
@@ -687,6 +694,7 @@ export class GuardrailEvaluatorService {
               END`,
         ),
         desc(guardrails.createdAt),
+        asc(guardrails.id),
       );
   }
 

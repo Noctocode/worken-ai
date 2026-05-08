@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
   Inject,
   Logger,
   NotFoundException,
@@ -209,6 +210,9 @@ export class CompareModelsController {
     // Guardrail INPUT gate. Same prompt is fanned out to every
     // model, so we only need to evaluate it once. Block here saves
     // every per-model LLM call instead of failing N times below.
+    // 422 (not 400) for parity with /chat — both surfaces produce
+    // the same GUARDRAIL_BLOCKED marker, so the FE humanizer is
+    // status-agnostic but logs / metrics treat them as one class.
     const inputDecision = await this.guardrails.evaluate({
       text: body.question,
       target: 'input',
@@ -216,8 +220,9 @@ export class CompareModelsController {
       teamId,
     });
     if (inputDecision.blocked) {
-      throw new BadRequestException(
+      throw new HttpException(
         `${GUARDRAIL_BLOCKED_MARKER}: "${inputDecision.blocked.ruleName}" blocked your question (${inputDecision.blocked.validator}). Edit it and try again, or ask an admin to adjust the rule in Management → Guardrails.`,
+        422,
       );
     }
     const safeQuestion = inputDecision.text;
