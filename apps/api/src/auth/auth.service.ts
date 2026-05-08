@@ -520,6 +520,13 @@ export class AuthService {
       inviteStatus: user.inviteStatus,
       emailVerified: !!user.emailVerifiedAt,
       profileType: user.profileType as 'company' | 'personal' | null,
+      // Surfacing the workspace name on /auth/me so the FE can render
+      // "Joining Acme Corp…" copy when an invited user lands on
+      // setup-profile-with-onboarding-already-completed and we're
+      // about to redirect them home. Cheap (already in the user row)
+      // and unblocks user-facing context that previously needed a
+      // second round-trip to /onboarding/profile.
+      companyName: user.companyName,
       // Strict gate: only users who reached step 6 of the wizard and
       // submitted (which atomically stamps onboarding_completed_at) are
       // admitted to the app. Picking a profile type and bailing earlier

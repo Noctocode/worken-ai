@@ -57,6 +57,7 @@ export interface User {
   picture: string | null;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
+  companyName: string | null;
   onboardingCompleted: boolean;
   canCreateProject: boolean;
 }
