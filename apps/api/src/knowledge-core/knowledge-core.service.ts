@@ -11,12 +11,16 @@ import {
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 @Injectable()
 export class KnowledgeCoreService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
+  ) {}
 
   async findAllFolders(userId: string) {
     const rows = await this.db
@@ -72,6 +76,10 @@ export class KnowledgeCoreService {
         storagePath: knowledgeFiles.storagePath,
         uploadedById: knowledgeFiles.uploadedById,
         uploadedByName: users.name,
+        // Surface ingestion status so the FE can render the per-file
+        // training badge without a second round-trip.
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+        ingestionError: knowledgeFiles.ingestionError,
         createdAt: knowledgeFiles.createdAt,
       })
       .from(knowledgeFiles)
@@ -136,6 +144,17 @@ export class KnowledgeCoreService {
     if (!folder) throw new NotFoundException('Folder not found');
     if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
 
+    // Visibility for chat-time RAG search: company-profile uploaders
+    // make their files org-wide ('company'); personal-profile keep
+    // them private ('personal'). One round-trip to read profileType
+    // is fine — uploads aren't a hot path.
+    const [uploader] = await this.db
+      .select({ profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, userId));
+    const scope =
+      uploader?.profileType === 'company' ? 'company' : 'personal';
+
     const values = files.map((file) => {
       const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
       const fileType = ext || 'FILE';
@@ -149,6 +168,7 @@ export class KnowledgeCoreService {
           path.basename(file.path),
         ),
         uploadedById: userId,
+        scope,
       };
     });
 
@@ -161,6 +181,16 @@ export class KnowledgeCoreService {
         .update(knowledgeFolders)
         .set({ updatedAt: new Date() })
         .where(eq(knowledgeFolders.id, folderId));
+
+      // Kick off chunk + embed in the background. Same fire-and-
+      // forget pattern as onboarding ingestion — the HTTP response
+      // returns immediately while the worker processes the rows we
+      // just inserted (visible to it because the INSERT above
+      // committed). FE polls or refetches the file list to surface
+      // the per-file status badge.
+      if (inserted.length > 0) {
+        this.knowledgeIngestion.ingestPendingFilesForUser(userId);
+      }
 
       return inserted;
     } catch (error) {
@@ -283,6 +313,8 @@ export class KnowledgeCoreService {
         sizeBytes: knowledgeFiles.sizeBytes,
         folderName: knowledgeFolders.name,
         uploadedByName: users.name,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+        ingestionError: knowledgeFiles.ingestionError,
         createdAt: knowledgeFiles.createdAt,
       })
       .from(knowledgeFiles)

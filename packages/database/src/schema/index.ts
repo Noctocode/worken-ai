@@ -320,11 +320,15 @@ export const knowledgeDocuments = pgTable("knowledge_documents", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-// Chunked + embedded text from knowledge_documents uploads. One row
-// per chunk; `documentId` lets us delete or re-ingest a single file
-// without scanning text content. embedding dimensions match the
-// existing `documents` table so the chat RAG search can compose both
-// sources without re-projecting vectors.
+// Chunked + embedded text from user-uploaded knowledge sources. The
+// row is polymorphic on source: exactly one of `documentId` (legacy
+// onboarding upload, knowledge_documents) or `fileId` (post-onboarding
+// Knowledge Core upload, knowledge_files) is non-null per row.
+// Cascade-delete on whichever parent row owns the chunk cleans up
+// embeddings without orphan rows. Embedding dimensions match the
+// existing `documents` table so the chat RAG search can compose all
+// three sources (project documents + onboarding docs + knowledge
+// files) without re-projecting vectors.
 export const knowledgeChunks = pgTable(
   "knowledge_chunks",
   {
@@ -332,15 +336,20 @@ export const knowledgeChunks = pgTable(
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
-    documentId: uuid("document_id")
-      .references(() => knowledgeDocuments.id, { onDelete: "cascade" })
-      .notNull(),
+    documentId: uuid("document_id").references(
+      () => knowledgeDocuments.id,
+      { onDelete: "cascade" },
+    ),
+    fileId: uuid("file_id").references(() => knowledgeFiles.id, {
+      onDelete: "cascade",
+    }),
     chunkIndex: integer("chunk_index").notNull(),
     content: text("content").notNull(),
     embedding: vector("embedding", { dimensions: 384 }),
-    // Mirrored from knowledge_documents.scope. Duplicating the value
+    // Mirrored from the parent row's scope. Duplicating the value
     // keeps the chat-time RAG filter index-friendly (single WHERE,
-    // no JOIN) — RAG search runs on every prompt, the saving adds up.
+    // no JOIN to either parent table) — RAG search runs on every
+    // prompt, the saving adds up.
     scope: text("scope").notNull().default("personal"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
@@ -362,6 +371,8 @@ export const knowledgeChunks = pgTable(
     // so an index on scope by itself pays for the writes. Two-value
     // column is fine here.
     index("knowledge_chunks_scope_idx").on(table.scope),
+    // Look up chunks by parent file (delete-by-file, status check).
+    index("knowledge_chunks_file_idx").on(table.fileId),
   ],
 );
 
@@ -440,6 +451,18 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   sizeBytes: integer("size_bytes").notNull().default(0),
   storagePath: text("storage_path"),
   uploadedById: uuid("uploaded_by_id").references(() => users.id),
+  // Same chunk + embed pipeline as knowledge_documents — chunks land
+  // in knowledge_chunks with `fileId` set. Lifecycle: pending →
+  // processing → done | failed. Image-only / unsupported types
+  // gracefully fail with `ingestion_error` set; the file row + disk
+  // copy stay so download keeps working.
+  ingestionStatus: text("ingestion_status").notNull().default("pending"),
+  ingestionError: text("ingestion_error"),
+  ingestionCompletedAt: timestamp("ingestion_completed_at"),
+  // RAG visibility — mirrors knowledge_documents.scope. Personal
+  // accounts → uploader-only; company accounts → org-wide. Set from
+  // the uploader's profileType at upload time.
+  scope: text("scope").notNull().default("personal"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

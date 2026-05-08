@@ -1466,6 +1466,10 @@ export interface KnowledgeFile {
   storagePath: string | null;
   uploadedById: string | null;
   uploadedByName: string | null;
+  // Status of the chunk + embed pipeline so chat RAG can search
+  // this file. Surfaced as a badge on the folder detail page.
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
   createdAt: string;
 }
 
@@ -1485,6 +1489,8 @@ export interface KnowledgeRecentFile {
   sizeBytes: number;
   folderName: string;
   uploadedByName: string | null;
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
   createdAt: string;
 }
 

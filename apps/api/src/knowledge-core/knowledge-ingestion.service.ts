@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import {
   knowledgeChunks,
   knowledgeDocuments,
+  knowledgeFiles,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
@@ -173,6 +174,125 @@ export class KnowledgeIngestionService {
           ingestionCompletedAt: new Date(),
         })
         .where(eq(knowledgeDocuments.id, doc.id));
+    }
+  }
+
+  /**
+   * Same pipeline as `ingestPendingForUser`, but for files uploaded
+   * via the post-onboarding /knowledge-core page (`knowledge_files`).
+   * Same fire-and-forget, claim-via-UPDATE...RETURNING approach so
+   * concurrent uploads don't double-ingest. Chunks land in the
+   * shared `knowledge_chunks` table with `fileId` set (instead of
+   * `documentId`), keeping chat-time RAG search uniform across
+   * sources.
+   */
+  ingestPendingFilesForUser(userId: string): void {
+    void this.runUserFileIngestion(userId).catch((err) => {
+      this.logger.error(
+        `Background file ingestion crashed for user ${userId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    });
+  }
+
+  private async runUserFileIngestion(userId: string): Promise<void> {
+    // Files are scoped to folders, and folders are owned by users.
+    // We claim only files this user uploaded that are still pending.
+    const claimed = await this.db
+      .update(knowledgeFiles)
+      .set({ ingestionStatus: 'processing' })
+      .where(
+        and(
+          eq(knowledgeFiles.uploadedById, userId),
+          eq(knowledgeFiles.ingestionStatus, 'pending'),
+        ),
+      )
+      .returning({
+        id: knowledgeFiles.id,
+        storagePath: knowledgeFiles.storagePath,
+        name: knowledgeFiles.name,
+        scope: knowledgeFiles.scope,
+      });
+
+    if (claimed.length === 0) return;
+
+    for (const file of claimed) {
+      await this.ingestOneFile(userId, file);
+    }
+  }
+
+  private async ingestOneFile(
+    userId: string,
+    file: {
+      id: string;
+      storagePath: string | null;
+      name: string;
+      scope: string;
+    },
+  ): Promise<void> {
+    try {
+      if (!file.storagePath) {
+        throw new Error('File has no storage path on disk');
+      }
+      const absolutePath = resolve(process.cwd(), file.storagePath);
+      const buffer = await readFile(absolutePath);
+
+      // Knowledge Core uploads don't store mimetype on the row; infer
+      // from the filename. parseFile rejects unsupported types — for
+      // images / spreadsheets the catch block below records a clear
+      // ingestion_error and the file row + disk copy stay so the user
+      // can still download.
+      const mimetype = this.inferMimeFromName(file.name);
+      const text = await this.documentsService.parseFile(buffer, mimetype);
+      const chunks = this.documentsService.chunkText(text);
+
+      if (chunks.length === 0) {
+        await this.db
+          .update(knowledgeFiles)
+          .set({
+            ingestionStatus: 'done',
+            ingestionError: 'No extractable text',
+            ingestionCompletedAt: new Date(),
+          })
+          .where(eq(knowledgeFiles.id, file.id));
+        return;
+      }
+
+      const embeddings = await this.documentsService.embed(chunks);
+
+      await this.db.transaction(async (tx) => {
+        await tx.insert(knowledgeChunks).values(
+          chunks.map((content, i) => ({
+            userId,
+            fileId: file.id,
+            chunkIndex: i,
+            content,
+            embedding: embeddings[i],
+            scope: file.scope,
+          })),
+        );
+        await tx
+          .update(knowledgeFiles)
+          .set({
+            ingestionStatus: 'done',
+            ingestionError: null,
+            ingestionCompletedAt: new Date(),
+          })
+          .where(eq(knowledgeFiles.id, file.id));
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Ingestion failed for knowledge_file ${file.id} (${file.name}): ${message}`,
+      );
+      await this.db
+        .update(knowledgeFiles)
+        .set({
+          ingestionStatus: 'failed',
+          ingestionError: message.slice(0, 500),
+          ingestionCompletedAt: new Date(),
+        })
+        .where(eq(knowledgeFiles.id, file.id));
     }
   }
 

@@ -14,6 +14,8 @@ import {
   Trash2,
   Upload,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -86,6 +88,51 @@ function formatDateTime(d: string): string {
   });
 }
 
+/**
+ * Compact pill that surfaces the ingestion lifecycle on each file
+ * row. Mirrors the same four states the step-6 progress UI uses so
+ * the user gets consistent vocabulary across both upload paths.
+ *
+ *   pending / processing → Loader2 spinner, neutral copy
+ *   done                 → success check, "Trained"
+ *   failed               → warning triangle, "Skipped" + tooltip with
+ *                          the underlying error so unsupported types
+ *                          don't look broken
+ */
+function IngestionStatusBadge({
+  status,
+  error,
+}: {
+  status: "pending" | "processing" | "done" | "failed";
+  error?: string | null;
+}) {
+  if (status === "done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
+        <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+        Trained
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title={error ?? "Could not extract searchable text from this file."}
+      >
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+        Skipped
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
+      <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+      {status === "processing" ? "Training" : "Queued"}
+    </span>
+  );
+}
+
 export default function FolderDetailPage({
   params,
 }: {
@@ -100,6 +147,21 @@ export default function FolderDetailPage({
     queryKey: ["knowledge-folder", folderId],
     queryFn: () => fetchKnowledgeFolder(folderId),
     enabled: !!folderId,
+    // Auto-poll while ingestion is still in flight so the status
+    // badge transitions Queued → Processing → Trained without the
+    // user having to refresh. Stops polling once every file lands
+    // in a terminal state (done / failed) — avoids needless DB
+    // round-trips for static folders.
+    refetchInterval: (query) => {
+      const f = query.state.data;
+      if (!f) return false;
+      const inProgress = f.files.some(
+        (file) =>
+          file.ingestionStatus === "pending" ||
+          file.ingestionStatus === "processing",
+      );
+      return inProgress ? 2000 : false;
+    },
   });
 
   const uploadMutation = useMutation({
@@ -291,6 +353,10 @@ export default function FolderDetailPage({
                         strokeWidth={1.5}
                       />
                       <span className="font-medium text-text-1">{f.name}</span>
+                      <IngestionStatusBadge
+                        status={f.ingestionStatus}
+                        error={f.ingestionError}
+                      />
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -380,9 +446,15 @@ export default function FolderDetailPage({
                 strokeWidth={1.5}
               />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-[14px] font-medium text-text-1">
-                  {f.name}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[14px] font-medium text-text-1">
+                    {f.name}
+                  </span>
+                  <IngestionStatusBadge
+                    status={f.ingestionStatus}
+                    error={f.ingestionError}
+                  />
+                </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
                   {f.uploadedByName ?? "Unknown"} •{" "}

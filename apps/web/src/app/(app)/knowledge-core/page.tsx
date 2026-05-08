@@ -14,6 +14,8 @@ import {
   Trash2,
   Upload,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -79,6 +81,45 @@ function formatDateTime(d: string): string {
   });
 }
 
+/**
+ * Ingestion lifecycle pill — same vocabulary as the folder detail
+ * page. Inline-duplicated rather than imported because the two
+ * pages currently don't share a components file for this domain.
+ */
+function IngestionStatusBadge({
+  status,
+  error,
+}: {
+  status: "pending" | "processing" | "done" | "failed";
+  error?: string | null;
+}) {
+  if (status === "done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
+        <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+        Trained
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title={error ?? "Could not extract searchable text from this file."}
+      >
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+        Skipped
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
+      <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+      {status === "processing" ? "Training" : "Queued"}
+    </span>
+  );
+}
+
 export default function KnowledgeCorePage() {
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -111,6 +152,19 @@ export default function KnowledgeCorePage() {
   const { data: recentFiles = [], isLoading: filesLoading } = useQuery({
     queryKey: ["knowledge-recent"],
     queryFn: fetchRecentKnowledgeFiles,
+    // Poll while any recent file is still being chunked + embedded so
+    // the badge updates without a manual refresh. Stops at terminal
+    // state so static lists don't burn the API.
+    refetchInterval: (query) => {
+      const files = query.state.data;
+      if (!files) return false;
+      const inProgress = files.some(
+        (f) =>
+          f.ingestionStatus === "pending" ||
+          f.ingestionStatus === "processing",
+      );
+      return inProgress ? 2000 : false;
+    },
   });
 
   const createMutation = useMutation({
@@ -375,9 +429,15 @@ export default function KnowledgeCorePage() {
                 strokeWidth={1.5}
               />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-[16px] font-medium text-text-1">
-                  {file.name}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[16px] font-medium text-text-1">
+                    {file.name}
+                  </span>
+                  <IngestionStatusBadge
+                    status={file.ingestionStatus}
+                    error={file.ingestionError}
+                  />
+                </div>
                 <span className="truncate text-[13px] text-text-3">
                   {file.folderName} • {formatBytes(file.sizeBytes)} •
                   Uploaded by {file.uploadedByName ?? "Unknown"}
