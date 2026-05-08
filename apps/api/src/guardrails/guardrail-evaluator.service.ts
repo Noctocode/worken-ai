@@ -458,20 +458,6 @@ export class GuardrailEvaluatorService {
     const targetMatches = (rule: LoadedRule) =>
       rule.target === input.target || rule.target === 'both';
 
-    // ── Diagnostic trace ────────────────────────────────────────────
-    // Temporary: helps debug why a rule the admin expected to fire
-    // didn't. Logs scope, all loaded rules, per-rule run + hit count.
-    // Remove (or downgrade to debug) once we're confident the rule-
-    // loading path is producing what admins expect.
-    this.logger.log(
-      `[guardrail.evaluate] scope userId=${input.userId} teamId=${input.teamId ?? '(personal)'} target=${input.target} textLen=${input.text.length} loadedRules=${rules.length}`,
-    );
-    for (const r of rules) {
-      this.logger.log(
-        `[guardrail.evaluate]   rule ${r.id} name="${r.name}" validator=${r.validatorType} target=${r.target} onFail=${r.onFail} severity=${r.severity} entities=${JSON.stringify(r.entities)} pattern=${r.pattern ? '(set)' : '(null)'}`,
-      );
-    }
-
     // External NER once per evaluate, only when (a) the env hook is
     // configured and (b) at least one applicable rule actually asks
     // for Person/Location/NRP. Cached across rules so a request that
@@ -496,12 +482,7 @@ export class GuardrailEvaluatorService {
     let blocked: GuardrailViolation | null = null;
 
     for (const rule of rules) {
-      if (!targetMatches(rule)) {
-        this.logger.log(
-          `[guardrail.evaluate]   skip rule ${rule.id} — target mismatch (rule.target=${rule.target}, gate.target=${input.target})`,
-        );
-        continue;
-      }
+      if (!targetMatches(rule)) continue;
       const action: GuardrailAction =
         rule.onFail === 'exception' ? 'exception' : 'fix';
 
@@ -558,9 +539,6 @@ export class GuardrailEvaluatorService {
           break;
       }
 
-      this.logger.log(
-        `[guardrail.evaluate]   rule ${rule.id} ran (validator=${rule.validatorType}) → hits=${hits}`,
-      );
       if (hits === 0) continue;
 
       const violation: GuardrailViolation = {
@@ -616,10 +594,6 @@ export class GuardrailEvaluatorService {
         );
       });
     }
-
-    this.logger.log(
-      `[guardrail.evaluate] decision violations=${violations.length} blocked=${blocked ? blocked.ruleName : '(none)'} textChanged=${workingText !== input.text}`,
-    );
 
     return { text: workingText, blocked, violations };
   }
