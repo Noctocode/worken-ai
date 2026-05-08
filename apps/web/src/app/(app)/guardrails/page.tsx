@@ -690,9 +690,13 @@ function AddGuardrailDialog({
             {/* Sticky header */}
             <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-[23px] font-bold text-text-1">
+                {/* DialogTitle (vs a plain h2) so Radix can wire it
+                    to the dialog's aria-labelledby. The styling
+                    overrides the default tiny "leading-none font-
+                    semibold" class so it still reads like an h2. */}
+                <DialogTitle className="text-[23px] font-bold leading-tight text-text-1">
                   {initial ? "Edit guardrail" : "Add guardrail"}
-                </h2>
+                </DialogTitle>
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
