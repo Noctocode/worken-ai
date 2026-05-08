@@ -61,6 +61,27 @@ const SEVERITY_STYLES: Record<Severity, string> = {
   low: "bg-success-1 text-success-7",
 };
 
+// Left-border accent that runs the height of each row in the
+// guardrails table. Mirrors the severity pill colours so the row
+// reads as "this is a high-severity rule" at a glance, without
+// shouting on lower-severity rows. Empty for low so the table
+// stays calm by default.
+const SEVERITY_ROW_ACCENT: Record<Severity, string> = {
+  high: "border-l-4 border-l-danger-6",
+  medium: "border-l-4 border-l-warning-6",
+  low: "border-l-4 border-l-transparent",
+};
+
+// Numeric weight used by the FE sort. Mirrors the CASE expression
+// in GuardrailEvaluatorService.loadApplicableRules so the order
+// admins see in the management list matches what the chat-time
+// gate is going to evaluate.
+const SEVERITY_WEIGHT: Record<Severity, number> = {
+  high: 0,
+  medium: 1,
+  low: 2,
+};
+
 const PAGE_SIZE = 10;
 
 const PII_ENTITIES = [
@@ -174,11 +195,21 @@ function OverviewTab({
           g.type.toLowerCase().includes(q),
       );
     }
-    return [...list].sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
-        a.id.localeCompare(b.id),
-    );
+    // Default sort matches the BE evaluator: severity high → low
+    // first, then newest within the same severity. Keeps the
+    // management list in the same order chat-time rules fire so
+    // admins debugging "why did rule X win" don't have to mentally
+    // re-sort. id is the deterministic tiebreaker for two rules
+    // created at the same instant (rare, but possible on bulk-
+    // applied templates).
+    return [...list].sort((a, b) => {
+      const sevDelta = SEVERITY_WEIGHT[a.severity] - SEVERITY_WEIGHT[b.severity];
+      if (sevDelta !== 0) return sevDelta;
+      const dateDelta =
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      if (dateDelta !== 0) return dateDelta;
+      return a.id.localeCompare(b.id);
+    });
   }, [guardrailsList, query, severity, timeFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -289,7 +320,7 @@ function OverviewTab({
             {paginated.map((g) => (
               <tr
                 key={g.id}
-                className="border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1"
+                className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${SEVERITY_ROW_ACCENT[g.severity]}`}
               >
                 <td className="px-4 py-6">
                   <div className="flex flex-col">
