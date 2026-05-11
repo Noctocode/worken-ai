@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, or, sql } from 'drizzle-orm';
+import OpenAI from 'openai';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
@@ -10,11 +11,28 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
 // shared so the two modules stay decoupled. If you rename the onboarding
 // folder, update both.
 const ONBOARDING_FOLDER_NAME = 'Onboarding';
+
+// OCR model used for image uploads. Same model arena uses for
+// attachment OCR (compare-models.controller) — :free tier so cost
+// stays predictable. The OCR call always routes through OpenRouter,
+// regardless of any BYOK keys the user might have for chat — vision
+// support varies across providers and we don't want to surprise the
+// user with an Anthropic-only key failing on an image.
+const OCR_MODEL = 'baidu/qianfan-ocr-fast:free';
+const IMAGE_MIMETYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+]);
+const NO_TEXT_MARKER = 'NO_TEXT_FOUND';
 
 export type IngestionStatus =
   | 'pending'
@@ -58,6 +76,7 @@ export class KnowledgeIngestionService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
+    private readonly keyResolver: KeyResolverService,
   ) {}
 
   /**
@@ -124,12 +143,19 @@ export class KnowledgeIngestionService {
       const buffer = await readFile(absolutePath);
 
       // Knowledge Core uploads don't store mimetype on the row; infer
-      // from the filename. parseFile rejects unsupported types — for
-      // images / spreadsheets the catch block below records a clear
-      // ingestion_error and the file row + disk copy stay so the user
-      // can still download.
+      // from the filename. Two paths:
+      //   - Image (PNG / JPG / WEBP / GIF) → OpenRouter OCR. The user's
+      //     resolveUserKey is required; the catch below records the
+      //     clear "no key" error if it isn't provisioned (typically
+      //     budget=0 on managed cloud) and the file row + disk copy
+      //     stay so the user can still download.
+      //   - Everything else → DocumentsService.parseFile (PDF, DOCX,
+      //     XLSX, TXT, MD, CSV). Unsupported types throw and land in
+      //     the same catch block.
       const mimetype = this.inferMimeFromName(file.name);
-      const text = await this.documentsService.parseFile(buffer, mimetype);
+      const text = IMAGE_MIMETYPES.has(mimetype)
+        ? await this.extractTextFromImage(userId, buffer, mimetype)
+        : await this.documentsService.parseFile(buffer, mimetype);
       const chunks = this.documentsService.chunkText(text);
 
       if (chunks.length === 0) {
@@ -299,12 +325,68 @@ export class KnowledgeIngestionService {
       .limit(limit);
   }
 
+  /**
+   * Run OpenRouter OCR on a knowledge-file image so the extracted
+   * text can flow through the normal chunk + embed pipeline. We
+   * resolve the user's OpenRouter key the same way the chat /
+   * arena code paths do — so budget gates, lazy provisioning,
+   * and the `monthly budget is 0` error message are all consistent
+   * with what the user already sees elsewhere.
+   *
+   * Returns the OCR text (possibly empty when the model can't
+   * read the image — the caller flushes that as the "No extractable
+   * text" branch). NO_TEXT_FOUND sentinel from the OCR prompt is
+   * normalised to empty here so the chunker never sees the marker
+   * as content.
+   */
+  private async extractTextFromImage(
+    userId: string,
+    buffer: Buffer,
+    mimetype: string,
+  ): Promise<string> {
+    const apiKey = await this.keyResolver.resolveUserKey(userId);
+    const client = new OpenAI({
+      apiKey,
+      baseURL: 'https://openrouter.ai/api/v1',
+    });
+    const dataUrl = `data:${mimetype};base64,${buffer.toString('base64')}`;
+    const completion = await client.chat.completions.create({
+      model: OCR_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: 'Extract ALL text visible in this image, preserving structure and line breaks as best you can. If there is no text, respond with exactly: NO_TEXT_FOUND.',
+            },
+            {
+              type: 'image_url',
+              image_url: { url: dataUrl },
+            },
+          ],
+        },
+      ],
+    });
+    const raw = completion.choices[0]?.message?.content?.trim() ?? '';
+    if (raw === NO_TEXT_MARKER) return '';
+    return raw;
+  }
+
   private inferMimeFromName(filename: string): string {
     const lower = filename.toLowerCase();
     if (lower.endsWith('.pdf')) return 'application/pdf';
     if (lower.endsWith('.docx')) {
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
     }
+    if (lower.endsWith('.xlsx')) {
+      return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    }
+    if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.md')) return 'text/markdown';
     if (lower.endsWith('.csv')) return 'text/csv';

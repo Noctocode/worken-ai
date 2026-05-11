@@ -275,6 +275,29 @@ export class DocumentsService {
       return result.value;
     }
 
+    // XLSX / XLS / legacy .xls macro-enabled too. SheetJS handles all
+    // formats off one read; we flatten every sheet to CSV-ish text
+    // and prefix with the sheet name so the embedder gets some
+    // structural signal alongside the cells. Empty / image-only
+    // workbooks return ''.
+    if (
+      mimetype ===
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      mimetype === 'application/vnd.ms-excel'
+    ) {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const sections: string[] = [];
+      for (const sheetName of wb.SheetNames) {
+        const sheet = wb.Sheets[sheetName];
+        if (!sheet) continue;
+        const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+        if (csv.trim().length === 0) continue;
+        sections.push(`## ${sheetName}\n\n${csv}`);
+      }
+      return sections.join('\n\n');
+    }
+
     if (
       mimetype === 'text/plain' ||
       mimetype === 'text/markdown' ||
@@ -284,7 +307,7 @@ export class DocumentsService {
     }
 
     throw new BadRequestException(
-      'Unsupported file type. Only PDF, DOCX, TXT, MD, and CSV are allowed.',
+      'Unsupported file type. Only PDF, DOCX, XLSX, TXT, MD, and CSV are allowed.',
     );
   }
 
