@@ -10,6 +10,7 @@ import {
   MoreVertical,
   Plus,
   Download,
+  RotateCw,
   Search,
   Shield,
   Trash2,
@@ -28,6 +29,7 @@ import {
   deleteKnowledgeFolder,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
+  reingestKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFolder,
@@ -250,6 +252,23 @@ export default function KnowledgeCorePage() {
       toast.success("File deleted.");
     },
     onError: () => toast.error("Failed to delete file."),
+  });
+
+  // Force a fresh chunk + embed pass on a single file. Available to
+  // any owner — the BE blocks the call if the file is mid-ingestion
+  // (status='processing') so we don't race the worker. After the
+  // POST returns, the polling refetchInterval picks up the new
+  // 'Queued'/'Training' badge automatically.
+  const reingestMutation = useMutation({
+    mutationFn: (fileId: string) => reingestKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+      toast.success("Re-training started.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to re-train this file."),
   });
 
   // Admin-only PATCH to flip a file's visibility between 'all' and
@@ -546,6 +565,16 @@ export default function KnowledgeCorePage() {
                   >
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
                     Move to...
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => reingestMutation.mutate(file.id)}
+                    disabled={
+                      file.ingestionStatus === "processing" ||
+                      reingestMutation.isPending
+                    }
+                  >
+                    <RotateCw className="mr-2 h-3.5 w-3.5" />
+                    Retrain
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem

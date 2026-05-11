@@ -247,6 +247,82 @@ export class KnowledgeCoreService {
   }
 
   /**
+   * Force a fresh ingestion pass for a single file. The /knowledge-core
+   * UI exposes this as a "Retrain" action on each row; useful after
+   * we change the parser / chunker (or when an earlier run landed
+   * with 'No extractable text' before the buffer-and-flush fix and
+   * the chunks are missing). Replaces the workaround of uploading a
+   * dummy file just to trigger `ingestPendingFilesForUser`.
+   *
+   * Semantics:
+   *   - Owner only — the same gate that protects every other
+   *     mutation on the file. Admin can re-train indirectly by
+   *     uploading replacements; cross-owner re-train would be a
+   *     privilege escalation we don't want to grant by default.
+   *   - Blocked when the file is already mid-ingestion
+   *     (status='processing') so we don't race the worker.
+   *   - Deletes existing chunks for the file inside a transaction so
+   *     RAG search never sees half-old + half-new vectors. The chunk
+   *     count drop is fine — `searchAccessibleChunks` filters at
+   *     query time, so an empty file briefly returns no context
+   *     (acceptable; the worker re-fills within seconds).
+   *   - Fire-and-forget worker kick — the HTTP response returns as
+   *     soon as the row is reset; the FE polls / refetches to
+   *     surface the new status badge.
+   */
+  async reingestFile(fileId: string, callerId: string) {
+    const [file] = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        folderId: knowledgeFiles.folderId,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+        ownerId: knowledgeFolders.ownerId,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(eq(knowledgeFiles.id, fileId));
+
+    if (!file) throw new NotFoundException('File not found');
+    if (file.ownerId !== callerId) {
+      throw new ForbiddenException('Access denied');
+    }
+    if (file.ingestionStatus === 'processing') {
+      throw new BadRequestException(
+        'This file is already being trained. Try again once the current run finishes.',
+      );
+    }
+
+    await this.db.transaction(async (tx) => {
+      // Drop existing chunks first so RAG search doesn't briefly
+      // pull stale content alongside the freshly-embedded one once
+      // the worker starts inserting. Cascade isn't enough here —
+      // the file row stays, only the chunks turn over.
+      await tx
+        .delete(knowledgeChunks)
+        .where(eq(knowledgeChunks.fileId, fileId));
+      await tx
+        .update(knowledgeFiles)
+        .set({
+          ingestionStatus: 'pending',
+          ingestionError: null,
+          ingestionCompletedAt: null,
+        })
+        .where(eq(knowledgeFiles.id, fileId));
+    });
+
+    // Worker claims every pending row this user owns — if other
+    // files also happen to be pending, they get re-processed too.
+    // That's fine: the FE polls per-file and shows each badge
+    // independently. Fire-and-forget so the HTTP response returns.
+    this.knowledgeIngestion.ingestPendingFilesForUser(callerId);
+
+    return { id: fileId, ingestionStatus: 'pending' as const };
+  }
+
+  /**
    * Flip an existing file's visibility between 'all' and 'admins'.
    * Admin-only — non-admins can't elevate (would be a privilege
    * escalation) nor demote (no good reason; admin owns the curation).

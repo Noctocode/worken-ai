@@ -10,6 +10,7 @@ import {
   Folder,
   Loader2,
   MoreVertical,
+  RotateCw,
   Search,
   Shield,
   Trash2,
@@ -50,6 +51,7 @@ import {
   fetchKnowledgeFolders,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
+  reingestKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFileVisibility,
@@ -217,6 +219,22 @@ export default function FolderDetailPage({
       toast.success(`Uploaded ${uploaded.length} file(s).`);
     },
     onError: () => toast.error("Failed to upload files."),
+  });
+
+  // Single-file re-train. Mirror of the root /knowledge-core page;
+  // see its comment for details.
+  const reingestMutation = useMutation({
+    mutationFn: (fileId: string) => reingestKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success("Re-training started.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to re-train this file."),
   });
 
   // Admin-only PATCH to flip visibility post-upload. BE rejects
@@ -485,6 +503,16 @@ export default function FolderDetailPage({
                           <FolderInput className="mr-2 h-3.5 w-3.5" />
                           Move to...
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => reingestMutation.mutate(f.id)}
+                          disabled={
+                            f.ingestionStatus === "processing" ||
+                            reingestMutation.isPending
+                          }
+                        >
+                          <RotateCw className="mr-2 h-3.5 w-3.5" />
+                          Retrain
+                        </DropdownMenuItem>
                         {isAdmin && (
                           <DropdownMenuItem
                             onSelect={() =>
@@ -583,6 +611,16 @@ export default function FolderDetailPage({
                   >
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
                     Move to...
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => reingestMutation.mutate(f.id)}
+                    disabled={
+                      f.ingestionStatus === "processing" ||
+                      reingestMutation.isPending
+                    }
+                  >
+                    <RotateCw className="mr-2 h-3.5 w-3.5" />
+                    Retrain
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem

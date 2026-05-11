@@ -118,6 +118,20 @@ export class KnowledgeCoreController {
     return this.service.updateFileVisibility(id, user.id, body?.visibility);
   }
 
+  /**
+   * Force a fresh chunk + embed pass on a single file. Owner-only;
+   * blocked if the file is currently mid-ingestion (status='processing').
+   * Replaces the "upload a dummy file to kick the worker" workaround
+   * users were doing when an earlier run finished with no chunks.
+   */
+  @Post('files/:id/reingest')
+  reingestFile(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.reingestFile(id, user.id);
+  }
+
   @Get('files/:id/download')
   async downloadFile(
     @Param('id') id: string,

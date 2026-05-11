@@ -1581,6 +1581,24 @@ export async function updateKnowledgeFileVisibility(
   return res.json();
 }
 
+/**
+ * Force a fresh chunk + embed pass on a single file. Owner-only at
+ * the BE; FE just kicks the request and refetches to surface the
+ * new "Queued" / "Training" badge.
+ */
+export async function reingestKnowledgeFile(
+  fileId: string,
+): Promise<{ id: string; ingestionStatus: "pending" }> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/reingest`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-train this file");
+  }
+  return res.json();
+}
+
 export async function moveKnowledgeFile(
   fileId: string,
   targetFolderId: string,
