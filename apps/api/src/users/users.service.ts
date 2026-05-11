@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   users,
   teamMembers,
@@ -52,13 +52,13 @@ export class UsersService {
   }
 
   async findAll(callerId: string) {
-    // Scope: a single-tenant deployment IS one company, so a company-
-    // profile caller legitimately sees the whole users table. A
-    // personal-profile (Private Pro) caller owns nothing but their
-    // own account — the /teams?tab=users table should be a one-row
-    // list of themselves, not a leak of every other tenant's email.
-    // NULL profileType (pre-onboarding / edge case) defaults to the
-    // restrictive branch — they get no company context, so no list.
+    // Scope: a single-tenant deployment is one company AND can also
+    // host independent Private Pro accounts side-by-side. A company-
+    // profile caller sees only other company-profile users (plus
+    // NULL-profile rows, which are pending invitees mid-flow that
+    // haven't completed onboarding yet — admin needs them in the
+    // list to see who's still queued). Personal-profile (Private
+    // Pro) callers see only themselves; their account is isolated.
     const [caller] = await this.db
       .select({ profileType: users.profileType })
       .from(users)
@@ -77,7 +77,19 @@ export class UsersService {
       createdAt: users.createdAt,
     };
     const allUsers = isCompanyScope
-      ? await this.db.select(baseSelect).from(users)
+      ? await this.db
+          .select(baseSelect)
+          .from(users)
+          // 'personal' rows are independent Private Pro accounts —
+          // they share the deployment but not the company tenancy.
+          // Filter them out so a company admin's user list doesn't
+          // surface unrelated personal accounts.
+          .where(
+            or(
+              eq(users.profileType, 'company'),
+              isNull(users.profileType),
+            ),
+          )
       : await this.db
           .select(baseSelect)
           .from(users)

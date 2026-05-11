@@ -99,15 +99,44 @@ export class ModelsService {
       ]),
     );
 
-    // Company users get the whole `teamId IS NULL` pool; personal /
-    // pre-onboarding users get only their own ownerless rows.
-    const orgPoolFilter =
-      caller?.profileType === 'company'
-        ? isNull(modelConfigs.teamId)
-        : and(
-            eq(modelConfigs.ownerId, callerId),
-            isNull(modelConfigs.teamId),
-          );
+    // Company users get the `teamId IS NULL` pool, but ONLY rows
+    // whose owner is also a company-profile user. Otherwise an
+    // independent Private Pro account on the same deployment would
+    // leak its private aliases into the company list. NULL-profile
+    // owners (pending invitees mid-flow) count as company-side too —
+    // they're on their way in, just haven't completed onboarding.
+    // Personal / pre-onboarding callers see only their own teamless
+    // rows; their account is isolated by definition.
+    let orgPoolFilter;
+    if (caller?.profileType === 'company') {
+      const companyOwners = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          or(eq(users.profileType, 'company'), isNull(users.profileType)),
+        );
+      const companyOwnerIds = companyOwners.map((u) => u.id);
+      // Defensive: if for some reason no company owners are found
+      // (shouldn't happen — the caller themselves is one), short-
+      // circuit to the personal filter so we never accidentally
+      // pass an empty inArray (Postgres treats `IN ()` as always-
+      // false but Drizzle's inArray rejects empty arrays loudly).
+      orgPoolFilter =
+        companyOwnerIds.length > 0
+          ? and(
+              inArray(modelConfigs.ownerId, companyOwnerIds),
+              isNull(modelConfigs.teamId),
+            )
+          : and(
+              eq(modelConfigs.ownerId, callerId),
+              isNull(modelConfigs.teamId),
+            );
+    } else {
+      orgPoolFilter = and(
+        eq(modelConfigs.ownerId, callerId),
+        isNull(modelConfigs.teamId),
+      );
+    }
 
     return teamIds.length > 0
       ? or(orgPoolFilter, inArray(modelConfigs.teamId, teamIds))
