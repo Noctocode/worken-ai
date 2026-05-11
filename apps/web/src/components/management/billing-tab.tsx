@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Check, AlertTriangle, Lightbulb, Calendar } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Check, AlertTriangle, Lightbulb, Calendar, Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { fetchCurrentUser, updateUserBudget } from "@/lib/api";
+import { Button } from "@/components/ui/button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -385,8 +389,54 @@ function CostByTeamChart() {
   );
 }
 
+// Default $10 cap for first-time users (per product spec). Used as
+// the initial input value when the row has no budget set yet, so
+// hitting Save without typing seeds a sensible starting amount.
+const DEFAULT_BUDGET_USD = 10;
+
 function BudgetControls() {
-  const [budgetCap, setBudgetCap] = useState("10000");
+  const queryClient = useQueryClient();
+  const { data: user, isLoading } = useQuery({
+    queryKey: ["currentUser"],
+    queryFn: fetchCurrentUser,
+  });
+
+  const [budgetCap, setBudgetCap] = useState("");
+
+  // Hydrate from the user payload once it lands. Falls back to the
+  // $10 default when monthlyBudgetCents is 0 (first-time user) so
+  // the input isn't empty and Save without edits is meaningful.
+  useEffect(() => {
+    if (!user) return;
+    const dollars = (user.monthlyBudgetCents ?? 0) / 100;
+    setBudgetCap(dollars > 0 ? String(dollars) : String(DEFAULT_BUDGET_USD));
+  }, [user]);
+
+  // Self-update is allowed for everyone EXCEPT explicit 'company'
+  // profiles (admin owns the spend there). Personal users and edge-
+  // case NULL profileType both self-manage. Mirror the BE gate so
+  // the FE doesn't surface a Save button that would 403.
+  const canSelfEdit = !!user && user.profileType !== "company";
+
+  const saveMutation = useMutation({
+    mutationFn: (budgetUsd: number) =>
+      updateUserBudget(user!.id, budgetUsd),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      toast.success("Monthly budget updated.");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to save budget."),
+  });
+
+  const handleSave = () => {
+    const parsed = Number(budgetCap);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error("Budget must be a non-negative number.");
+      return;
+    }
+    saveMutation.mutate(parsed);
+  };
 
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
@@ -394,25 +444,41 @@ function BudgetControls() {
 
       <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">Monthly Budget Cap</p>
 
-      <div className="flex items-center rounded-lg border border-border-6 bg-bg-white px-3 py-2.5 mb-2">
-        <span className="text-[13px] text-text-4 mr-2">$</span>
-        <input
-          type="text"
-          value={budgetCap}
-          onChange={(e) => setBudgetCap(e.target.value)}
-          className="flex-1 bg-transparent text-[13px] text-text-heading outline-none"
-        />
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex flex-1 items-center rounded-lg border border-border-6 bg-bg-white px-3 py-2.5">
+          <span className="text-[13px] text-text-4 mr-2">$</span>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={budgetCap}
+            onChange={(e) => setBudgetCap(e.target.value)}
+            disabled={isLoading || !canSelfEdit || saveMutation.isPending}
+            className="flex-1 bg-transparent text-[13px] text-text-heading outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          />
+        </div>
+        {canSelfEdit && (
+          <Button
+            onClick={handleSave}
+            disabled={isLoading || saveMutation.isPending}
+            className="bg-primary-6 hover:bg-primary-7"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Save"
+            )}
+          </Button>
+        )}
       </div>
 
-      <p className="text-[12px] text-text-4 leading-[18px] mb-2">
-        Current usage: $4,400 / $10,000
-      </p>
+      {!canSelfEdit && !isLoading && (
+        <p className="text-[12px] text-text-4 leading-[18px] mb-2">
+          Your company admin manages this cap in Management → Users.
+        </p>
+      )}
 
-      <div className="h-2.5 w-full rounded-full bg-border-6 overflow-hidden mb-5">
-        <div className="h-full rounded-full bg-primary-8" style={{ width: "44%" }} />
-      </div>
-
-      <div className="space-y-3">
+      <div className="space-y-3 mt-5">
         {/* Per Figma 4648:60824: in dark mode the alert callouts go neutral
             (page bg + gray border) — the icon alone carries the severity.
             In light mode they keep their tinted amber/green backgrounds. */}

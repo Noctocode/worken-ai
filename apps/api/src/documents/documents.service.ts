@@ -45,34 +45,64 @@ export class DocumentsService {
   // Public so KnowledgeIngestionService can reuse the same chunking
   // strategy as project-level documents — keeps embeddings searchable
   // together at chat time.
+  //
+  // Strategy: buffer short paragraphs together until they hit the
+  // ~1000-char chunk size, then flush. Long paragraphs are emitted
+  // on their own (split on sentence boundaries if they exceed the
+  // limit). The previous version dropped every paragraph under 50
+  // characters individually, which silently killed structured short-
+  // line docs (product catalogs, glossaries, key-value lists where
+  // every line is "name — value"). Now any non-empty content lands
+  // in at least one chunk — embedding similarity handles relevance
+  // at search time, so we don't need a length floor here.
   chunkText(text: string): string[] {
     const paragraphs = text.split(/\n\n+/);
     const chunks: string[] = [];
+    let buffer = '';
+
+    const flushBuffer = () => {
+      const trimmed = buffer.trim();
+      if (trimmed.length > 0) chunks.push(trimmed);
+      buffer = '';
+    };
 
     for (const paragraph of paragraphs) {
       const trimmed = paragraph.trim();
-      if (trimmed.length < 50) continue;
+      if (!trimmed) continue;
 
-      if (trimmed.length <= 1000) {
-        chunks.push(trimmed);
-      } else {
+      // Long paragraph: flush whatever's buffered first, then split
+      // this one on sentence boundaries so no single chunk exceeds
+      // the embedding token budget.
+      if (trimmed.length > 1000) {
+        flushBuffer();
         const sentences = trimmed.split(/\.\s+/);
         let current = '';
         for (const sentence of sentences) {
           const candidate = current ? current + '. ' + sentence : sentence;
-          if (candidate.length > 1000 && current.length >= 50) {
+          if (candidate.length > 1000 && current.length > 0) {
             chunks.push(current);
             current = sentence;
           } else {
             current = candidate;
           }
         }
-        if (current.length >= 50) {
-          chunks.push(current);
-        }
+        if (current.trim().length > 0) chunks.push(current.trim());
+        continue;
+      }
+
+      // Short / medium paragraph: accumulate. `\n\n` preserves the
+      // paragraph break inside the chunk so the model sees the same
+      // structure the user wrote.
+      const candidate = buffer ? buffer + '\n\n' + trimmed : trimmed;
+      if (candidate.length > 1000) {
+        flushBuffer();
+        buffer = trimmed;
+      } else {
+        buffer = candidate;
       }
     }
 
+    flushBuffer();
     return chunks;
   }
 

@@ -363,7 +363,7 @@ export function AccountTab() {
                       {d.filename}
                     </span>
                     <span className="text-[12px] text-text-3">
-                      {d.mimeType ?? "unknown"} • {formatBytes(d.sizeBytes)}
+                      {d.fileType ?? "FILE"} • {formatBytes(d.sizeBytes)}
                     </span>
                   </div>
                   {/* Same-origin credential cookies are set on the API host,

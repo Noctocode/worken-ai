@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   enabledModels,
   integrations,
@@ -53,7 +53,75 @@ export class ModelsService {
     private readonly catalogService: OpenRouterCatalogService,
   ) {}
 
-  async findAll() {
+  /**
+   * Build the scope filter shared by `findAll` (Manage Models tab)
+   * and `listEffectiveForUser` (pickers / arena), so what a user
+   * sees in management matches what they can actually pick.
+   *
+   * Visibility model — mirrors how `knowledge_documents.scope`
+   * works in the same single-tenant deployment:
+   *   - profileType = 'company': every `teamId IS NULL` alias is
+   *     the company-wide model pool (visible to every company
+   *     user, no matter who created it), plus team-scoped rows
+   *     for any team the caller is an accepted member of / owns.
+   *   - profileType = 'personal' (or NULL pre-onboarding): only
+   *     the caller's own `teamId IS NULL` aliases, plus their
+   *     team-scoped rows. Personal accounts don't share with anyone.
+   *
+   * Edit / delete permissions are not relaxed by this — they
+   * still gate on `ownerId === caller` in `update` / `remove`.
+   * Company users can SEE every model_config, but only the owner
+   * (or admin in a follow-up PR) can mutate it.
+   */
+  private async resolveAliasScopeFilter(callerId: string) {
+    const [caller] = await this.db
+      .select({ profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, callerId));
+
+    const memberRows = await this.db
+      .select({ teamId: teamMembers.teamId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.userId, callerId),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+    const ownedRows = await this.db
+      .select({ id: teams.id })
+      .from(teams)
+      .where(eq(teams.ownerId, callerId));
+    const teamIds = Array.from(
+      new Set([
+        ...memberRows.map((r) => r.teamId),
+        ...ownedRows.map((r) => r.id),
+      ]),
+    );
+
+    // Company users get the whole `teamId IS NULL` pool; personal /
+    // pre-onboarding users get only their own ownerless rows.
+    const orgPoolFilter =
+      caller?.profileType === 'company'
+        ? isNull(modelConfigs.teamId)
+        : and(
+            eq(modelConfigs.ownerId, callerId),
+            isNull(modelConfigs.teamId),
+          );
+
+    return teamIds.length > 0
+      ? or(orgPoolFilter, inArray(modelConfigs.teamId, teamIds))
+      : orgPoolFilter;
+  }
+
+  /**
+   * Models the caller can see in the /teams "Models" management tab.
+   * Same scope as `listEffectiveForUser`, except inactive rows are
+   * included so the user can toggle them back on.
+   */
+  async findAll(callerId: string) {
+    const scopeFilter = await this.resolveAliasScopeFilter(callerId);
+
     // Stable ORDER so the FE table doesn't jump rows around when a
     // user toggles isActive (or anything else). Postgres returns
     // rows in arbitrary heap order without ORDER BY, and the order
@@ -65,6 +133,7 @@ export class ModelsService {
     return this.db
       .select()
       .from(modelConfigs)
+      .where(scopeFilter)
       .orderBy(asc(modelConfigs.createdAt), asc(modelConfigs.id));
   }
 
@@ -84,11 +153,22 @@ export class ModelsService {
    * precedence.
    */
   async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
-    // Aliases the user can pick from = personal aliases (ownerId =
-    // user, no team) UNION team-scoped aliases for any team they're an
-    // accepted member of. The team scope path is what makes Custom
-    // LLMs that admin shared with TEAM_X actually appear in member's
-    // model dropdown.
+    // Aliases the user can pick from. Scope rules (see
+    // `resolveAliasScopeFilter` for the full breakdown):
+    //   - company profile → org-wide `teamId IS NULL` pool +
+    //     team-scoped rows for teams the user is in
+    //   - personal profile → only own `teamId IS NULL` rows +
+    //     team-scoped rows
+    // The team-scope branch is what makes Custom LLMs that admin
+    // shared with TEAM_X show up in a member's picker.
+    const scopeFilter = await this.resolveAliasScopeFilter(userId);
+    const aliasRows = await this.db
+      .select()
+      .from(modelConfigs)
+      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
+
+    // Team list still needed below for the BYOK branch — pull it
+    // here rather than reaching into the helper internals.
     const teamMemberships = await this.db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -108,19 +188,6 @@ export class ModelsService {
         ...ownedTeams.map((t) => t.id),
       ]),
     );
-
-    const personalAliasFilter = and(
-      eq(modelConfigs.ownerId, userId),
-      isNull(modelConfigs.teamId),
-    );
-    const scopeFilter =
-      teamIds.length > 0
-        ? or(personalAliasFilter, inArray(modelConfigs.teamId, teamIds))
-        : personalAliasFilter;
-    const aliasRows = await this.db
-      .select()
-      .from(modelConfigs)
-      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
 
     // Every predefined provider that's enabled either personally OR
     // at the scope of any team the user is in. Without the team

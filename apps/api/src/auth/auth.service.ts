@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
-import { users, teamMembers } from '@worken/database/schema';
+import { users, teamMembers, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { REDIS } from '../redis/redis.module.js';
 import { TeamsService } from '../teams/teams.service.js';
@@ -535,6 +535,12 @@ export class AuthService {
       // backfilled by `packages/database/backfill/backfill-legacy-onboarding-completed.sql`.
       onboardingCompleted: !!user.onboardingCompletedAt,
       canCreateProject,
+      // Surfaced so the Billing tab can hydrate the self-service
+      // budget input without a second round-trip to /users/:id (which
+      // also does the OpenRouter usage fetch). Personal-profile users
+      // can patch their own via PATCH /users/:id/budget; company-
+      // profile users see this as read-only until admin updates it.
+      monthlyBudgetCents: user.monthlyBudgetCents ?? 0,
     };
   }
 
@@ -568,5 +574,72 @@ export class AuthService {
           ),
         ),
       );
+
+    // Backfill profileType for users who had a `users` row before their
+    // team invite arrived. teams.service.ts inviteToTeam (cfd1155) only
+    // inherits company fields when it creates the row at invite time —
+    // if a Google sign-in had already created the row earlier, the
+    // invite path never gets to set profileType, and the user lands in
+    // a "no profile" state where the chat/RAG/models scope filters
+    // treat them as personal and hide every org-wide resource.
+    //
+    // We only fill NULL profileType (never overwrite an explicit
+    // 'personal' choice) and only when the user has at least one
+    // accepted membership in a team whose owner is a company-profile
+    // user. companyName must be non-empty there too, mirroring the
+    // `inheritsCompany` guard at invite time.
+    const [user] = await this.db
+      .select({ profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, userId));
+    if (user && user.profileType == null) {
+      const acceptedTeamRows = await this.db
+        .select({ ownerId: teams.ownerId })
+        .from(teamMembers)
+        .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+        .where(
+          and(
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.status, 'accepted'),
+          ),
+        );
+      const ownerIds = Array.from(
+        new Set(acceptedTeamRows.map((r) => r.ownerId)),
+      );
+      if (ownerIds.length > 0) {
+        const ownerProfiles = await this.db
+          .select({
+            id: users.id,
+            profileType: users.profileType,
+            companyName: users.companyName,
+            industry: users.industry,
+            teamSize: users.teamSize,
+            infraChoice: users.infraChoice,
+          })
+          .from(users)
+          .where(eq(users.profileType, 'company'));
+        const companyOwner = ownerProfiles.find(
+          (o) =>
+            ownerIds.includes(o.id) && !!o.companyName?.trim(),
+        );
+        if (companyOwner) {
+          await this.db
+            .update(users)
+            .set({
+              profileType: 'company',
+              companyName: companyOwner.companyName,
+              industry: companyOwner.industry,
+              teamSize: companyOwner.teamSize,
+              infraChoice: companyOwner.infraChoice,
+              // Mirror the inviteToTeam path: stamp completion so
+              // /setup-profile doesn't pull the user back into the
+              // wizard.
+              onboardingCompletedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(eq(users.id, userId));
+        }
+      }
+    }
   }
 }

@@ -171,6 +171,26 @@ export function humanizeChatError(err: unknown): string {
     return "The API key for this provider is invalid. Open Management → Integration, click Settings on the provider card and update it.";
   }
 
+  // Personal-profile self-service variant: BE wording explicitly tells
+  // the user to set their own budget. Route them to Billing rather
+  // than "contact an admin" (there isn't one for Private Pro users).
+  // Match the exact BE phrasing from key-resolver.service.ts so this
+  // branch fires before the broader "AI gateway key" pattern below.
+  if (
+    /monthly budget is 0/i.test(raw) &&
+    /set your monthly budget/i.test(raw)
+  ) {
+    return "Your monthly budget is $0. Set it in Management → Billing before you can use AI models.";
+  }
+
+  // Company-managed variant: budget pending admin approval.
+  if (
+    /monthly budget is 0/i.test(raw) &&
+    /admin must approve/i.test(raw)
+  ) {
+    return "Your monthly budget hasn't been approved yet. Ask an admin to set it in Management → Users.";
+  }
+
   if (
     // Patterns match both the new "AI gateway / AI usage key" wording
     // and the legacy "openrouter" mentions so log lines from older

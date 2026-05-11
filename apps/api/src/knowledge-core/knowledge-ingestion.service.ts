@@ -4,11 +4,16 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   knowledgeChunks,
-  knowledgeDocuments,
   knowledgeFiles,
+  knowledgeFolders,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+
+// Mirror of the constant in OnboardingService — kept inline rather than
+// shared so the two modules stay decoupled. If you rename the onboarding
+// folder, update both.
+const ONBOARDING_FOLDER_NAME = 'Onboarding';
 
 export type IngestionStatus =
   | 'pending'
@@ -33,15 +38,17 @@ export interface IngestionAggregate {
 }
 
 /**
- * Owns the chunk + embed pipeline for files that came in via the
- * onboarding wizard (`knowledge_documents`). Lives next to
- * KnowledgeCoreService because both deal with user-scoped knowledge,
- * but operates on a different table — the onboarding uploads land in
- * `knowledge_documents`, not `knowledge_files`.
+ * Owns the chunk + embed pipeline for user-uploaded knowledge files —
+ * both onboarding-wizard uploads and post-onboarding Knowledge Core
+ * uploads land in the same `knowledge_files` table, so a single
+ * ingestion path covers both. (The legacy `knowledge_documents` table
+ * still holds historical rows but is read-only now; the backfill
+ * script in `packages/database/backfill/` migrates them to
+ * `knowledge_files` and re-links their chunks.)
  *
  * The actual chunking + embedding + file parsing is delegated to
- * DocumentsService so onboarding chunks are searchable with the same
- * vector shape as project documents.
+ * DocumentsService so chunks are searchable with the same vector
+ * shape as project documents.
  */
 @Injectable()
 export class KnowledgeIngestionService {
@@ -53,138 +60,14 @@ export class KnowledgeIngestionService {
   ) {}
 
   /**
-   * Kick off ingestion for every `pending` row owned by `userId`.
-   * Fire-and-forget: we don't await the inner ingestion loop so the
-   * onboarding HTTP response can return immediately. The FE polls
-   * `getStatus()` to surface progress.
-   *
-   * Errors inside individual document ingestion are caught and
-   * persisted on the row (`ingestion_status='failed'`,
+   * Kick off ingestion for `pending` files owned by `userId` (across
+   * all folders, including the auto-created "Onboarding" folder).
+   * Fire-and-forget so the HTTP response returns immediately while
+   * the worker runs in the background. Chunks land in
+   * `knowledge_chunks` with `fileId` set; the FE polls `getStatus()`
+   * to surface progress. Errors inside individual file ingestion are
+   * caught and persisted on the row (`ingestion_status='failed'`,
    * `ingestion_error=...`) so a bad PDF doesn't block the rest.
-   */
-  ingestPendingForUser(userId: string): void {
-    void this.runUserIngestion(userId).catch((err) => {
-      this.logger.error(
-        `Background ingestion crashed for user ${userId}`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    });
-  }
-
-  private async runUserIngestion(userId: string): Promise<void> {
-    // Claim the pending rows in one round-trip so the worker doesn't
-    // pick up the same row twice if `ingestPendingForUser` happens to
-    // be invoked concurrently (e.g. user re-runs onboarding while a
-    // previous batch is still processing). The `RETURNING` payload is
-    // what we'll iterate over.
-    const claimed = await this.db
-      .update(knowledgeDocuments)
-      .set({ ingestionStatus: 'processing' })
-      .where(
-        and(
-          eq(knowledgeDocuments.userId, userId),
-          eq(knowledgeDocuments.ingestionStatus, 'pending'),
-        ),
-      )
-      .returning({
-        id: knowledgeDocuments.id,
-        storagePath: knowledgeDocuments.storagePath,
-        mimeType: knowledgeDocuments.mimeType,
-        filename: knowledgeDocuments.filename,
-        scope: knowledgeDocuments.scope,
-      });
-
-    if (claimed.length === 0) return;
-
-    for (const doc of claimed) {
-      await this.ingestOne(userId, doc);
-    }
-  }
-
-  private async ingestOne(
-    userId: string,
-    doc: {
-      id: string;
-      storagePath: string;
-      mimeType: string | null;
-      filename: string;
-      scope: string;
-    },
-  ): Promise<void> {
-    try {
-      const absolutePath = resolve(process.cwd(), doc.storagePath);
-      const buffer = await readFile(absolutePath);
-
-      const mimetype = doc.mimeType ?? this.inferMimeFromName(doc.filename);
-      const text = await this.documentsService.parseFile(buffer, mimetype);
-      const chunks = this.documentsService.chunkText(text);
-
-      if (chunks.length === 0) {
-        // Image-only PDFs / empty files land here. Mark done with a
-        // note so the FE can show "no extractable text" — the file
-        // still exists on disk, the user just can't query it via RAG.
-        await this.db
-          .update(knowledgeDocuments)
-          .set({
-            ingestionStatus: 'done',
-            ingestionError: 'No extractable text',
-            ingestionCompletedAt: new Date(),
-          })
-          .where(eq(knowledgeDocuments.id, doc.id));
-        return;
-      }
-
-      const embeddings = await this.documentsService.embed(chunks);
-
-      // One transaction so we either land all chunks for this document
-      // or none — keeps the chunk table from carrying half-ingested
-      // documents that the chat RAG would silently use.
-      await this.db.transaction(async (tx) => {
-        await tx.insert(knowledgeChunks).values(
-          chunks.map((content, i) => ({
-            userId,
-            documentId: doc.id,
-            chunkIndex: i,
-            content,
-            embedding: embeddings[i],
-            // Mirror the parent doc's scope so RAG search at chat
-            // time can filter without a JOIN.
-            scope: doc.scope,
-          })),
-        );
-        await tx
-          .update(knowledgeDocuments)
-          .set({
-            ingestionStatus: 'done',
-            ingestionError: null,
-            ingestionCompletedAt: new Date(),
-          })
-          .where(eq(knowledgeDocuments.id, doc.id));
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Ingestion failed for document ${doc.id} (${doc.filename}): ${message}`,
-      );
-      await this.db
-        .update(knowledgeDocuments)
-        .set({
-          ingestionStatus: 'failed',
-          ingestionError: message.slice(0, 500),
-          ingestionCompletedAt: new Date(),
-        })
-        .where(eq(knowledgeDocuments.id, doc.id));
-    }
-  }
-
-  /**
-   * Same pipeline as `ingestPendingForUser`, but for files uploaded
-   * via the post-onboarding /knowledge-core page (`knowledge_files`).
-   * Same fire-and-forget, claim-via-UPDATE...RETURNING approach so
-   * concurrent uploads don't double-ingest. Chunks land in the
-   * shared `knowledge_chunks` table with `fileId` set (instead of
-   * `documentId`), keeping chat-time RAG search uniform across
-   * sources.
    */
   ingestPendingFilesForUser(userId: string): void {
     void this.runUserFileIngestion(userId).catch((err) => {
@@ -298,18 +181,30 @@ export class KnowledgeIngestionService {
 
   /**
    * Aggregated ingestion status for a user. Drives the step-6 progress
-   * screen and the dashboard "still training" banner.
+   * screen — only inspects the auto-created "Onboarding" folder so
+   * post-onboarding KC uploads (which the user manages with their own
+   * per-file badges in /knowledge-core) don't keep step-6 spinning
+   * after the wizard finishes.
    */
   async getStatus(userId: string): Promise<IngestionAggregate> {
     const rows = await this.db
       .select({
-        id: knowledgeDocuments.id,
-        filename: knowledgeDocuments.filename,
-        status: knowledgeDocuments.ingestionStatus,
-        error: knowledgeDocuments.ingestionError,
+        id: knowledgeFiles.id,
+        filename: knowledgeFiles.name,
+        status: knowledgeFiles.ingestionStatus,
+        error: knowledgeFiles.ingestionError,
       })
-      .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.userId, userId));
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          eq(knowledgeFolders.name, ONBOARDING_FOLDER_NAME),
+        ),
+      );
 
     const docs = rows.map((r) => ({
       id: r.id,

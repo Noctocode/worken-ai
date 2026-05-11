@@ -60,6 +60,10 @@ export interface User {
   companyName: string | null;
   onboardingCompleted: boolean;
   canCreateProject: boolean;
+  /** Cap in cents enforced on the user's OpenRouter sub-account.
+   *  0 = no key provisioned yet (personal users self-set in
+   *  Billing tab; company-profile users wait for admin approval). */
+  monthlyBudgetCents: number;
 }
 
 export async function fetchCurrentUser(): Promise<User> {
@@ -1763,7 +1767,7 @@ export interface OnboardingProfile {
     id: string;
     filename: string;
     sizeBytes: number;
-    mimeType: string | null;
+    fileType: string | null;
     createdAt: string;
   }>;
 }

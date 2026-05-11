@@ -51,20 +51,37 @@ export class UsersService {
     return row ?? null;
   }
 
-  async findAll() {
-    const allUsers = await this.db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        picture: users.picture,
-        role: users.role,
-        inviteStatus: users.inviteStatus,
-        monthlyBudgetCents: users.monthlyBudgetCents,
-        infraChoice: users.infraChoice,
-        createdAt: users.createdAt,
-      })
-      .from(users);
+  async findAll(callerId: string) {
+    // Scope: a single-tenant deployment IS one company, so a company-
+    // profile caller legitimately sees the whole users table. A
+    // personal-profile (Private Pro) caller owns nothing but their
+    // own account — the /teams?tab=users table should be a one-row
+    // list of themselves, not a leak of every other tenant's email.
+    // NULL profileType (pre-onboarding / edge case) defaults to the
+    // restrictive branch — they get no company context, so no list.
+    const [caller] = await this.db
+      .select({ profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const isCompanyScope = caller?.profileType === 'company';
+
+    const baseSelect = {
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      picture: users.picture,
+      role: users.role,
+      inviteStatus: users.inviteStatus,
+      monthlyBudgetCents: users.monthlyBudgetCents,
+      infraChoice: users.infraChoice,
+      createdAt: users.createdAt,
+    };
+    const allUsers = isCompanyScope
+      ? await this.db.select(baseSelect).from(users)
+      : await this.db
+          .select(baseSelect)
+          .from(users)
+          .where(eq(users.id, callerId));
 
     // Get team memberships for all users
     const memberships = await this.db
