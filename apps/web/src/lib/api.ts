@@ -1947,6 +1947,10 @@ export interface CompleteOnboardingPayload {
   apiKeys?: Partial<
     Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
   >;
+  /** Visibility for the knowledge files uploaded in step 6. Only
+   *  honoured for `profileType: "company"` — personal uploads are
+   *  owner-only via the scope filter regardless. Defaults to 'all'. */
+  knowledgeVisibility?: KnowledgeFileVisibility;
 }
 
 export async function completeOnboarding(

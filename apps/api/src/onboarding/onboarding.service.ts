@@ -39,6 +39,13 @@ export interface OnboardingPayload {
   infraChoice: InfraChoice;
   // Step 5 — each key is optional; omitted/empty means "skipped"
   apiKeys?: Partial<Record<Provider, string>>;
+  // Step 6 — visibility for the knowledge files uploaded in this
+  // batch. Only meaningful when profileType === 'company' (where
+  // 'admins' restricts access to admin role only). Personal-profile
+  // uploads land as scope='personal' (owner-only) regardless, so
+  // visibility is effectively moot there. Optional; defaults to
+  // 'all'.
+  knowledgeVisibility?: 'all' | 'admins';
 }
 
 /**
@@ -371,11 +378,25 @@ export class OnboardingService {
         const scope =
           payload.profileType === 'company' ? 'company' : 'personal';
 
+        // Second visibility layer (within company scope only):
+        // 'admins' restricts the uploads to admin role users at
+        // chat / arena time. Force 'all' for personal profile —
+        // owner-only scope already, the second toggle would be
+        // misleading. Default 'all' when the payload omits the
+        // field (backward-compatible with FE clients that haven't
+        // adopted the new field yet).
+        const visibility: 'all' | 'admins' =
+          payload.profileType === 'company' &&
+          payload.knowledgeVisibility === 'admins'
+            ? 'admins'
+            : 'all';
+
         await tx.insert(knowledgeFiles).values(
           writtenFiles.map((f) => ({
             folderId: folder.id,
             uploadedById: userId,
             scope,
+            visibility,
             ...f,
           })),
         );
@@ -846,6 +867,15 @@ export class OnboardingService {
     }
     if (p.profileType === 'personal' && !p.fullName?.trim()) {
       throw new BadRequestException('fullName is required for Personal');
+    }
+    if (
+      p.knowledgeVisibility !== undefined &&
+      p.knowledgeVisibility !== 'all' &&
+      p.knowledgeVisibility !== 'admins'
+    ) {
+      throw new BadRequestException(
+        'knowledgeVisibility must be "all" or "admins"',
+      );
     }
   }
 }

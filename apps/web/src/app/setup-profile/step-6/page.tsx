@@ -12,6 +12,7 @@ import {
   FileText,
   X,
   Sparkles,
+  Shield,
   CheckCircle2,
   AlertTriangle,
   Loader2,
@@ -22,9 +23,17 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   completeOnboarding,
   getOnboardingIngestionStatus,
   type IngestionStatusResponse,
+  type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useOnboarding } from "../layout";
 
@@ -64,6 +73,12 @@ export default function SetupProfileStep6Page() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<SubmitPhase>("idle");
+  // Visibility for this onboarding batch. Only meaningful for the
+  // company branch — personal uploads are owner-only via scope. Held
+  // locally (not in the onboarding draft) because step-6 is the
+  // final step; if the user reloads, they restart this step anyway.
+  const [knowledgeVisibility, setKnowledgeVisibility] =
+    useState<KnowledgeFileVisibility>("all");
   const filesAtSubmitRef = useRef(0);
 
   const handleFiles = (incoming: FileList | File[] | null) => {
@@ -137,6 +152,11 @@ export default function SetupProfileStep6Page() {
           teamSize: state.teamSize,
           infraChoice: state.infraChoice,
           apiKeys: state.apiKeys,
+          // Only meaningful for company branch — BE forces 'all' for
+          // personal profile anyway, but we mirror that here so the
+          // payload stays clean.
+          knowledgeVisibility:
+            state.profileType === "company" ? knowledgeVisibility : "all",
         },
         files,
       );
@@ -349,19 +369,62 @@ export default function SetupProfileStep6Page() {
               chat. Only renders once profileType is known so we don't
               flash the wrong copy on hydration. */}
           {state.profileType === "company" ? (
-            <div className="flex items-start gap-3 rounded border border-primary-2 bg-primary-1/40 px-4 py-3">
-              <Users
-                className="h-5 w-5 shrink-0 text-primary-7 mt-0.5"
-                strokeWidth={2}
-              />
-              <p className="text-[13px] leading-relaxed text-text-2">
-                <span className="font-semibold text-text-1">
-                  These files will be shared with your whole company workspace.
-                </span>{" "}
-                Anyone you invite can pull them into chat as context. Avoid
-                uploading personal documents here — you can add private files
-                later from Knowledge Core.
-              </p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-3 rounded border border-primary-2 bg-primary-1/40 px-4 py-3">
+                <Users
+                  className="h-5 w-5 shrink-0 text-primary-7 mt-0.5"
+                  strokeWidth={2}
+                />
+                <p className="text-[13px] leading-relaxed text-text-2">
+                  <span className="font-semibold text-text-1">
+                    These files will be shared with your whole company workspace.
+                  </span>{" "}
+                  Anyone you invite can pull them into chat as context. Avoid
+                  uploading personal documents here — you can add private files
+                  later from Knowledge Core.
+                </p>
+              </div>
+
+              {/* Admin-only second visibility layer. The user IS the
+                  company admin at this point (they're completing the
+                  onboarding that creates the company), so the toggle
+                  is unconditionally rendered for the company branch.
+                  Defaults to 'all'; can be flipped per-file from
+                  Knowledge Core later. */}
+              <div className="flex flex-col gap-1.5 rounded border border-border-2 bg-bg-white px-4 py-3">
+                <label className="text-[13px] font-semibold text-text-1">
+                  Who can use these documents?
+                </label>
+                <Select
+                  value={knowledgeVisibility}
+                  onValueChange={(v) =>
+                    setKnowledgeVisibility(v as KnowledgeFileVisibility)
+                  }
+                >
+                  <SelectTrigger className="h-10 w-full cursor-pointer">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">
+                      <span className="inline-flex items-center gap-2">
+                        <Users className="h-3.5 w-3.5" />
+                        Everyone in the company
+                      </span>
+                    </SelectItem>
+                    <SelectItem value="admins">
+                      <span className="inline-flex items-center gap-2">
+                        <Shield className="h-3.5 w-3.5" />
+                        Admins only
+                      </span>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-text-3">
+                  {knowledgeVisibility === "admins"
+                    ? "Only admins will see these in chat / arena. You can change this per-file in Knowledge Core later."
+                    : "All company users will see these in chat / arena. You can restrict any file to admins later in Knowledge Core."}
+                </p>
+              </div>
             </div>
           ) : state.profileType === "personal" ? (
             <div className="flex items-start gap-3 rounded border border-border-2 bg-bg-1/60 px-4 py-3">
