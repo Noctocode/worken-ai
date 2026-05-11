@@ -11,8 +11,10 @@ import {
   Loader2,
   MoreVertical,
   Search,
+  Shield,
   Trash2,
   Upload,
+  Users,
   X,
   CheckCircle2,
   AlertTriangle,
@@ -47,9 +49,12 @@ import {
   fetchKnowledgeFolder,
   fetchKnowledgeFolders,
   uploadKnowledgeFiles,
+  updateKnowledgeFileVisibility,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -133,6 +138,35 @@ function IngestionStatusBadge({
   );
 }
 
+/**
+ * Visibility pill — mirrors the inline copy in /knowledge-core
+ * root page. Inline-duplicated for the same reason as
+ * IngestionStatusBadge: the two pages don't share a components
+ * file for this domain yet.
+ */
+function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }) {
+  if (visibility === "admins") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title="Only admins can see this file in chat / arena."
+      >
+        <Shield className="h-3 w-3" strokeWidth={2} />
+        Admins only
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+      title="Every company user can see this file in chat / arena."
+    >
+      <Users className="h-3 w-3" strokeWidth={2} />
+      Everyone
+    </span>
+  );
+}
+
 export default function FolderDetailPage({
   params,
 }: {
@@ -140,6 +174,8 @@ export default function FolderDetailPage({
 }) {
   const { folderId } = use(params);
   const [query, setQuery] = useState("");
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
 
   const queryClient = useQueryClient();
 
@@ -165,7 +201,13 @@ export default function FolderDetailPage({
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (files: File[]) => uploadKnowledgeFiles(folderId, files),
+    mutationFn: ({
+      files,
+      visibility,
+    }: {
+      files: File[];
+      visibility: KnowledgeFileVisibility;
+    }) => uploadKnowledgeFiles(folderId, files, visibility),
     onSuccess: (uploaded) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
@@ -175,6 +217,32 @@ export default function FolderDetailPage({
       toast.success(`Uploaded ${uploaded.length} file(s).`);
     },
     onError: () => toast.error("Failed to upload files."),
+  });
+
+  // Admin-only PATCH to flip visibility post-upload. BE rejects
+  // non-admin with 403 — UI hides the menu item entirely below.
+  const visibilityMutation = useMutation({
+    mutationFn: ({
+      fileId,
+      visibility,
+    }: {
+      fileId: string;
+      visibility: KnowledgeFileVisibility;
+    }) => updateKnowledgeFileVisibility(fileId, visibility),
+    onSuccess: (_, { visibility }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success(
+        visibility === "admins"
+          ? "File is now visible only to admins."
+          : "File is now visible to everyone.",
+      );
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to update visibility."),
   });
 
   const deleteMutation = useMutation({
@@ -219,6 +287,11 @@ export default function FolderDetailPage({
   });
 
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  // Per-batch visibility staging. Same lifecycle as on the root
+  // /knowledge-core page: admin-only select, reset to 'all' after
+  // each confirmed upload so the choice doesn't leak across batches.
+  const [stagedVisibility, setStagedVisibility] =
+    useState<KnowledgeFileVisibility>("all");
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
@@ -230,8 +303,14 @@ export default function FolderDetailPage({
   };
 
   const confirmUpload = () => {
-    if (stagedFiles.length > 0) uploadMutation.mutate(stagedFiles);
+    if (stagedFiles.length > 0) {
+      uploadMutation.mutate({
+        files: stagedFiles,
+        visibility: stagedVisibility,
+      });
+    }
     setStagedFiles([]);
+    setStagedVisibility("all");
   };
 
   const removeStagedFile = (idx: number) =>
@@ -357,6 +436,7 @@ export default function FolderDetailPage({
                         status={f.ingestionStatus}
                         error={f.ingestionError}
                       />
+                      <VisibilityBadge visibility={f.visibility} />
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -405,6 +485,29 @@ export default function FolderDetailPage({
                           <FolderInput className="mr-2 h-3.5 w-3.5" />
                           Move to...
                         </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              visibilityMutation.mutate({
+                                fileId: f.id,
+                                visibility:
+                                  f.visibility === "admins" ? "all" : "admins",
+                              })
+                            }
+                          >
+                            {f.visibility === "admins" ? (
+                              <>
+                                <Users className="mr-2 h-3.5 w-3.5" />
+                                Make visible to everyone
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="mr-2 h-3.5 w-3.5" />
+                                Make admin-only
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onSelect={() => handleDelete(f.id)}
@@ -454,6 +557,7 @@ export default function FolderDetailPage({
                     status={f.ingestionStatus}
                     error={f.ingestionError}
                   />
+                  <VisibilityBadge visibility={f.visibility} />
                 </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
@@ -480,6 +584,29 @@ export default function FolderDetailPage({
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
                     Move to...
                   </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        visibilityMutation.mutate({
+                          fileId: f.id,
+                          visibility:
+                            f.visibility === "admins" ? "all" : "admins",
+                        })
+                      }
+                    >
+                      {f.visibility === "admins" ? (
+                        <>
+                          <Users className="mr-2 h-3.5 w-3.5" />
+                          Make visible to everyone
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="mr-2 h-3.5 w-3.5" />
+                          Make admin-only
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => handleDelete(f.id)}
@@ -591,6 +718,39 @@ export default function FolderDetailPage({
               </div>
             ))}
           </div>
+
+          {/* Admin-only visibility select — same UX as the root
+              /knowledge-core upload dialog. Hidden for non-admins so
+              their uploads quietly ship as 'all' (BE forces this
+              regardless). */}
+          {isAdmin && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <label className="text-[12px] font-medium text-text-1">
+                Visibility
+              </label>
+              <Select
+                value={stagedVisibility}
+                onValueChange={(v) =>
+                  setStagedVisibility(v as KnowledgeFileVisibility)
+                }
+                disabled={uploadMutation.isPending}
+              >
+                <SelectTrigger className="h-10 w-full cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Everyone in the company</SelectItem>
+                  <SelectItem value="admins">Admins only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-text-3">
+                {stagedVisibility === "admins"
+                  ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                  : "Every user in the company can see these files in chat / arena."}
+              </p>
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"

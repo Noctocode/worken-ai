@@ -351,6 +351,11 @@ export const knowledgeChunks = pgTable(
     // no JOIN to either parent table) — RAG search runs on every
     // prompt, the saving adds up.
     scope: text("scope").notNull().default("personal"),
+    // Mirrored from knowledge_files.visibility for the same reason
+    // we duplicate scope: per-chat search must filter without a
+    // JOIN to the parent file. 'all' / 'admins'; only meaningful
+    // when scope='company'.
+    visibility: text("visibility").notNull().default("all"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
@@ -463,6 +468,16 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // accounts → uploader-only; company accounts → org-wide. Set from
   // the uploader's profileType at upload time.
   scope: text("scope").notNull().default("personal"),
+  // Within company-scope, a second layer of gating: 'all' lets every
+  // company user (regardless of role) pull these chunks at chat /
+  // arena time; 'admins' restricts them to role='admin'. The choice
+  // is exposed to admins at upload time and is editable post-upload
+  // via PATCH /knowledge-core/files/:id/visibility. Default 'all'
+  // matches the pre-feature behaviour so legacy rows keep working
+  // without a backfill. Irrelevant for scope='personal' (owner-only
+  // already), kept on every row for shape uniformity + search filter
+  // simplicity.
+  visibility: text("visibility").notNull().default("all"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

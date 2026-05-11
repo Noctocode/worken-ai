@@ -11,8 +11,10 @@ import {
   Plus,
   Download,
   Search,
+  Shield,
   Trash2,
   Upload,
+  Users,
   X,
   CheckCircle2,
   AlertTriangle,
@@ -25,11 +27,14 @@ import {
   createKnowledgeFolder,
   deleteKnowledgeFolder,
   uploadKnowledgeFiles,
+  updateKnowledgeFileVisibility,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFolder,
+  type KnowledgeFileVisibility,
   type KnowledgeRecentFile,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -120,7 +125,39 @@ function IngestionStatusBadge({
   );
 }
 
+/**
+ * Compact "who can see this file" pill. Admin-only files get the
+ * shield treatment so it reads as a privilege gate at a glance; the
+ * default 'all' state uses the muted Users glyph so the row doesn't
+ * scream a designation that's the unremarkable default. Kept inline
+ * (not a shared component) for the same reason as IngestionStatusBadge.
+ */
+function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }) {
+  if (visibility === "admins") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title="Only admins can see this file in chat / arena."
+      >
+        <Shield className="h-3 w-3" strokeWidth={2} />
+        Admins only
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+      title="Every company user can see this file in chat / arena."
+    >
+      <Users className="h-3 w-3" strokeWidth={2} />
+      Everyone
+    </span>
+  );
+}
+
 export default function KnowledgeCorePage() {
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -215,6 +252,33 @@ export default function KnowledgeCorePage() {
     onError: () => toast.error("Failed to delete file."),
   });
 
+  // Admin-only PATCH to flip a file's visibility between 'all' and
+  // 'admins'. The BE rejects non-admin callers with 403; we hide the
+  // menu item entirely below so it's never offered, but the mutation
+  // surfaces any 403 in toast for safety in case a future code path
+  // exposes it.
+  const visibilityMutation = useMutation({
+    mutationFn: ({
+      fileId,
+      visibility,
+    }: {
+      fileId: string;
+      visibility: KnowledgeFileVisibility;
+    }) => updateKnowledgeFileVisibility(fileId, visibility),
+    onSuccess: (_, { visibility }) => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+      toast.success(
+        visibility === "admins"
+          ? "File is now visible only to admins."
+          : "File is now visible to everyone.",
+      );
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to update visibility."),
+  });
+
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const deleteFileName =
     recentFiles.find((f) => f.id === deleteFileId)?.name ?? "";
@@ -239,13 +303,19 @@ export default function KnowledgeCorePage() {
 
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  // Staged visibility for the pending upload batch. Admin-only —
+  // non-admin callers don't see the select and uploads ship as 'all'.
+  // Reset to 'all' on each new staging so the choice doesn't leak
+  // across batches.
+  const [stagedVisibility, setStagedVisibility] =
+    useState<KnowledgeFileVisibility>("all");
 
   const confirmUpload = async () => {
     if (stagedFiles.length === 0) return;
     setUploading(true);
     try {
       const folderId = await getAllFilesFolderId();
-      await uploadKnowledgeFiles(folderId, stagedFiles);
+      await uploadKnowledgeFiles(folderId, stagedFiles, stagedVisibility);
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
@@ -253,6 +323,7 @@ export default function KnowledgeCorePage() {
       ]);
       toast.success(`Uploaded ${stagedFiles.length} file(s) to All Files.`);
       setStagedFiles([]);
+      setStagedVisibility("all");
     } catch {
       toast.error("Failed to upload files.");
     } finally {
@@ -437,6 +508,7 @@ export default function KnowledgeCorePage() {
                     status={file.ingestionStatus}
                     error={file.ingestionError}
                   />
+                  <VisibilityBadge visibility={file.visibility} />
                 </div>
                 <span className="truncate text-[13px] text-text-3">
                   {file.folderName} • {formatBytes(file.sizeBytes)} •
@@ -475,6 +547,29 @@ export default function KnowledgeCorePage() {
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
                     Move to...
                   </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        visibilityMutation.mutate({
+                          fileId: file.id,
+                          visibility:
+                            file.visibility === "admins" ? "all" : "admins",
+                        })
+                      }
+                    >
+                      {file.visibility === "admins" ? (
+                        <>
+                          <Users className="mr-2 h-3.5 w-3.5" />
+                          Make visible to everyone
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="mr-2 h-3.5 w-3.5" />
+                          Make admin-only
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => setDeleteFileId(file.id)}
@@ -648,6 +743,38 @@ export default function KnowledgeCorePage() {
               </div>
             ))}
           </div>
+
+          {/* Admin-only visibility select. Hidden for non-admins so
+              the only thing they see is the upload list — their
+              uploads ship with the default 'all' visibility (BE
+              forces 'all' anyway for non-admin callers). */}
+          {isAdmin && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <label className="text-[12px] font-medium text-text-1">
+                Visibility
+              </label>
+              <Select
+                value={stagedVisibility}
+                onValueChange={(v) =>
+                  setStagedVisibility(v as KnowledgeFileVisibility)
+                }
+                disabled={uploading}
+              >
+                <SelectTrigger className="h-10 w-full cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Everyone in the company</SelectItem>
+                  <SelectItem value="admins">Admins only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-text-3">
+                {stagedVisibility === "admins"
+                  ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                  : "Every user in the company can see these files in chat / arena."}
+              </p>
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"

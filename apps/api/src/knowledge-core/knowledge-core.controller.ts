@@ -95,8 +95,27 @@ export class KnowledgeCoreController {
     @Param('id') folderId: string,
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFiles() files: Express.Multer.File[],
+    // Multer parses non-file fields onto the request body; multipart
+    // strings come through verbatim. Service validates the value
+    // against the 'all' | 'admins' enum.
+    @Body() body: { visibility?: string },
   ) {
-    return this.service.uploadFiles(folderId, user.id, files);
+    return this.service.uploadFiles(folderId, user.id, files, body?.visibility);
+  }
+
+  /**
+   * Promote / demote a knowledge file between 'all' and 'admins'
+   * visibility. Admin-only — the gate lives in the service so the
+   * controller stays free of role-fetch logic. Mirrors the pattern
+   * used by `models.controller` for admin endpoints.
+   */
+  @Patch('files/:id/visibility')
+  updateFileVisibility(
+    @Param('id') id: string,
+    @Body() body: { visibility: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateFileVisibility(id, user.id, body?.visibility);
   }
 
   @Get('files/:id/download')

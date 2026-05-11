@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -8,6 +9,7 @@ import { eq, desc, sql } from 'drizzle-orm';
 import {
   knowledgeFolders,
   knowledgeFiles,
+  knowledgeChunks,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -80,6 +82,9 @@ export class KnowledgeCoreService {
         // training badge without a second round-trip.
         ingestionStatus: knowledgeFiles.ingestionStatus,
         ingestionError: knowledgeFiles.ingestionError,
+        // Surfaced so the row UI can render the 'Admin only' badge
+        // and the action menu can flip it via PATCH.
+        visibility: knowledgeFiles.visibility,
         createdAt: knowledgeFiles.createdAt,
       })
       .from(knowledgeFiles)
@@ -135,6 +140,7 @@ export class KnowledgeCoreService {
     folderId: string,
     userId: string,
     files: Express.Multer.File[],
+    visibilityInput?: string,
   ) {
     const [folder] = await this.db
       .select()
@@ -146,14 +152,27 @@ export class KnowledgeCoreService {
 
     // Visibility for chat-time RAG search: company-profile uploaders
     // make their files org-wide ('company'); personal-profile keep
-    // them private ('personal'). One round-trip to read profileType
-    // is fine — uploads aren't a hot path.
+    // them private ('personal'). One round-trip to read profileType +
+    // role is fine — uploads aren't a hot path. Role check is needed
+    // a few lines below to gate the 'admins' visibility privilege.
     const [uploader] = await this.db
-      .select({ profileType: users.profileType })
+      .select({ profileType: users.profileType, role: users.role })
       .from(users)
       .where(eq(users.id, userId));
     const scope =
       uploader?.profileType === 'company' ? 'company' : 'personal';
+
+    // Secondary visibility within the scope. Default 'all' keeps
+    // legacy behaviour. 'admins' is a privilege — only an admin can
+    // promote an upload to admin-only at creation time. Force 'all'
+    // for anyone else so a basic user can't sneak in an admin-only
+    // upload via crafted multipart fields. Validate the enum so any
+    // typo from the client surfaces as a clear 400 instead of being
+    // silently coerced to 'all'.
+    const visibility = this.resolveUploadVisibility(
+      visibilityInput,
+      uploader?.role,
+    );
 
     const values = files.map((file) => {
       const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
@@ -169,6 +188,7 @@ export class KnowledgeCoreService {
         ),
         uploadedById: userId,
         scope,
+        visibility,
       };
     });
 
@@ -201,6 +221,80 @@ export class KnowledgeCoreService {
       );
       throw error;
     }
+  }
+
+  /**
+   * Validate the visibility enum + enforce the admin-only privilege
+   * for 'admins'. Shared between upload and PATCH so the same gate
+   * applies regardless of how a row gets flipped.
+   */
+  private resolveUploadVisibility(
+    input: string | undefined,
+    callerRole: string | null | undefined,
+  ): 'all' | 'admins' {
+    if (input == null || input === '') return 'all';
+    if (input !== 'all' && input !== 'admins') {
+      throw new BadRequestException(
+        `Invalid visibility "${input}". Must be 'all' or 'admins'.`,
+      );
+    }
+    if (input === 'admins' && callerRole !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can mark a knowledge file as admin-only.',
+      );
+    }
+    return input;
+  }
+
+  /**
+   * Flip an existing file's visibility between 'all' and 'admins'.
+   * Admin-only — non-admins can't elevate (would be a privilege
+   * escalation) nor demote (no good reason; admin owns the curation).
+   * Mirrored onto knowledge_chunks so the RAG filter (which only
+   * reads chunks, never re-JOINs to the file row) immediately
+   * respects the new setting.
+   */
+  async updateFileVisibility(
+    fileId: string,
+    callerId: string,
+    visibilityInput: string,
+  ) {
+    const [caller] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, callerId));
+    if (caller?.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can change a file\'s visibility.',
+      );
+    }
+    if (visibilityInput !== 'all' && visibilityInput !== 'admins') {
+      throw new BadRequestException(
+        `Invalid visibility "${visibilityInput}". Must be 'all' or 'admins'.`,
+      );
+    }
+
+    const [file] = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        folderId: knowledgeFiles.folderId,
+      })
+      .from(knowledgeFiles)
+      .where(eq(knowledgeFiles.id, fileId));
+    if (!file) throw new NotFoundException('File not found');
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(knowledgeFiles)
+        .set({ visibility: visibilityInput })
+        .where(eq(knowledgeFiles.id, fileId));
+      await tx
+        .update(knowledgeChunks)
+        .set({ visibility: visibilityInput })
+        .where(eq(knowledgeChunks.fileId, fileId));
+    });
+
+    return { id: fileId, visibility: visibilityInput };
   }
 
   async getFileForDownload(fileId: string, userId: string) {
@@ -315,6 +409,7 @@ export class KnowledgeCoreService {
         uploadedByName: users.name,
         ingestionStatus: knowledgeFiles.ingestionStatus,
         ingestionError: knowledgeFiles.ingestionError,
+        visibility: knowledgeFiles.visibility,
         createdAt: knowledgeFiles.createdAt,
       })
       .from(knowledgeFiles)

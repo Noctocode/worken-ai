@@ -1461,6 +1461,8 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
+export type KnowledgeFileVisibility = "all" | "admins";
+
 export interface KnowledgeFile {
   id: string;
   folderId: string;
@@ -1474,6 +1476,11 @@ export interface KnowledgeFile {
   // this file. Surfaced as a badge on the folder detail page.
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
+  // Secondary visibility within company scope: 'all' is readable
+  // by every company user, 'admins' restricts to role='admin'.
+  // Default 'all'. Admins toggle via the action menu / upload
+  // dialog; basic users see this read-only.
+  visibility: KnowledgeFileVisibility;
   createdAt: string;
 }
 
@@ -1495,6 +1502,7 @@ export interface KnowledgeRecentFile {
   uploadedByName: string | null;
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
+  visibility: KnowledgeFileVisibility;
   createdAt: string;
 }
 
@@ -1534,14 +1542,42 @@ export async function deleteKnowledgeFolder(id: string): Promise<void> {
 export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
+  visibility: KnowledgeFileVisibility = "all",
 ): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
+  // Multipart field for the visibility flag. BE enforces that only
+  // admins can set 'admins'; for non-admin callers any value other
+  // than 'all' is rejected, so the caller MUST omit it / pass 'all'.
+  form.append("visibility", visibility);
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
     body: form,
   });
   if (!res.ok) throw new Error("Failed to upload files");
+  return res.json();
+}
+
+/**
+ * Flip a knowledge file between 'all' and 'admins' visibility.
+ * Admin-only — non-admin callers will get a 403 from the BE.
+ */
+export async function updateKnowledgeFileVisibility(
+  fileId: string,
+  visibility: KnowledgeFileVisibility,
+): Promise<{ id: string; visibility: KnowledgeFileVisibility }> {
+  const res = await apiFetch(
+    `/knowledge-core/files/${fileId}/visibility`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update visibility");
+  }
   return res.json();
 }
 

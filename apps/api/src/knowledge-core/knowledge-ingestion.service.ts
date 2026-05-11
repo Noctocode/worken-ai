@@ -6,6 +6,7 @@ import {
   knowledgeChunks,
   knowledgeFiles,
   knowledgeFolders,
+  users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
@@ -95,6 +96,7 @@ export class KnowledgeIngestionService {
         storagePath: knowledgeFiles.storagePath,
         name: knowledgeFiles.name,
         scope: knowledgeFiles.scope,
+        visibility: knowledgeFiles.visibility,
       });
 
     if (claimed.length === 0) return;
@@ -111,6 +113,7 @@ export class KnowledgeIngestionService {
       storagePath: string | null;
       name: string;
       scope: string;
+      visibility: string;
     },
   ): Promise<void> {
     try {
@@ -152,6 +155,7 @@ export class KnowledgeIngestionService {
             content,
             embedding: embeddings[i],
             scope: file.scope,
+            visibility: file.visibility,
           })),
         );
         await tx
@@ -247,8 +251,32 @@ export class KnowledgeIngestionService {
    * knowledge into RAG context alongside project documents.
    */
   async searchAccessibleChunks(userId: string, query: string, limit = 5) {
+    // Admin gating on the second visibility layer: company-scope
+    // chunks marked `visibility='admins'` are reachable only when
+    // the caller has role='admin'. Personal-scope chunks are
+    // owner-only via the userId filter — visibility doesn't apply
+    // there. One round-trip to read role; uploads aren't a hot
+    // path, but chat-time RAG runs on every prompt — keeping this
+    // a single SELECT per call is intentional.
+    const [caller] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, userId));
+    const isAdmin = caller?.role === 'admin';
+
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+
+    // Company-scope filter: 'all' is universally readable; 'admins'
+    // is only readable when the caller is admin. Building the
+    // company branch as a sub-AND keeps the personal branch alone
+    // when the caller isn't admin AND the chunk is admin-only.
+    const companyBranch = isAdmin
+      ? eq(knowledgeChunks.scope, 'company')
+      : and(
+          eq(knowledgeChunks.scope, 'company'),
+          eq(knowledgeChunks.visibility, 'all'),
+        );
 
     return this.db
       .select({
@@ -264,7 +292,7 @@ export class KnowledgeIngestionService {
             eq(knowledgeChunks.userId, userId),
             eq(knowledgeChunks.scope, 'personal'),
           ),
-          eq(knowledgeChunks.scope, 'company'),
+          companyBranch,
         ),
       )
       .orderBy(desc(similarity))
