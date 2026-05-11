@@ -182,19 +182,29 @@ export default function SetupProfileStep6Page() {
       query.state.data && !query.state.data.inProgress ? false : 1500,
   });
 
-  // Detect the inProgress→false transition and redirect once we've
-  // shown the "done" copy briefly. Effect rather than inline so the
-  // user actually sees the progress bar fill to 100% before we
-  // navigate.
+  // Two-phase transition so the "Your AI is ready" copy actually
+  // gets a chance to render before we navigate away.
+  //
+  // Pass 1: flip phase training → done as soon as the poll reports
+  //   inProgress=false. No timer scheduled here.
+  // Pass 2: once phase is `done`, schedule the redirect. The
+  //   previous single-effect version returned the setTimeout's
+  //   cleanup, which React then ran the moment `phase` changed —
+  //   clearing the timer right after we set it and leaving the
+  //   user stranded on "Your AI is ready" with no redirect.
   useEffect(() => {
     if (phase !== "training") return;
     const data = ingestionQuery.data;
     if (data && !data.inProgress) {
       setPhase("done");
-      const t = setTimeout(finishAndRedirect, 800);
-      return () => clearTimeout(t);
     }
-  }, [phase, ingestionQuery.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [phase, ingestionQuery.data]);
+
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(finishAndRedirect, 800);
+    return () => clearTimeout(t);
+  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (phase === "training" || phase === "done") {
     const data = ingestionQuery.data;
