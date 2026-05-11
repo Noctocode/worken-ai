@@ -907,13 +907,28 @@ export class TeamsService {
       throw new BadRequestException('Invitation has expired');
     }
 
-    // Does this email already map to a registered account? The /invite
-    // page uses this to route logged-out users to /login instead of the
-    // set-password signup.
+    // Does this email already map to a USABLE account? The /invite
+    // page uses this to route logged-out users to /login instead of
+    // the set-password signup.
+    //
+    // Subtle: we now pre-create a `users` row at team-invite time
+    // (to inherit the inviter's company fields). That row has no
+    // passwordHash and no googleId until the invitee actually
+    // registers. If `hasAccount` checked row existence alone, the FE
+    // would route the invitee to /login — and they'd be stuck,
+    // because there's no password to log in with. So check for an
+    // actual sign-in credential, not just a row.
     const [existingUser] = await this.db
-      .select({ id: users.id })
+      .select({
+        passwordHash: users.passwordHash,
+        googleId: users.googleId,
+      })
       .from(users)
       .where(eq(users.email, member.email.toLowerCase()));
+
+    const hasAccount =
+      !!existingUser &&
+      (!!existingUser.passwordHash || !!existingUser.googleId);
 
     return {
       email: member.email,
@@ -921,7 +936,7 @@ export class TeamsService {
       teamName: member.teamName,
       inviterName: member.inviterName,
       expiresAt: member.invitationExpiresAt?.toISOString() ?? null,
-      hasAccount: !!existingUser,
+      hasAccount,
     };
   }
 
