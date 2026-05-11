@@ -132,6 +132,28 @@ export class KnowledgeCoreController {
     return this.service.reingestFile(id, user.id);
   }
 
+  /**
+   * Bulk variant of the per-file PATCH. Lets the multi-select action
+   * bar flip many rows in one round-trip and one DB transaction.
+   * Admin-only — same gate as the per-file endpoint, just applied
+   * once for the whole batch.
+   *
+   * Mounted ahead of `:id/visibility` would clash; this route has
+   * no `:id` segment so the order doesn't matter, but kept after
+   * for readability.
+   */
+  @Patch('files/visibility')
+  updateFilesVisibility(
+    @Body() body: { fileIds: string[]; visibility: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateFilesVisibility(
+      body?.fileIds ?? [],
+      user.id,
+      body?.visibility,
+    );
+  }
+
   @Get('files/:id/download')
   async downloadFile(
     @Param('id') id: string,

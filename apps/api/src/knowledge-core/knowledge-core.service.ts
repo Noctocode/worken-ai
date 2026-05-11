@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, inArray, sql } from 'drizzle-orm';
 import {
   knowledgeFolders,
   knowledgeFiles,
@@ -371,6 +371,61 @@ export class KnowledgeCoreService {
     });
 
     return { id: fileId, visibility: visibilityInput };
+  }
+
+  /**
+   * Bulk variant of `updateFileVisibility`. Same gates (admin-only,
+   * enum validation), one transaction so a partial run can't leave
+   * the user in a half-flipped state. Drops unknown / invalid IDs
+   * silently (caller-side typically constructs the array from rows
+   * it already rendered, so the only way IDs go stale is concurrent
+   * deletes — surfacing a 404 in that race would be misleading).
+   *
+   * Returns the affected ids so the FE knows exactly which rows to
+   * optimistically update.
+   */
+  async updateFilesVisibility(
+    fileIds: string[],
+    callerId: string,
+    visibilityInput: string,
+  ) {
+    const [caller] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, callerId));
+    if (caller?.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only admins can change a file\'s visibility.',
+      );
+    }
+    if (visibilityInput !== 'all' && visibilityInput !== 'admins') {
+      throw new BadRequestException(
+        `Invalid visibility "${visibilityInput}". Must be 'all' or 'admins'.`,
+      );
+    }
+    if (!Array.isArray(fileIds) || fileIds.length === 0) {
+      throw new BadRequestException('`fileIds` must be a non-empty array.');
+    }
+
+    // Cheap dedupe in case the FE accidentally sends duplicates;
+    // drizzle inArray would still work but we'd update twice.
+    const uniqueIds = Array.from(new Set(fileIds));
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(knowledgeFiles)
+        .set({ visibility: visibilityInput })
+        .where(inArray(knowledgeFiles.id, uniqueIds));
+      await tx
+        .update(knowledgeChunks)
+        .set({ visibility: visibilityInput })
+        .where(inArray(knowledgeChunks.fileId, uniqueIds));
+    });
+
+    return {
+      visibility: visibilityInput as 'all' | 'admins',
+      affectedIds: uniqueIds,
+    };
   }
 
   async getFileForDownload(fileId: string, userId: string) {

@@ -1599,6 +1599,26 @@ export async function reingestKnowledgeFile(
   return res.json();
 }
 
+/**
+ * Bulk visibility flip — one round-trip, single BE transaction.
+ * Admin-only at the BE. Used by the multi-select action bar.
+ */
+export async function updateKnowledgeFilesVisibilityBulk(
+  fileIds: string[],
+  visibility: KnowledgeFileVisibility,
+): Promise<{ visibility: KnowledgeFileVisibility; affectedIds: string[] }> {
+  const res = await apiFetch(`/knowledge-core/files/visibility`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds, visibility }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update visibility");
+  }
+  return res.json();
+}
+
 export async function moveKnowledgeFile(
   fileId: string,
   targetFolderId: string,
