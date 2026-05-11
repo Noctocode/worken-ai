@@ -553,11 +553,63 @@ export class TeamsService {
 
     const token = randomBytes(32).toString('hex');
 
+    // Pre-create the org user row so company-profile fields inherit
+    // from the team owner — symmetric with /users/invite, just driven
+    // by the team-invite entrypoint. Without this, the invitee
+    // registers into a blank user row and lands on /setup-profile
+    // with the profile-type picker instead of being auto-joined to
+    // the workspace.
+    //
+    // Skipped when an existing row already covers this email — we
+    // don't want to overwrite somebody's existing company / personal
+    // profile just because they got pulled into a team.
+    let inviteeUserId = existingUser?.id ?? null;
+    if (!existingUser) {
+      const [owner] = await this.db
+        .select({
+          profileType: users.profileType,
+          companyName: users.companyName,
+          industry: users.industry,
+          teamSize: users.teamSize,
+          infraChoice: users.infraChoice,
+        })
+        .from(users)
+        .where(eq(users.id, team.ownerId));
+
+      const inheritsCompany =
+        owner?.profileType === 'company' && !!owner.companyName?.trim();
+      // onboardingCompletedAt stamped on inherit so /setup-profile's
+      // guard bounces the invitee straight to the dashboard with the
+      // "Joining …" loader — they don't need to walk the wizard
+      // again, the workspace identity is already known.
+      const inheritedFields = inheritsCompany
+        ? {
+            profileType: 'company' as const,
+            companyName: owner.companyName,
+            industry: owner.industry,
+            teamSize: owner.teamSize,
+            infraChoice: owner.infraChoice,
+            onboardingCompletedAt: new Date(),
+          }
+        : {};
+
+      const [created] = await this.db
+        .insert(users)
+        .values({
+          email,
+          role: 'basic',
+          inviteStatus: 'pending',
+          ...inheritedFields,
+        })
+        .returning({ id: users.id });
+      inviteeUserId = created.id;
+    }
+
     const [member] = await this.db
       .insert(teamMembers)
       .values({
         teamId,
-        userId: existingUser?.id ?? null,
+        userId: inviteeUserId,
         email,
         role,
         status: 'pending',
