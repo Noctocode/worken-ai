@@ -1257,6 +1257,10 @@ export type CompareModelsStreamEvent =
         time?: number;
       })[];
       runId?: string;
+      /** Set when every retry of the evaluator failed. Empty
+       *  comparisonItems alone isn't a sufficient signal — a 0-model
+       *  response set would also produce empty items legitimately. */
+      error?: string;
     }
   | { type: "done" };
 
@@ -1388,6 +1392,8 @@ export async function* streamCompareModels(
               : [],
             runId:
               typeof data.runId === "string" ? data.runId : undefined,
+            error:
+              typeof data.error === "string" ? data.error : undefined,
           };
         } else if (eventName === "done") {
           yield { type: "done" };

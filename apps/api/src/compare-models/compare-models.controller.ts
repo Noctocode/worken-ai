@@ -909,11 +909,19 @@ export class CompareModelsController {
     // If every model errored, skip the evaluator (nothing meaningful
     // to compare) and emit done with empty comparison.
     let comparisonItems: ComparisonItem[] = [];
+    let evaluatorError: string | null = null;
     if (responses.length > 0) {
       const EVALUATOR_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
       let lastParseError: string | undefined;
       let lastRawContent = '';
+      let lastCallError: string | undefined;
 
+      // Same retry policy as the non-stream arena: try up to
+      // MAX_COMPARE_ATTEMPTS times, accept the first attempt that
+      // produces a non-empty parsed comparison. Call failures
+      // accumulate into lastCallError; parse failures into
+      // lastParseError. The retry helps with the evaluator
+      // sometimes returning markdown / preamble around the JSON.
       for (let attempt = 1; attempt <= MAX_COMPARE_ATTEMPTS; attempt++) {
         const evalStart = Date.now();
         try {
@@ -943,8 +951,14 @@ export class CompareModelsController {
             comparisonItems = [];
           }
           if (comparisonItems.length > 0) break;
+          this.logger.warn(
+            `Evaluator returned unparseable output on attempt ${attempt}/${MAX_COMPARE_ATTEMPTS}${
+              lastParseError ? ` (${lastParseError})` : ''
+            }. Raw content preview: ${lastRawContent.slice(0, 200)}`,
+          );
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
+          lastCallError = msg;
           void this.observabilityService.recordLLMCall({
             userId: user.id,
             teamId,
@@ -958,13 +972,22 @@ export class CompareModelsController {
           this.logger.error(
             `Evaluator call failed on attempt ${attempt}/${MAX_COMPARE_ATTEMPTS}: ${msg}`,
           );
-          break;
+          // Retry — could be a transient :free-tier rate limit. The
+          // last error message gets surfaced if every attempt fails.
         }
       }
 
-      if (comparisonItems.length === 0 && lastParseError) {
-        this.logger.warn(
-          `Evaluator returned unparseable output after ${MAX_COMPARE_ATTEMPTS} attempts (${lastParseError}). Raw: ${lastRawContent.slice(0, 200)}`,
+      if (comparisonItems.length === 0) {
+        // Surface a single failure reason — the user has the model
+        // answers already; missing scores need an explicit error so
+        // the FE doesn't quietly hide the (now non-existent)
+        // evaluation card.
+        evaluatorError =
+          lastCallError ??
+          lastParseError ??
+          'Evaluator produced no parseable comparison.';
+        this.logger.error(
+          `Evaluator failed after ${MAX_COMPARE_ATTEMPTS} attempts for user ${user.id}: ${evaluatorError}`,
         );
       }
     }
@@ -1007,6 +1030,11 @@ export class CompareModelsController {
       sendEvent('evaluation', {
         comparisonItems: comparisonWithMetrics,
         runId,
+        // When every retry of the evaluator failed (or produced
+        // unparseable JSON), surface the underlying reason so the
+        // FE can show a toast / banner — better UX than silently
+        // hiding the score cards. Empty when evaluator succeeded.
+        error: evaluatorError ?? undefined,
       });
       sendEvent('done', {});
       res.end();

@@ -333,6 +333,16 @@ export default function CompareModelsPage() {
           // already records observability events.
         } else if (event.type === "evaluation") {
           // Evaluator ran post-fan-out — paint the score cards.
+          // If every retry failed, BE surfaces the reason in
+          // `error`; show it as a toast so the user knows the
+          // visible answers are real but the comparison didn't
+          // make it through (likely :free-tier rate limit on the
+          // evaluator model).
+          if (event.error) {
+            toast.error(
+              `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
+            );
+          }
           const nextEvaluations: Record<string, ModelEvaluation | null> =
             {};
           for (const id of activeModels) {
