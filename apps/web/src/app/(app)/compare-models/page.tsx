@@ -20,6 +20,7 @@ import {
   Mic,
   Send,
   Sparkles,
+  Square,
   Trash2,
   X,
 } from "lucide-react";
@@ -204,6 +205,14 @@ export default function CompareModelsPage() {
     "idle",
   );
 
+  // AbortController for the in-flight arena fan-out. Drives the
+  // Stop button in the composer; abort propagates through fetch →
+  // BE req.close → every model stream cancels at once.
+  const arenaAbortRef = useRef<AbortController | null>(null);
+  const handleStopArena = () => {
+    arenaAbortRef.current?.abort();
+  };
+
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
   const [modelsExpanded, setModelsExpanded] = useState(true);
@@ -322,6 +331,13 @@ export default function CompareModelsPage() {
     const buffers: Record<string, string> = {};
     for (const id of activeModels) buffers[id] = "";
 
+    // Per-run AbortController so the Stop button can cancel the
+    // whole fan-out. fetch signal → BE req.close → every in-flight
+    // upstream call aborts. The catch below distinguishes user-
+    // initiated stop from real errors.
+    const controller = new AbortController();
+    arenaAbortRef.current = controller;
+
     try {
       const teamIdForCall =
         selectedTeamId === "personal" ? null : selectedTeamId;
@@ -331,6 +347,7 @@ export default function CompareModelsPage() {
         expectedOutput,
         context,
         teamIdForCall,
+        controller.signal,
       )) {
         if (event.type === "model-delta") {
           // Flip status to "streaming" on the first byte. Subsequent
@@ -431,8 +448,29 @@ export default function CompareModelsPage() {
         // `done` event is a noop — loop exits naturally after it.
       }
     } catch (err) {
-      toast.error(humanizeChatError(err));
+      // AbortError → user pressed Stop. Don't surface as toast
+      // error; instead mark every panel that hadn't settled yet as
+      // stopped, and roll the evaluator status back so the FE
+      // doesn't sit on "Scoring responses…" forever.
+      const isAbort =
+        err instanceof DOMException && err.name === "AbortError";
+      if (isAbort) {
+        toast.info("Comparison stopped.");
+        setModelStatuses((prev) => {
+          const next = { ...prev };
+          for (const id of activeModels) {
+            if (next[id] === "pending" || next[id] === "streaming") {
+              next[id] = "done";
+            }
+          }
+          return next;
+        });
+        setEvaluatorStatus("idle");
+      } else {
+        toast.error(humanizeChatError(err));
+      }
     } finally {
+      arenaAbortRef.current = null;
       setLoading(false);
     }
   }
@@ -645,6 +683,7 @@ export default function CompareModelsPage() {
             loading={loading}
             activeModelCount={activeModels.length}
             onSubmit={compareModels}
+            onStop={handleStopArena}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
             attachedImage={attachedImage}
@@ -1129,6 +1168,7 @@ function Composer({
   loading,
   activeModelCount,
   onSubmit,
+  onStop,
   attachedFile,
   setAttachedFile,
   attachedImage,
@@ -1143,6 +1183,10 @@ function Composer({
   loading: boolean;
   activeModelCount: number;
   onSubmit: (e: React.FormEvent) => void;
+  /** Called when the user clicks the Stop button mid-stream. Wired
+   *  to the page-level AbortController so cancel propagates to the
+   *  BE and every in-flight model stream tears down. */
+  onStop: () => void;
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
   attachedImage: { name: string; content: string } | null;
@@ -1378,15 +1422,39 @@ function Composer({
             >
               <Mic className="h-4 w-4" />
             </button>
-            <button
-              type="submit"
-              disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
-              title={loading ? "Comparing…" : "Compare"}
-              aria-label="Compare"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            {/* Send swaps to Stop while the arena fan-out is in
+                flight. Stop fires the page-level abort which
+                propagates through fetch → BE req.close → cancels
+                every model stream at once. */}
+            {loading ? (
+              <button
+                type="button"
+                onClick={onStop}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-danger-6 text-white transition-colors hover:bg-danger-7"
+                title="Stop generating"
+                aria-label="Stop"
+              >
+                <Square
+                  className="h-3.5 w-3.5"
+                  fill="currentColor"
+                  strokeWidth={0}
+                />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={
+                  !question.trim() ||
+                  !expectedOutput.trim() ||
+                  activeModelCount < MIN_MODELS
+                }
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Compare"
+                aria-label="Compare"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>

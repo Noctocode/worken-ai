@@ -1,3 +1,5 @@
+import { parseSSEFrames } from "./sse-parser";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface ApiFetchOptions extends RequestInit {
@@ -780,35 +782,20 @@ export async function* streamChatMessage(
       if (done) break;
       buf += decoder.decode(value, { stream: true });
 
-      // SSE frames are separated by a blank line. Pull complete
-      // frames out of the buffer and yield them; whatever's left is
-      // a partial frame waiting on more bytes.
-      let sepIdx = buf.indexOf("\n\n");
-      while (sepIdx !== -1) {
-        const rawFrame = buf.slice(0, sepIdx);
-        buf = buf.slice(sepIdx + 2);
-        sepIdx = buf.indexOf("\n\n");
-
-        let eventName = "message";
-        let dataLine = "";
-        for (const line of rawFrame.split("\n")) {
-          if (line.startsWith("event:")) {
-            eventName = line.slice("event:".length).trim();
-          } else if (line.startsWith("data:")) {
-            // SSE allows multi-line `data:` continuations; in
-            // practice the BE writes one JSON blob per data line
-            // so concat is safe.
-            dataLine += line.slice("data:".length).trim();
-          }
-        }
-
-        if (!dataLine) continue;
+      // parseSSEFrames lives in its own module for unit testability.
+      // It returns every complete frame in the buffer and the
+      // remaining bytes (a partial frame still waiting on more
+      // bytes from the next read).
+      const { frames, rest } = parseSSEFrames(buf);
+      buf = rest;
+      for (const frame of frames) {
+        if (!frame.data) continue;
         let parsed: unknown;
         try {
-          parsed = JSON.parse(dataLine);
+          parsed = JSON.parse(frame.data);
         } catch {
-          // Malformed frame — skip rather than crash the whole
-          // stream. The BE shouldn't emit these, but a flaky
+          // Malformed JSON in a frame — skip rather than crash the
+          // whole stream. The BE shouldn't emit these, but a flaky
           // proxy could.
           continue;
         }
@@ -817,17 +804,20 @@ export async function* streamChatMessage(
         // union. Anything unrecognised is dropped silently to keep
         // forward-compat with future BE event types.
         const data = parsed as Record<string, unknown>;
-        if (eventName === "delta" && typeof data.text === "string") {
+        if (frame.event === "delta" && typeof data.text === "string") {
           yield { type: "delta", text: data.text };
         } else if (
-          eventName === "reasoning" &&
+          frame.event === "reasoning" &&
           typeof data.text === "string"
         ) {
           yield { type: "reasoning", text: data.text };
-        } else if (eventName === "replace" && typeof data.text === "string") {
+        } else if (
+          frame.event === "replace" &&
+          typeof data.text === "string"
+        ) {
           yield { type: "replace", text: data.text };
         } else if (
-          eventName === "blocked" &&
+          frame.event === "blocked" &&
           typeof data.rule === "string" &&
           typeof data.validator === "string"
         ) {
@@ -836,7 +826,7 @@ export async function* streamChatMessage(
             rule: data.rule,
             validator: data.validator,
           };
-        } else if (eventName === "error") {
+        } else if (frame.event === "error") {
           yield {
             type: "error",
             message:
@@ -846,7 +836,7 @@ export async function* streamChatMessage(
             status:
               typeof data.status === "number" ? data.status : undefined,
           };
-        } else if (eventName === "done") {
+        } else if (frame.event === "done") {
           yield {
             type: "done",
             totalTokens:
@@ -1187,51 +1177,10 @@ export interface ModelResponse {
   };
 }
 
-export interface CompareModelsApiResult {
-  runId?: string;
-  comparison: ModelComparisonEntry[];
-  responses: ModelResponse[];
-}
-
-export async function sendQuestionToCompareModels(
-  models: string[],
-  question: string,
-  expectedOutput: string,
-  context?: string,
-  teamId?: string | null,
-): Promise<CompareModelsApiResult> {
-  const res = await apiFetch(`/compare-models`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      models,
-      question,
-      expectedOutput,
-      context,
-      // Sentinel "personal" tells the server to skip the team fallback
-      // and tag events as Personal. Undefined uses the user's primary.
-      ...(teamId !== undefined ? { teamId: teamId ?? "personal" } : {}),
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    let serverMessage: string | undefined;
-    try {
-      const parsed = JSON.parse(body) as { message?: string | string[] };
-      serverMessage = Array.isArray(parsed.message)
-        ? parsed.message.join("; ")
-        : parsed.message;
-    } catch {
-      serverMessage = body;
-    }
-    throw new Error(
-      `Compare-models request failed (${res.status} ${res.statusText})${
-        serverMessage ? `: ${serverMessage}` : ""
-      }`,
-    );
-  }
-  return res.json();
-}
+// Non-streaming sendQuestionToCompareModels was removed in favour
+// of streamCompareModels (below). Arena is SSE-only now; consumers
+// walk the event iterable and call setEvaluations on the final
+// `evaluation` event.
 
 /**
  * Discriminated union mirroring the BE arena SSE event shapes
@@ -1325,49 +1274,37 @@ export async function* streamCompareModels(
       if (done) break;
       buf += decoder.decode(value, { stream: true });
 
-      let sepIdx = buf.indexOf("\n\n");
-      while (sepIdx !== -1) {
-        const rawFrame = buf.slice(0, sepIdx);
-        buf = buf.slice(sepIdx + 2);
-        sepIdx = buf.indexOf("\n\n");
-
-        let eventName = "message";
-        let dataLine = "";
-        for (const line of rawFrame.split("\n")) {
-          if (line.startsWith("event:")) {
-            eventName = line.slice("event:".length).trim();
-          } else if (line.startsWith("data:")) {
-            dataLine += line.slice("data:".length).trim();
-          }
-        }
-        if (!dataLine) continue;
+      const { frames, rest } = parseSSEFrames(buf);
+      buf = rest;
+      for (const frame of frames) {
+        if (!frame.data) continue;
         let parsed: unknown;
         try {
-          parsed = JSON.parse(dataLine);
+          parsed = JSON.parse(frame.data);
         } catch {
           continue;
         }
         const data = parsed as Record<string, unknown>;
-        if (eventName === "model-delta") {
+        if (frame.event === "model-delta") {
           yield {
             type: "model-delta",
             model: data.model as string,
             text: data.text as string,
           };
-        } else if (eventName === "model-replace") {
+        } else if (frame.event === "model-replace") {
           yield {
             type: "model-replace",
             model: data.model as string,
             text: data.text as string,
           };
-        } else if (eventName === "model-error") {
+        } else if (frame.event === "model-error") {
           yield {
             type: "model-error",
             model: data.model as string,
             message: data.message as string,
             status: typeof data.status === "number" ? data.status : undefined,
           };
-        } else if (eventName === "model-done") {
+        } else if (frame.event === "model-done") {
           yield {
             type: "model-done",
             model: data.model as string,
@@ -1379,7 +1316,7 @@ export async function* streamCompareModels(
               typeof data.costUsd === "number" ? data.costUsd : null,
             time: typeof data.time === "number" ? data.time : undefined,
           };
-        } else if (eventName === "evaluation") {
+        } else if (frame.event === "evaluation") {
           yield {
             type: "evaluation",
             comparisonItems: Array.isArray(data.comparisonItems)
@@ -1395,7 +1332,7 @@ export async function* streamCompareModels(
             error:
               typeof data.error === "string" ? data.error : undefined,
           };
-        } else if (eventName === "done") {
+        } else if (frame.event === "done") {
           yield { type: "done" };
         }
       }
