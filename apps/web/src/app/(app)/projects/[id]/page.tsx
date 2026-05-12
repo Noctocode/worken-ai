@@ -37,6 +37,10 @@ interface LocalMessage {
   content: string;
   timestamp: string;
   reasoning_details?: unknown;
+  /** True when the user pressed Stop mid-stream and the BE persisted
+   *  whatever was buffered. Drives the "Stopped" badge so the
+   *  conversation history reflects that the response was cut short. */
+  partial?: boolean;
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -98,24 +102,29 @@ export default function ProjectChatPage() {
   useEffect(() => {
     if (conversationData?.messages) {
       setMessages(
-        conversationData.messages.map((m: ConversationMessage) => ({
-          id: m.id,
-          role: m.role as "user" | "assistant",
-          content: m.content,
-          timestamp: new Date(m.createdAt).toLocaleTimeString([], {
-            hour: "numeric",
-            minute: "2-digit",
-          }),
-          reasoning_details:
-            m.metadata &&
-            typeof m.metadata === "object" &&
-            "reasoning_details" in (m.metadata as Record<string, unknown>)
-              ? (m.metadata as Record<string, unknown>).reasoning_details
-              : undefined,
-          userId: m.userId,
-          userName: m.userName,
-          userPicture: m.userPicture,
-        })),
+        conversationData.messages.map((m: ConversationMessage) => {
+          // Pull both reasoning_details and the partial flag out of
+          // the jsonb metadata blob in one go. Both are optional and
+          // typed as `unknown` on the wire, so narrow defensively.
+          const meta =
+            m.metadata && typeof m.metadata === "object"
+              ? (m.metadata as Record<string, unknown>)
+              : null;
+          return {
+            id: m.id,
+            role: m.role as "user" | "assistant",
+            content: m.content,
+            timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            }),
+            reasoning_details: meta?.reasoning_details,
+            partial: meta?.partial === true,
+            userId: m.userId,
+            userName: m.userName,
+            userPicture: m.userPicture,
+          };
+        }),
       );
     }
   }, [conversationData]);
@@ -256,9 +265,18 @@ export default function ProjectChatPage() {
         } else if (event.type === "done") {
           // Stream concluded. BE has already persisted the
           // assistant message (possibly with partial:true if the
-          // user clicked Stop). Refresh the sidebar so the new
-          // conversation / latest-message timestamp surfaces.
-          if (event.partial) stoppedByUser = true;
+          // user clicked Stop). Mark the local row partial so the
+          // "Stopped" badge shows immediately, without waiting for
+          // a sidebar refetch round-trip. Sidebar refresh below
+          // surfaces the new conversation / latest-message timestamp.
+          if (event.partial) {
+            stoppedByUser = true;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, partial: true } : m,
+              ),
+            );
+          }
           queryClient.invalidateQueries({
             queryKey: ["conversations", projectId],
           });
@@ -301,6 +319,21 @@ export default function ProjectChatPage() {
         );
       } else {
         stoppedByUser = true;
+        // FE-initiated abort. BE persists with partial=true on
+        // req.close but the SSE `done` event may not reach us
+        // (stream got torn down) — mark the local message partial
+        // here so the badge shows without a sidebar reload.
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, partial: true } : m,
+          ),
+        );
+        // Refresh the sidebar so the new conversation + latest
+        // timestamp show up despite the abort short-circuiting the
+        // `done` branch above.
+        queryClient.invalidateQueries({
+          queryKey: ["conversations", projectId],
+        });
       }
     } finally {
       abortRef.current = null;
@@ -626,6 +659,21 @@ export default function ProjectChatPage() {
                       }`}
                     >
                       {msg.timestamp}
+                      {msg.partial && (
+                        // Subtle "Stopped" pill next to the
+                        // timestamp on cancelled assistant
+                        // responses. Sits inline with timestamp so
+                        // it reads as metadata rather than as part
+                        // of the message body.
+                        <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-warning-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7">
+                          <Square
+                            className="h-2.5 w-2.5"
+                            fill="currentColor"
+                            strokeWidth={0}
+                          />
+                          Stopped
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>
