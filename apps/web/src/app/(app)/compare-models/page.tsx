@@ -420,12 +420,21 @@ export default function CompareModelsPage() {
           }));
           setModelStatuses((prev) => {
             const next = { ...prev, [event.model]: "error" as ModelStatus };
-            // If this was the last unsettled panel, the evaluator
-            // is about to start running on the BE side.
+            // If this was the last unsettled panel AND at least one
+            // panel actually succeeded, the BE evaluator is about
+            // to start running. When EVERY panel errored (e.g.
+            // budget gate hit all of them), the BE skips the
+            // evaluator entirely — flashing "Scoring responses…"
+            // would be misleading.
             const allSettled = activeModels.every(
               (id) => next[id] === "done" || next[id] === "error",
             );
-            if (allSettled) setEvaluatorStatus("running");
+            const anySuccess = activeModels.some(
+              (id) => next[id] === "done",
+            );
+            if (allSettled) {
+              setEvaluatorStatus(anySuccess ? "running" : "idle");
+            }
             return next;
           });
         } else if (event.type === "model-done") {
@@ -441,7 +450,18 @@ export default function CompareModelsPage() {
             const allSettled = activeModels.every(
               (id) => next[id] === "done" || next[id] === "error",
             );
-            if (allSettled) setEvaluatorStatus("running");
+            // Mirror the model-error branch above: only enter the
+            // "Scoring responses…" state when at least one panel
+            // actually has a successful answer for the evaluator
+            // to grade. This `done` branch should always have
+            // anySuccess = true (we got here because a panel
+            // succeeded), but guard anyway for parity.
+            const anySuccess = activeModels.some(
+              (id) => next[id] === "done",
+            );
+            if (allSettled) {
+              setEvaluatorStatus(anySuccess ? "running" : "idle");
+            }
             return next;
           });
         } else if (event.type === "evaluation") {
