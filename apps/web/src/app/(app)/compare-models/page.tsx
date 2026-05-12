@@ -186,6 +186,12 @@ export default function CompareModelsPage() {
   // comparison cards. Cleared on every new run.
   const [evaluatorError, setEvaluatorError] = useState<string | null>(null);
 
+  // Pre-flight / network-level failure that prevents the run from
+  // even reaching per-panel streams (e.g. budget=0 → 402 from BE,
+  // network down). Toast alone disappears after a few seconds; an
+  // inline banner sticks around so the user knows what to fix.
+  const [arenaError, setArenaError] = useState<string | null>(null);
+
   // Per-panel lifecycle state so each card can render an accurate
   // pre-stream / streaming / finished label. Derived state alone
   // (was buffer === ''?) couldn't distinguish "queued, waiting for
@@ -323,6 +329,7 @@ export default function CompareModelsPage() {
     setResponses(initialResponses);
     setEvaluations({});
     setEvaluatorError(null);
+    setArenaError(null);
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
 
@@ -518,7 +525,13 @@ export default function CompareModelsPage() {
         });
         setEvaluatorStatus("idle");
       } else {
-        toast.error(humanizeChatError(err));
+        const humanized = humanizeChatError(err);
+        toast.error(humanized);
+        // Inline banner so the message persists once the toast
+        // fades — especially important for soft errors like
+        // pending budget approval where the user needs the text
+        // long enough to act on it (open Management → Users).
+        setArenaError(humanized);
       }
     } finally {
       arenaAbortRef.current = null;
@@ -532,6 +545,7 @@ export default function CompareModelsPage() {
     setResponses({});
     setEvaluations({});
     setEvaluatorError(null);
+    setArenaError(null);
     setModelStatuses({});
     setEvaluatorStatus("idle");
     setSubmittedQuestion(null);
@@ -646,6 +660,26 @@ export default function CompareModelsPage() {
                   question={submittedQuestion}
                 />
               </>
+            )}
+
+            {/* Pre-flight / run-level error banner — fires when the
+                run never reached the per-panel stream (e.g. budget
+                gate 402 from the BE before any model could start).
+                Sticks around past the toast so the user can act on
+                it. Cleared on the next submit / "New comparison". */}
+            {arenaError && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="h-5 w-5 shrink-0 text-warning-7 mt-0.5"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Comparison didn&apos;t run.
+                  </p>
+                  <p className="text-text-3">{arenaError}</p>
+                </div>
+              </div>
             )}
 
             {/* "Scoring responses…" banner. Shows after every panel
