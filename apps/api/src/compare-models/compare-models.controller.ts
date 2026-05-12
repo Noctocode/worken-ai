@@ -56,8 +56,6 @@ interface CompareModelsRequestBody {
   question: string;
   expectedOutput: string;
   context?: string;
-  /** Optional. If omitted, server falls back to the user's primary team. */
-  teamId?: string | null;
 }
 
 interface ModelResponse {
@@ -233,18 +231,10 @@ export class CompareModelsController {
       );
     }
 
-    let teamId: string | null = null;
-    const requested = (body.teamId ?? '').trim();
-    if (requested && requested !== 'personal' && requested !== 'null') {
-      if (
-        !(await this.observabilityService.isUserInTeam(user.id, requested))
-      ) {
-        throw new BadRequestException(
-          'You are not a member of the selected team.',
-        );
-      }
-      teamId = requested;
-    }
+    // Arena is Personal-only — every run bills against
+    // `user.monthlyBudgetCents`. Team scoping was removed: callers
+    // can no longer attribute spend to a team here.
+    const teamId: string | null = null;
 
     const inputDecision = await this.guardrails.evaluate({
       text: body.question,
@@ -739,27 +729,15 @@ export class CompareModelsController {
   async parseAttachment(
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
-    @Body('teamId') rawTeamId?: string,
   ): Promise<{ name: string; content: string }> {
     if (!file) {
       throw new BadRequestException('No file was uploaded.');
     }
 
-    // Mirror the /compare-models scoping rule: Personal by default; an
-    // explicit teamId from the composer is honored after membership check.
-    // Without this, OCR events would always be tagged with the user's
-    // primary team and misattributed when the composer is set to Personal
-    // or another team.
-    let teamId: string | null = null;
-    const requested = (rawTeamId ?? '').trim();
-    if (requested && requested !== 'personal' && requested !== 'null') {
-      if (!(await this.observabilityService.isUserInTeam(user.id, requested))) {
-        throw new BadRequestException(
-          'You are not a member of the selected team.',
-        );
-      }
-      teamId = requested;
-    }
+    // Arena is Personal-only — OCR / parse events are tagged with the
+    // user and no team scope. Team attribution was removed alongside
+    // the team budget option for arena.
+    const teamId: string | null = null;
 
     const mimetype = file.mimetype;
     const name = file.originalname;

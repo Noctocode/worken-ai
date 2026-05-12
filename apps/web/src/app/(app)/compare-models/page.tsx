@@ -54,25 +54,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
   fetchPrompts,
   fetchShortcuts,
-  fetchTeams,
   parseArenaAttachment,
   streamCompareModels,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
-  type TeamListItem,
 } from "@/lib/api";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useUserModels } from "@/lib/hooks/use-user-models";
@@ -244,11 +235,6 @@ export default function CompareModelsPage() {
     { name: string; content: string } | null
   >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
-  const [teamsList, setTeamsList] = useState<TeamListItem[]>([]);
-  // Personal-first: events default to no team scope unless the user
-  // explicitly picks one. "personal" is the sentinel for null teamId;
-  // anything else is a real team UUID.
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("personal");
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -291,15 +277,6 @@ export default function CompareModelsPage() {
         const message =
           err instanceof Error ? err.message : "Couldn't load history.";
         toast.error(message);
-      });
-    // Teams list for the picker. Failure is non-fatal — the page still works
-    // without a picker; events just default to the user's primary team.
-    fetchTeams()
-      .then((rows) => {
-        if (!cancelled) setTeamsList(rows);
-      })
-      .catch(() => {
-        /* swallow — picker just stays empty */
       });
     return () => {
       cancelled = true;
@@ -368,14 +345,14 @@ export default function CompareModelsPage() {
     arenaAbortRef.current = controller;
 
     try {
-      const teamIdForCall =
-        selectedTeamId === "personal" ? null : selectedTeamId;
+      // Arena always bills against the user's Personal Monthly Budget.
+      // Team / company budget routing was intentionally removed —
+      // every arena run is metered against `user.monthlyBudgetCents`.
       for await (const event of streamCompareModels(
         activeModels,
         question,
         expectedOutput,
         context,
-        teamIdForCall,
         controller.signal,
       )) {
         // Defensive: if the user pressed Stop, the abort signal is
@@ -774,7 +751,6 @@ export default function CompareModelsPage() {
             attachedImage={attachedImage}
             setAttachedImage={setAttachedImage}
             onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
-            selectedTeamId={selectedTeamId}
           />
         </section>
 
@@ -831,9 +807,6 @@ export default function CompareModelsPage() {
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
-            teams={teamsList}
-            selectedTeamId={selectedTeamId}
-            onSelectTeam={setSelectedTeamId}
           />
         ) : (
           <button
@@ -1259,7 +1232,6 @@ function Composer({
   attachedImage,
   setAttachedImage,
   onOpenPromptLibrary,
-  selectedTeamId,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -1277,7 +1249,6 @@ function Composer({
   attachedImage: { name: string; content: string } | null;
   setAttachedImage: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
-  selectedTeamId: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1344,7 +1315,7 @@ function Composer({
       const verb = isImageFile(file) ? "Reading" : "Parsing";
       const toastId = toast.loading(`${verb} ${file.name}…`);
       try {
-        const parsed = await parseArenaAttachment(file, selectedTeamId);
+        const parsed = await parseArenaAttachment(file);
         setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
@@ -1589,9 +1560,6 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
-  teams,
-  selectedTeamId,
-  onSelectTeam,
 }: {
   selectedModels: string[];
   disabledModels: Set<string>;
@@ -1607,9 +1575,6 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
-  teams: TeamListItem[];
-  selectedTeamId: string;
-  onSelectTeam: (id: string) => void;
 }) {
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
@@ -1671,33 +1636,6 @@ function RightRail({
           Add Model
         </button>
       </RailSection>
-
-      {/* Team context — only render the picker when the user actually
-          belongs to ≥1 team. Solo users keep their composer clean and
-          their events default to Personal scope server-side. */}
-      {teams.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <span className="text-[16px] font-medium leading-[1.3] text-text-1">
-            Team Context
-          </span>
-          <Select value={selectedTeamId} onValueChange={onSelectTeam}>
-            <SelectTrigger className="h-10 rounded-md border-border-2 text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="personal">Personal (no team)</SelectItem>
-              {teams.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-text-3">
-            Attributes this run&apos;s spend and tokens to the chosen team.
-          </p>
-        </section>
-      )}
 
       {/* History section */}
       <RailSection
