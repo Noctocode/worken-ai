@@ -265,7 +265,12 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
     enabled: open,
   });
 
-  const unassigned = allGuardrails.filter((g) => !g.teamId);
+  // Show every guardrail that's NOT already linked to this team. The
+  // M2M model means a rule can live in many teams at once, so the
+  // filter is per-team membership rather than global "has any team".
+  const unassigned = allGuardrails.filter(
+    (g) => !g.teams.some((t) => t.id === teamId),
+  );
 
   const mutation = useMutation({
     mutationFn: () => assignGuardrailToTeam(selectedId, teamId),
@@ -375,12 +380,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     },
   });
   const toggleMutation = useMutation({
-    mutationFn: (guardrailId: string) => toggleGuardrailTeamActive(guardrailId),
+    mutationFn: (guardrailId: string) =>
+      toggleGuardrailTeamActive(guardrailId, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
     onError: (err: Error) => toast.error(err.message || "Failed to toggle guardrail."),
   });
   const removeGuardrailMutation = useMutation({
-    mutationFn: (guardrailId: string) => unassignGuardrailFromTeam(guardrailId),
+    mutationFn: (guardrailId: string) =>
+      unassignGuardrailFromTeam(guardrailId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["guardrails", id] });
       queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });

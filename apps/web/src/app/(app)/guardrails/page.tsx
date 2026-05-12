@@ -323,12 +323,24 @@ function OverviewTab({
                 className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${SEVERITY_ROW_ACCENT[g.severity]}`}
               >
                 <td className="px-4 py-6">
-                  <div className="flex flex-col">
+                  <div className="flex flex-col gap-1">
                     <span className="font-medium text-text-1">{g.name}</span>
-                    {g.teamName && (
-                      <span className="text-[11px] text-text-3">
-                        {g.teamName}
-                      </span>
+                    {g.teams.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {g.teams.map((t) => (
+                          <span
+                            key={t.id}
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${
+                              t.isActive
+                                ? "bg-bg-1 text-text-3"
+                                : "bg-bg-1 text-text-3 opacity-60"
+                            }`}
+                            title={t.isActive ? t.name : `${t.name} (paused)`}
+                          >
+                            {t.name}
+                          </span>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </td>

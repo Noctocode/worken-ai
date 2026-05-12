@@ -19,6 +19,7 @@ import {
   teamMembers,
   users,
   guardrails,
+  guardrailTeams,
   integrations,
   modelConfigs,
   observabilityEvents,
@@ -1058,111 +1059,41 @@ export class TeamsService {
     });
   }
 
+  /**
+   * Rules linked to this team via `guardrail_teams`. Projects the
+   * per-team `isActive` toggle from the link table as `teamIsActive`
+   * so the team-detail page Switch keeps the same shape it had before
+   * the M2M refactor.
+   *
+   * Returns every linked rule regardless of who owns it: shared rules
+   * an admin attached to the team are visible to every team member.
+   */
   async findGuardrails(teamId: string) {
     return this.db
-      .select()
-      .from(guardrails)
-      .where(eq(guardrails.teamId, teamId));
-  }
-
-  async createGuardrail(
-    teamId: string,
-    userId: string,
-    data: { name: string; type: string; severity: string },
-  ) {
-    const [team] = await this.db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, teamId));
-
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can add guardrails',
-        );
-      }
-    }
-
-    if (!['high', 'medium', 'low'].includes(data.severity)) {
-      throw new BadRequestException('Severity must be high, medium, or low');
-    }
-
-    const [created] = await this.db
-      .insert(guardrails)
-      .values({
-        teamId,
-        ownerId: userId,
-        name: data.name,
-        type: data.type,
-        severity: data.severity,
+      .select({
+        id: guardrails.id,
+        ownerId: guardrails.ownerId,
+        name: guardrails.name,
+        type: guardrails.type,
+        severity: guardrails.severity,
+        triggers: guardrails.triggers,
+        isActive: guardrails.isActive,
+        teamIsActive: guardrailTeams.isActive,
+        validatorType: guardrails.validatorType,
+        entities: guardrails.entities,
+        pattern: guardrails.pattern,
+        target: guardrails.target,
+        onFail: guardrails.onFail,
+        templateSource: guardrails.templateSource,
+        createdAt: guardrails.createdAt,
+        updatedAt: guardrails.updatedAt,
       })
-      .returning();
-
-    return created;
-  }
-
-  async toggleGuardrail(
-    teamId: string,
-    guardrailId: string,
-    userId: string,
-    isActive: boolean,
-  ) {
-    const [team] = await this.db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, teamId));
-
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can update guardrails',
-        );
-      }
-    }
-
-    const [updated] = await this.db
-      .update(guardrails)
-      .set({ isActive })
-      .where(
-        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      .from(guardrails)
+      .innerJoin(
+        guardrailTeams,
+        eq(guardrailTeams.guardrailId, guardrails.id),
       )
-      .returning();
-
-    if (!updated) throw new NotFoundException('Guardrail not found');
-    return updated;
-  }
-
-  async deleteGuardrail(
-    teamId: string,
-    guardrailId: string,
-    userId: string,
-  ) {
-    const [team] = await this.db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, teamId));
-
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can delete guardrails',
-        );
-      }
-    }
-
-    await this.db
-      .delete(guardrails)
-      .where(
-        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
-      );
-
-    return { success: true };
+      .where(eq(guardrailTeams.teamId, teamId));
   }
 
   /**

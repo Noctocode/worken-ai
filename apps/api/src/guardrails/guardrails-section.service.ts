@@ -5,8 +5,8 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, desc, sql } from 'drizzle-orm';
-import { guardrails, teams } from '@worken/database/schema';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
+import { guardrails, guardrailTeams, teams } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { COMPLIANCE_TEMPLATES } from './compliance-templates.js';
@@ -33,10 +33,14 @@ export class GuardrailsSectionService {
   ) {}
 
   async findAll(userId: string) {
-    return this.db
+    // Two-query approach over a single GROUP BY: keeps the rule
+    // payload row-shaped (no array-of-rows join expansion) and the
+    // team links small enough to fetch all-at-once even for an org
+    // with hundreds of rules. The N+1 cost is bounded by total
+    // guardrails × teams, both small.
+    const rules = await this.db
       .select({
         id: guardrails.id,
-        teamId: guardrails.teamId,
         ownerId: guardrails.ownerId,
         name: guardrails.name,
         type: guardrails.type,
@@ -51,12 +55,44 @@ export class GuardrailsSectionService {
         templateSource: guardrails.templateSource,
         createdAt: guardrails.createdAt,
         updatedAt: guardrails.updatedAt,
-        teamName: teams.name,
       })
       .from(guardrails)
-      .leftJoin(teams, eq(teams.id, guardrails.teamId))
       .where(eq(guardrails.ownerId, userId))
       .orderBy(desc(guardrails.createdAt));
+
+    if (rules.length === 0) return [];
+
+    const links = await this.db
+      .select({
+        guardrailId: guardrailTeams.guardrailId,
+        teamId: guardrailTeams.teamId,
+        teamName: teams.name,
+        isActive: guardrailTeams.isActive,
+      })
+      .from(guardrailTeams)
+      .innerJoin(teams, eq(teams.id, guardrailTeams.teamId))
+      .where(
+        inArray(
+          guardrailTeams.guardrailId,
+          rules.map((r) => r.id),
+        ),
+      );
+
+    const byRule = new Map<
+      string,
+      Array<{ id: string; name: string; isActive: boolean }>
+    >();
+    for (const link of links) {
+      const arr = byRule.get(link.guardrailId) ?? [];
+      arr.push({
+        id: link.teamId,
+        name: link.teamName,
+        isActive: link.isActive,
+      });
+      byRule.set(link.guardrailId, arr);
+    }
+
+    return rules.map((r) => ({ ...r, teams: byRule.get(r.id) ?? [] }));
   }
 
   async getStats(userId: string) {
@@ -278,9 +314,16 @@ export class GuardrailsSectionService {
     return { templateName: template.name, rulesCreated: inserted.length };
   }
 
+  /**
+   * Link a guardrail to a team. Idempotent — re-assigning a rule that
+   * already belongs to the team returns the existing link rather than
+   * erroring. Owner of the rule + owner/editor of the team are both
+   * required (the rule's owner gates ownership of the definition; the
+   * team role gates the right to attach it to that team).
+   */
   async assignToTeam(guardrailId: string, teamId: string, userId: string) {
     const [rule] = await this.db
-      .select()
+      .select({ ownerId: guardrails.ownerId })
       .from(guardrails)
       .where(eq(guardrails.id, guardrailId));
 
@@ -299,18 +342,27 @@ export class GuardrailsSectionService {
       );
     }
 
-    const [updated] = await this.db
-      .update(guardrails)
-      .set({ teamId, updatedAt: new Date() })
-      .where(eq(guardrails.id, guardrailId))
-      .returning();
+    // ON CONFLICT DO NOTHING keeps repeat clicks safe — the FE picker
+    // shouldn't list already-linked teams, but a double-click race
+    // shouldn't 409 either. Return the resulting link so the FE can
+    // refresh its picker state.
+    await this.db
+      .insert(guardrailTeams)
+      .values({ guardrailId, teamId, assignedBy: userId })
+      .onConflictDoNothing();
 
-    return updated;
+    return this.getRuleWithTeams(guardrailId);
   }
 
-  async toggleTeamActive(guardrailId: string, userId: string) {
+  /**
+   * Pause / resume a specific team's link to the rule without removing
+   * it. The legacy `team_is_active` lived on the rule itself; now it
+   * lives on each link so one team can pause "Hide email" while
+   * another keeps it firing.
+   */
+  async toggleTeamActive(guardrailId: string, teamId: string, userId: string) {
     const [rule] = await this.db
-      .select()
+      .select({ ownerId: guardrails.ownerId })
       .from(guardrails)
       .where(eq(guardrails.id, guardrailId));
 
@@ -319,18 +371,46 @@ export class GuardrailsSectionService {
       throw new ForbiddenException('Access denied');
     }
 
-    const [updated] = await this.db
-      .update(guardrails)
-      .set({ teamIsActive: !rule.teamIsActive, updatedAt: new Date() })
-      .where(eq(guardrails.id, guardrailId))
-      .returning();
+    const [link] = await this.db
+      .select({ isActive: guardrailTeams.isActive })
+      .from(guardrailTeams)
+      .where(
+        and(
+          eq(guardrailTeams.guardrailId, guardrailId),
+          eq(guardrailTeams.teamId, teamId),
+        ),
+      );
+    if (!link) {
+      throw new NotFoundException(
+        'Guardrail is not linked to this team — assign it first.',
+      );
+    }
 
-    return updated;
+    await this.db
+      .update(guardrailTeams)
+      .set({ isActive: !link.isActive })
+      .where(
+        and(
+          eq(guardrailTeams.guardrailId, guardrailId),
+          eq(guardrailTeams.teamId, teamId),
+        ),
+      );
+
+    return this.getRuleWithTeams(guardrailId);
   }
 
-  async unassignFromTeam(guardrailId: string, userId: string) {
+  /**
+   * Remove a single team's link. The rule itself stays in the org —
+   * other teams keep their links, and the owner can re-link the team
+   * later from the team page.
+   */
+  async unassignFromTeam(
+    guardrailId: string,
+    teamId: string,
+    userId: string,
+  ) {
     const [rule] = await this.db
-      .select()
+      .select({ ownerId: guardrails.ownerId })
       .from(guardrails)
       .where(eq(guardrails.id, guardrailId));
 
@@ -339,13 +419,67 @@ export class GuardrailsSectionService {
       throw new ForbiddenException('Access denied');
     }
 
-    const [updated] = await this.db
-      .update(guardrails)
-      .set({ teamId: null, updatedAt: new Date() })
-      .where(eq(guardrails.id, guardrailId))
-      .returning();
+    await this.db
+      .delete(guardrailTeams)
+      .where(
+        and(
+          eq(guardrailTeams.guardrailId, guardrailId),
+          eq(guardrailTeams.teamId, teamId),
+        ),
+      );
 
-    return updated;
+    return this.getRuleWithTeams(guardrailId);
+  }
+
+  /**
+   * Fetch one rule + its team links in the same row shape `findAll`
+   * returns. Used as the response payload for the assign/unassign/
+   * toggleTeamActive endpoints so the FE always gets a fully-shaped
+   * rule back and doesn't need a second roundtrip to refresh its
+   * picker state.
+   */
+  private async getRuleWithTeams(guardrailId: string) {
+    const [rule] = await this.db
+      .select({
+        id: guardrails.id,
+        ownerId: guardrails.ownerId,
+        name: guardrails.name,
+        type: guardrails.type,
+        severity: guardrails.severity,
+        triggers: guardrails.triggers,
+        isActive: guardrails.isActive,
+        validatorType: guardrails.validatorType,
+        entities: guardrails.entities,
+        pattern: guardrails.pattern,
+        target: guardrails.target,
+        onFail: guardrails.onFail,
+        templateSource: guardrails.templateSource,
+        createdAt: guardrails.createdAt,
+        updatedAt: guardrails.updatedAt,
+      })
+      .from(guardrails)
+      .where(eq(guardrails.id, guardrailId));
+
+    if (!rule) throw new NotFoundException('Guardrail not found');
+
+    const links = await this.db
+      .select({
+        teamId: guardrailTeams.teamId,
+        teamName: teams.name,
+        isActive: guardrailTeams.isActive,
+      })
+      .from(guardrailTeams)
+      .innerJoin(teams, eq(teams.id, guardrailTeams.teamId))
+      .where(eq(guardrailTeams.guardrailId, guardrailId));
+
+    return {
+      ...rule,
+      teams: links.map((l) => ({
+        id: l.teamId,
+        name: l.teamName,
+        isActive: l.isActive,
+      })),
+    };
   }
 
   getTemplates() {

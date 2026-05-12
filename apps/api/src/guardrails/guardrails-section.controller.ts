@@ -88,9 +88,10 @@ export class GuardrailsSectionController {
   @Patch(':id/toggle-team')
   toggleTeamActive(
     @Param('id') id: string,
+    @Body() body: { teamId: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.toggleTeamActive(id, user.id);
+    return this.service.toggleTeamActive(id, body.teamId, user.id);
   }
 
   @Delete('template/:templateId')
@@ -113,8 +114,9 @@ export class GuardrailsSectionController {
   @Patch(':id/unassign')
   unassignFromTeam(
     @Param('id') id: string,
+    @Body() body: { teamId: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.unassignFromTeam(id, user.id);
+    return this.service.unassignFromTeam(id, body.teamId, user.id);
   }
 }

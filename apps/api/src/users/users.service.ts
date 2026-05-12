@@ -404,7 +404,10 @@ export class UsersService {
       const ownedTeamIds = ownedTeams.map((t) => t.id);
 
       if (ownedTeamIds.length > 0) {
-        await tx.delete(guardrails).where(inArray(guardrails.teamId, ownedTeamIds));
+        // guardrail_teams links cascade-delete with their team row,
+        // so no explicit cleanup is needed here. The rule definitions
+        // themselves stay — they're owned by users, not teams, and
+        // get cleaned up further below as part of the user delete.
         await tx
           .update(projects)
           .set({ teamId: null })

@@ -553,16 +553,22 @@ export async function updateTeamMemberCap(
   return res.json();
 }
 
-// Guardrails
+// Guardrails — per-team listing. Rules are owned + edited in
+// /guardrails-section; teams just link to them via the dialog on
+// /teams/[id]. Creation / toggle / unlink endpoints live on
+// /guardrails-section since the M2M refactor.
 
 export interface Guardrail {
   id: string;
-  teamId: string;
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
   triggers: number;
+  /** Master toggle on the rule (Guardrails page Switch). */
   isActive: boolean;
+  /** Per-team pause toggle from `guardrail_teams.is_active`. Both this
+   *  and `isActive` must be true for the evaluator to apply the rule
+   *  to this team's chats. */
   teamIsActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -572,43 +578,6 @@ export async function fetchGuardrails(teamId: string): Promise<Guardrail[]> {
   const res = await apiFetch(`/teams/${teamId}/guardrails`);
   if (!res.ok) throw new Error("Failed to fetch guardrails");
   return res.json();
-}
-
-export async function createGuardrail(
-  teamId: string,
-  data: { name: string; type: string; severity: Guardrail["severity"] },
-): Promise<Guardrail> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error("Failed to create guardrail");
-  return res.json();
-}
-
-export async function toggleGuardrail(
-  teamId: string,
-  guardrailId: string,
-  isActive: boolean,
-): Promise<Guardrail> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isActive }),
-  });
-  if (!res.ok) throw new Error("Failed to toggle guardrail");
-  return res.json();
-}
-
-export async function deleteGuardrail(
-  teamId: string,
-  guardrailId: string,
-): Promise<void> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) throw new Error("Failed to delete guardrail");
 }
 
 // Conversations
@@ -1906,9 +1875,16 @@ export async function fetchRecentKnowledgeFiles(): Promise<
 
 // Guardrails Section
 
+export interface GuardrailTeamLink {
+  id: string;
+  name: string;
+  /** Per-team toggle. Both this AND the rule's master `isActive` must
+   *  be true for the evaluator to load the rule for this team. */
+  isActive: boolean;
+}
+
 export interface GuardrailItem {
   id: string;
-  teamId: string | null;
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
@@ -1922,7 +1898,9 @@ export interface GuardrailItem {
   target: string | null;
   onFail: string | null;
   templateSource: string | null;
-  teamName: string | null;
+  /** Teams this rule is linked to. Many-to-many — a single rule can
+   *  apply to multiple teams, and a team can have multiple rules. */
+  teams: GuardrailTeamLink[];
   createdAt: string;
   updatedAt: string;
 }
@@ -2027,9 +2005,12 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
 
 export async function toggleGuardrailTeamActive(
   guardrailId: string,
+  teamId: string,
 ): Promise<GuardrailItem> {
   const res = await apiFetch(`/guardrails-section/${guardrailId}/toggle-team`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
   });
   if (!res.ok) throw new Error("Failed to toggle guardrail");
   return res.json();
@@ -2050,9 +2031,12 @@ export async function assignGuardrailToTeam(
 
 export async function unassignGuardrailFromTeam(
   guardrailId: string,
+  teamId: string,
 ): Promise<GuardrailItem> {
   const res = await apiFetch(`/guardrails-section/${guardrailId}/unassign`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
   });
   if (!res.ok) throw new Error("Failed to remove guardrail from team");
   return res.json();
