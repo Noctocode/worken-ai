@@ -32,6 +32,7 @@ import { ChatTransportService } from '../integrations/chat-transport.service.js'
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
 const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
@@ -96,6 +97,7 @@ export class CompareModelsController {
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -227,6 +229,36 @@ export class CompareModelsController {
     }
     const safeQuestion = inputDecision.text;
 
+    // RAG: pull in the caller's accessible knowledge chunks (their own
+    // 'personal'-scope uploads + any 'company'-scope uploads in the
+    // single-tenant deployment) so an arena run can answer questions
+    // grounded in the docs the user trained the assistant with. Same
+    // source as chat.controller.ts — keeps arena and chat consistent.
+    // The user-supplied `body.context` (when present) is appended
+    // verbatim so a deliberate context override still works.
+    //
+    // Wrapped in try/catch so a slow / failing embedder doesn't sink
+    // the whole arena run. transformers.js does a cold-start model
+    // load on the first call after a restart (~10–30s); the rest of
+    // the arena should not block on that. If RAG fails, the call
+    // proceeds with body.context only.
+    let ragContext = '';
+    try {
+      const ragChunks = await this.knowledgeIngestion.searchAccessibleChunks(
+        user.id,
+        safeQuestion,
+      );
+      ragContext = ragChunks.map((c) => c.content).join('\n\n---\n\n');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `RAG search failed for user ${user.id}; continuing without retrieved context: ${msg}`,
+      );
+    }
+    const composedContext = [ragContext, body.context]
+      .filter((s) => s && s.trim().length > 0)
+      .join('\n\n---\n\n');
+
     let responses: ModelResponse[];
     try {
       responses = await Promise.all(
@@ -281,7 +313,7 @@ export class CompareModelsController {
               safeQuestion,
               transport.model,
               false,
-              body.context,
+              composedContext || undefined,
               transport.apiKey,
               transport.baseURL,
               transport.kind,
@@ -344,7 +376,7 @@ export class CompareModelsController {
               success: true,
               prompt: safeQuestion,
               metadata: {
-                hasContext: Boolean(body.context),
+                hasContext: composedContext.length > 0,
                 routingSource: transport.source,
                 costEstimated,
               },
@@ -370,7 +402,7 @@ export class CompareModelsController {
               errorMessage: msg,
               prompt: safeQuestion,
               metadata: {
-                hasContext: Boolean(body.context),
+                hasContext: composedContext.length > 0,
                 routingSource: transport.source,
               },
             });

@@ -18,8 +18,8 @@ export class ModelsController {
   constructor(private readonly modelsService: ModelsService) {}
 
   @Get()
-  findAll() {
-    return this.modelsService.findAll();
+  findAll(@CurrentUser() user: AuthenticatedUser) {
+    return this.modelsService.findAll(user.id);
   }
 
   /** Admin: full OpenRouter catalog with per-model enabled flag. */

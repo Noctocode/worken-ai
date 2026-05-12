@@ -10,14 +10,20 @@ import {
   Folder,
   Loader2,
   MoreVertical,
+  RotateCw,
   Search,
+  Shield,
   Trash2,
   Upload,
+  Users,
   X,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -45,9 +51,14 @@ import {
   fetchKnowledgeFolder,
   fetchKnowledgeFolders,
   uploadKnowledgeFiles,
+  updateKnowledgeFileVisibility,
+  updateKnowledgeFilesVisibilityBulk,
+  reingestKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -86,6 +97,80 @@ function formatDateTime(d: string): string {
   });
 }
 
+/**
+ * Compact pill that surfaces the ingestion lifecycle on each file
+ * row. Mirrors the same four states the step-6 progress UI uses so
+ * the user gets consistent vocabulary across both upload paths.
+ *
+ *   pending / processing → Loader2 spinner, neutral copy
+ *   done                 → success check, "Trained"
+ *   failed               → warning triangle, "Skipped" + tooltip with
+ *                          the underlying error so unsupported types
+ *                          don't look broken
+ */
+function IngestionStatusBadge({
+  status,
+  error,
+}: {
+  status: "pending" | "processing" | "done" | "failed";
+  error?: string | null;
+}) {
+  if (status === "done") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
+        <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+        Trained
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title={error ?? "Could not extract searchable text from this file."}
+      >
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+        Skipped
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
+      <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+      {status === "processing" ? "Training" : "Queued"}
+    </span>
+  );
+}
+
+/**
+ * Visibility pill — mirrors the inline copy in /knowledge-core
+ * root page. Inline-duplicated for the same reason as
+ * IngestionStatusBadge: the two pages don't share a components
+ * file for this domain yet.
+ */
+function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }) {
+  if (visibility === "admins") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title="Only admins can see this file in chat / arena."
+      >
+        <Shield className="h-3 w-3" strokeWidth={2} />
+        Admins only
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+      title="Every company user can see this file in chat / arena."
+    >
+      <Users className="h-3 w-3" strokeWidth={2} />
+      Everyone
+    </span>
+  );
+}
+
 export default function FolderDetailPage({
   params,
 }: {
@@ -93,6 +178,8 @@ export default function FolderDetailPage({
 }) {
   const { folderId } = use(params);
   const [query, setQuery] = useState("");
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
 
   const queryClient = useQueryClient();
 
@@ -100,10 +187,31 @@ export default function FolderDetailPage({
     queryKey: ["knowledge-folder", folderId],
     queryFn: () => fetchKnowledgeFolder(folderId),
     enabled: !!folderId,
+    // Auto-poll while ingestion is still in flight so the status
+    // badge transitions Queued → Processing → Trained without the
+    // user having to refresh. Stops polling once every file lands
+    // in a terminal state (done / failed) — avoids needless DB
+    // round-trips for static folders.
+    refetchInterval: (query) => {
+      const f = query.state.data;
+      if (!f) return false;
+      const inProgress = f.files.some(
+        (file) =>
+          file.ingestionStatus === "pending" ||
+          file.ingestionStatus === "processing",
+      );
+      return inProgress ? 2000 : false;
+    },
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (files: File[]) => uploadKnowledgeFiles(folderId, files),
+    mutationFn: ({
+      files,
+      visibility,
+    }: {
+      files: File[];
+      visibility: KnowledgeFileVisibility;
+    }) => uploadKnowledgeFiles(folderId, files, visibility),
     onSuccess: (uploaded) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
@@ -113,6 +221,48 @@ export default function FolderDetailPage({
       toast.success(`Uploaded ${uploaded.length} file(s).`);
     },
     onError: () => toast.error("Failed to upload files."),
+  });
+
+  // Single-file re-train. Mirror of the root /knowledge-core page;
+  // see its comment for details.
+  const reingestMutation = useMutation({
+    mutationFn: (fileId: string) => reingestKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success("Re-training started.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to re-train this file."),
+  });
+
+  // Admin-only PATCH to flip visibility post-upload. BE rejects
+  // non-admin with 403 — UI hides the menu item entirely below.
+  const visibilityMutation = useMutation({
+    mutationFn: ({
+      fileId,
+      visibility,
+    }: {
+      fileId: string;
+      visibility: KnowledgeFileVisibility;
+    }) => updateKnowledgeFileVisibility(fileId, visibility),
+    onSuccess: (_, { visibility }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success(
+        visibility === "admins"
+          ? "File is now visible only to admins."
+          : "File is now visible to everyone.",
+      );
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to update visibility."),
   });
 
   const deleteMutation = useMutation({
@@ -157,6 +307,125 @@ export default function FolderDetailPage({
   });
 
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
+  // Per-batch visibility staging. Same lifecycle as on the root
+  // /knowledge-core page: admin-only select, reset to 'all' after
+  // each confirmed upload so the choice doesn't leak across batches.
+  const [stagedVisibility, setStagedVisibility] =
+    useState<KnowledgeFileVisibility>("all");
+
+  // Multi-select state for the bulk action bar. Set<string> over
+  // the current folder's file ids; resets when the user navigates
+  // to another folder (the page itself unmounts). Confirm dialog
+  // for the destructive bulk Delete so an accidental click on
+  // "Delete N" doesn't wipe the selection.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const clearSelection = () => setSelectedIds(new Set());
+  const toggleSelected = (id: string) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const bulkVisibilityMutation = useMutation({
+    mutationFn: (visibility: KnowledgeFileVisibility) =>
+      updateKnowledgeFilesVisibilityBulk(
+        Array.from(selectedIds),
+        visibility,
+      ),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      const updatedCopy =
+        res.visibility === "admins"
+          ? `${res.affectedIds.length} file(s) are now visible only to admins.`
+          : `${res.affectedIds.length} file(s) are now visible to everyone.`;
+      // BE skips rows that are mid-ingestion to avoid leaving the
+      // file row + about-to-be-inserted chunks out of sync. Surface
+      // that to the admin so they know to retry once those finish.
+      if (res.skippedIds.length === 0) {
+        toast.success(updatedCopy);
+      } else if (res.affectedIds.length === 0) {
+        toast.warning(
+          `All ${res.skippedIds.length} selected file(s) are still being trained. Try again once they finish.`,
+        );
+      } else {
+        toast.warning(
+          `${updatedCopy} ${res.skippedIds.length} file(s) were skipped because they're still being trained — try those again in a moment.`,
+        );
+      }
+      clearSelection();
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to update visibility."),
+  });
+
+  // Bulk retrain + delete fan out to the existing per-file
+  // endpoints via Promise.allSettled — same per-row gates (owner
+  // check, status='processing' block for retrain) apply, just
+  // accumulated. Aggregated toast at the end so a single failure
+  // doesn't drown out the successes.
+  const bulkRetrainMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        Array.from(selectedIds).map((id) => reingestKnowledgeFile(id)),
+      );
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+      const rejected = results.length - fulfilled;
+      return { fulfilled, rejected };
+    },
+    onSuccess: ({ fulfilled, rejected }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      if (rejected === 0) {
+        toast.success(`Re-training started for ${fulfilled} file(s).`);
+      } else if (fulfilled === 0) {
+        toast.error(`Re-train failed for all ${rejected} file(s).`);
+      } else {
+        toast.warning(
+          `Re-trained ${fulfilled} file(s); ${rejected} failed (likely already mid-training).`,
+        );
+      }
+      clearSelection();
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        Array.from(selectedIds).map((id) => deleteKnowledgeFile(id)),
+      );
+      const fulfilled = results.filter((r) => r.status === "fulfilled").length;
+      const rejected = results.length - fulfilled;
+      return { fulfilled, rejected };
+    },
+    onSuccess: ({ fulfilled, rejected }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      if (rejected === 0) {
+        toast.success(`Deleted ${fulfilled} file(s).`);
+      } else if (fulfilled === 0) {
+        toast.error(`Delete failed for all ${rejected} file(s).`);
+      } else {
+        toast.warning(
+          `Deleted ${fulfilled} file(s); ${rejected} failed.`,
+        );
+      }
+      clearSelection();
+      setBulkDeleteOpen(false);
+    },
+  });
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
@@ -168,8 +437,14 @@ export default function FolderDetailPage({
   };
 
   const confirmUpload = () => {
-    if (stagedFiles.length > 0) uploadMutation.mutate(stagedFiles);
+    if (stagedFiles.length > 0) {
+      uploadMutation.mutate({
+        files: stagedFiles,
+        visibility: stagedVisibility,
+      });
+    }
     setStagedFiles([]);
+    setStagedVisibility("all");
   };
 
   const removeStagedFile = (idx: number) =>
@@ -190,6 +465,34 @@ export default function FolderDetailPage({
         (f.fileType ?? "").toLowerCase().includes(q),
     );
   }, [query, folder]);
+
+  // Tri-state for the select-all header checkbox over the *currently
+  // visible* rows (post-search-filter). Selection itself is folder-
+  // wide — toggling search filter doesn't drop existing selection.
+  const allFilteredSelected =
+    filtered.length > 0 && filtered.every((f) => selectedIds.has(f.id));
+  const someFilteredSelected =
+    !allFilteredSelected && filtered.some((f) => selectedIds.has(f.id));
+  const headerCheckboxState: boolean | "indeterminate" = allFilteredSelected
+    ? true
+    : someFilteredSelected
+      ? "indeterminate"
+      : false;
+  const toggleSelectAllFiltered = (checked: boolean | "indeterminate") => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked === true) {
+        for (const f of filtered) next.add(f.id);
+      } else {
+        for (const f of filtered) next.delete(f.id);
+      }
+      return next;
+    });
+  };
+  const bulkBusy =
+    bulkVisibilityMutation.isPending ||
+    bulkRetrainMutation.isPending ||
+    bulkDeleteMutation.isPending;
 
   if (isLoading || !folder) {
     return (
@@ -263,6 +566,75 @@ export default function FolderDetailPage({
         />
       </div>
 
+      {/* Bulk action bar. Renders sticky above the table whenever the
+          user has at least one row selected. Visibility buttons are
+          admin-only — matches the per-file action menu gate; retrain
+          and delete are owner-only (BE filters anyway, FE just lets
+          the user fire it). */}
+      {selectedIds.size > 0 && (
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-primary-2 bg-primary-1/40 px-4 py-3 backdrop-blur">
+          <span className="text-[13px] font-semibold text-text-1">
+            {selectedIds.size} file{selectedIds.size !== 1 ? "s" : ""}{" "}
+            selected
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            {isAdmin && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => bulkVisibilityMutation.mutate("admins")}
+                  disabled={bulkBusy}
+                  className="cursor-pointer gap-1.5"
+                >
+                  <Shield className="h-3.5 w-3.5" />
+                  Admin-only
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => bulkVisibilityMutation.mutate("all")}
+                  disabled={bulkBusy}
+                  className="cursor-pointer gap-1.5"
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  Visible to everyone
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => bulkRetrainMutation.mutate()}
+              disabled={bulkBusy}
+              className="cursor-pointer gap-1.5"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Retrain
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setBulkDeleteOpen(true)}
+              disabled={bulkBusy}
+              className="cursor-pointer gap-1.5 border-danger-3 text-danger-6 hover:bg-danger-1"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearSelection}
+              disabled={bulkBusy}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Files table */}
       <div className="overflow-hidden rounded-lg border border-border-2 bg-bg-white">
         {/* Desktop table */}
@@ -270,6 +642,14 @@ export default function FolderDetailPage({
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="border-b border-border-2 text-[12px] font-semibold uppercase tracking-wide text-text-3">
+                <th className="px-5 py-3 w-10">
+                  <Checkbox
+                    aria-label="Select all files"
+                    checked={headerCheckboxState}
+                    onCheckedChange={toggleSelectAllFiltered}
+                    disabled={filtered.length === 0}
+                  />
+                </th>
                 <th className="px-5 py-3">Name</th>
                 <th className="px-5 py-3">Type</th>
                 <th className="px-5 py-3">Size</th>
@@ -282,8 +662,17 @@ export default function FolderDetailPage({
               {filtered.map((f) => (
                 <tr
                   key={f.id}
-                  className="border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1"
+                  className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${
+                    selectedIds.has(f.id) ? "bg-primary-1/30" : ""
+                  }`}
                 >
+                  <td className="px-5 py-4">
+                    <Checkbox
+                      aria-label={`Select ${f.name}`}
+                      checked={selectedIds.has(f.id)}
+                      onCheckedChange={() => toggleSelected(f.id)}
+                    />
+                  </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <FileText
@@ -291,6 +680,11 @@ export default function FolderDetailPage({
                         strokeWidth={1.5}
                       />
                       <span className="font-medium text-text-1">{f.name}</span>
+                      <IngestionStatusBadge
+                        status={f.ingestionStatus}
+                        error={f.ingestionError}
+                      />
+                      <VisibilityBadge visibility={f.visibility} />
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -339,6 +733,39 @@ export default function FolderDetailPage({
                           <FolderInput className="mr-2 h-3.5 w-3.5" />
                           Move to...
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => reingestMutation.mutate(f.id)}
+                          disabled={
+                            f.ingestionStatus === "processing" ||
+                            reingestMutation.isPending
+                          }
+                        >
+                          <RotateCw className="mr-2 h-3.5 w-3.5" />
+                          Retrain
+                        </DropdownMenuItem>
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              visibilityMutation.mutate({
+                                fileId: f.id,
+                                visibility:
+                                  f.visibility === "admins" ? "all" : "admins",
+                              })
+                            }
+                          >
+                            {f.visibility === "admins" ? (
+                              <>
+                                <Users className="mr-2 h-3.5 w-3.5" />
+                                Make visible to everyone
+                              </>
+                            ) : (
+                              <>
+                                <Shield className="mr-2 h-3.5 w-3.5" />
+                                Make admin-only
+                              </>
+                            )}
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onSelect={() => handleDelete(f.id)}
@@ -355,7 +782,7 @@ export default function FolderDetailPage({
               {filtered.length === 0 && (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-5 py-10 text-center text-[13px] text-text-3"
                   >
                     {query
@@ -373,16 +800,30 @@ export default function FolderDetailPage({
           {filtered.map((f, idx) => (
             <div
               key={f.id}
-              className={`flex items-center gap-3 px-4 py-4 ${idx > 0 ? "border-t border-border-2" : ""}`}
+              className={`flex items-center gap-3 px-4 py-4 ${idx > 0 ? "border-t border-border-2" : ""} ${
+                selectedIds.has(f.id) ? "bg-primary-1/30" : ""
+              }`}
             >
+              <Checkbox
+                aria-label={`Select ${f.name}`}
+                checked={selectedIds.has(f.id)}
+                onCheckedChange={() => toggleSelected(f.id)}
+              />
               <FileText
                 className="h-5 w-5 shrink-0 text-text-3"
                 strokeWidth={1.5}
               />
               <div className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-[14px] font-medium text-text-1">
-                  {f.name}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="truncate text-[14px] font-medium text-text-1">
+                    {f.name}
+                  </span>
+                  <IngestionStatusBadge
+                    status={f.ingestionStatus}
+                    error={f.ingestionError}
+                  />
+                  <VisibilityBadge visibility={f.visibility} />
+                </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
                   {f.uploadedByName ?? "Unknown"} •{" "}
@@ -408,6 +849,39 @@ export default function FolderDetailPage({
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
                     Move to...
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => reingestMutation.mutate(f.id)}
+                    disabled={
+                      f.ingestionStatus === "processing" ||
+                      reingestMutation.isPending
+                    }
+                  >
+                    <RotateCw className="mr-2 h-3.5 w-3.5" />
+                    Retrain
+                  </DropdownMenuItem>
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        visibilityMutation.mutate({
+                          fileId: f.id,
+                          visibility:
+                            f.visibility === "admins" ? "all" : "admins",
+                        })
+                      }
+                    >
+                      {f.visibility === "admins" ? (
+                        <>
+                          <Users className="mr-2 h-3.5 w-3.5" />
+                          Make visible to everyone
+                        </>
+                      ) : (
+                        <>
+                          <Shield className="mr-2 h-3.5 w-3.5" />
+                          Make admin-only
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => handleDelete(f.id)}
@@ -519,6 +993,39 @@ export default function FolderDetailPage({
               </div>
             ))}
           </div>
+
+          {/* Admin-only visibility select — same UX as the root
+              /knowledge-core upload dialog. Hidden for non-admins so
+              their uploads quietly ship as 'all' (BE forces this
+              regardless). */}
+          {isAdmin && (
+            <div className="flex flex-col gap-1.5 pt-1">
+              <label className="text-[12px] font-medium text-text-1">
+                Visibility
+              </label>
+              <Select
+                value={stagedVisibility}
+                onValueChange={(v) =>
+                  setStagedVisibility(v as KnowledgeFileVisibility)
+                }
+                disabled={uploadMutation.isPending}
+              >
+                <SelectTrigger className="h-10 w-full cursor-pointer">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Everyone in the company</SelectItem>
+                  <SelectItem value="admins">Admins only</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-text-3">
+                {stagedVisibility === "admins"
+                  ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                  : "Every user in the company can see these files in chat / arena."}
+              </p>
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -572,6 +1079,47 @@ export default function FolderDetailPage({
               className="cursor-pointer"
             >
               {deleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Delete confirmation. Same wording as the single-file
+          variant — the bulk mutation handles per-file failures
+          gracefully and surfaces an aggregated toast. */}
+      <Dialog
+        open={bulkDeleteOpen}
+        onOpenChange={(open) =>
+          !open && !bulkDeleteMutation.isPending && setBulkDeleteOpen(false)
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Delete {selectedIds.size} file
+              {selectedIds.size !== 1 ? "s" : ""}?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete the selected files and all of
+              their embeddings. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteOpen(false)}
+              disabled={bulkDeleteMutation.isPending}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => bulkDeleteMutation.mutate()}
+              disabled={bulkDeleteMutation.isPending}
+              className="cursor-pointer"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -9,11 +9,16 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import {
+  fetchCurrentUserOptional,
   fetchOnboardingDraft,
   updateOnboardingDraft,
   type OnboardingDraft,
 } from "@/lib/api";
+import { Card } from "@/components/ui/card";
 
 type ProfileType = "company" | "personal";
 type InfraChoice = "managed" | "on-premise";
@@ -68,9 +73,74 @@ export default function SetupProfileLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
   const [state, setState] = useState<OnboardingScalarState>(emptyState);
   const [files, setFiles] = useState<File[]>([]);
   const hydrated = useRef(false);
+
+  // Inverse of the (app) layout's OnboardingGuard: an already-
+  // onboarded user landing on /setup-profile (e.g. by typing the URL,
+  // a stale bookmark, or hitting Back from the dashboard) gets bounced
+  // home — otherwise they'd hit step 6's Complete Setup and get a 409
+  // "Onboarding already completed" because users.onboarding_completed_at
+  // is already set.
+  //
+  // The most common path here is the freshly-registered invitee: the
+  // BE inherits the inviter's company info + stamps onboardingCompletedAt
+  // on /users/invite, so when register-page.tsx redirects to
+  // /setup-profile, this guard fires and bounces them home. We hold
+  // the loader on screen briefly with the workspace name so the user
+  // knows what's happening instead of seeing a flash of the wizard
+  // step-1 picker.
+  //
+  // Snapshotted ONCE on mount via a ref. Step 6's submit invalidates
+  // ["auth","me"], which would flip onboardingCompleted to true mid-
+  // flow; if we re-evaluated on every change we'd redirect away from
+  // the "Training your AI…" progress screen before it had a chance to
+  // poll. Step 6 owns the post-success redirect itself.
+  const guardRanRef = useRef(false);
+  // Tri-state guard:
+  //   "checking" — initial; we don't yet know if this visitor is
+  //                onboarded. We render the loader (NOT the wizard
+  //                children) so an invitee never sees a flash of the
+  //                profile-type picker before the redirect kicks in.
+  //   "pass"     — visitor is unauthenticated or hasn't completed
+  //                onboarding; render the wizard children.
+  //   "joining"  — visitor is already onboarded; render the
+  //                "Joining {company}…" copy and redirect home.
+  const [guardState, setGuardState] = useState<
+    "checking" | "pass" | "joining"
+  >("checking");
+  const [joiningCompany, setJoiningCompany] = useState<string>("");
+  useEffect(() => {
+    if (guardRanRef.current) return;
+    guardRanRef.current = true;
+    let cancelled = false;
+    fetchCurrentUserOptional()
+      .then((me) => {
+        if (cancelled) return;
+        if (me?.onboardingCompleted) {
+          setJoiningCompany(me.companyName ?? "");
+          setGuardState("joining");
+          // Brief delay so the user reads the message instead of
+          // seeing a sub-100ms flash before the dashboard mounts.
+          window.setTimeout(() => {
+            if (!cancelled) router.replace("/");
+          }, 1200);
+        } else {
+          setGuardState("pass");
+        }
+      })
+      .catch(() => {
+        // Fail open — any /auth/me hiccup shouldn't lock a fresh
+        // user out of the wizard. Public-page fetch swallows 401
+        // already; this catch handles network errors etc.
+        if (!cancelled) setGuardState("pass");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   // Hydrate on mount: prefer the BE draft (durable across sessions /
   // device switches) and fall back to sessionStorage if the BE has
@@ -195,6 +265,45 @@ export default function SetupProfileLayout({
     }),
     [state, update, setApiKey, files, reset, saveDraft],
   );
+
+  // Hold off rendering the wizard until the guard resolves. The
+  // "checking" frame renders the same Card chrome as "joining" but
+  // without copy — keeps layout stable when we transition to either
+  // the joining loader or to the wizard, and avoids flashing the
+  // profile-type picker to invitees who are about to be redirected
+  // home.
+  if (guardState !== "pass") {
+    const orgLabel = joiningCompany.trim()
+      ? joiningCompany
+      : "your organization";
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+        <Card className="w-full max-w-[480px] flex flex-col items-center gap-6 p-[40px] bg-bg-white rounded-md text-center">
+          <Image
+            src="/full-logo.png"
+            alt="WorkenAI"
+            width={106}
+            height={29}
+            priority
+          />
+          <Loader2
+            className="h-10 w-10 animate-spin text-primary-7"
+            strokeWidth={2}
+          />
+          {guardState === "joining" ? (
+            <div className="flex flex-col gap-2">
+              <h1 className="text-[24px] font-bold leading-tight text-text-1">
+                Joining {orgLabel}…
+              </h1>
+              <p className="text-[15px] font-normal leading-snug text-text-2">
+                Setting up your access to shared knowledge and tools.
+              </p>
+            </div>
+          ) : null}
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <OnboardingContext.Provider value={value}>

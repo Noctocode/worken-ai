@@ -33,8 +33,8 @@ export class UsersController {
   ) {}
 
   @Get()
-  findAll() {
-    return this.usersService.findAll();
+  findAll(@CurrentUser() caller: AuthenticatedUser) {
+    return this.usersService.findAll(caller.id);
   }
 
   @Get(':id')
@@ -197,16 +197,24 @@ export class UsersController {
     @Body() body: { budgetUsd: number },
     @CurrentUser() caller: AuthenticatedUser,
   ) {
-    // Budget changes flip a real spend cap on the user's OpenRouter
-    // sub-account — basic / advanced users must not be able to lift
-    // each other's caps. Mirror the role gate used on /users delete.
+    // Two allowed paths:
+    //   1. Admin updates anyone — same role gate as /users delete.
+    //   2. A user updates THEIR OWN budget, unless their profile is
+    //      explicitly 'company' (where the org admin owns the spend
+    //      and must approve the cap). Anything else — 'personal' or
+    //      a NULL profileType from an edge-case account that never
+    //      went through Private Pro onboarding cleanly — is treated
+    //      as self-managed: the user pays, so the user sets the cap.
     const [callerUser] = await this.db
-      .select({ role: users.role })
+      .select({ role: users.role, profileType: users.profileType })
       .from(users)
       .where(eq(users.id, caller.id));
-    if (!callerUser || callerUser.role !== 'admin') {
+    const isAdmin = callerUser?.role === 'admin';
+    const isSelfManagedUpdate =
+      caller.id === id && callerUser?.profileType !== 'company';
+    if (!isAdmin && !isSelfManagedUpdate) {
       throw new ForbiddenException(
-        'Only admins can change a user\'s monthly budget.',
+        'Only admins can change another user\'s monthly budget. Company-profile basic users wait for admin approval; everyone else can self-update.',
       );
     }
     return this.usersService.updateBudget(id, body.budgetUsd);

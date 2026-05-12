@@ -180,12 +180,22 @@ export const Appbar = () => {
   /* ── User detail appbar ──────────────────────────────────────────────── */
   if (config.appbarType === "userDetail") {
     const userName = breadcrumbs[breadcrumbs.length - 1]?.label ?? "";
-    // Edit / delete are admin-only — same gates as the underlying
-    // endpoints (PATCH /users/:id/budget, PATCH /users/:id/role,
-    // DELETE /users/:id). Hide the icons entirely for non-admins
-    // rather than rendering them disabled; the user-detail page
-    // surfaces the "ask an admin" hint inline.
-    const canManage = currentUser?.role === "admin";
+    // Two edit gates fold into one Pencil:
+    //  - Admin can edit anyone (budget + role + delete).
+    //  - A non-company user can self-edit their own budget. Anything
+    //    other than profileType='company' (including NULL from edge-
+    //    case accounts) self-manages — they land on /users/<own-id>
+    //    and want the Pencil to enter edit mode without admin
+    //    involvement. Trash (delete) stays admin-only.
+    const userDetailId =
+      pathname.match(/^\/users\/([^/]+)/)?.[1] ?? "";
+    const isAdmin = currentUser?.role === "admin";
+    const isSelfManaged =
+      !!currentUser &&
+      currentUser.id === userDetailId &&
+      currentUser.profileType !== "company";
+    const canEdit = isAdmin || isSelfManaged;
+    const canDelete = isAdmin;
 
     return (
       <header
@@ -219,30 +229,34 @@ export const Appbar = () => {
           </Link>
           <h4 className="text-[26px] font-bold text-text-1">{userName}</h4>
         </div>
-        {canManage && (
+        {(canEdit || canDelete) && (
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-success-7 hover:text-success-7/80"
-              onClick={() =>
-                window.dispatchEvent(new CustomEvent("user-detail:edit"))
-              }
-              title="Edit user"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-success-7 hover:text-success-7/80"
-              onClick={() =>
-                window.dispatchEvent(new CustomEvent("user-detail:delete"))
-              }
-              title="Remove user"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {canEdit && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-success-7 hover:text-success-7/80"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("user-detail:edit"))
+                }
+                title="Edit user"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-success-7 hover:text-success-7/80"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("user-detail:delete"))
+                }
+                title="Remove user"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         )}
       </header>

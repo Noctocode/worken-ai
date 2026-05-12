@@ -77,9 +77,15 @@ export class KnowledgeCoreController {
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        const allowedExt = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
+        // Allowlist must match what documents.service.parseFile +
+        // KnowledgeIngestionService.ingestOneFile can actually handle.
+        // Dropping legacy .doc (application/msword) — mammoth is
+        // .docx-only, so accepting .doc here just guarantees a
+        // "Skipped" badge later. Reject up front with a clearer
+        // message instead.
+        const allowedExt = /\.(pdf|docx|xlsx?|png|jpe?g)$/i;
         const allowedMime =
-          /^(application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
+          /^(application\/(pdf|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
         if (
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
@@ -95,8 +101,63 @@ export class KnowledgeCoreController {
     @Param('id') folderId: string,
     @CurrentUser() user: AuthenticatedUser,
     @UploadedFiles() files: Express.Multer.File[],
+    // Multer parses non-file fields onto the request body; multipart
+    // strings come through verbatim. Service validates the value
+    // against the 'all' | 'admins' enum.
+    @Body() body: { visibility?: string },
   ) {
-    return this.service.uploadFiles(folderId, user.id, files);
+    return this.service.uploadFiles(folderId, user.id, files, body?.visibility);
+  }
+
+  /**
+   * Promote / demote a knowledge file between 'all' and 'admins'
+   * visibility. Admin-only — the gate lives in the service so the
+   * controller stays free of role-fetch logic. Mirrors the pattern
+   * used by `models.controller` for admin endpoints.
+   */
+  @Patch('files/:id/visibility')
+  updateFileVisibility(
+    @Param('id') id: string,
+    @Body() body: { visibility: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateFileVisibility(id, user.id, body?.visibility);
+  }
+
+  /**
+   * Force a fresh chunk + embed pass on a single file. Owner-only;
+   * blocked if the file is currently mid-ingestion (status='processing').
+   * Replaces the "upload a dummy file to kick the worker" workaround
+   * users were doing when an earlier run finished with no chunks.
+   */
+  @Post('files/:id/reingest')
+  reingestFile(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.reingestFile(id, user.id);
+  }
+
+  /**
+   * Bulk variant of the per-file PATCH. Lets the multi-select action
+   * bar flip many rows in one round-trip and one DB transaction.
+   * Admin-only — same gate as the per-file endpoint, just applied
+   * once for the whole batch.
+   *
+   * Mounted ahead of `:id/visibility` would clash; this route has
+   * no `:id` segment so the order doesn't matter, but kept after
+   * for readability.
+   */
+  @Patch('files/visibility')
+  updateFilesVisibility(
+    @Body() body: { fileIds: string[]; visibility: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.updateFilesVisibility(
+      body?.fileIds ?? [],
+      user.id,
+      body?.visibility,
+    );
   }
 
   @Get('files/:id/download')

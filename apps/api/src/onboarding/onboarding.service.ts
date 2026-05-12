@@ -10,18 +10,26 @@ import {
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
-import { resolve } from 'path';
+import {
+  extname,
+  isAbsolute,
+  join,
+  posix as pathPosix,
+  relative,
+  resolve,
+} from 'path';
 import { randomUUID } from 'crypto';
-import { join, posix as pathPosix } from 'path';
 import {
   users,
   teams,
   integrations,
-  knowledgeDocuments,
+  knowledgeFiles,
+  knowledgeFolders,
   onboardingDrafts,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -38,6 +46,13 @@ export interface OnboardingPayload {
   infraChoice: InfraChoice;
   // Step 5 — each key is optional; omitted/empty means "skipped"
   apiKeys?: Partial<Record<Provider, string>>;
+  // Step 6 — visibility for the knowledge files uploaded in this
+  // batch. Only meaningful when profileType === 'company' (where
+  // 'admins' restricts access to admin role only). Personal-profile
+  // uploads land as scope='personal' (owner-only) regardless, so
+  // visibility is effectively moot there. Optional; defaults to
+  // 'all'.
+  knowledgeVisibility?: 'all' | 'admins';
 }
 
 /**
@@ -95,7 +110,22 @@ const VALID_TEAM_SIZES = [
   '1000+',
 ] as const;
 
-const UPLOADS_ROOT = join(process.cwd(), 'uploads', 'knowledge');
+// Onboarding uploads now live in the same directory as
+// post-onboarding Knowledge Core uploads so `knowledge_files.storage_path`
+// is uniform regardless of source. The legacy `uploads/knowledge/<userId>/`
+// tree stays put for already-migrated rows (the backfill script copies,
+// not moves) — once the backfill is verified on prod that tree can be
+// deleted in a follow-up PR.
+const UPLOADS_ROOT = join(process.cwd(), 'uploads', 'knowledge-core');
+
+// Name of the auto-created per-user folder onboarding uploads land in.
+// Find-or-create on completion: stable name so a user who re-runs
+// onboarding (after a support-action reset) reuses the same folder
+// rather than spawning duplicates. If the user happens to already have
+// a folder named 'Onboarding' for unrelated purposes, the files land
+// there — acceptable; users own their folder names and this collision
+// is rare in practice.
+const ONBOARDING_FOLDER_NAME = 'Onboarding';
 
 // Defense-in-depth against path traversal: multer's originalname is whatever
 // the client sent (can contain ../, /, \, or NULs). Keep just the last path
@@ -110,6 +140,30 @@ function sanitizeFilename(raw: string): string {
   return cleaned || 'file';
 }
 
+// knowledge_files doesn't carry a mime_type column (KC uploads only
+// retain extension), so reconstruct one for downloads. Covers the
+// onboarding-allowed types plus a sensible default.
+function mimeFromExtension(
+  fileType: string | null,
+  filename: string,
+): string {
+  const ext = (
+    fileType ?? extname(filename).replace('.', '')
+  ).toLowerCase();
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'doc':
+      return 'application/msword';
+    case 'docx':
+      return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'txt':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
 @Injectable()
 export class OnboardingService {
   private readonly logger = new Logger(OnboardingService.name);
@@ -117,6 +171,7 @@ export class OnboardingService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
   async complete(
@@ -130,6 +185,14 @@ export class OnboardingService {
     const movedPaths: string[] = [];
     try {
       await this.completeInner(userId, payload, files, movedPaths);
+      // Kick off ingestion AFTER the transaction commits — the worker
+      // queries `knowledge_files` and would see nothing if invoked
+      // mid-transaction. Fire-and-forget so the HTTP response returns
+      // immediately; the FE polls /onboarding/ingestion-status to
+      // surface progress.
+      if (files.length > 0) {
+        this.knowledgeIngestion.ingestPendingFilesForUser(userId);
+      }
     } catch (err) {
       // Two classes of leftovers to clean up:
       //  1. multer tmp files that never got moved (validation / pre-move
@@ -163,22 +226,24 @@ export class OnboardingService {
 
     // Write files to disk first. If the subsequent DB transaction rolls
     // back we unlink everything we moved via `movedPaths` in the caller.
-    const userDir = join(UPLOADS_ROOT, userId);
-    await mkdir(userDir, { recursive: true });
+    // Files share the same directory as Knowledge Core uploads (flat
+    // `uploads/knowledge-core/`) so storage_path is uniform; the
+    // randomUUID prefix prevents collisions across users.
+    await mkdir(UPLOADS_ROOT, { recursive: true });
     const writtenFiles: Array<{
-      filename: string;
+      name: string;
+      fileType: string;
       storagePath: string;
       sizeBytes: number;
-      mimeType: string | null;
     }> = [];
     for (const file of files) {
       const safeName = sanitizeFilename(file.originalname);
       const storedName = `${randomUUID()}-${safeName}`;
-      const absolutePath = join(userDir, storedName);
+      const absolutePath = join(UPLOADS_ROOT, storedName);
       // Files arrive on disk via multer.diskStorage; move them into the
-      // user's permanent dir. rename is atomic on the same filesystem;
-      // cross-device moves (e.g. /tmp on a different mount) need copy +
-      // unlink as a fallback.
+      // permanent knowledge-core dir. rename is atomic on the same
+      // filesystem; cross-device moves (e.g. /tmp on a different mount)
+      // need copy + unlink as a fallback.
       try {
         await rename(file.path, absolutePath);
       } catch (err: unknown) {
@@ -193,20 +258,20 @@ export class OnboardingService {
         }
       }
       movedPaths.push(absolutePath);
+      // Match KnowledgeCoreService.uploadFiles shape so chunks, badges,
+      // and the /knowledge-core UI treat onboarding uploads identically
+      // to ones the user adds later via the dropzone.
+      const ext = extname(safeName).replace('.', '').toUpperCase();
       writtenFiles.push({
-        // Preserve the original display name (post-sanitize) so the /account
-        // page shows something the user recognises.
-        filename: safeName,
+        // Preserve the original display name (post-sanitize) so the
+        // /account page and /knowledge-core list show something the
+        // user recognises.
+        name: safeName,
+        fileType: ext || 'FILE',
         // POSIX separators in the DB so storage paths are portable between
         // dev (Windows) and prod (Linux) without per-OS quirks.
-        storagePath: pathPosix.join(
-          'uploads',
-          'knowledge',
-          userId,
-          storedName,
-        ),
+        storagePath: pathPosix.join('uploads/knowledge-core', storedName),
         sizeBytes: file.size,
-        mimeType: file.mimetype || null,
       });
     }
 
@@ -283,11 +348,72 @@ export class OnboardingService {
         }
       }
 
-      for (const f of writtenFiles) {
-        await tx.insert(knowledgeDocuments).values({
-          userId,
-          ...f,
-        });
+      // Land the uploads in the same tables Knowledge Core uses so
+      // they show up in /knowledge-core alongside files the user adds
+      // later via the dropzone. One transaction with the user/integration
+      // writes above: if folder/file insert fails, the onboarding row
+      // doesn't get marked complete and the caller cleans up disk via
+      // `movedPaths`.
+      //
+      // Folder is find-or-create per user. No unique index on
+      // (owner_id, name) — concurrent onboarding completion is
+      // impossible (gated by `onboardingCompletedAt` 409 above), so a
+      // plain SELECT-then-INSERT is race-free here.
+      if (writtenFiles.length > 0) {
+        let [folder] = await tx
+          .select({ id: knowledgeFolders.id })
+          .from(knowledgeFolders)
+          .where(
+            and(
+              eq(knowledgeFolders.ownerId, userId),
+              eq(knowledgeFolders.name, ONBOARDING_FOLDER_NAME),
+            ),
+          )
+          .limit(1);
+        if (!folder) {
+          [folder] = await tx
+            .insert(knowledgeFolders)
+            .values({ ownerId: userId, name: ONBOARDING_FOLDER_NAME })
+            .returning({ id: knowledgeFolders.id });
+        }
+
+        // RAG visibility: company branch → every deployment user can
+        // pull these chunks at chat time; personal branch → only the
+        // uploader. Set per-file here (not later) so a re-ingest can't
+        // drift the visibility, and so the ingestion worker can copy
+        // the value onto each chunk.
+        const scope =
+          payload.profileType === 'company' ? 'company' : 'personal';
+
+        // Second visibility layer (within company scope only):
+        // 'admins' restricts the uploads to admin role users at
+        // chat / arena time. Force 'all' for personal profile —
+        // owner-only scope already, the second toggle would be
+        // misleading. Default 'all' when the payload omits the
+        // field (backward-compatible with FE clients that haven't
+        // adopted the new field yet).
+        const visibility: 'all' | 'admins' =
+          payload.profileType === 'company' &&
+          payload.knowledgeVisibility === 'admins'
+            ? 'admins'
+            : 'all';
+
+        await tx.insert(knowledgeFiles).values(
+          writtenFiles.map((f) => ({
+            folderId: folder.id,
+            uploadedById: userId,
+            scope,
+            visibility,
+            ...f,
+          })),
+        );
+
+        // Bump folder's updatedAt so /knowledge-core sorts it to the top
+        // for the user's first visit post-onboarding.
+        await tx
+          .update(knowledgeFolders)
+          .set({ updatedAt: new Date() })
+          .where(eq(knowledgeFolders.id, folder.id));
       }
     });
 
@@ -321,25 +447,45 @@ export class OnboardingService {
   }
 
   /**
-   * Resolve a knowledge document owned by `userId` to an absolute path that
-   * is provably inside UPLOADS_ROOT, plus the stream + display metadata
-   * needed to send it to the client.
+   * Resolve a knowledge file owned by `userId` to an absolute path
+   * that is provably inside the uploads root, plus the stream +
+   * display metadata needed to send it to the client. Backed by
+   * `knowledge_files`.
    */
-  async openDocumentForUser(documentId: string, userId: string) {
-    const [doc] = await this.db
-      .select()
-      .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.id, documentId));
-    if (!doc || doc.userId !== userId) {
+  async openDocumentForUser(fileId: string, userId: string) {
+    const [file] = await this.db
+      .select({
+        name: knowledgeFiles.name,
+        fileType: knowledgeFiles.fileType,
+        storagePath: knowledgeFiles.storagePath,
+        ownerId: knowledgeFolders.ownerId,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(eq(knowledgeFiles.id, fileId));
+    if (!file || file.ownerId !== userId) {
       throw new NotFoundException('Document not found');
     }
+    if (!file.storagePath) {
+      throw new NotFoundException('Document file is missing on disk');
+    }
 
-    // storagePath is a POSIX-style relative path we wrote. Resolve against
-    // cwd and reject anything that would escape UPLOADS_ROOT — defensive
-    // check in case of DB tampering.
-    const absolutePath = resolve(process.cwd(), doc.storagePath);
+    // storagePath is a POSIX-style relative path. Resolve against cwd
+    // and reject anything that would escape the uploads root —
+    // defensive check in case of DB tampering. `path.relative` flags
+    // every escape: `..`-prefixed when the target sits above the root,
+    // absolute when there's no common base (different Windows drive),
+    // and empty when the target IS the root (no file to open). This
+    // catches both `..` traversal AND suffix collisions like
+    // `<root>-secret/...` that a naive `startsWith(rootResolved)`
+    // would let through.
+    const absolutePath = resolve(process.cwd(), file.storagePath);
     const rootResolved = resolve(UPLOADS_ROOT);
-    if (!absolutePath.startsWith(rootResolved)) {
+    const rel = relative(rootResolved, absolutePath);
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
       throw new NotFoundException('Document not found');
     }
 
@@ -351,8 +497,12 @@ export class OnboardingService {
 
     return {
       stream: createReadStream(absolutePath),
-      filename: doc.filename,
-      mimeType: doc.mimeType ?? 'application/octet-stream',
+      filename: file.name,
+      // knowledge_files doesn't store mimetype; map extension to a
+      // sensible Content-Type and fall back to octet-stream. Browsers
+      // honour Content-Disposition: attachment regardless, so this
+      // only affects in-tab preview for txt/pdf.
+      mimeType: mimeFromExtension(file.fileType, file.name),
     };
   }
 
@@ -383,16 +533,30 @@ export class OnboardingService {
         ),
       );
 
+    // Onboarding uploads now live in the user's `Onboarding` folder
+    // inside `knowledge_files`. /account keeps the same display shape
+    // (`{id, filename, sizeBytes, mimeType, createdAt}`) so the FE
+    // download link continues to work — `id` is now a knowledge_files
+    // row, openDocumentForUser resolves it.
     const documents = await this.db
       .select({
-        id: knowledgeDocuments.id,
-        filename: knowledgeDocuments.filename,
-        sizeBytes: knowledgeDocuments.sizeBytes,
-        mimeType: knowledgeDocuments.mimeType,
-        createdAt: knowledgeDocuments.createdAt,
+        id: knowledgeFiles.id,
+        filename: knowledgeFiles.name,
+        sizeBytes: knowledgeFiles.sizeBytes,
+        fileType: knowledgeFiles.fileType,
+        createdAt: knowledgeFiles.createdAt,
       })
-      .from(knowledgeDocuments)
-      .where(eq(knowledgeDocuments.userId, userId));
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          eq(knowledgeFolders.name, ONBOARDING_FOLDER_NAME),
+        ),
+      );
 
     return {
       name: u.name,
@@ -713,6 +877,15 @@ export class OnboardingService {
     }
     if (p.profileType === 'personal' && !p.fullName?.trim()) {
       throw new BadRequestException('fullName is required for Personal');
+    }
+    if (
+      p.knowledgeVisibility !== undefined &&
+      p.knowledgeVisibility !== 'all' &&
+      p.knowledgeVisibility !== 'admins'
+    ) {
+      throw new BadRequestException(
+        'knowledgeVisibility must be "all" or "admins"',
+      );
     }
   }
 }

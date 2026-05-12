@@ -25,12 +25,16 @@ import {
   type OnboardingDraft,
   type OnboardingPayload,
 } from './onboarding.service.js';
+import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 
 const MAX_FILES = 20;
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
+// Must mirror what parseFile / ingestOneFile actually handle —
+// legacy .doc (application/msword) is no longer accepted because
+// mammoth supports .docx only, so a .doc would just land as
+// "Skipped" after upload. Reject up front with a clear error.
 const ALLOWED_MIME_TYPES = new Set<string>([
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
 ]);
@@ -41,11 +45,25 @@ mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
 @Controller('onboarding')
 export class OnboardingController {
-  constructor(private readonly onboardingService: OnboardingService) {}
+  constructor(
+    private readonly onboardingService: OnboardingService,
+    private readonly knowledgeIngestion: KnowledgeIngestionService,
+  ) {}
 
   @Get('profile')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.getProfile(user.id);
+  }
+
+  /**
+   * Drives the step-6 "Training your AI…" progress screen. The FE
+   * polls this until `inProgress` is false, then redirects.
+   * Cheap query (single SELECT with COUNT-by-status server-side
+   * folding), so polling at 1-2s cadence is fine.
+   */
+  @Get('ingestion-status')
+  getIngestionStatus(@CurrentUser() user: AuthenticatedUser) {
+    return this.knowledgeIngestion.getStatus(user.id);
   }
 
   /**

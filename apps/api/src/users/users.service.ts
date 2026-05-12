@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   users,
   teamMembers,
@@ -51,20 +51,49 @@ export class UsersService {
     return row ?? null;
   }
 
-  async findAll() {
-    const allUsers = await this.db
-      .select({
-        id: users.id,
-        name: users.name,
-        email: users.email,
-        picture: users.picture,
-        role: users.role,
-        inviteStatus: users.inviteStatus,
-        monthlyBudgetCents: users.monthlyBudgetCents,
-        infraChoice: users.infraChoice,
-        createdAt: users.createdAt,
-      })
-      .from(users);
+  async findAll(callerId: string) {
+    // Scope: a single-tenant deployment is one company AND can also
+    // host independent Private Pro accounts side-by-side. A company-
+    // profile caller sees only other company-profile users (plus
+    // NULL-profile rows, which are pending invitees mid-flow that
+    // haven't completed onboarding yet — admin needs them in the
+    // list to see who's still queued). Personal-profile (Private
+    // Pro) callers see only themselves; their account is isolated.
+    const [caller] = await this.db
+      .select({ profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const isCompanyScope = caller?.profileType === 'company';
+
+    const baseSelect = {
+      id: users.id,
+      name: users.name,
+      email: users.email,
+      picture: users.picture,
+      role: users.role,
+      inviteStatus: users.inviteStatus,
+      monthlyBudgetCents: users.monthlyBudgetCents,
+      infraChoice: users.infraChoice,
+      createdAt: users.createdAt,
+    };
+    const allUsers = isCompanyScope
+      ? await this.db
+          .select(baseSelect)
+          .from(users)
+          // 'personal' rows are independent Private Pro accounts —
+          // they share the deployment but not the company tenancy.
+          // Filter them out so a company admin's user list doesn't
+          // surface unrelated personal accounts.
+          .where(
+            or(
+              eq(users.profileType, 'company'),
+              isNull(users.profileType),
+            ),
+          )
+      : await this.db
+          .select(baseSelect)
+          .from(users)
+          .where(eq(users.id, callerId));
 
     // Get team memberships for all users
     const memberships = await this.db

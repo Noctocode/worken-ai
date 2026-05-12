@@ -57,8 +57,13 @@ export interface User {
   picture: string | null;
   emailVerified: boolean;
   profileType: "company" | "personal" | null;
+  companyName: string | null;
   onboardingCompleted: boolean;
   canCreateProject: boolean;
+  /** Cap in cents enforced on the user's OpenRouter sub-account.
+   *  0 = no key provisioned yet (personal users self-set in
+   *  Billing tab; company-profile users wait for admin approval). */
+  monthlyBudgetCents: number;
 }
 
 export async function fetchCurrentUser(): Promise<User> {
@@ -1456,6 +1461,8 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
+export type KnowledgeFileVisibility = "all" | "admins";
+
 export interface KnowledgeFile {
   id: string;
   folderId: string;
@@ -1465,6 +1472,15 @@ export interface KnowledgeFile {
   storagePath: string | null;
   uploadedById: string | null;
   uploadedByName: string | null;
+  // Status of the chunk + embed pipeline so chat RAG can search
+  // this file. Surfaced as a badge on the folder detail page.
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
+  // Secondary visibility within company scope: 'all' is readable
+  // by every company user, 'admins' restricts to role='admin'.
+  // Default 'all'. Admins toggle via the action menu / upload
+  // dialog; basic users see this read-only.
+  visibility: KnowledgeFileVisibility;
   createdAt: string;
 }
 
@@ -1484,6 +1500,9 @@ export interface KnowledgeRecentFile {
   sizeBytes: number;
   folderName: string;
   uploadedByName: string | null;
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
+  visibility: KnowledgeFileVisibility;
   createdAt: string;
 }
 
@@ -1523,14 +1542,88 @@ export async function deleteKnowledgeFolder(id: string): Promise<void> {
 export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
+  visibility: KnowledgeFileVisibility = "all",
 ): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
+  // Multipart field for the visibility flag. BE enforces that only
+  // admins can set 'admins'; for non-admin callers any value other
+  // than 'all' is rejected, so the caller MUST omit it / pass 'all'.
+  form.append("visibility", visibility);
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
     body: form,
   });
   if (!res.ok) throw new Error("Failed to upload files");
+  return res.json();
+}
+
+/**
+ * Flip a knowledge file between 'all' and 'admins' visibility.
+ * Admin-only — non-admin callers will get a 403 from the BE.
+ */
+export async function updateKnowledgeFileVisibility(
+  fileId: string,
+  visibility: KnowledgeFileVisibility,
+): Promise<{ id: string; visibility: KnowledgeFileVisibility }> {
+  const res = await apiFetch(
+    `/knowledge-core/files/${fileId}/visibility`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ visibility }),
+    },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update visibility");
+  }
+  return res.json();
+}
+
+/**
+ * Force a fresh chunk + embed pass on a single file. Owner-only at
+ * the BE; FE just kicks the request and refetches to surface the
+ * new "Queued" / "Training" badge.
+ */
+export async function reingestKnowledgeFile(
+  fileId: string,
+): Promise<{ id: string; ingestionStatus: "pending" }> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/reingest`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-train this file");
+  }
+  return res.json();
+}
+
+/**
+ * Bulk visibility flip — one round-trip, single BE transaction.
+ * Admin-only at the BE. Used by the multi-select action bar.
+ */
+export async function updateKnowledgeFilesVisibilityBulk(
+  fileIds: string[],
+  visibility: KnowledgeFileVisibility,
+): Promise<{
+  visibility: KnowledgeFileVisibility;
+  affectedIds: string[];
+  /** Files skipped because they were mid-ingestion at the time of the
+   *  call — BE refuses to flip during processing to avoid leaving
+   *  knowledge_files.visibility out of sync with the chunks the
+   *  worker is about to insert. Admin can retry once they finish. */
+  skippedIds: string[];
+}> {
+  const res = await apiFetch(`/knowledge-core/files/visibility`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds, visibility }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update visibility");
+  }
   return res.json();
 }
 
@@ -1756,7 +1849,7 @@ export interface OnboardingProfile {
     id: string;
     filename: string;
     sizeBytes: number;
-    mimeType: string | null;
+    fileType: string | null;
     createdAt: string;
   }>;
 }
@@ -1900,6 +1993,10 @@ export interface CompleteOnboardingPayload {
   apiKeys?: Partial<
     Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
   >;
+  /** Visibility for the knowledge files uploaded in step 6. Only
+   *  honoured for `profileType: "company"` — personal uploads are
+   *  owner-only via the scope filter regardless. Defaults to 'all'. */
+  knowledgeVisibility?: KnowledgeFileVisibility;
 }
 
 export async function completeOnboarding(
@@ -1918,6 +2015,39 @@ export async function completeOnboarding(
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || "Failed to complete onboarding");
   }
+}
+
+export type IngestionDocStatus =
+  | "pending"
+  | "processing"
+  | "done"
+  | "failed";
+
+export interface IngestionStatusResponse {
+  total: number;
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+  inProgress: boolean;
+  documents: Array<{
+    id: string;
+    filename: string;
+    status: IngestionDocStatus;
+    error: string | null;
+  }>;
+}
+
+/**
+ * Polled by step-6 progress UI after `completeOnboarding`. Returns the
+ * aggregated ingestion state for the caller's knowledge documents.
+ * `inProgress=false` means the FE can move on (some may still be
+ * `failed`, but no new work is queued).
+ */
+export async function getOnboardingIngestionStatus(): Promise<IngestionStatusResponse> {
+  const res = await apiFetch("/onboarding/ingestion-status");
+  if (!res.ok) throw new Error("Failed to load ingestion status");
+  return (await res.json()) as IngestionStatusResponse;
 }
 
 // ─── Observability ────────────────────────────────────────────────────

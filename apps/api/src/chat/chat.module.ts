@@ -6,6 +6,7 @@ import { DocumentsModule } from '../documents/documents.module.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
 import { GuardrailsSectionModule } from '../guardrails/guardrails-section.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
+import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { ModelsModule } from '../models/models.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
 
@@ -16,6 +17,7 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
     ConversationsModule,
     GuardrailsSectionModule, // GuardrailEvaluatorService for input/output gate
     IntegrationsModule,
+    KnowledgeCoreModule, // KnowledgeIngestionService for user-scoped RAG
     ModelsModule,
     OpenRouterModule,
   ],

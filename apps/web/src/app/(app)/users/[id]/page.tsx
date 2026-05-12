@@ -356,8 +356,13 @@ export default function UserDetailPage({
   useEffect(() => {
     const onEdit = () => {
       if (!user) return;
+      // First-time edit with no budget set yet: seed the $10 product
+      // default so personal-profile users hitting Save right away
+      // get a meaningful amount instead of provisioning $0.
+      const dollars =
+        user.monthlyBudgetCents > 0 ? user.monthlyBudgetCents / 100 : 10;
       setEditBudget(
-        (user.monthlyBudgetCents / 100).toLocaleString("de-DE", {
+        dollars.toLocaleString("de-DE", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         }),
@@ -403,14 +408,22 @@ export default function UserDetailPage({
   // Block editing your own role — BE rejects self-mutation to avoid
   // admin lockout, FE matches that.
   const canEditSelfRole = !isSelf;
-  // The edit affordances should only ever render when an admin asks
-  // for them. `isEditing` can be flipped to true by anyone who knows
-  // to dispatch `user-detail:edit` from devtools (the appbar icon
-  // hides for non-admins, but the event is global). Gating the
-  // rendered controls on isAdmin closes that loophole — non-admins
-  // can't end up looking at editable inputs they have no way to
-  // submit, even if they trip the state.
-  const editing = isAdmin && isEditing;
+  // Budget edit gating — mirrors the BE rule in users.controller.ts
+  // (PATCH /users/:id/budget): admin can edit anyone; everyone else
+  // can edit their OWN row unless they're explicitly 'company'-
+  // profile (where the org admin owns the spend cap). 'personal' and
+  // NULL profileType both self-manage. Gating the rendered controls
+  // on this closes the devtools-dispatch loophole described below.
+  const canEditBudget =
+    isAdmin || (isSelf && currentUser?.profileType !== "company");
+  // The edit affordances should only ever render for callers the BE
+  // would accept. `isEditing` can be flipped to true by anyone who
+  // knows to dispatch `user-detail:edit` from devtools (the appbar
+  // icon hides for ineligible callers, but the event is global).
+  // Gating on canEditBudget here closes that loophole — ineligible
+  // callers can't end up looking at editable inputs they have no
+  // way to submit, even if they trip the state.
+  const editing = canEditBudget && isEditing;
 
   const cancelEdit = () => {
     setIsEditing(false);
@@ -606,7 +619,7 @@ export default function UserDetailPage({
                 )}
               </div>
             )}
-            {!editing && !isAdmin && (
+            {!editing && !canEditBudget && (
               <p className="text-[12px] text-text-3">
                 Only admins can change this — ask an admin to adjust the
                 budget.

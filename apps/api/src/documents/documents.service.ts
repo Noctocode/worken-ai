@@ -42,38 +42,71 @@ export class DocumentsService {
     return this.embedder!;
   }
 
-  private chunkText(text: string): string[] {
+  // Public so KnowledgeIngestionService can reuse the same chunking
+  // strategy as project-level documents — keeps embeddings searchable
+  // together at chat time.
+  //
+  // Strategy: buffer short paragraphs together until they hit the
+  // ~1000-char chunk size, then flush. Long paragraphs are emitted
+  // on their own (split on sentence boundaries if they exceed the
+  // limit). The previous version dropped every paragraph under 50
+  // characters individually, which silently killed structured short-
+  // line docs (product catalogs, glossaries, key-value lists where
+  // every line is "name — value"). Now any non-empty content lands
+  // in at least one chunk — embedding similarity handles relevance
+  // at search time, so we don't need a length floor here.
+  chunkText(text: string): string[] {
     const paragraphs = text.split(/\n\n+/);
     const chunks: string[] = [];
+    let buffer = '';
+
+    const flushBuffer = () => {
+      const trimmed = buffer.trim();
+      if (trimmed.length > 0) chunks.push(trimmed);
+      buffer = '';
+    };
 
     for (const paragraph of paragraphs) {
       const trimmed = paragraph.trim();
-      if (trimmed.length < 50) continue;
+      if (!trimmed) continue;
 
-      if (trimmed.length <= 1000) {
-        chunks.push(trimmed);
-      } else {
+      // Long paragraph: flush whatever's buffered first, then split
+      // this one on sentence boundaries so no single chunk exceeds
+      // the embedding token budget.
+      if (trimmed.length > 1000) {
+        flushBuffer();
         const sentences = trimmed.split(/\.\s+/);
         let current = '';
         for (const sentence of sentences) {
           const candidate = current ? current + '. ' + sentence : sentence;
-          if (candidate.length > 1000 && current.length >= 50) {
+          if (candidate.length > 1000 && current.length > 0) {
             chunks.push(current);
             current = sentence;
           } else {
             current = candidate;
           }
         }
-        if (current.length >= 50) {
-          chunks.push(current);
-        }
+        if (current.trim().length > 0) chunks.push(current.trim());
+        continue;
+      }
+
+      // Short / medium paragraph: accumulate. `\n\n` preserves the
+      // paragraph break inside the chunk so the model sees the same
+      // structure the user wrote.
+      const candidate = buffer ? buffer + '\n\n' + trimmed : trimmed;
+      if (candidate.length > 1000) {
+        flushBuffer();
+        buffer = trimmed;
+      } else {
+        buffer = candidate;
       }
     }
 
+    flushBuffer();
     return chunks;
   }
 
-  private async embed(texts: string[]): Promise<number[][]> {
+  async embed(texts: string[]): Promise<number[][]> {
     const embedder = await this.getEmbedder();
     const results: number[][] = [];
     for (const text of texts) {
@@ -225,7 +258,7 @@ export class DocumentsService {
     return this.db.delete(documents).where(eq(documents.id, id)).returning();
   }
 
-  private async parseFile(buffer: Buffer, mimetype: string): Promise<string> {
+  async parseFile(buffer: Buffer, mimetype: string): Promise<string> {
     if (mimetype === 'application/pdf') {
       const { PDFParse } = await import('pdf-parse');
       const parser = new PDFParse({ data: buffer });
@@ -237,15 +270,44 @@ export class DocumentsService {
       mimetype ===
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
-      console.log('Parsing DOCX file...');
       const mammoth = await import('mammoth');
       const result = await mammoth.extractRawText({ buffer });
-      console.log(result);
       return result.value;
     }
 
+    // XLSX / XLS / legacy .xls macro-enabled too. SheetJS handles all
+    // formats off one read; we flatten every sheet to CSV-ish text
+    // and prefix with the sheet name so the embedder gets some
+    // structural signal alongside the cells. Empty / image-only
+    // workbooks return ''.
+    if (
+      mimetype ===
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      mimetype === 'application/vnd.ms-excel'
+    ) {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const sections: string[] = [];
+      for (const sheetName of wb.SheetNames) {
+        const sheet = wb.Sheets[sheetName];
+        if (!sheet) continue;
+        const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+        if (csv.trim().length === 0) continue;
+        sections.push(`## ${sheetName}\n\n${csv}`);
+      }
+      return sections.join('\n\n');
+    }
+
+    if (
+      mimetype === 'text/plain' ||
+      mimetype === 'text/markdown' ||
+      mimetype === 'text/csv'
+    ) {
+      return buffer.toString('utf-8');
+    }
+
     throw new BadRequestException(
-      'Unsupported file type. Only PDF and DOCX are allowed.',
+      'Unsupported file type. Only PDF, DOCX, XLSX, TXT, MD, and CSV are allowed.',
     );
   }
 

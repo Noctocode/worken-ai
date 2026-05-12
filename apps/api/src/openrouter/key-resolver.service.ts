@@ -92,18 +92,30 @@ export class KeyResolverService {
       return this.safeDecrypt(user.openrouterKeyEncrypted, `user ${userId}`);
     }
 
-    // Lazy-provision MUST match what the admin has approved. Without
-    // this guard, a managed-cloud user whose onboarding-time
-    // provisioning was never done would get a $10 key created here
-    // behind the admin's back — bypassing the explicit "admin must
-    // approve a budget" gate. Admins set the budget via
-    // users.service.updateBudget, which then provisions or patches
-    // the key with the approved limit. Until that happens, this path
-    // throws so the chat layer can surface the pending-approval 402.
+    // Lazy-provision MUST match what the user / admin has approved.
+    // Without this guard, a user whose onboarding-time provisioning
+    // was never done would get a $10 key created here behind the
+    // approver's back — bypassing the explicit budget gate.
+    //
+    // Two branches based on who owns the spend:
+    //   - profileType === 'company': admin sets the budget via
+    //     users.service.updateBudget (Management → Users), then
+    //     lazy-provision / patch picks it up. Until that happens,
+    //     throw — the chat layer surfaces a pending-approval 402.
+    //   - everyone else ('personal' Private Pro + NULL edge-case
+    //     accounts): user is their own approver. They set their
+    //     budget in Management → Billing; until they do, throw with
+    //     a self-service message so the FE can route them to their
+    //     own settings instead of a non-existent admin.
     const budgetUsd = (user.monthlyBudgetCents ?? 0) / 100;
     if (budgetUsd <= 0) {
+      if (user.profileType === 'company') {
+        throw new Error(
+          `Could not obtain an AI gateway key for user ${userId}: monthly budget is 0. An admin must approve a budget in Management → Users before this user can make AI calls.`,
+        );
+      }
       throw new Error(
-        `Could not obtain an AI gateway key for user ${userId}: monthly budget is 0. An admin must approve a budget in Management → Users before this user can make AI calls.`,
+        `Could not obtain an AI gateway key for user ${userId}: monthly budget is 0. Set your monthly budget in Management → Billing before making AI calls.`,
       );
     }
 

@@ -291,17 +291,59 @@ export const onboardingDrafts = pgTable("onboarding_drafts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const knowledgeDocuments = pgTable("knowledge_documents", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  filename: text("filename").notNull(),
-  storagePath: text("storage_path").notNull(),
-  sizeBytes: integer("size_bytes").notNull(),
-  mimeType: text("mime_type"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+// Chunked + embedded text from user-uploaded knowledge files.
+// Cascade-delete on the parent `knowledge_files` row cleans up
+// embeddings without orphan rows. Embedding dimensions match the
+// existing `documents` table so chat RAG search can compose both
+// sources (project documents + knowledge files) without re-
+// projecting vectors.
+export const knowledgeChunks = pgTable(
+  "knowledge_chunks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    fileId: uuid("file_id").references(() => knowledgeFiles.id, {
+      onDelete: "cascade",
+    }),
+    chunkIndex: integer("chunk_index").notNull(),
+    content: text("content").notNull(),
+    embedding: vector("embedding", { dimensions: 384 }),
+    // Mirrored from the parent row's scope. Duplicating the value
+    // keeps the chat-time RAG filter index-friendly (single WHERE,
+    // no JOIN to either parent table) — RAG search runs on every
+    // prompt, the saving adds up.
+    scope: text("scope").notNull().default("personal"),
+    // Mirrored from knowledge_files.visibility for the same reason
+    // we duplicate scope: per-chat search must filter without a
+    // JOIN to the parent file. 'all' / 'admins'; only meaningful
+    // when scope='company'.
+    visibility: text("visibility").notNull().default("all"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // HNSW for fast cosine similarity at chat time. Same shape as
+    // documents_embedding_idx on the project-level documents table.
+    index("knowledge_chunks_embedding_idx").using(
+      "hnsw",
+      table.embedding.op("vector_cosine_ops"),
+    ),
+    // Per-user filter is the most common access pattern (chat layer
+    // looks up "what does this user know"). Composite with createdAt
+    // so the same index serves "list latest chunks for user".
+    index("knowledge_chunks_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    // Org-wide chunks fetched on every chat for every company user,
+    // so an index on scope by itself pays for the writes. Two-value
+    // column is fine here.
+    index("knowledge_chunks_scope_idx").on(table.scope),
+    // Look up chunks by parent file (delete-by-file, status check).
+    index("knowledge_chunks_file_idx").on(table.fileId),
+  ],
+);
 
 export const tenders = pgTable("tenders", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -378,6 +420,28 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   sizeBytes: integer("size_bytes").notNull().default(0),
   storagePath: text("storage_path"),
   uploadedById: uuid("uploaded_by_id").references(() => users.id),
+  // Where the file is in the chunk + embed pipeline. Chunks land
+  // in knowledge_chunks with `fileId` set. Lifecycle: pending →
+  // processing → done | failed. Image-only / unsupported types
+  // gracefully fail with `ingestion_error` set; the file row + disk
+  // copy stay so download keeps working.
+  ingestionStatus: text("ingestion_status").notNull().default("pending"),
+  ingestionError: text("ingestion_error"),
+  ingestionCompletedAt: timestamp("ingestion_completed_at"),
+  // RAG visibility at chat / arena time. Personal accounts →
+  // uploader-only; company accounts → org-wide. Set from the
+  // uploader's profileType at upload time.
+  scope: text("scope").notNull().default("personal"),
+  // Within company-scope, a second layer of gating: 'all' lets every
+  // company user (regardless of role) pull these chunks at chat /
+  // arena time; 'admins' restricts them to role='admin'. The choice
+  // is exposed to admins at upload time and is editable post-upload
+  // via PATCH /knowledge-core/files/:id/visibility. Default 'all'
+  // matches the pre-feature behaviour so legacy rows keep working
+  // without a backfill. Irrelevant for scope='personal' (owner-only
+  // already), kept on every row for shape uniformity + search filter
+  // simplicity.
+  visibility: text("visibility").notNull().default("all"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
