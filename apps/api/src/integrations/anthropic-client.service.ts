@@ -209,6 +209,16 @@ export class AnthropicClientService {
         }
       }
     } catch (err) {
+      // Same abort handling as the openai-sdk path in chat.service:
+      // user-initiated Stop arrives as AbortError once the signal
+      // fires. Return cleanly so the controller persists whatever
+      // was buffered with metadata.partial = true.
+      if (
+        options.signal?.aborted ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        return;
+      }
       yield {
         type: 'error',
         message: err instanceof Error ? err.message : String(err),

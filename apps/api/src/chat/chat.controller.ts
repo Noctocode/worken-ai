@@ -186,9 +186,17 @@ export class ChatController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    // Single write per SSE frame: two separate writes can interleave
+    // when multiple async paths share `res` (true for the arena
+    // controller, harmless single-stream here but kept consistent).
+    // Guard against post-disconnect writes — `req.on('close')` fires
+    // while the loop may still be mid-iteration, and a stale
+    // sendEvent would throw EPIPE / write-after-end and crash the
+    // handler. writableEnded covers our own res.end(); destroyed
+    // covers the socket-closed-by-client case.
     const sendEvent = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
     // AbortController bound to FE disconnect (Stop button → fetch
@@ -267,6 +275,16 @@ export class ChatController {
           usageTotalTokens = event.totalTokens;
           usageCostUsd = event.costUsd;
         } else if (event.type === 'error') {
+          // If the upstream error landed because the client
+          // disconnected (some SDKs surface AbortSignal as an
+          // error event even after we try to detect it in
+          // chat.service), treat it as a clean cancellation
+          // instead of a hard failure. Fall through to the
+          // post-loop persistence path so the buffered content
+          // gets saved with metadata.partial = true.
+          if (clientDisconnected || abortController.signal.aborted) {
+            break;
+          }
           streamErrored = true;
           streamErrorPayload = {
             message: event.message,

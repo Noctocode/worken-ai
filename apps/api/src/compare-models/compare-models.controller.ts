@@ -285,9 +285,20 @@ export class CompareModelsController {
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
 
+    // Single write per SSE frame is critical here: N model streams
+    // run in parallel via Promise.allSettled, so two separate
+    // res.write calls for `event:` and `data:` could interleave
+    // (`event:` from task A, `event:` from task B, then both `data:`)
+    // and produce malformed frames the FE parser mis-splits. One
+    // concatenated write keeps each frame atomic.
+    //
+    // Also guard against post-disconnect writes — `req.on('close')`
+    // fires while in-flight per-model tasks may still try to
+    // sendEvent. Without this check a stale write would throw EPIPE
+    // / write-after-end and crash the handler.
     const sendEvent = (event: string, data: unknown) => {
-      res.write(`event: ${event}\n`);
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     };
 
     const abortController = new AbortController();

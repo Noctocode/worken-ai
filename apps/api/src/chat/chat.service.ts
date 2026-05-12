@@ -191,12 +191,22 @@ export class ChatService {
         }
       }
     } catch (err) {
-      // Mid-stream error (e.g. provider terminated unexpectedly or
-      // signal abort flipped to AbortError). AbortError is the
-      // user-initiated Stop path — controller already persists the
-      // partial assistant message; bubble as error so it's logged but
-      // the FE doesn't render a generic "something went wrong" toast
-      // on top of the partial bubble.
+      // User-initiated Stop arrives as an AbortError once the
+      // signal we forwarded into the SDK fires. Return cleanly —
+      // the controller already knows the client disconnected (via
+      // req.on('close')) and will persist the buffered content
+      // with metadata.partial = true. Yielding an `error` event
+      // here would flip streamErrored=true and skip persistence,
+      // contradicting the cancellation contract.
+      if (
+        options.signal?.aborted ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        return;
+      }
+      // Genuine mid-stream error (provider terminated unexpectedly,
+      // network blip, etc.) — surface so the controller can map
+      // it to an SSE `error` event and skip persistence.
       const message = err instanceof Error ? err.message : String(err);
       yield {
         type: 'error',

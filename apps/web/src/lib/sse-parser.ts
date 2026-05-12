@@ -51,9 +51,12 @@ export function parseSSEFrames(buf: string): SSEFrameBatch {
       if (line.startsWith("event:")) {
         event = line.slice("event:".length).trim();
       } else if (line.startsWith("data:")) {
-        // Multi-line data: spec says join with `\n`, but our BE
-        // never emits multi-line data so the empty separator is a
-        // safe default. Trim each line for tolerance.
+        // Per SSE spec, repeated `data:` lines in the same frame
+        // join with `\n`. Our BE currently emits one JSON blob per
+        // frame so the join only matters if a proxy / future BE
+        // splits lines — in which case the upstream JSON.parse
+        // sees a multi-line blob, which is valid. Each line is
+        // trimmed for tolerance against trailing whitespace.
         data += (data ? "\n" : "") + line.slice("data:".length).trim();
       }
       // Other SSE headers (id, retry, …) are not used by our
