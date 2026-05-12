@@ -292,6 +292,12 @@ export default function CompareModelsPage() {
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
+    // Belt-and-braces guard against double-submission: if a run is
+    // already in flight, ignore the second submit. The Send button
+    // is replaced by Stop during loading, so this only fires when
+    // an event somehow slipped through (synthetic event quirks,
+    // Enter-key on a stale form, devtools, …).
+    if (loading) return;
     setLoading(true);
     // Reset to empty-string per panel so the streaming loop can
     // append into each model's slot without first checking null.
@@ -349,6 +355,15 @@ export default function CompareModelsPage() {
         teamIdForCall,
         controller.signal,
       )) {
+        // Defensive: if the user pressed Stop, the abort signal is
+        // set but BE-side bytes already on the wire still surface
+        // here as model-delta events. Processing them would
+        // re-flip panels back to "streaming" and look like the
+        // run had restarted. Bail into the catch with a synthetic
+        // AbortError to take the standard cleanup path.
+        if (controller.signal.aborted) {
+          throw new DOMException("Aborted by user", "AbortError");
+        }
         if (event.type === "model-delta") {
           // Flip status to "streaming" on the first byte. Subsequent
           // deltas keep it streaming; functional update so we don't

@@ -230,6 +230,14 @@ export default function ProjectChatPage() {
         projectId,
         controller.signal,
       )) {
+        // Defensive: BE-side bytes already buffered on the wire
+        // surface here even after the user pressed Stop. Bail
+        // into the catch with a synthetic AbortError so post-
+        // abort tokens don't keep filling the bubble (looks like
+        // the model resumed on its own).
+        if (controller.signal.aborted) {
+          throw new DOMException("Aborted by user", "AbortError");
+        }
         receivedAnyEvent = true;
         if (event.type === "delta") {
           buffer += event.text;
