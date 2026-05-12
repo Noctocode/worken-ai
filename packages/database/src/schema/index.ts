@@ -245,6 +245,12 @@ export const guardrails = pgTable("guardrails", {
   severity: text("severity").notNull().default("medium"),
   triggers: integer("triggers").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  // Org-wide scope: when true, this rule applies to every chat by
+  // every user in the owner's company (matched via users.company_name)
+  // and the team links in `guardrail_teams` are ignored. Lets a
+  // company admin enforce one rule across every team without N
+  // explicit link rows.
+  isOrgWide: boolean("is_org_wide").notNull().default(false),
   validatorType: text("validator_type"),
   entities: jsonb("entities"),
   // Free-form regex used by the `regex_match` validator. Nullable

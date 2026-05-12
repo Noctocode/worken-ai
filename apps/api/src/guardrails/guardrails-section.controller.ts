@@ -85,6 +85,14 @@ export class GuardrailsSectionController {
     return this.service.applyTemplate(body.templateId, user.id);
   }
 
+  @Patch(':id/toggle-org-wide')
+  toggleOrgWide(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.toggleOrgWide(id, user.id);
+  }
+
   @Patch(':id/toggle-team')
   toggleTeamActive(
     @Param('id') id: string,

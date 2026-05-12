@@ -653,4 +653,36 @@ describe('GuardrailEvaluatorService', () => {
     expect(call.success).toBe(false);
     expect(call.metadata.action).toBe('exception');
   });
+
+  // Org-wide rules: the evaluator's WHERE clause has three OR
+  // branches (personal, team, org-wide). The mock returns whatever
+  // is queued regardless of WHERE shape, so this test pins the
+  // *behavioral* invariant — an org-wide rule that loads from the
+  // DB must apply to a personal chat just like a non-scoped rule
+  // would. A future regression that drops the org-wide branch
+  // entirely would still pass this single-rule mock; the matched
+  // assertion below catches regressions where the evaluator
+  // accidentally short-circuits or filters out org-wide rows at
+  // the row-handling layer.
+  it('applies a rule even when scoped to no team (org-wide path)', async () => {
+    const decision = await svc([
+      {
+        id: 'rule-org-wide',
+        name: 'PII Filter (Org-wide)',
+        validatorType: 'no_pii',
+        entities: ['Email Address'],
+        target: 'input',
+        onFail: 'fix',
+        severity: 'high',
+      },
+    ]).evaluate({
+      text: 'forward this to admin@example.com',
+      target: 'input',
+      userId: USER_ID,
+      teamId: null,
+    });
+    expect(decision.violations).toHaveLength(1);
+    expect(decision.violations[0].ruleId).toBe('rule-org-wide');
+    expect(decision.text).toContain('[REDACTED:Email Address]');
+  });
 });

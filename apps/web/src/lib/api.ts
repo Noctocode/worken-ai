@@ -568,8 +568,14 @@ export interface Guardrail {
   isActive: boolean;
   /** Per-team pause toggle from `guardrail_teams.is_active`. Both this
    *  and `isActive` must be true for the evaluator to apply the rule
-   *  to this team's chats. */
+   *  to this team's chats. Forced to true for rules surfaced via the
+   *  org-wide branch — org-wide rules can't be paused per-team. */
   teamIsActive: boolean;
+  /** When true the rule reached this team via the org-wide branch
+   *  (or via an org-wide-flagged direct link). FE disables the
+   *  per-team Switch + "Remove from team" affordances on these rows
+   *  since the toggle lives only on the master Guardrails page. */
+  isOrgWide: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -1890,6 +1896,12 @@ export interface GuardrailItem {
   severity: "high" | "medium" | "low";
   triggers: number;
   isActive: boolean;
+  /** Org-wide scope — when true, the rule applies to every chat by
+   *  every user in the owner's company and the per-team links are
+   *  bypassed by the evaluator. `teams` may still be populated (the
+   *  links stay in the DB) but the FE treats them as inert while
+   *  this flag is on. */
+  isOrgWide: boolean;
   validatorType: string | null;
   entities: string[] | null;
   /** Free-form regex string for validatorType === 'regex_match'. Null
@@ -2001,6 +2013,20 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to delete guardrail");
+}
+
+export async function toggleGuardrailOrgWide(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(
+    `/guardrails-section/${guardrailId}/toggle-org-wide`,
+    { method: "PATCH" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Failed to toggle org-wide scope");
+  }
+  return res.json();
 }
 
 export async function toggleGuardrailTeamActive(

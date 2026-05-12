@@ -6,7 +6,12 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, desc, inArray, sql } from 'drizzle-orm';
-import { guardrails, guardrailTeams, teams } from '@worken/database/schema';
+import {
+  guardrails,
+  guardrailTeams,
+  teams,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { COMPLIANCE_TEMPLATES } from './compliance-templates.js';
@@ -47,6 +52,7 @@ export class GuardrailsSectionService {
         severity: guardrails.severity,
         triggers: guardrails.triggers,
         isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
         pattern: guardrails.pattern,
@@ -400,6 +406,56 @@ export class GuardrailsSectionService {
   }
 
   /**
+   * Flip the org-wide flag on a rule. When ON, the evaluator applies
+   * the rule to every chat by every user in the owner's company
+   * regardless of team links — `guardrail_teams` rows stay in the
+   * DB but are bypassed. Flipping it back OFF restores the per-team
+   * configuration without any data loss.
+   *
+   * Permission: rule's owner, OR a company admin (`role='admin'`)
+   * who shares the owner's companyName. The admin escape hatch lets
+   * a company owner enforce a rule across every team even when
+   * someone else originally authored it.
+   */
+  async toggleOrgWide(guardrailId: string, userId: string) {
+    const [rule] = await this.db
+      .select({ ownerId: guardrails.ownerId, isOrgWide: guardrails.isOrgWide })
+      .from(guardrails)
+      .where(eq(guardrails.id, guardrailId));
+
+    if (!rule) throw new NotFoundException('Guardrail not found');
+
+    if (rule.ownerId !== userId) {
+      const [caller] = await this.db
+        .select({ role: users.role, companyName: users.companyName })
+        .from(users)
+        .where(eq(users.id, userId));
+      const [owner] = await this.db
+        .select({ companyName: users.companyName })
+        .from(users)
+        .where(eq(users.id, rule.ownerId));
+
+      const isCompanyAdmin =
+        caller?.role === 'admin' &&
+        !!caller.companyName &&
+        caller.companyName === owner?.companyName;
+
+      if (!isCompanyAdmin) {
+        throw new ForbiddenException(
+          'Only the rule owner or a company admin can toggle Org-wide scope.',
+        );
+      }
+    }
+
+    await this.db
+      .update(guardrails)
+      .set({ isOrgWide: !rule.isOrgWide, updatedAt: new Date() })
+      .where(eq(guardrails.id, guardrailId));
+
+    return this.getRuleWithTeams(guardrailId);
+  }
+
+  /**
    * Remove a single team's link. The rule itself stays in the org —
    * other teams keep their links, and the owner can re-link the team
    * later from the team page.
@@ -448,6 +504,7 @@ export class GuardrailsSectionService {
         severity: guardrails.severity,
         triggers: guardrails.triggers,
         isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
         pattern: guardrails.pattern,

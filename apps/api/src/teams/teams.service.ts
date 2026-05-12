@@ -1060,16 +1060,21 @@ export class TeamsService {
   }
 
   /**
-   * Rules linked to this team via `guardrail_teams`. Projects the
-   * per-team `isActive` toggle from the link table as `teamIsActive`
-   * so the team-detail page Switch keeps the same shape it had before
-   * the M2M refactor.
+   * Rules visible on this team's detail page. Two sources:
    *
-   * Returns every linked rule regardless of who owns it: shared rules
-   * an admin attached to the team are visible to every team member.
+   *  1. Rules explicitly linked via `guardrail_teams` — each gets
+   *     `teamIsActive` from the link row (per-team pause toggle).
+   *  2. Org-wide rules whose owner shares this team's company —
+   *     surfaced with `teamIsActive=true` (org-wide can't be paused
+   *     per-team) and `isOrgWide=true` so the FE can disable the
+   *     per-team Switch + "Remove from team" affordances.
+   *
+   * "Same company" resolved by joining users on `company_name`.
+   * Teams without a resolvable company (orphan teams from before the
+   * profile flow) silently skip the org-wide branch.
    */
   async findGuardrails(teamId: string) {
-    return this.db
+    const linked = await this.db
       .select({
         id: guardrails.id,
         ownerId: guardrails.ownerId,
@@ -1078,6 +1083,7 @@ export class TeamsService {
         severity: guardrails.severity,
         triggers: guardrails.triggers,
         isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
         teamIsActive: guardrailTeams.isActive,
         validatorType: guardrails.validatorType,
         entities: guardrails.entities,
@@ -1094,6 +1100,64 @@ export class TeamsService {
         eq(guardrailTeams.guardrailId, guardrails.id),
       )
       .where(eq(guardrailTeams.teamId, teamId));
+
+    // Resolve the team's company via its owner. The team rows have
+    // owner_id → users; users.company_name is the org boundary.
+    const [teamRow] = await this.db
+      .select({ ownerId: teams.ownerId })
+      .from(teams)
+      .where(eq(teams.id, teamId));
+    if (!teamRow) return linked;
+    const [teamOwner] = await this.db
+      .select({ companyName: users.companyName })
+      .from(users)
+      .where(eq(users.id, teamRow.ownerId));
+    if (!teamOwner?.companyName) return linked;
+
+    const orgWide = await this.db
+      .select({
+        id: guardrails.id,
+        ownerId: guardrails.ownerId,
+        name: guardrails.name,
+        type: guardrails.type,
+        severity: guardrails.severity,
+        triggers: guardrails.triggers,
+        isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
+        teamIsActive: sql<boolean>`true`,
+        validatorType: guardrails.validatorType,
+        entities: guardrails.entities,
+        pattern: guardrails.pattern,
+        target: guardrails.target,
+        onFail: guardrails.onFail,
+        templateSource: guardrails.templateSource,
+        createdAt: guardrails.createdAt,
+        updatedAt: guardrails.updatedAt,
+      })
+      .from(guardrails)
+      .innerJoin(users, eq(users.id, guardrails.ownerId))
+      .where(
+        and(
+          eq(guardrails.isOrgWide, true),
+          eq(users.companyName, teamOwner.companyName),
+        ),
+      );
+
+    // Dedup: an org-wide rule that ALSO has an explicit link to this
+    // team shows up in both lists. Keep the org-wide row (it
+    // suppresses the per-team toggle on the FE).
+    const linkedIds = new Set(linked.map((r) => r.id));
+    const orgOnly = orgWide.filter((r) => !linkedIds.has(r.id));
+    return [
+      ...linked.map((r) => ({
+        ...r,
+        // Hide team UI affordances for rows that are also org-wide
+        // (e.g. admin first linked, then toggled org-wide). Same
+        // resulting shape as the orgOnly branch.
+        teamIsActive: r.isOrgWide ? true : r.teamIsActive,
+      })),
+      ...orgOnly,
+    ];
   }
 
   /**
