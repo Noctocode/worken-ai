@@ -92,6 +92,13 @@ export default function ProjectChatPage() {
   // Holds the AbortController for the in-flight stream so the Stop
   // button can cancel mid-token. Null when no stream is active.
   const abortRef = useRef<AbortController | null>(null);
+  // Wall-clock of the last Stop click. Cooldown guard in
+  // handleSubmit — when React tears down Stop and renders Send at
+  // the same DOM coordinates mid-click, the browser dispatches the
+  // submit on the freshly-rendered Send button. Without this, the
+  // form re-submits and starts a fresh stream. 200ms is plenty for
+  // the re-render race; intentional follow-up clicks come later.
+  const lastStopAtRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch conversation messages when activeConversationId changes
@@ -156,12 +163,18 @@ export default function ProjectChatPage() {
   }, []);
 
   const handleStop = () => {
+    lastStopAtRef.current = Date.now();
     abortRef.current?.abort();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isSending || !project) return;
+    // Cooldown after a Stop click — same race as the arena page.
+    // React swaps Stop → Send under the cursor while the click is
+    // in flight; without this, the just-rendered Send button
+    // receives the submit and the form fires a fresh chat call.
+    if (Date.now() - lastStopAtRef.current < 200) return;
 
     const content = message.trim();
     setMessage("");

@@ -209,7 +209,17 @@ export default function CompareModelsPage() {
   // Stop button in the composer; abort propagates through fetch →
   // BE req.close → every model stream cancels at once.
   const arenaAbortRef = useRef<AbortController | null>(null);
+  // Wall-clock of the last Stop click. Used as a cooldown guard in
+  // compareModels — Stop's click sometimes fires the form's
+  // onSubmit a beat later (React re-renders Stop → Send mid-event;
+  // browser dispatches the synthetic submit to the newly-rendered
+  // Send button at the same DOM position). Without this guard, the
+  // form would re-submit and reset every panel back to "Waiting to
+  // start…". 200ms is plenty for the re-render race; intentional
+  // clicks come well after.
+  const lastStopAtRef = useRef<number>(0);
   const handleStopArena = () => {
+    lastStopAtRef.current = Date.now();
     arenaAbortRef.current?.abort();
   };
 
@@ -298,6 +308,12 @@ export default function CompareModelsPage() {
     // an event somehow slipped through (synthetic event quirks,
     // Enter-key on a stale form, devtools, …).
     if (loading) return;
+    // Cooldown after a Stop click. React tears down the Stop button
+    // and renders Send at the same DOM coordinates while the user's
+    // click is still being dispatched — the browser ends up firing
+    // submit on the freshly-rendered Send button. Drop those submits
+    // for 200ms after Stop so they don't visibly re-launch the run.
+    if (Date.now() - lastStopAtRef.current < 200) return;
     setLoading(true);
     // Reset to empty-string per panel so the streaming loop can
     // append into each model's slot without first checking null.
