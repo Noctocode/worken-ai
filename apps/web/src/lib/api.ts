@@ -677,51 +677,10 @@ export async function deleteConversation(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete conversation");
 }
 
-export async function sendChatMessage(
-  conversationId: string,
-  content: string,
-  model?: string,
-  projectId?: string,
-): Promise<{ role: string; content: string; reasoning_details?: unknown }> {
-  const res = await apiFetch("/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      conversationId,
-      content,
-      model,
-      enableReasoning: true,
-      projectId,
-    }),
-  });
-  if (!res.ok) {
-    // Surface the BE error body so humanizeChatError() can route it to a
-    // specific user-facing message. The HTTP status is *always* prepended
-    // so the humanizer can rely on \b402\b / \b429\b / \b401\b matching
-    // even when the BE body itself doesn't mention the code (OpenRouter's
-    // 402 text, for example, talks about "max_tokens" + "total limit"
-    // which would otherwise false-positive as a context-length error).
-    let detail: string | null = null;
-    try {
-      const body = await res.text();
-      try {
-        const parsed = JSON.parse(body) as { message?: string | string[] };
-        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
-        else if (typeof parsed.message === "string") detail = parsed.message;
-        else if (body) detail = body;
-      } catch {
-        if (body) detail = body;
-      }
-    } catch {
-      /* keep null fallback */
-    }
-    const message = detail
-      ? `${res.status} ${res.statusText}: ${detail}`
-      : `${res.status} ${res.statusText}`;
-    throw new Error(message);
-  }
-  return res.json();
-}
+// Non-streaming sendChatMessage has been removed in favour of
+// streamChatMessage (below). The streaming endpoint is the only
+// chat path; consumers walk the SSE event iterable and concatenate
+// `delta` events if they need the final blob.
 
 /**
  * Discriminated union mirroring the BE SSE event shapes from

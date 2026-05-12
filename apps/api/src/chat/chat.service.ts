@@ -9,16 +9,6 @@ interface ChatMessage {
   reasoning_details?: unknown;
 }
 
-interface ChatResponse {
-  content: string;
-  reasoning_details?: unknown;
-  totalTokens?: number;
-  promptTokens?: number;
-  completionTokens?: number;
-  /** Set by OpenRouter only; null for native BYOK / Custom endpoints. */
-  totalCost?: number;
-}
-
 // OpenRouter returns a `cost` field on usage that the OpenAI types don't
 // model; we read it through this loose shape.
 interface OpenRouterUsage {
@@ -83,90 +73,15 @@ export class ChatService {
     });
   }
 
-  async sendMessage(
-    messages: ChatMessage[],
-    model: string = 'moonshotai/kimi-k2.5',
-    enableReasoning: boolean = true,
-    context?: string,
-    apiKey: string = '',
-    baseURL: string = 'https://openrouter.ai/api/v1',
-    kind: ChatTransportKind = 'openai-sdk',
-  ): Promise<ChatResponse> {
-    // Route to the Anthropic native SDK when the transport says so —
-    // Anthropic's Messages API isn't OpenAI-compatible, so we can't
-    // just point the OpenAI SDK at https://api.anthropic.com/v1.
-    if (kind === 'anthropic-sdk') {
-      const r = await this.anthropic.sendMessage(
-        messages.map((m) => ({ role: m.role, content: m.content })),
-        model,
-        apiKey,
-        context,
-      );
-      return {
-        content: r.content,
-        totalTokens: r.totalTokens,
-        promptTokens: r.promptTokens,
-        completionTokens: r.completionTokens,
-        // Anthropic doesn't return cost — controller estimates it via
-        // OpenRouter catalog pricing.
-      };
-    }
-
-    const systemMessages: { role: 'system'; content: string }[] = [];
-    if (context) {
-      systemMessages.push({
-        role: 'system',
-        content:
-          'Use the following project context to inform your answers. Reference this information when relevant.\n\n' +
-          context,
-      });
-    }
-
-    const completion = await this.makeClient(baseURL, apiKey).chat.completions.create({
-      model,
-      messages: [
-        ...systemMessages,
-        ...messages.map((msg) => ({
-          role: msg.role,
-          content: msg.content,
-          ...(msg.reasoning_details
-            ? { reasoning_details: msg.reasoning_details }
-            : {}),
-        })),
-      ],
-      ...(enableReasoning && { reasoning: { enabled: true } }),
-    });
-
-    // Extract response with reasoning_details
-    type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
-      reasoning_details?: unknown;
-    };
-    const response = completion.choices[0].message as ORChatMessage;
-
-    const usage = completion.usage as OpenRouterUsage | undefined;
-
-    return {
-      content: response.content || '',
-      ...(response.reasoning_details
-        ? { reasoning_details: response.reasoning_details }
-        : {}),
-      totalTokens: usage?.total_tokens,
-      promptTokens: usage?.prompt_tokens,
-      completionTokens: usage?.completion_tokens,
-      totalCost: usage?.cost,
-    };
-  }
-
   /**
-   * Streaming variant of `sendMessage`. Yields a sequence of
-   * transport-neutral `ChatStreamEvent`s — controller wraps them into
-   * SSE events. Existing `sendMessage` stays for non-streaming
-   * callers (compare-models / arena) until they migrate.
+   * Stream a chat completion as a sequence of transport-neutral
+   * `ChatStreamEvent`s. Sole entry point now that the non-streaming
+   * `sendMessage` has been removed — the SSE controller above wraps
+   * these events into the wire SSE frames.
    *
-   * Routing mirrors `sendMessage`: Anthropic native SDK when
-   * `kind === 'anthropic-sdk'`, OpenAI-compatible path otherwise.
-   * Both implementations forward `signal` so a FE disconnect aborts
-   * the upstream call.
+   * Routing: Anthropic native SDK when `kind === 'anthropic-sdk'`,
+   * OpenAI-compatible path otherwise. Both implementations forward
+   * `signal` so a FE disconnect aborts the upstream call.
    */
   async *sendMessageStream(
     messages: ChatMessage[],
