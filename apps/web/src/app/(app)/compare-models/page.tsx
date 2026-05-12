@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   Bot,
   Check,
@@ -177,6 +178,11 @@ export default function CompareModelsPage() {
   >({});
   const [loading, setLoading] = useState(false);
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
+  // Surfaces the evaluator-failed reason inline above the response
+  // grid. The toast in compareModels() fires alongside this, but an
+  // inline banner is harder to miss when you're focused on the
+  // comparison cards. Cleared on every new run.
+  const [evaluatorError, setEvaluatorError] = useState<string | null>(null);
 
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
@@ -265,6 +271,7 @@ export default function CompareModelsPage() {
     for (const id of activeModels) initialResponses[id] = "";
     setResponses(initialResponses);
     setEvaluations({});
+    setEvaluatorError(null);
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
 
@@ -339,6 +346,7 @@ export default function CompareModelsPage() {
           // make it through (likely :free-tier rate limit on the
           // evaluator model).
           if (event.error) {
+            setEvaluatorError(event.error);
             toast.error(
               `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
             );
@@ -485,6 +493,29 @@ export default function CompareModelsPage() {
                   question={submittedQuestion}
                 />
               </>
+            )}
+
+            {/* Inline evaluator-failure banner — sits above the
+                response grid so it's unmissable. Fires only after
+                the stream resolves with an evaluator error set;
+                clears on every new run. */}
+            {evaluatorError && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="h-5 w-5 shrink-0 text-warning-7 mt-0.5"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Couldn&apos;t score the responses.
+                  </p>
+                  <p className="text-text-3">
+                    Evaluator failed: {evaluatorError}. The model
+                    answers above are still valid; rerun the
+                    comparison or pick fewer models.
+                  </p>
+                </div>
+              </div>
             )}
 
             {(loading || hasResults) && (
