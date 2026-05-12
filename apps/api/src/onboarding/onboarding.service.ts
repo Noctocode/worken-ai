@@ -10,7 +10,14 @@ import {
 import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
-import { extname, join, posix as pathPosix, resolve } from 'path';
+import {
+  extname,
+  isAbsolute,
+  join,
+  posix as pathPosix,
+  relative,
+  resolve,
+} from 'path';
 import { randomUUID } from 'crypto';
 import {
   users,
@@ -468,10 +475,17 @@ export class OnboardingService {
 
     // storagePath is a POSIX-style relative path. Resolve against cwd
     // and reject anything that would escape the uploads root —
-    // defensive check in case of DB tampering.
+    // defensive check in case of DB tampering. `path.relative` flags
+    // every escape: `..`-prefixed when the target sits above the root,
+    // absolute when there's no common base (different Windows drive),
+    // and empty when the target IS the root (no file to open). This
+    // catches both `..` traversal AND suffix collisions like
+    // `<root>-secret/...` that a naive `startsWith(rootResolved)`
+    // would let through.
     const absolutePath = resolve(process.cwd(), file.storagePath);
     const rootResolved = resolve(UPLOADS_ROOT);
-    if (!absolutePath.startsWith(rootResolved)) {
+    const rel = relative(rootResolved, absolutePath);
+    if (rel === '' || rel.startsWith('..') || isAbsolute(rel)) {
       throw new NotFoundException('Document not found');
     }
 

@@ -354,10 +354,23 @@ export class KnowledgeCoreService {
       .select({
         id: knowledgeFiles.id,
         folderId: knowledgeFiles.folderId,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
       })
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.id, fileId));
     if (!file) throw new NotFoundException('File not found');
+    // Block visibility flips while the worker is mid-ingestion.
+    // KnowledgeIngestionService captures `visibility` at claim time
+    // and inserts chunks with that captured value — if we updated the
+    // file row + (still-empty) chunks rowset here, the worker's later
+    // INSERT would land chunks at the stale visibility and leave
+    // file.visibility and chunks.visibility out of sync. Mirror the
+    // same guard reingestFile uses; the admin retries in a second.
+    if (file.ingestionStatus === 'processing') {
+      throw new BadRequestException(
+        'This file is being trained right now. Try again once the current run finishes.',
+      );
+    }
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -411,20 +424,52 @@ export class KnowledgeCoreService {
     // drizzle inArray would still work but we'd update twice.
     const uniqueIds = Array.from(new Set(fileIds));
 
-    await this.db.transaction(async (tx) => {
-      await tx
-        .update(knowledgeFiles)
-        .set({ visibility: visibilityInput })
-        .where(inArray(knowledgeFiles.id, uniqueIds));
-      await tx
-        .update(knowledgeChunks)
-        .set({ visibility: visibilityInput })
-        .where(inArray(knowledgeChunks.fileId, uniqueIds));
-    });
+    // Same race as the per-file path: a row that's mid-ingestion has
+    // a worker about to insert chunks with the captured (stale)
+    // visibility. Updating the file row + (still-empty) chunks set
+    // here would leave them out of sync. Skip processing rows
+    // entirely so the rest of the batch still flips, and return the
+    // skipped ids so the FE can surface a partial-success toast.
+    const statuses = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+      })
+      .from(knowledgeFiles)
+      .where(inArray(knowledgeFiles.id, uniqueIds));
+    const eligibleIds: string[] = [];
+    const skippedIds: string[] = [];
+    for (const row of statuses) {
+      if (row.ingestionStatus === 'processing') skippedIds.push(row.id);
+      else eligibleIds.push(row.id);
+    }
+
+    // UPDATE ... RETURNING gives us the actual rows touched, in
+    // case a row was deleted between the status SELECT above and
+    // the UPDATE here. Returning the real affected ids keeps the
+    // FE's optimistic state honest.
+    let affectedIds: string[] = [];
+    if (eligibleIds.length > 0) {
+      await this.db.transaction(async (tx) => {
+        const updated = await tx
+          .update(knowledgeFiles)
+          .set({ visibility: visibilityInput })
+          .where(inArray(knowledgeFiles.id, eligibleIds))
+          .returning({ id: knowledgeFiles.id });
+        affectedIds = updated.map((r) => r.id);
+        if (affectedIds.length > 0) {
+          await tx
+            .update(knowledgeChunks)
+            .set({ visibility: visibilityInput })
+            .where(inArray(knowledgeChunks.fileId, affectedIds));
+        }
+      });
+    }
 
     return {
       visibility: visibilityInput as 'all' | 'admins',
-      affectedIds: uniqueIds,
+      affectedIds,
+      skippedIds,
     };
   }
 

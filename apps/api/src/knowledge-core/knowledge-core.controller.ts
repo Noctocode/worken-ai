@@ -77,9 +77,15 @@ export class KnowledgeCoreController {
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        const allowedExt = /\.(pdf|docx?|xlsx?|png|jpe?g)$/i;
+        // Allowlist must match what documents.service.parseFile +
+        // KnowledgeIngestionService.ingestOneFile can actually handle.
+        // Dropping legacy .doc (application/msword) — mammoth is
+        // .docx-only, so accepting .doc here just guarantees a
+        // "Skipped" badge later. Reject up front with a clearer
+        // message instead.
+        const allowedExt = /\.(pdf|docx|xlsx?|png|jpe?g)$/i;
         const allowedMime =
-          /^(application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
+          /^(application\/(pdf|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
         if (
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)

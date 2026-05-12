@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { Check, AlertTriangle, Lightbulb, Calendar, Loader2 } from "lucide-react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { fetchCurrentUser, updateUserBudget } from "@/lib/api";
+import { updateUserBudget } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -396,10 +397,12 @@ const DEFAULT_BUDGET_USD = 10;
 
 function BudgetControls() {
   const queryClient = useQueryClient();
-  const { data: user, isLoading } = useQuery({
-    queryKey: ["currentUser"],
-    queryFn: fetchCurrentUser,
-  });
+  // Reuse the AuthProvider's cache (queryKey ['auth','me']) instead
+  // of firing a second /auth/me request under a different key. That
+  // keeps the canonical user payload in one place and lets the Save
+  // mutation invalidate it cleanly so other consumers (appbar,
+  // /users/[id], etc.) repaint with the new monthlyBudgetCents.
+  const { user, isLoading } = useAuth();
 
   const [budgetCap, setBudgetCap] = useState("");
 
@@ -422,7 +425,7 @@ function BudgetControls() {
     mutationFn: (budgetUsd: number) =>
       updateUserBudget(user!.id, budgetUsd),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
       toast.success("Monthly budget updated.");
     },
     onError: (err) =>

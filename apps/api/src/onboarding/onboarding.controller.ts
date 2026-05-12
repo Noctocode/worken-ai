@@ -29,9 +29,12 @@ import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion
 
 const MAX_FILES = 20;
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB per file
+// Must mirror what parseFile / ingestOneFile actually handle —
+// legacy .doc (application/msword) is no longer accepted because
+// mammoth supports .docx only, so a .doc would just land as
+// "Skipped" after upload. Reject up front with a clear error.
 const ALLOWED_MIME_TYPES = new Set<string>([
   'application/pdf',
-  'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'text/plain',
 ]);

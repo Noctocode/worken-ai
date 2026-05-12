@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { and, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNull, or } from 'drizzle-orm';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { users, teamMembers, teams } from '@worken/database/schema';
@@ -607,6 +607,9 @@ export class AuthService {
         new Set(acceptedTeamRows.map((r) => r.ownerId)),
       );
       if (ownerIds.length > 0) {
+        // Filter in SQL — narrowing the WHERE to only the team owners
+        // we care about means PG returns one row at most instead of
+        // every company-profile user in the deployment.
         const ownerProfiles = await this.db
           .select({
             id: users.id,
@@ -617,10 +620,14 @@ export class AuthService {
             infraChoice: users.infraChoice,
           })
           .from(users)
-          .where(eq(users.profileType, 'company'));
+          .where(
+            and(
+              eq(users.profileType, 'company'),
+              inArray(users.id, ownerIds),
+            ),
+          );
         const companyOwner = ownerProfiles.find(
-          (o) =>
-            ownerIds.includes(o.id) && !!o.companyName?.trim(),
+          (o) => !!o.companyName?.trim(),
         );
         if (companyOwner) {
           await this.db

@@ -156,10 +156,14 @@ export class KnowledgeIngestionService {
       const chunks = this.documentsService.chunkText(text);
 
       if (chunks.length === 0) {
+        // No chunks → nothing searchable. Mark `failed` rather than
+        // `done` so the FE badge renders as "Skipped" with the
+        // tooltip error, consistent with other parse failures.
+        // Image-only PDFs and empty workbooks land here.
         await this.db
           .update(knowledgeFiles)
           .set({
-            ingestionStatus: 'done',
+            ingestionStatus: 'failed',
             ingestionError: 'No extractable text',
             ingestionCompletedAt: new Date(),
           })
