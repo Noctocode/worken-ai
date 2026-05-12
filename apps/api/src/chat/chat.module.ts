@@ -23,5 +23,8 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
   ],
   controllers: [ChatController],
   providers: [ChatService],
+  // CompareModelsModule consumes ChatService.sendMessageStream for the
+  // arena fan-out so it doesn't need a parallel streaming primitive.
+  exports: [ChatService],
 })
 export class ChatModule {}

@@ -13,16 +13,20 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
+  Res,
   ServiceUnavailableException,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { and, desc, eq } from 'drizzle-orm';
 import { arenaRuns } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { ChatService } from '../chat/chat.service.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import {
   GUARDRAIL_BLOCKED_MARKER,
@@ -92,6 +96,7 @@ export class CompareModelsController {
 
   constructor(
     private readonly compareModelsService: CompareModelsService,
+    private readonly chatService: ChatService,
     private readonly keyResolverService: KeyResolverService,
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
@@ -519,6 +524,493 @@ export class CompareModelsController {
     }
 
     return { runId, comparison: comparisonWithMetrics, responses };
+  }
+
+  /**
+   * Streaming counterpart to POST /compare-models. Fans the same
+   * question out to N models in parallel and pipes their token
+   * deltas to the FE over SSE — each event tagged with the model id
+   * so the FE can route to the correct panel.
+   *
+   * Pre-flight (body validation, evaluator key resolve, team scope,
+   * guardrail INPUT) runs BEFORE SSE headers are flushed so any
+   * failure there still comes back as a regular JSON 4xx the FE
+   * humanizer can route. Per-model transport / budget gates run
+   * AFTER headers — failures there become `model-error` SSE events
+   * that close only the affected panel.
+   *
+   * Event shapes (data is JSON-encoded):
+   *   - `model-delta`   {model,text}                  visible token piece
+   *   - `model-replace` {model,text}                  full-text overwrite
+   *                                                   after per-model
+   *                                                   output guardrail
+   *                                                   fix-rule pass.
+   *   - `model-error`   {model,message,status?}       per-model failure
+   *                                                   (budget gate,
+   *                                                   provider error,
+   *                                                   output BLOCK).
+   *   - `model-done`    {model,totalTokens,costUsd,time}  per-model
+   *                                                   summary after
+   *                                                   its stream and
+   *                                                   guardrail
+   *                                                   complete.
+   *   - `evaluation`    {comparisonItems,runId}       evaluator output
+   *                                                   after ALL models
+   *                                                   complete.
+   *   - `done`          {}                            end-of-stream.
+   *
+   * Cancellation: same pattern as chat-controller — req.on('close')
+   * aborts every in-flight upstream call via a shared AbortController.
+   */
+  @Post('stream')
+  async compareModelsStream(
+    @Body() body: CompareModelsRequestBody,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    // ── PRE-FLIGHT (mirrors POST /compare-models) ───────────────────
+    if (!Array.isArray(body?.models) || body.models.length === 0) {
+      throw new BadRequestException('`models` must be a non-empty array.');
+    }
+    const cleanedModels: string[] = [];
+    const seen = new Set<string>();
+    for (const m of body.models) {
+      if (typeof m !== 'string') {
+        throw new BadRequestException('`models` entries must be strings.');
+      }
+      const trimmed = m.trim();
+      if (!trimmed) {
+        throw new BadRequestException('`models` entries must be non-empty.');
+      }
+      if (seen.has(trimmed)) continue;
+      seen.add(trimmed);
+      cleanedModels.push(trimmed);
+    }
+    body.models = cleanedModels;
+
+    if (!body.question?.trim()) {
+      throw new BadRequestException('`question` is required.');
+    }
+    if (
+      body.expectedOutput !== undefined &&
+      typeof body.expectedOutput !== 'string'
+    ) {
+      throw new BadRequestException(
+        '`expectedOutput` must be a string when provided.',
+      );
+    }
+    body.expectedOutput = body.expectedOutput ?? '';
+
+    let evaluatorApiKey: string;
+    try {
+      evaluatorApiKey = await this.keyResolverService.resolveUserKey(user.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
+      throw new ServiceUnavailableException(
+        `AI gateway key unavailable: ${msg}`,
+      );
+    }
+
+    let teamId: string | null = null;
+    const requested = (body.teamId ?? '').trim();
+    if (requested && requested !== 'personal' && requested !== 'null') {
+      if (
+        !(await this.observabilityService.isUserInTeam(user.id, requested))
+      ) {
+        throw new BadRequestException(
+          'You are not a member of the selected team.',
+        );
+      }
+      teamId = requested;
+    }
+
+    const inputDecision = await this.guardrails.evaluate({
+      text: body.question,
+      target: 'input',
+      userId: user.id,
+      teamId,
+    });
+    if (inputDecision.blocked) {
+      throw new HttpException(
+        `${GUARDRAIL_BLOCKED_MARKER}: "${inputDecision.blocked.ruleName}" blocked your question (${inputDecision.blocked.validator}). Edit it and try again, or ask an admin to adjust the rule in Management → Guardrails.`,
+        422,
+      );
+    }
+    const safeQuestion = inputDecision.text;
+
+    // RAG: same compose pattern as non-stream arena.
+    let ragContext = '';
+    try {
+      const ragChunks = await this.knowledgeIngestion.searchAccessibleChunks(
+        user.id,
+        safeQuestion,
+      );
+      ragContext = ragChunks.map((c) => c.content).join('\n\n---\n\n');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `RAG search failed for user ${user.id}; continuing without retrieved context: ${msg}`,
+      );
+    }
+    const composedContext = [ragContext, body.context]
+      .filter((s) => s && s.trim().length > 0)
+      .join('\n\n---\n\n');
+
+    // ── SSE HEADERS — past this point, everything is an SSE event ───
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+
+    const sendEvent = (event: string, data: unknown) => {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    const abortController = new AbortController();
+    req.on('close', () => {
+      if (!res.writableEnded) abortController.abort();
+    });
+
+    // ── PER-MODEL FAN-OUT ───────────────────────────────────────────
+    const responses: ModelResponse[] = [];
+    await Promise.allSettled(
+      body.models.map(async (model) => {
+        const modelStart = Date.now();
+
+        // Per-model pre-flight that mirrors the inline block in the
+        // non-stream arena. Failures here become a model-error SSE
+        // event so only this panel shows the failure; the rest keep
+        // streaming.
+        let transport;
+        try {
+          transport = await this.chatTransport.resolve({
+            userId: user.id,
+            modelIdentifier: model,
+            teamId,
+          });
+          await this.chatTransport.assertManagedBudgetApproved(
+            transport,
+            user.id,
+            { teamId },
+          );
+          const promptTokens = Math.ceil(safeQuestion.length / 4);
+          const estimatedCostUsd = await this.catalogService.estimateCost(
+            model,
+            promptTokens,
+            4096,
+          );
+          const estimatedCostCents =
+            estimatedCostUsd != null
+              ? Math.ceil(estimatedCostUsd * 100)
+              : 0;
+          await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+            teamId,
+            estimatedCostCents,
+          });
+          await this.chatTransport.assertTeamBudgetNotExceeded({
+            teamId,
+            estimatedCostCents,
+          });
+          await this.chatTransport.assertOrgBudgetNotExceeded({
+            estimatedCostCents,
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          const status =
+            err instanceof HttpException ? err.getStatus() : undefined;
+          sendEvent('model-error', { model, message: msg, status });
+          void this.observabilityService.recordLLMCall({
+            userId: user.id,
+            teamId,
+            eventType: 'arena_call',
+            model,
+            latencyMs: Date.now() - modelStart,
+            success: false,
+            errorMessage: msg,
+            prompt: safeQuestion,
+            metadata: { streamed: true },
+          });
+          return;
+        }
+
+        // Stream the model. Reasoning is OFF for arena — arena UI
+        // doesn't have a thinking pane, and the per-model panel is
+        // already showing the visible answer. Reuses ChatService
+        // streaming primitive so there's only one place that
+        // maps SDK chunk shapes to ChatStreamEvent.
+        let buffer = '';
+        let promptTokens: number | undefined;
+        let completionTokens: number | undefined;
+        let totalTokens: number | undefined;
+        let costUsd: number | undefined;
+        let modelErrored = false;
+        let errorPayload: { message: string; status?: number } | null =
+          null;
+
+        try {
+          for await (const event of this.chatService.sendMessageStream(
+            [{ role: 'user', content: safeQuestion }],
+            transport.model,
+            false,
+            composedContext || undefined,
+            transport.apiKey,
+            transport.baseURL,
+            transport.kind,
+            { signal: abortController.signal },
+          )) {
+            if (event.type === 'content') {
+              buffer += event.delta;
+              sendEvent('model-delta', { model, text: event.delta });
+            } else if (event.type === 'usage') {
+              promptTokens = event.promptTokens;
+              completionTokens = event.completionTokens;
+              totalTokens = event.totalTokens;
+              costUsd = event.costUsd;
+            } else if (event.type === 'error') {
+              modelErrored = true;
+              errorPayload = {
+                message: event.message,
+                status: event.status,
+              };
+              break;
+            }
+            // `reasoning` events ignored — arena UI doesn't render
+            // thinking text.
+          }
+        } catch (err) {
+          modelErrored = true;
+          errorPayload = {
+            message: err instanceof Error ? err.message : String(err),
+          };
+        }
+
+        const latencyMs = Date.now() - modelStart;
+
+        if (modelErrored && errorPayload) {
+          sendEvent('model-error', {
+            model,
+            message: errorPayload.message,
+            status: errorPayload.status,
+          });
+          void this.observabilityService.recordLLMCall({
+            userId: user.id,
+            teamId,
+            eventType: 'arena_call',
+            model,
+            provider: transport.provider,
+            latencyMs,
+            success: false,
+            errorMessage: errorPayload.message,
+            prompt: safeQuestion,
+            metadata: {
+              hasContext: composedContext.length > 0,
+              routingSource: transport.source,
+              streamed: true,
+            },
+          });
+          return;
+        }
+
+        // Per-model output guardrail. A BLOCK closes the model panel;
+        // a fix-rule emits a `model-replace` so the visible text
+        // swaps to the redacted version after the stream settles.
+        const outputDecision = await this.guardrails.evaluate({
+          text: buffer,
+          target: 'output',
+          userId: user.id,
+          teamId,
+        });
+        if (outputDecision.blocked) {
+          sendEvent('model-error', {
+            model,
+            message: `Output blocked by "${outputDecision.blocked.ruleName}" (${outputDecision.blocked.validator}).`,
+          });
+          void this.observabilityService.recordLLMCall({
+            userId: user.id,
+            teamId,
+            eventType: 'arena_call',
+            model,
+            provider: transport.provider,
+            latencyMs,
+            success: false,
+            errorMessage: 'Output guardrail blocked',
+            prompt: safeQuestion,
+            metadata: {
+              hasContext: composedContext.length > 0,
+              routingSource: transport.source,
+              streamed: true,
+            },
+          });
+          return;
+        }
+        const finalText = outputDecision.text;
+        if (finalText !== buffer) {
+          sendEvent('model-replace', { model, text: finalText });
+        }
+
+        // Cost backfill for non-OpenRouter routes — same logic as
+        // chat-controller. Native (BYOK / Custom) endpoints don't
+        // emit `cost`, so the OpenRouter catalog estimator fills in.
+        let resolvedCostUsd = costUsd;
+        if (
+          resolvedCostUsd == null &&
+          transport.source !== 'openrouter' &&
+          promptTokens != null &&
+          completionTokens != null
+        ) {
+          const estimated = await this.catalogService.estimateCost(
+            model,
+            promptTokens,
+            completionTokens,
+          );
+          if (estimated != null) resolvedCostUsd = estimated;
+        }
+
+        void this.observabilityService.recordLLMCall({
+          userId: user.id,
+          teamId,
+          eventType: 'arena_call',
+          model,
+          provider: transport.provider,
+          totalTokens,
+          costUsd: resolvedCostUsd ?? null,
+          latencyMs,
+          success: true,
+          prompt: safeQuestion,
+          metadata: {
+            hasContext: composedContext.length > 0,
+            routingSource: transport.source,
+            streamed: true,
+          },
+        });
+
+        responses.push({
+          model,
+          response: { content: finalText },
+          totalTokens,
+          totalCost: resolvedCostUsd,
+          time: latencyMs,
+        });
+
+        sendEvent('model-done', {
+          model,
+          totalTokens,
+          costUsd: resolvedCostUsd,
+          time: latencyMs,
+        });
+      }),
+    );
+
+    // ── EVALUATOR ────────────────────────────────────────────────────
+    // If every model errored, skip the evaluator (nothing meaningful
+    // to compare) and emit done with empty comparison.
+    let comparisonItems: ComparisonItem[] = [];
+    if (responses.length > 0) {
+      const EVALUATOR_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
+      let lastParseError: string | undefined;
+      let lastRawContent = '';
+
+      for (let attempt = 1; attempt <= MAX_COMPARE_ATTEMPTS; attempt++) {
+        const evalStart = Date.now();
+        try {
+          const comparison =
+            await this.compareModelsService.compareModelAnswers(
+              responses,
+              body.expectedOutput,
+              EVALUATOR_MODEL,
+              false,
+              evaluatorApiKey,
+            );
+          void this.observabilityService.recordLLMCall({
+            userId: user.id,
+            teamId,
+            eventType: 'evaluator_call',
+            model: EVALUATOR_MODEL,
+            latencyMs: Date.now() - evalStart,
+            success: true,
+            metadata: { attempt, streamed: true },
+          });
+          lastRawContent = comparison.content ?? '';
+          try {
+            comparisonItems = this.parseComparisonContent(lastRawContent);
+          } catch (err) {
+            lastParseError =
+              err instanceof Error ? err.message : String(err);
+            comparisonItems = [];
+          }
+          if (comparisonItems.length > 0) break;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          void this.observabilityService.recordLLMCall({
+            userId: user.id,
+            teamId,
+            eventType: 'evaluator_call',
+            model: EVALUATOR_MODEL,
+            latencyMs: Date.now() - evalStart,
+            success: false,
+            errorMessage: msg,
+            metadata: { attempt, streamed: true },
+          });
+          this.logger.error(
+            `Evaluator call failed on attempt ${attempt}/${MAX_COMPARE_ATTEMPTS}: ${msg}`,
+          );
+          break;
+        }
+      }
+
+      if (comparisonItems.length === 0 && lastParseError) {
+        this.logger.warn(
+          `Evaluator returned unparseable output after ${MAX_COMPARE_ATTEMPTS} attempts (${lastParseError}). Raw: ${lastRawContent.slice(0, 200)}`,
+        );
+      }
+    }
+
+    const comparisonWithMetrics = comparisonItems.map((item) => {
+      const modelResponse = responses.find((r) => r.model === item.name);
+      return {
+        ...item,
+        totalTokens: modelResponse?.totalTokens,
+        totalCost: modelResponse?.totalCost,
+        time: modelResponse?.time,
+      };
+    });
+
+    // ── PERSIST ARENA RUN ────────────────────────────────────────────
+    let runId: string | undefined;
+    if (responses.length > 0) {
+      try {
+        const [row] = await this.db
+          .insert(arenaRuns)
+          .values({
+            userId: user.id,
+            question: body.question,
+            expectedOutput: body.expectedOutput ?? '',
+            models: body.models,
+            responses,
+            comparison: comparisonWithMetrics,
+          })
+          .returning({ id: arenaRuns.id });
+        runId = row?.id;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.error(
+          `Failed to persist arena run for user ${user.id}: ${msg}`,
+        );
+      }
+    }
+
+    if (!res.writableEnded) {
+      sendEvent('evaluation', {
+        comparisonItems: comparisonWithMetrics,
+        runId,
+      });
+      sendEvent('done', {});
+      res.end();
+    }
   }
 
   @Get('runs')

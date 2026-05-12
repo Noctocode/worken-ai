@@ -65,7 +65,7 @@ import {
   fetchShortcuts,
   fetchTeams,
   parseArenaAttachment,
-  sendQuestionToCompareModels,
+  streamCompareModels,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
@@ -258,7 +258,12 @@ export default function CompareModelsPage() {
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setResponses({});
+    // Reset to empty-string per panel so the streaming loop can
+    // append into each model's slot without first checking null.
+    // Errors flip the panel back to null below.
+    const initialResponses: Record<string, string | null> = {};
+    for (const id of activeModels) initialResponses[id] = "";
+    setResponses(initialResponses);
     setEvaluations({});
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
@@ -276,38 +281,75 @@ export default function CompareModelsPage() {
     }
     const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
+    // Local accumulators that the setState calls below mirror onto
+    // React state. Direct dict so we don't pay re-render cost on
+    // every token (we batch each call into one setResponses).
+    const buffers: Record<string, string> = {};
+    for (const id of activeModels) buffers[id] = "";
+
     try {
-      // "personal" → null teamId (Personal scope, the default).
-      // Anything else → real team UUID, server validates membership.
       const teamIdForCall =
         selectedTeamId === "personal" ? null : selectedTeamId;
-      const result = await sendQuestionToCompareModels(
+      for await (const event of streamCompareModels(
         activeModels,
         question,
         expectedOutput,
         context,
         teamIdForCall,
-      );
-
-      const nextResponses: Record<string, string | null> = {};
-      const nextEvaluations: Record<string, ModelEvaluation | null> = {};
-      for (const id of activeModels) {
-        nextResponses[id] =
-          result.responses.find((r) => r.model === id)?.response.content ??
-          null;
-        nextEvaluations[id] =
-          result.comparison.find((c) => c.name === id) ?? null;
-      }
-      setResponses(nextResponses);
-      setEvaluations(nextEvaluations);
-
-      if (result.runId) {
-        const newEntry: HistoryEntry = {
-          id: result.runId,
-          question,
-          createdAt: new Date().toISOString(),
-        };
-        setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+      )) {
+        if (event.type === "model-delta") {
+          buffers[event.model] = (buffers[event.model] ?? "") + event.text;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: buffers[event.model],
+          }));
+        } else if (event.type === "model-replace") {
+          // Per-model output guardrail fix-rule pass; swap the
+          // panel's visible text for the redacted version.
+          buffers[event.model] = event.text;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: event.text,
+          }));
+        } else if (event.type === "model-error") {
+          // Only this panel fails; the rest keep streaming. Show
+          // humanized message inside the panel so the user can see
+          // which model went wrong and why.
+          const errMessage = humanizeChatError(
+            new Error(
+              event.status
+                ? `${event.status}: ${event.message}`
+                : event.message,
+            ),
+          );
+          buffers[event.model] = errMessage;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: errMessage,
+          }));
+        } else if (event.type === "model-done") {
+          // Per-model totals arrive here. We don't surface them
+          // outside the evaluation card below today; the BE
+          // already records observability events.
+        } else if (event.type === "evaluation") {
+          // Evaluator ran post-fan-out — paint the score cards.
+          const nextEvaluations: Record<string, ModelEvaluation | null> =
+            {};
+          for (const id of activeModels) {
+            const item = event.comparisonItems.find((c) => c.name === id);
+            nextEvaluations[id] = item ?? null;
+          }
+          setEvaluations(nextEvaluations);
+          if (event.runId) {
+            const newEntry: HistoryEntry = {
+              id: event.runId,
+              question,
+              createdAt: new Date().toISOString(),
+            };
+            setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+          }
+        }
+        // `done` event is a noop — loop exits naturally after it.
       }
     } catch (err) {
       toast.error(humanizeChatError(err));

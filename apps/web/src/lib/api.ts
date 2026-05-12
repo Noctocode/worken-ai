@@ -1233,6 +1233,172 @@ export async function sendQuestionToCompareModels(
   return res.json();
 }
 
+/**
+ * Discriminated union mirroring the BE arena SSE event shapes
+ * (compare-models.controller.compareModelsStream). Consumer tag-
+ * switches on `type` to drive per-model panel state.
+ */
+export type CompareModelsStreamEvent =
+  | { type: "model-delta"; model: string; text: string }
+  | { type: "model-replace"; model: string; text: string }
+  | { type: "model-error"; model: string; message: string; status?: number }
+  | {
+      type: "model-done";
+      model: string;
+      totalTokens?: number;
+      costUsd?: number | null;
+      time?: number;
+    }
+  | {
+      type: "evaluation";
+      comparisonItems: (ModelComparisonEntry & {
+        totalTokens?: number;
+        totalCost?: number;
+        time?: number;
+      })[];
+      runId?: string;
+    }
+  | { type: "done" };
+
+/**
+ * Stream the arena fan-out from POST /compare-models/stream. Same
+ * fetch + ReadableStream pattern as streamChatMessage — every
+ * `model-delta` event is keyed by model id so the FE routes deltas
+ * to the right panel.
+ */
+export async function* streamCompareModels(
+  models: string[],
+  question: string,
+  expectedOutput: string,
+  context?: string,
+  teamId?: string | null,
+  signal?: AbortSignal,
+): AsyncIterable<CompareModelsStreamEvent> {
+  const res = await apiFetch(`/compare-models/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      models,
+      question,
+      expectedOutput,
+      context,
+      ...(teamId !== undefined ? { teamId: teamId ?? "personal" } : {}),
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    let detail: string | null = null;
+    try {
+      const body = await res.text();
+      try {
+        const parsed = JSON.parse(body) as { message?: string | string[] };
+        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
+        else if (typeof parsed.message === "string") detail = parsed.message;
+        else if (body) detail = body;
+      } catch {
+        if (body) detail = body;
+      }
+    } catch {
+      /* keep null fallback */
+    }
+    const message = detail
+      ? `${res.status} ${res.statusText}: ${detail}`
+      : `${res.status} ${res.statusText}`;
+    throw new Error(message);
+  }
+  if (!res.body) {
+    throw new Error("Streaming arena response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      let sepIdx = buf.indexOf("\n\n");
+      while (sepIdx !== -1) {
+        const rawFrame = buf.slice(0, sepIdx);
+        buf = buf.slice(sepIdx + 2);
+        sepIdx = buf.indexOf("\n\n");
+
+        let eventName = "message";
+        let dataLine = "";
+        for (const line of rawFrame.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventName = line.slice("event:".length).trim();
+          } else if (line.startsWith("data:")) {
+            dataLine += line.slice("data:".length).trim();
+          }
+        }
+        if (!dataLine) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(dataLine);
+        } catch {
+          continue;
+        }
+        const data = parsed as Record<string, unknown>;
+        if (eventName === "model-delta") {
+          yield {
+            type: "model-delta",
+            model: data.model as string,
+            text: data.text as string,
+          };
+        } else if (eventName === "model-replace") {
+          yield {
+            type: "model-replace",
+            model: data.model as string,
+            text: data.text as string,
+          };
+        } else if (eventName === "model-error") {
+          yield {
+            type: "model-error",
+            model: data.model as string,
+            message: data.message as string,
+            status: typeof data.status === "number" ? data.status : undefined,
+          };
+        } else if (eventName === "model-done") {
+          yield {
+            type: "model-done",
+            model: data.model as string,
+            totalTokens:
+              typeof data.totalTokens === "number"
+                ? data.totalTokens
+                : undefined,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
+            time: typeof data.time === "number" ? data.time : undefined,
+          };
+        } else if (eventName === "evaluation") {
+          yield {
+            type: "evaluation",
+            comparisonItems: Array.isArray(data.comparisonItems)
+              ? (data.comparisonItems as CompareModelsStreamEvent extends {
+                  type: "evaluation";
+                  comparisonItems: infer T;
+                }
+                  ? T
+                  : never)
+              : [],
+            runId:
+              typeof data.runId === "string" ? data.runId : undefined,
+          };
+        } else if (eventName === "done") {
+          yield { type: "done" };
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export interface ArenaRunSummary {
   id: string;
   question: string;
