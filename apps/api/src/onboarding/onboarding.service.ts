@@ -442,12 +442,8 @@ export class OnboardingService {
   /**
    * Resolve a knowledge file owned by `userId` to an absolute path
    * that is provably inside the uploads root, plus the stream +
-   * display metadata needed to send it to the client.
-   *
-   * Backed by `knowledge_files` (post-migration) — the legacy
-   * `knowledge_documents` rows are migrated to this table by the
-   * backfill script, so the endpoint URL stays stable while the
-   * storage moves.
+   * display metadata needed to send it to the client. Backed by
+   * `knowledge_files`.
    */
   async openDocumentForUser(fileId: string, userId: string) {
     const [file] = await this.db

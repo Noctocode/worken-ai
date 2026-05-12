@@ -291,44 +291,12 @@ export const onboardingDrafts = pgTable("onboarding_drafts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const knowledgeDocuments = pgTable("knowledge_documents", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .references(() => users.id, { onDelete: "cascade" })
-    .notNull(),
-  filename: text("filename").notNull(),
-  storagePath: text("storage_path").notNull(),
-  sizeBytes: integer("size_bytes").notNull(),
-  mimeType: text("mime_type"),
-  // Where the file is in the chunk + embed pipeline. Lives on the
-  // document row (not a separate jobs table) because the lifecycle
-  // is one-shot per upload — `pending` set on insert, `processing`
-  // when the worker picks it up, `done` after chunks land in
-  // knowledge_chunks, `failed` if parse / embed errored. The FE
-  // poll endpoint aggregates over this column.
-  ingestionStatus: text("ingestion_status").notNull().default("pending"),
-  ingestionError: text("ingestion_error"),
-  ingestionCompletedAt: timestamp("ingestion_completed_at"),
-  // RAG visibility for chunks generated from this doc:
-  //   'personal' → only the owner sees them in chat
-  //   'company'  → every user in the deployment sees them (single-
-  //                tenant, so 'company' = org-wide)
-  // Set from `users.profileType` at upload time so the marketing copy
-  // ("train your enterprise AI") actually holds: a company admin's
-  // uploads become accessible to everyone they invite.
-  scope: text("scope").notNull().default("personal"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-// Chunked + embedded text from user-uploaded knowledge sources. The
-// row is polymorphic on source: exactly one of `documentId` (legacy
-// onboarding upload, knowledge_documents) or `fileId` (post-onboarding
-// Knowledge Core upload, knowledge_files) is non-null per row.
-// Cascade-delete on whichever parent row owns the chunk cleans up
+// Chunked + embedded text from user-uploaded knowledge files.
+// Cascade-delete on the parent `knowledge_files` row cleans up
 // embeddings without orphan rows. Embedding dimensions match the
-// existing `documents` table so the chat RAG search can compose all
-// three sources (project documents + onboarding docs + knowledge
-// files) without re-projecting vectors.
+// existing `documents` table so chat RAG search can compose both
+// sources (project documents + knowledge files) without re-
+// projecting vectors.
 export const knowledgeChunks = pgTable(
   "knowledge_chunks",
   {
@@ -336,10 +304,6 @@ export const knowledgeChunks = pgTable(
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
-    documentId: uuid("document_id").references(
-      () => knowledgeDocuments.id,
-      { onDelete: "cascade" },
-    ),
     fileId: uuid("file_id").references(() => knowledgeFiles.id, {
       onDelete: "cascade",
     }),
@@ -456,7 +420,7 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   sizeBytes: integer("size_bytes").notNull().default(0),
   storagePath: text("storage_path"),
   uploadedById: uuid("uploaded_by_id").references(() => users.id),
-  // Same chunk + embed pipeline as knowledge_documents — chunks land
+  // Where the file is in the chunk + embed pipeline. Chunks land
   // in knowledge_chunks with `fileId` set. Lifecycle: pending →
   // processing → done | failed. Image-only / unsupported types
   // gracefully fail with `ingestion_error` set; the file row + disk
@@ -464,9 +428,9 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   ingestionStatus: text("ingestion_status").notNull().default("pending"),
   ingestionError: text("ingestion_error"),
   ingestionCompletedAt: timestamp("ingestion_completed_at"),
-  // RAG visibility — mirrors knowledge_documents.scope. Personal
-  // accounts → uploader-only; company accounts → org-wide. Set from
-  // the uploader's profileType at upload time.
+  // RAG visibility at chat / arena time. Personal accounts →
+  // uploader-only; company accounts → org-wide. Set from the
+  // uploader's profileType at upload time.
   scope: text("scope").notNull().default("personal"),
   // Within company-scope, a second layer of gating: 'all' lets every
   // company user (regardless of role) pull these chunks at chat /

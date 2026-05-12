@@ -57,13 +57,10 @@ export interface IngestionAggregate {
 }
 
 /**
- * Owns the chunk + embed pipeline for user-uploaded knowledge files —
- * both onboarding-wizard uploads and post-onboarding Knowledge Core
+ * Owns the chunk + embed pipeline for user-uploaded knowledge files.
+ * Both onboarding-wizard uploads and post-onboarding Knowledge Core
  * uploads land in the same `knowledge_files` table, so a single
- * ingestion path covers both. (The legacy `knowledge_documents` table
- * still holds historical rows but is read-only now; the backfill
- * script in `packages/database/backfill/` migrates them to
- * `knowledge_files` and re-links their chunks.)
+ * ingestion path covers both.
  *
  * The actual chunking + embedding + file parsing is delegated to
  * DocumentsService so chunks are searchable with the same vector
@@ -307,7 +304,7 @@ export class KnowledgeIngestionService {
     return this.db
       .select({
         id: knowledgeChunks.id,
-        documentId: knowledgeChunks.documentId,
+        fileId: knowledgeChunks.fileId,
         content: knowledgeChunks.content,
         similarity,
       })

@@ -58,8 +58,8 @@ export class ModelsService {
    * and `listEffectiveForUser` (pickers / arena), so what a user
    * sees in management matches what they can actually pick.
    *
-   * Visibility model — mirrors how `knowledge_documents.scope`
-   * works in the same single-tenant deployment:
+   * Visibility model — mirrors how `knowledge_files.scope` works
+   * in the same single-tenant deployment:
    *   - profileType = 'company': every `teamId IS NULL` alias is
    *     the company-wide model pool (visible to every company
    *     user, no matter who created it), plus team-scoped rows
