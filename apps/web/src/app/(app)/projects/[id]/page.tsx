@@ -3,6 +3,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   ArrowLeft,
   Send,
@@ -11,6 +13,7 @@ import {
   Sparkles,
   Bot,
   Loader2,
+  Square,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -21,7 +24,7 @@ import {
   fetchProject,
   fetchConversation,
   createConversation,
-  sendChatMessage,
+  streamChatMessage,
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
@@ -77,6 +80,9 @@ export default function ProjectChatPage() {
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  // Holds the AbortController for the in-flight stream so the Stop
+  // button can cancel mid-token. Null when no stream is active.
+  const abortRef = useRef<AbortController | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch conversation messages when activeConversationId changes
@@ -127,6 +133,10 @@ export default function ProjectChatPage() {
     setActiveConversationId(id);
   }, []);
 
+  const handleStop = () => {
+    abortRef.current?.abort();
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isSending || !project) return;
@@ -145,7 +155,37 @@ export default function ProjectChatPage() {
       userName: user?.name,
       userPicture: user?.picture,
     };
-    setMessages((prev) => [...prev, optimisticMsg]);
+    // Placeholder assistant bubble — gets filled token-by-token as
+    // SSE deltas arrive. Holding a stable id so we can update only
+    // this row on every event without re-rendering the whole list.
+    const assistantId = `resp-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      optimisticMsg,
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        timestamp: getTimestamp(),
+      },
+    ]);
+
+    // AbortController exposed via abortRef so the Stop button (and
+    // any future Esc-key binding) can cancel the in-flight stream.
+    // BE listens on req.close → propagates abort to the upstream
+    // LLM SDK, persists what we got, returns a final `done` event
+    // with partial:true.
+    const controller = new AbortController();
+    abortRef.current = controller;
+    let buffer = "";
+    let stoppedByUser = false;
+    // Track whether we got any signal from the stream at all so we
+    // can show a clear "no response" message if the BE closes the
+    // connection without ever yielding an event (e.g. proxy
+    // misconfiguration, hot-reload race where the route disappeared
+    // mid-flight). Without this, the bubble would just be empty and
+    // the Stop button would vanish silently — confusing UX.
+    let receivedAnyEvent = false;
 
     try {
       // Create conversation if this is a new chat
@@ -156,42 +196,119 @@ export default function ProjectChatPage() {
         setActiveConversationId(convId);
       }
 
-      // Send message (API persists both user + assistant messages)
-      const response = await sendChatMessage(
+      for await (const event of streamChatMessage(
         convId,
         content,
         project.model,
         projectId,
-      );
+        controller.signal,
+      )) {
+        receivedAnyEvent = true;
+        if (event.type === "delta") {
+          buffer += event.text;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: buffer } : m,
+            ),
+          );
+        } else if (event.type === "replace") {
+          // Final guardrail fix-rule fired — overwrite the bubble
+          // with the redacted text. Discard our local buffer so
+          // future state stays in sync if (somehow) more deltas
+          // arrive after this; BE doesn't emit further deltas
+          // after replace today, but the guard is cheap.
+          buffer = event.text;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: buffer } : m,
+            ),
+          );
+        } else if (event.type === "blocked") {
+          // Output guardrail BLOCK fired. Swap the in-progress
+          // bubble for a humanised error message — same shape the
+          // non-stream path used to throw, so chat-errors humanizer
+          // routes both consistently.
+          const blockedMessage = humanizeChatError(
+            new Error(
+              `GUARDRAIL_BLOCKED: "${event.rule}" blocked the model's response (${event.validator}).`,
+            ),
+          );
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, content: blockedMessage }
+                : m,
+            ),
+          );
+        } else if (event.type === "error") {
+          const errMessage = humanizeChatError(
+            new Error(
+              event.status
+                ? `${event.status}: ${event.message}`
+                : event.message,
+            ),
+          );
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, content: errMessage } : m,
+            ),
+          );
+        } else if (event.type === "done") {
+          // Stream concluded. BE has already persisted the
+          // assistant message (possibly with partial:true if the
+          // user clicked Stop). Refresh the sidebar so the new
+          // conversation / latest-message timestamp surfaces.
+          if (event.partial) stoppedByUser = true;
+          queryClient.invalidateQueries({
+            queryKey: ["conversations", projectId],
+          });
+        }
+      }
 
-      // Append assistant response
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `resp-${Date.now()}`,
-          role: "assistant",
-          content: response.content,
-          timestamp: getTimestamp(),
-          reasoning_details: response.reasoning_details,
-        },
-      ]);
-
-      // Refresh sidebar
-      queryClient.invalidateQueries({
-        queryKey: ["conversations", projectId],
-      });
+      // Stream closed cleanly but we never saw a usable event AND
+      // never streamed any content. The bubble would otherwise sit
+      // empty forever — give the user a concrete error to act on.
+      if (!receivedAnyEvent && buffer === "") {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? {
+                  ...m,
+                  content:
+                    "No response from the AI gateway. The streaming endpoint may not be available — try refreshing the page, and if the problem persists, restart the API server.",
+                }
+              : m,
+          ),
+        );
+      }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `err-${Date.now()}`,
-          role: "assistant",
-          content: humanizeChatError(err),
-          timestamp: getTimestamp(),
-        },
-      ]);
+      // Two failure modes:
+      //   - AbortError → user pressed Stop; the BE keeps what it
+      //     had and persists with partial:true. Leave the bubble
+      //     as-is rather than overwriting with an error.
+      //   - Anything else → pre-flight 4xx (guardrail input,
+      //     budget gate, …) or network failure. Replace the
+      //     placeholder bubble with the humanised message.
+      const isAbort =
+        err instanceof DOMException && err.name === "AbortError";
+      if (!isAbort) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantId
+              ? { ...m, content: humanizeChatError(err) }
+              : m,
+          ),
+        );
+      } else {
+        stoppedByUser = true;
+      }
     } finally {
+      abortRef.current = null;
       setIsSending(false);
+      // No-op assignment to satisfy "unused" lint while preserving
+      // the explicit state for future telemetry. The partial-flag
+      // metadata is already persisted on the BE side.
+      void stoppedByUser;
     }
   };
 
@@ -341,21 +458,167 @@ export default function ProjectChatPage() {
                           : "rounded-tr-sm bg-primary-6 text-white"
                       }`}
                     >
-                      {msg.content.split("\n").map((line, i) => (
-                        <React.Fragment key={i}>
-                          {line
-                            .split(/(\*\*.*?\*\*)/)
-                            .map((segment, j) =>
-                              segment.startsWith("**") &&
-                              segment.endsWith("**") ? (
-                                <strong key={j}>{segment.slice(2, -2)}</strong>
+                      {/* While the stream hasn't produced any text
+                          yet (empty assistant bubble + isSending),
+                          show an inline "Thinking…" so the user
+                          gets immediate feedback that the request
+                          is in flight. Once the first delta arrives
+                          we render the streamed content instead. */}
+                      {msg.role === "assistant" &&
+                      msg.content === "" &&
+                      isSending ? (
+                        <span className="flex items-center gap-2 text-text-3">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Thinking...
+                        </span>
+                      ) : (
+                        // Markdown rendering for both user + assistant
+                        // bubbles. GFM plugin adds tables, strike-
+                        // through, task lists, autolinks — handy when
+                        // a user pastes formatted text or the model
+                        // emits a structured response. Each element
+                        // is styled inline so the bubble theme (user
+                        // = primary-6 background, assistant = white)
+                        // stays consistent with the surrounding chat
+                        // chrome instead of inheriting prose defaults.
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            p: ({ children }) => (
+                              <p className="mb-2 last:mb-0 whitespace-pre-wrap">
+                                {children}
+                              </p>
+                            ),
+                            ul: ({ children }) => (
+                              <ul className="mb-2 list-disc pl-5 last:mb-0">
+                                {children}
+                              </ul>
+                            ),
+                            ol: ({ children }) => (
+                              <ol className="mb-2 list-decimal pl-5 last:mb-0">
+                                {children}
+                              </ol>
+                            ),
+                            li: ({ children }) => (
+                              <li className="mb-1 last:mb-0">{children}</li>
+                            ),
+                            blockquote: ({ children }) => (
+                              <blockquote
+                                className={`mb-2 border-l-2 pl-3 italic last:mb-0 ${
+                                  msg.role === "user"
+                                    ? "border-white/40 text-white/90"
+                                    : "border-border-3 text-text-2"
+                                }`}
+                              >
+                                {children}
+                              </blockquote>
+                            ),
+                            code: ({ children, className }) => {
+                              // react-markdown emits `code` for both
+                              // inline (no class) and fenced blocks
+                              // (className=language-xxx). Distinguish
+                              // by className presence so we get pill-
+                              // style inline vs full code block.
+                              const isInline = !className;
+                              return isInline ? (
+                                <code
+                                  className={`rounded px-1 py-0.5 font-mono text-[12px] ${
+                                    msg.role === "user"
+                                      ? "bg-white/15"
+                                      : "bg-bg-1"
+                                  }`}
+                                >
+                                  {children}
+                                </code>
                               ) : (
-                                <span key={j}>{segment}</span>
-                              ),
-                            )}
-                          {i < msg.content.split("\n").length - 1 && <br />}
-                        </React.Fragment>
-                      ))}
+                                <code className="font-mono text-[12px]">
+                                  {children}
+                                </code>
+                              );
+                            },
+                            pre: ({ children }) => (
+                              <pre
+                                className={`mb-2 overflow-x-auto rounded-lg p-3 text-[12px] last:mb-0 ${
+                                  msg.role === "user"
+                                    ? "bg-white/10"
+                                    : "bg-bg-1"
+                                }`}
+                              >
+                                {children}
+                              </pre>
+                            ),
+                            a: ({ children, href }) => (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`underline ${
+                                  msg.role === "user"
+                                    ? "text-white"
+                                    : "text-primary-6"
+                                }`}
+                              >
+                                {children}
+                              </a>
+                            ),
+                            h1: ({ children }) => (
+                              <h1 className="mb-2 text-base font-bold last:mb-0">
+                                {children}
+                              </h1>
+                            ),
+                            h2: ({ children }) => (
+                              <h2 className="mb-2 text-base font-bold last:mb-0">
+                                {children}
+                              </h2>
+                            ),
+                            h3: ({ children }) => (
+                              <h3 className="mb-2 text-sm font-bold last:mb-0">
+                                {children}
+                              </h3>
+                            ),
+                            hr: () => (
+                              <hr
+                                className={`my-2 border-t ${
+                                  msg.role === "user"
+                                    ? "border-white/30"
+                                    : "border-border-2"
+                                }`}
+                              />
+                            ),
+                            table: ({ children }) => (
+                              <div className="mb-2 overflow-x-auto last:mb-0">
+                                <table className="w-full border-collapse text-[12px]">
+                                  {children}
+                                </table>
+                              </div>
+                            ),
+                            th: ({ children }) => (
+                              <th
+                                className={`border px-2 py-1 text-left font-semibold ${
+                                  msg.role === "user"
+                                    ? "border-white/30"
+                                    : "border-border-2"
+                                }`}
+                              >
+                                {children}
+                              </th>
+                            ),
+                            td: ({ children }) => (
+                              <td
+                                className={`border px-2 py-1 ${
+                                  msg.role === "user"
+                                    ? "border-white/30"
+                                    : "border-border-2"
+                                }`}
+                              >
+                                {children}
+                              </td>
+                            ),
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      )}
                     </div>
                     <span
                       className={`mt-1 block text-[11px] text-text-3 ${
@@ -368,20 +631,11 @@ export default function ProjectChatPage() {
                 </div>
               ))}
 
-              {/* Typing indicator */}
-              {isSending && (
-                <div className="flex gap-3">
-                  <Avatar className="h-8 w-8 shrink-0 border border-border-2">
-                    <AvatarFallback className="bg-bg-2 text-text-2">
-                      <Bot className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-border-2 bg-bg-white px-4 py-3 text-sm text-text-3 shadow-sm">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Thinking...
-                  </div>
-                </div>
-              )}
+              {/* Per-bubble "Thinking…" lives inside the empty
+                  assistant message bubble itself — see the bubble
+                  render block above. Keeps the spinner in line with
+                  the rest of the message thread instead of floating
+                  below as a separate row. */}
 
               <div ref={messagesEndRef} />
             </div>
@@ -413,14 +667,31 @@ export default function ProjectChatPage() {
                   }}
                 />
               </div>
-              <Button
-                type="submit"
-                size="icon"
-                className="h-11 w-11 shrink-0 rounded-xl bg-primary-6 hover:bg-primary-7"
-                disabled={!message.trim() || isSending}
-              >
-                <Send className="h-4 w-4" />
-              </Button>
+              {/* While streaming we swap the Send affordance for a
+                  Stop button so the user can interrupt mid-token.
+                  abortRef.current.abort() → fetch reader cancels →
+                  BE persists what was buffered with partial:true. */}
+              {isSending ? (
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="destructive"
+                  className="h-11 w-11 shrink-0 rounded-xl"
+                  onClick={handleStop}
+                  title="Stop generating"
+                >
+                  <Square className="h-4 w-4" fill="currentColor" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  size="icon"
+                  className="h-11 w-11 shrink-0 rounded-xl bg-primary-6 hover:bg-primary-7"
+                  disabled={!message.trim()}
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              )}
             </div>
             <div className="mt-2 flex items-center justify-between">
               <div className="flex items-center gap-1">

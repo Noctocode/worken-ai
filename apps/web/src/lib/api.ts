@@ -723,6 +723,192 @@ export async function sendChatMessage(
   return res.json();
 }
 
+/**
+ * Discriminated union mirroring the BE SSE event shapes from
+ * `chat.controller.chatStream`. Consumers tag-switch on `type` to
+ * drive UI state (delta appends, replace overwrites, reasoning pane,
+ * done finalizer, blocked/error humanization).
+ */
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "replace"; text: string }
+  | { type: "blocked"; rule: string; validator: string }
+  | { type: "error"; message: string; status?: number }
+  | {
+      type: "done";
+      totalTokens?: number;
+      costUsd?: number | null;
+      partial?: boolean;
+    };
+
+/**
+ * Stream an assistant response token-by-token from POST /chat/stream.
+ *
+ * Uses `fetch` + `ReadableStream` rather than `EventSource` so we can
+ * keep the existing cookie-based auth (POST + credentials: 'include'
+ * via apiFetch) and pass an AbortController for the Stop button.
+ *
+ * The BE emits standard SSE blocks (`event: <name>\ndata: <json>\n\n`).
+ * We buffer raw bytes, split on the blank-line delimiter, and parse
+ * each block into a `ChatStreamEvent`. Yields events in arrival
+ * order — caller `for await`s and updates UI state per event type.
+ *
+ * Cancellation contract:
+ *   - signal.abort() → fetch aborts → ReadableStream closes → BE
+ *     gets req.close → BE aborts upstream LLM call + persists
+ *     whatever was buffered with metadata.partial = true. A final
+ *     `done` event with partial: true may still arrive before the
+ *     stream actually closes; consumers should treat AbortError as
+ *     a clean stop, not a failure.
+ */
+export async function* streamChatMessage(
+  conversationId: string,
+  content: string,
+  model?: string,
+  projectId?: string,
+  signal?: AbortSignal,
+): AsyncIterable<ChatStreamEvent> {
+  const res = await apiFetch("/chat/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      conversationId,
+      content,
+      model,
+      enableReasoning: true,
+      projectId,
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    // Pre-flight failure (guardrail input block, budget gate, …) —
+    // BE returned a JSON 4xx before opening the SSE stream. Surface
+    // the same shape as sendChatMessage so the FE humanizer routes
+    // it identically.
+    let detail: string | null = null;
+    try {
+      const body = await res.text();
+      try {
+        const parsed = JSON.parse(body) as { message?: string | string[] };
+        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
+        else if (typeof parsed.message === "string") detail = parsed.message;
+        else if (body) detail = body;
+      } catch {
+        if (body) detail = body;
+      }
+    } catch {
+      /* keep null fallback */
+    }
+    const message = detail
+      ? `${res.status} ${res.statusText}: ${detail}`
+      : `${res.status} ${res.statusText}`;
+    throw new Error(message);
+  }
+
+  if (!res.body) {
+    throw new Error("Streaming chat response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      // SSE frames are separated by a blank line. Pull complete
+      // frames out of the buffer and yield them; whatever's left is
+      // a partial frame waiting on more bytes.
+      let sepIdx = buf.indexOf("\n\n");
+      while (sepIdx !== -1) {
+        const rawFrame = buf.slice(0, sepIdx);
+        buf = buf.slice(sepIdx + 2);
+        sepIdx = buf.indexOf("\n\n");
+
+        let eventName = "message";
+        let dataLine = "";
+        for (const line of rawFrame.split("\n")) {
+          if (line.startsWith("event:")) {
+            eventName = line.slice("event:".length).trim();
+          } else if (line.startsWith("data:")) {
+            // SSE allows multi-line `data:` continuations; in
+            // practice the BE writes one JSON blob per data line
+            // so concat is safe.
+            dataLine += line.slice("data:".length).trim();
+          }
+        }
+
+        if (!dataLine) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(dataLine);
+        } catch {
+          // Malformed frame — skip rather than crash the whole
+          // stream. The BE shouldn't emit these, but a flaky
+          // proxy could.
+          continue;
+        }
+
+        // Map the wire event name + payload into the discriminated
+        // union. Anything unrecognised is dropped silently to keep
+        // forward-compat with future BE event types.
+        const data = parsed as Record<string, unknown>;
+        if (eventName === "delta" && typeof data.text === "string") {
+          yield { type: "delta", text: data.text };
+        } else if (
+          eventName === "reasoning" &&
+          typeof data.text === "string"
+        ) {
+          yield { type: "reasoning", text: data.text };
+        } else if (eventName === "replace" && typeof data.text === "string") {
+          yield { type: "replace", text: data.text };
+        } else if (
+          eventName === "blocked" &&
+          typeof data.rule === "string" &&
+          typeof data.validator === "string"
+        ) {
+          yield {
+            type: "blocked",
+            rule: data.rule,
+            validator: data.validator,
+          };
+        } else if (eventName === "error") {
+          yield {
+            type: "error",
+            message:
+              typeof data.message === "string"
+                ? data.message
+                : "Stream error",
+            status:
+              typeof data.status === "number" ? data.status : undefined,
+          };
+        } else if (eventName === "done") {
+          yield {
+            type: "done",
+            totalTokens:
+              typeof data.totalTokens === "number"
+                ? data.totalTokens
+                : undefined,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
+            partial: data.partial === true,
+          };
+        }
+      }
+    }
+  } finally {
+    // Release the reader so cancel propagates cleanly to the BE.
+    // For AbortError this no-ops (already cancelled); for a normal
+    // close it's a courtesy release.
+    reader.releaseLock();
+  }
+}
+
 // Invitations
 
 export interface InviteDetails {
