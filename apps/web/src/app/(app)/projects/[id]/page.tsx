@@ -36,7 +36,12 @@ interface LocalMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
-  reasoning_details?: unknown;
+  /** OpenRouter / Anthropic "thinking" text the model produced before
+   *  the visible answer. Accumulated from `reasoning` SSE events
+   *  during the stream, and hydrated from metadata.reasoning_details
+   *  on conversation reload. Non-empty → renders a collapsible
+   *  "Show thinking" disclosure under the bubble. */
+  reasoning?: string;
   /** True when the user pressed Stop mid-stream and the BE persisted
    *  whatever was buffered. Drives the "Stopped" badge so the
    *  conversation history reflects that the response was cut short. */
@@ -118,7 +123,15 @@ export default function ProjectChatPage() {
               hour: "numeric",
               minute: "2-digit",
             }),
-            reasoning_details: meta?.reasoning_details,
+            reasoning:
+              // BE persists thinking text under metadata.reasoning_details
+              // as a plain string (the stream accumulator stringifies
+              // every `reasoning` SSE delta into one buffer). Defensive
+              // narrowing covers legacy non-stream rows that may have
+              // stored a structured object instead.
+              typeof meta?.reasoning_details === "string"
+                ? (meta.reasoning_details as string)
+                : undefined,
             partial: meta?.partial === true,
             userId: m.userId,
             userName: m.userName,
@@ -187,6 +200,11 @@ export default function ProjectChatPage() {
     const controller = new AbortController();
     abortRef.current = controller;
     let buffer = "";
+    // Accumulator for `reasoning` SSE events. Updated alongside
+    // `buffer` and pushed into the assistant message on every delta
+    // so the disclosure pane fills in real-time even before the
+    // visible answer starts.
+    let reasoningBuffer = "";
     let stoppedByUser = false;
     // Track whether we got any signal from the stream at all so we
     // can show a clear "no response" message if the BE closes the
@@ -230,6 +248,19 @@ export default function ProjectChatPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId ? { ...m, content: buffer } : m,
+            ),
+          );
+        } else if (event.type === "reasoning") {
+          // "Thinking" text — surfaces in the disclosure pane below
+          // the bubble. Append to the local buffer and reflect on
+          // the message in one setMessages call so we don't
+          // re-render on every token from two separate state slots.
+          reasoningBuffer += event.text;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? { ...m, reasoning: reasoningBuffer }
+                : m,
             ),
           );
         } else if (event.type === "blocked") {
@@ -653,6 +684,26 @@ export default function ProjectChatPage() {
                         </ReactMarkdown>
                       )}
                     </div>
+                    {/* Collapsible reasoning pane. Renders only on
+                        assistant bubbles that have thinking text
+                        (either streamed during the current session
+                        or hydrated from metadata.reasoning_details
+                        on conversation reload). Native <details>
+                        gives us a free disclosure widget without
+                        extra useState — open state lives in the
+                        DOM, persists across re-renders, and is
+                        keyboard-accessible by default. */}
+                    {msg.role === "assistant" && msg.reasoning ? (
+                      <details className="mt-2 rounded-md border border-border-2 bg-bg-1/40 text-[12px]">
+                        <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 font-medium text-text-2 hover:text-text-1">
+                          <Sparkles className="h-3.5 w-3.5 text-primary-6" />
+                          Show thinking
+                        </summary>
+                        <div className="border-t border-border-2 px-3 py-2 text-text-3 whitespace-pre-wrap italic">
+                          {msg.reasoning}
+                        </div>
+                      </details>
+                    ) : null}
                     <span
                       className={`mt-1 block text-[11px] text-text-3 ${
                         msg.role === "user" ? "text-right" : "text-left"
