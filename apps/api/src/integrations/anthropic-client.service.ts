@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
+import type {
+  ChatStreamEvent,
+  StreamOptions,
+} from '../chat/chat.service.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -102,6 +106,128 @@ export class AnthropicClientService {
       promptTokens: inputTokens,
       completionTokens: outputTokens,
       totalTokens: inputTokens + outputTokens,
+    };
+  }
+
+  /**
+   * Streaming variant of `sendMessage` mapped onto the transport-
+   * neutral `ChatStreamEvent` union owned by `chat.service`. Same
+   * shape adjustments as the non-stream call: `system` lifted to
+   * top-level, leading non-user messages dropped defensively.
+   *
+   * Anthropic event mapping:
+   *   - `content_block_delta` with `text_delta` → ChatStreamEvent.content
+   *   - `message_delta` carries the final `usage` totals when the
+   *     stream concludes (`stop_reason` set on the same event) →
+   *     ChatStreamEvent.usage. Anthropic doesn't return cost, so the
+   *     controller backfills via the OpenRouter catalog estimator.
+   *   - everything else (message_start, message_stop, ping, content_
+   *     block_start/stop) is no-op for our purposes.
+   *
+   * Extended thinking is not yet surfaced — would map to a separate
+   * `reasoning` event once the FE adds a thinking pane.
+   */
+  async *sendMessageStream(
+    messages: ChatMessage[],
+    model: string,
+    apiKey: string,
+    context?: string,
+    options: StreamOptions = {},
+    maxTokens: number = DEFAULT_MAX_TOKENS,
+  ): AsyncIterable<ChatStreamEvent> {
+    if (!apiKey) {
+      yield {
+        type: 'error',
+        message: 'Anthropic API key is required for native routing',
+      };
+      return;
+    }
+
+    const client = new Anthropic({ apiKey });
+    const nativeModel = toAnthropicModelId(model);
+
+    const systemPiece = context ?? null;
+    const filteredMessages = [...messages];
+    while (
+      filteredMessages.length > 0 &&
+      filteredMessages[0].role !== 'user'
+    ) {
+      filteredMessages.shift();
+    }
+
+    let stream;
+    try {
+      stream = client.messages.stream(
+        {
+          model: nativeModel,
+          max_tokens: maxTokens,
+          ...(systemPiece ? { system: systemPiece } : {}),
+          messages: filteredMessages.map((m) => ({
+            role: m.role,
+            content: m.content,
+          })),
+        },
+        { signal: options.signal },
+      );
+    } catch (err) {
+      yield {
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        status:
+          err && typeof err === 'object' && 'status' in err
+            ? (err as { status?: number }).status
+            : undefined,
+      };
+      return;
+    }
+
+    // Track running totals so we can emit a single `usage` event at
+    // the end. Anthropic streams send input_tokens once (with
+    // message_start) and incrementally bump output_tokens on
+    // message_delta — we sum them once at stream close.
+    let inputTokens: number | undefined;
+    let outputTokens = 0;
+
+    try {
+      for await (const event of stream) {
+        if (
+          event.type === 'message_start' &&
+          event.message.usage?.input_tokens != null
+        ) {
+          inputTokens = event.message.usage.input_tokens;
+        }
+        if (
+          event.type === 'content_block_delta' &&
+          event.delta.type === 'text_delta'
+        ) {
+          yield { type: 'content', delta: event.delta.text };
+        }
+        if (event.type === 'message_delta' && event.usage?.output_tokens) {
+          // message_delta usage is cumulative on Anthropic's side —
+          // overwrite rather than sum.
+          outputTokens = event.usage.output_tokens;
+        }
+      }
+    } catch (err) {
+      yield {
+        type: 'error',
+        message: err instanceof Error ? err.message : String(err),
+        status:
+          err && typeof err === 'object' && 'status' in err
+            ? (err as { status?: number }).status
+            : undefined,
+      };
+      return;
+    }
+
+    // One usage event at the very end. OpenRouter parity: the caller
+    // gets totals exactly once per stream after content events.
+    yield {
+      type: 'usage',
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens:
+        inputTokens != null ? inputTokens + outputTokens : outputTokens,
     };
   }
 }
