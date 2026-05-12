@@ -1606,7 +1606,15 @@ export async function reingestKnowledgeFile(
 export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
-): Promise<{ visibility: KnowledgeFileVisibility; affectedIds: string[] }> {
+): Promise<{
+  visibility: KnowledgeFileVisibility;
+  affectedIds: string[];
+  /** Files skipped because they were mid-ingestion at the time of the
+   *  call — BE refuses to flip during processing to avoid leaving
+   *  knowledge_files.visibility out of sync with the chunks the
+   *  worker is about to insert. Admin can retry once they finish. */
+  skippedIds: string[];
+}> {
   const res = await apiFetch(`/knowledge-core/files/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

@@ -341,11 +341,24 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success(
+      const updatedCopy =
         res.visibility === "admins"
           ? `${res.affectedIds.length} file(s) are now visible only to admins.`
-          : `${res.affectedIds.length} file(s) are now visible to everyone.`,
-      );
+          : `${res.affectedIds.length} file(s) are now visible to everyone.`;
+      // BE skips rows that are mid-ingestion to avoid leaving the
+      // file row + about-to-be-inserted chunks out of sync. Surface
+      // that to the admin so they know to retry once those finish.
+      if (res.skippedIds.length === 0) {
+        toast.success(updatedCopy);
+      } else if (res.affectedIds.length === 0) {
+        toast.warning(
+          `All ${res.skippedIds.length} selected file(s) are still being trained. Try again once they finish.`,
+        );
+      } else {
+        toast.warning(
+          `${updatedCopy} ${res.skippedIds.length} file(s) were skipped because they're still being trained — try those again in a moment.`,
+        );
+      }
       clearSelection();
     },
     onError: (err: Error) =>
