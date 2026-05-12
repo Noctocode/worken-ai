@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Info,
   Library,
+  Loader2,
   MoreVertical,
   Paperclip,
   Plus,
@@ -184,6 +185,25 @@ export default function CompareModelsPage() {
   // comparison cards. Cleared on every new run.
   const [evaluatorError, setEvaluatorError] = useState<string | null>(null);
 
+  // Per-panel lifecycle state so each card can render an accurate
+  // pre-stream / streaming / finished label. Derived state alone
+  // (was buffer === ''?) couldn't distinguish "queued, waiting for
+  // first token" from "model already streamed nothing back".
+  type ModelStatus = "pending" | "streaming" | "done" | "error";
+  const [modelStatuses, setModelStatuses] = useState<
+    Record<string, ModelStatus>
+  >({});
+
+  // Top-level evaluator phase. After all panels reach done/error
+  // the BE moves on to running the comparison eval — the FE has no
+  // explicit "evaluator started" event, so we infer the running
+  // state from the per-panel statuses + absence of an evaluation
+  // event so far.
+  type EvaluatorStatus = "idle" | "waiting" | "running" | "done" | "error";
+  const [evaluatorStatus, setEvaluatorStatus] = useState<EvaluatorStatus>(
+    "idle",
+  );
+
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
   const [modelsExpanded, setModelsExpanded] = useState(true);
@@ -275,6 +295,14 @@ export default function CompareModelsPage() {
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
 
+    // Every panel starts in "pending" — no tokens yet. First
+    // model-delta flips it to "streaming"; model-done/-error settle
+    // it. Evaluator stays "waiting" until all panels settle.
+    const initialStatuses: Record<string, ModelStatus> = {};
+    for (const id of activeModels) initialStatuses[id] = "pending";
+    setModelStatuses(initialStatuses);
+    setEvaluatorStatus("waiting");
+
     const contextParts: string[] = [];
     if (attachedFile) {
       contextParts.push(
@@ -305,6 +333,14 @@ export default function CompareModelsPage() {
         teamIdForCall,
       )) {
         if (event.type === "model-delta") {
+          // Flip status to "streaming" on the first byte. Subsequent
+          // deltas keep it streaming; functional update so we don't
+          // race with another panel's status transition.
+          setModelStatuses((prev) =>
+            prev[event.model] === "streaming"
+              ? prev
+              : { ...prev, [event.model]: "streaming" },
+          );
           buffers[event.model] = (buffers[event.model] ?? "") + event.text;
           setResponses((prev) => ({
             ...prev,
@@ -334,10 +370,32 @@ export default function CompareModelsPage() {
             ...prev,
             [event.model]: errMessage,
           }));
+          setModelStatuses((prev) => {
+            const next = { ...prev, [event.model]: "error" as ModelStatus };
+            // If this was the last unsettled panel, the evaluator
+            // is about to start running on the BE side.
+            const allSettled = activeModels.every(
+              (id) => next[id] === "done" || next[id] === "error",
+            );
+            if (allSettled) setEvaluatorStatus("running");
+            return next;
+          });
         } else if (event.type === "model-done") {
           // Per-model totals arrive here. We don't surface them
           // outside the evaluation card below today; the BE
-          // already records observability events.
+          // already records observability events. Settle the
+          // panel's status and check whether the evaluator phase
+          // should start on the FE — the BE has no explicit
+          // "evaluator started" event so we infer it from "all
+          // panels are settled".
+          setModelStatuses((prev) => {
+            const next = { ...prev, [event.model]: "done" as ModelStatus };
+            const allSettled = activeModels.every(
+              (id) => next[id] === "done" || next[id] === "error",
+            );
+            if (allSettled) setEvaluatorStatus("running");
+            return next;
+          });
         } else if (event.type === "evaluation") {
           // Evaluator ran post-fan-out — paint the score cards.
           // If every retry failed, BE surfaces the reason in
@@ -347,9 +405,12 @@ export default function CompareModelsPage() {
           // evaluator model).
           if (event.error) {
             setEvaluatorError(event.error);
+            setEvaluatorStatus("error");
             toast.error(
               `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
             );
+          } else {
+            setEvaluatorStatus("done");
           }
           const nextEvaluations: Record<string, ModelEvaluation | null> =
             {};
@@ -381,6 +442,9 @@ export default function CompareModelsPage() {
     setExpectedOutput("");
     setResponses({});
     setEvaluations({});
+    setEvaluatorError(null);
+    setModelStatuses({});
+    setEvaluatorStatus("idle");
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
     setAttachedFile(null);
@@ -495,6 +559,30 @@ export default function CompareModelsPage() {
               </>
             )}
 
+            {/* "Scoring responses…" banner. Shows after every panel
+                has settled (done/error) but before the evaluation
+                event arrives. The evaluator runs server-side and
+                can take 5-15s on the :free-tier nemotron, so without
+                this banner the user sees stale "done" cards and
+                wonders why scores haven't appeared. */}
+            {evaluatorStatus === "running" && (
+              <div className="mb-3 flex items-center gap-3 rounded-lg border border-primary-2 bg-primary-1/30 px-4 py-3">
+                <Loader2
+                  className="h-5 w-5 shrink-0 animate-spin text-primary-7"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Scoring responses…
+                  </p>
+                  <p className="text-text-3">
+                    All models have finished. Comparing their answers
+                    against your expected output now.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Inline evaluator-failure banner — sits above the
                 response grid so it's unmissable. Fires only after
                 the stream resolves with an evaluator error set;
@@ -540,7 +628,7 @@ export default function CompareModelsPage() {
                     modelId={id}
                     response={responses[id] ?? null}
                     evaluation={evaluations[id] ?? null}
-                    loading={loading && (responses[id] ?? null) === null}
+                    status={modelStatuses[id] ?? (loading ? "pending" : "done")}
                     onCopy={(t) => copyText(t, getModelLabel(id))}
                   />
                 ))}
@@ -591,15 +679,25 @@ export default function CompareModelsPage() {
                   setLoadedRunCreatedAt(run.createdAt);
                   const nextResponses: Record<string, string | null> = {};
                   const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+                  const nextStatuses: Record<string, ModelStatus> = {};
                   for (const id of run.models) {
                     nextResponses[id] =
                       run.responses.find((r) => r.model === id)?.response.content ??
                       null;
                     nextEvaluations[id] =
                       run.comparison.find((c) => c.name === id) ?? null;
+                    // Historical runs were already completed — mark
+                    // every panel done so the body renders content
+                    // (not the "Waiting…" placeholder) on load.
+                    nextStatuses[id] = "done";
                   }
                   setResponses(nextResponses);
                   setEvaluations(nextEvaluations);
+                  setModelStatuses(nextStatuses);
+                  setEvaluatorStatus(
+                    run.comparison.length > 0 ? "done" : "idle",
+                  );
+                  setEvaluatorError(null);
                 })
                 .catch((err) => {
                   const message =
@@ -716,13 +814,20 @@ function ResponseCard({
   modelId,
   response,
   evaluation,
-  loading,
+  status,
   onCopy,
 }: {
   modelId: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
-  loading: boolean;
+  /** Per-panel lifecycle. Drives the body's loading-style text:
+   *   pending   → "Waiting to start…"
+   *   streaming → if response is empty, "Generating…"; once tokens
+   *               arrive, render content with a subtle inline
+   *               typing cursor at the end.
+   *   done      → render content as-is.
+   *   error     → render content (already the humanized message). */
+  status: "pending" | "streaming" | "done" | "error";
   onCopy: (text: string) => void;
 }) {
   const { getLabel: getModelLabel } = useUserModels();
@@ -795,12 +900,30 @@ function ResponseCard({
         </div>
       </header>
 
-      {/* Body */}
+      {/* Body — driven by `status` so each lifecycle phase has its
+          own visual treatment instead of conflating "no content
+          yet" with "no response will ever arrive". */}
       <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1">
-        {loading ? (
-          <ResponseSkeleton />
+        {status === "pending" ? (
+          <span className="flex items-center gap-2 text-text-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Waiting to start…
+          </span>
+        ) : status === "streaming" && !response ? (
+          <span className="flex items-center gap-2 text-text-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Generating response…
+          </span>
         ) : response ? (
-          <AiResponseRender content={response} />
+          // Streaming-with-content + done both render the markdown.
+          // While streaming, append a subtle blinking cursor to
+          // signal more tokens are still on the way.
+          <div>
+            <AiResponseRender content={response} />
+            {status === "streaming" && (
+              <span className="ml-0.5 inline-block h-3 w-1 animate-pulse rounded-sm bg-primary-6 align-middle" />
+            )}
+          </div>
         ) : (
           <span className="text-text-3">No response.</span>
         )}
