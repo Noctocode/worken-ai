@@ -33,6 +33,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -561,6 +562,74 @@ export default function CompareModelsPage() {
     return () => window.removeEventListener("compare-models:new", handler);
   }, [newComparison]);
 
+  /**
+   * Hydrate the composer + panels from a saved arena run. Called
+   * from the history rail and from the `?run=<id>` deep-link
+   * effect below so the same path runs whether the user clicked
+   * History or arrived from the dashboard. Pops the rail open so
+   * the loaded run is visible in context.
+   */
+  const loadHistoryRun = useCallback(
+    (runId: string) => {
+      fetchArenaRun(runId)
+        .then((run) => {
+          setQuestion(run.question);
+          setExpectedOutput(run.expectedOutput);
+          setSelectedModels(run.models);
+          setDisabledModels(new Set());
+          setSubmittedQuestion(run.question);
+          setLoadedRunCreatedAt(run.createdAt);
+          const nextResponses: Record<string, string | null> = {};
+          const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+          const nextStatuses: Record<string, ModelStatus> = {};
+          for (const id of run.models) {
+            nextResponses[id] =
+              run.responses.find((r) => r.model === id)?.response.content ??
+              null;
+            nextEvaluations[id] =
+              run.comparison.find((c) => c.name === id) ?? null;
+            // Historical runs were already completed — mark every
+            // panel done so the body renders content (not the
+            // "Waiting…" placeholder) on load.
+            nextStatuses[id] = "done";
+          }
+          setResponses(nextResponses);
+          setEvaluations(nextEvaluations);
+          setModelStatuses(nextStatuses);
+          setEvaluatorStatus(run.comparison.length > 0 ? "done" : "idle");
+          setEvaluatorError(null);
+          // Surface the loaded run in the history rail so users see
+          // it highlighted alongside the other entries.
+          setRailOpen(true);
+          setHistoryExpanded(true);
+        })
+        .catch((err) => {
+          const message =
+            err instanceof Error ? err.message : "Couldn't load run.";
+          toast.error(message);
+        });
+    },
+    [],
+  );
+
+  // Deep-link support: clicking a card on the dashboard opens
+  // /compare-models?run=<id> — auto-load that run, then scrub the
+  // param so a refresh doesn't re-trigger and so the URL reads as
+  // the canonical /compare-models again.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  useEffect(() => {
+    const runId = searchParams.get("run");
+    if (!runId) return;
+    loadHistoryRun(runId);
+    router.replace(pathname, { scroll: false });
+    // We deliberately omit `loadHistoryRun` etc from deps — the
+    // effect should fire once per URL change, not on render-time
+    // reference churn. router/pathname are stable per route.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   async function copyText(text: string, label = "response") {
     try {
       await navigator.clipboard.writeText(text);
@@ -768,43 +837,7 @@ export default function CompareModelsPage() {
             setHistoryExpanded={setHistoryExpanded}
             history={history}
             onDeleteHistory={(runId) => setDeleteRunId(runId)}
-            onLoadHistory={(runId) => {
-              fetchArenaRun(runId)
-                .then((run) => {
-                  setQuestion(run.question);
-                  setExpectedOutput(run.expectedOutput);
-                  setSelectedModels(run.models);
-                  setDisabledModels(new Set());
-                  setSubmittedQuestion(run.question);
-                  setLoadedRunCreatedAt(run.createdAt);
-                  const nextResponses: Record<string, string | null> = {};
-                  const nextEvaluations: Record<string, ModelEvaluation | null> = {};
-                  const nextStatuses: Record<string, ModelStatus> = {};
-                  for (const id of run.models) {
-                    nextResponses[id] =
-                      run.responses.find((r) => r.model === id)?.response.content ??
-                      null;
-                    nextEvaluations[id] =
-                      run.comparison.find((c) => c.name === id) ?? null;
-                    // Historical runs were already completed — mark
-                    // every panel done so the body renders content
-                    // (not the "Waiting…" placeholder) on load.
-                    nextStatuses[id] = "done";
-                  }
-                  setResponses(nextResponses);
-                  setEvaluations(nextEvaluations);
-                  setModelStatuses(nextStatuses);
-                  setEvaluatorStatus(
-                    run.comparison.length > 0 ? "done" : "idle",
-                  );
-                  setEvaluatorError(null);
-                })
-                .catch((err) => {
-                  const message =
-                    err instanceof Error ? err.message : "Couldn't load run.";
-                  toast.error(message);
-                });
-            }}
+            onLoadHistory={loadHistoryRun}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
           />

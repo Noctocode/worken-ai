@@ -439,7 +439,7 @@ function RecentComparisons({
             {runs.map((run) => (
               <Link
                 key={run.id}
-                href="/compare-models"
+                href={`/compare-models?run=${run.id}`}
                 className="group block cursor-pointer p-4 transition-colors hover:bg-bg-1"
               >
                 <div className="mb-2 flex items-center gap-2">
