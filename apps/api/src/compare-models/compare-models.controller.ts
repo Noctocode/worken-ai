@@ -669,6 +669,10 @@ export class CompareModelsController {
       .select({
         id: arenaRuns.id,
         question: arenaRuns.question,
+        // models is `jsonb` on the row — the FE renders avatars per
+        // model, so include it in the summary so the dashboard /
+        // sidebar don't have to round-trip back through /runs/:id.
+        models: arenaRuns.models,
         createdAt: arenaRuns.createdAt,
       })
       .from(arenaRuns)
@@ -676,7 +680,10 @@ export class CompareModelsController {
       .orderBy(desc(arenaRuns.createdAt))
       .limit(50);
 
-    return rows;
+    return rows.map((r) => ({
+      ...r,
+      models: Array.isArray(r.models) ? (r.models as string[]) : [],
+    }));
   }
 
   @Get('runs/:id')

@@ -1328,6 +1328,10 @@ export async function* streamCompareModels(
 export interface ArenaRunSummary {
   id: string;
   question: string;
+  /** Model identifiers the run was executed against. The dashboard
+   *  card stack and the sidebar history list both render avatars
+   *  from these without a second round-trip to /runs/:id. */
+  models: string[];
   createdAt: string;
 }
 
