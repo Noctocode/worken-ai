@@ -53,7 +53,12 @@ import {
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { InviteUserDialog } from "@/components/invite-user-dialog";
-import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import {
+  DisabledReasonTooltip,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 // Mirror the wizard step-2 dropdowns so the post-onboarding edit flow
 // offers the same options. Source of truth: setup-profile/step-2 (BE
@@ -674,7 +679,22 @@ export function CompanyTab() {
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <p className="text-[18px] font-bold text-text-1">Projected</p>
-              <Info className="h-3.5 w-3.5 text-text-3" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="What does Projected mean?"
+                    className="flex items-center justify-center text-text-3 hover:text-text-1"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-center">
+                  Linear forecast of total company spend by month-end,
+                  extrapolated from the daily run-rate so far. Early in
+                  the month it can swing widely, then stabilizes.
+                </TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-2.5 h-[56px]">
               <span className="text-[16px] text-text-1">{formatCurrency(projected)}</span>
