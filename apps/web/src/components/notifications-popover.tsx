@@ -49,6 +49,11 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       <CircleDollarSign className="h-4 w-4 text-text-3" strokeWidth={2} />
     );
   }
+  if (type === "team_renamed") {
+    // Same Users glyph as the team_invite family, muted tone since
+    // this is purely informational (no Accept/Decline).
+    return <Users className="h-4 w-4 text-text-3" strokeWidth={2} />;
+  }
   return <Bell className="h-4 w-4 text-text-3" strokeWidth={2} />;
 }
 

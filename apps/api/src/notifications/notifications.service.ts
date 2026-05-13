@@ -24,7 +24,8 @@ export type NotificationType =
   | 'team_invite'
   | 'org_invite'
   | 'budget_alert'
-  | 'budget_changed';
+  | 'budget_changed'
+  | 'team_renamed';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 
@@ -270,6 +271,38 @@ export class NotificationsService {
     }
     await this.markActed(id, userId);
     return { ok: true };
+  }
+
+  /**
+   * Resolve the set of users who should receive a team-wide
+   * informational notification (rename, generic announcements):
+   * team owner + every accepted member regardless of role.
+   * Distinct from `getTeamBudgetRecipients` which is narrower
+   * (owner + admin only) because budget signals are management-
+   * oriented, not member-oriented.
+   */
+  async getTeamMembers(teamId: string): Promise<string[]> {
+    const ownerRow = await this.db
+      .select({ ownerId: teams.ownerId })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
+    const owner = ownerRow[0]?.ownerId;
+    const memberRows = await this.db
+      .select({ userId: teamMembers.userId })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.teamId, teamId),
+          eq(teamMembers.status, 'accepted'),
+        ),
+      );
+    const set = new Set<string>();
+    if (owner) set.add(owner);
+    for (const r of memberRows) {
+      if (r.userId) set.add(r.userId);
+    }
+    return Array.from(set);
   }
 
   /**

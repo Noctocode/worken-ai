@@ -172,7 +172,72 @@ export class TeamsService {
       .where(eq(teams.id, teamId))
       .returning();
 
+    // Info-only rename announcement to every accepted member +
+    // owner, minus the caller. Fires only when the name actually
+    // changed (typing `name` into the patch with the same value
+    // shouldn't ping the team). Best-effort — alert failures must
+    // not abort the team update.
+    if (
+      data.name !== undefined &&
+      data.name !== team.name &&
+      data.name.trim().length > 0
+    ) {
+      await this.announceTeamRename(
+        teamId,
+        team.name,
+        data.name,
+        userId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Fan out a 'team_renamed' info-only notification to every
+   * accepted member + owner of the team, minus the caller who
+   * made the change. Best-effort, never throws.
+   */
+  private async announceTeamRename(
+    teamId: string,
+    previousName: string,
+    nextName: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== callerUserId);
+      if (recipients.length === 0) return;
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_renamed',
+            title: `Team "${previousName}" was renamed to "${nextName}"`,
+            body: `Renamed by ${actorName}.`,
+            data: {
+              teamId,
+              previousName,
+              nextName,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team rename for ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async deleteTeam(teamId: string, userId: string) {
