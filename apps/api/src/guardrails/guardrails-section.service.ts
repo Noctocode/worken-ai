@@ -342,9 +342,14 @@ export class GuardrailsSectionService {
     if (teamRole === null) {
       throw new NotFoundException('Team not found');
     }
-    if (teamRole !== 'owner' && teamRole !== 'admin' && teamRole !== 'editor') {
+    if (
+      teamRole !== 'owner' &&
+      teamRole !== 'admin' &&
+      teamRole !== 'manager' &&
+      teamRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners, admins, or editors can assign guardrails to a team',
+        'Only team owners, admins, managers, or editors can assign guardrails to a team',
       );
     }
 

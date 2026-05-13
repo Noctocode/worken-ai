@@ -95,6 +95,7 @@ export const Appbar = () => {
     return (
       me?.role === "owner" ||
       me?.role === "admin" ||
+      me?.role === "manager" ||
       me?.role === "editor"
     );
   })();

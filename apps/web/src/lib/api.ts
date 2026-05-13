@@ -341,11 +341,14 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  // 'admin' is owner-equivalent: same permissions as the team owner
-  // (budget, invites, role changes, integrations) except they aren't
-  // the literal team owner so they can't be removed as such. Only
-  // an owner or another admin can promote / demote to this role.
-  role: "owner" | "admin" | "editor" | "viewer";
+  // 'admin' and 'manager' are owner-equivalent: same permissions as
+  // the team owner (budget, invites, role changes, integrations)
+  // except they aren't the literal team owner so they can't be
+  // removed as such. Only an owner, admin, or manager can promote /
+  // demote into these tiers. 'editor' can create team projects,
+  // edit content, and invite editors/viewers but can't touch
+  // admin/manager rows.
+  role: "owner" | "admin" | "manager" | "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
@@ -450,7 +453,7 @@ export async function inviteUser(
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "admin" | "editor" | "viewer",
+  role: "admin" | "manager" | "editor" | "viewer",
   monthlyCapCents?: number | null,
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
@@ -496,7 +499,7 @@ export async function revokeInvitation(memberId: string): Promise<void> {
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "admin" | "editor" | "viewer",
+  role: "admin" | "manager" | "editor" | "viewer",
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",

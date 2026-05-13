@@ -375,7 +375,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       role,
     }: {
       memberId: string;
-      role: "admin" | "editor" | "viewer";
+      role: "admin" | "manager" | "editor" | "viewer";
     }) => updateMemberRole(id, memberId, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
     onError: (err: Error) =>
@@ -502,13 +502,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     (currentUser.id === team.ownerId ||
       myMembership?.role === "owner" ||
       myMembership?.role === "admin" ||
+      myMembership?.role === "manager" ||
       myMembership?.role === "editor");
-  // Owner-equivalent rights: owner or admin. Required to promote /
-  // demote 'admin' roles and (later) to surface budget / invitation
-  // controls scoped to the team.
+  // Owner-equivalent rights: owner, admin, or manager. Required to
+  // promote / demote 'admin' or 'manager' rows and (later) to
+  // surface budget / invitation controls scoped to the team.
   const hasOwnerRights =
     !!currentUser &&
-    (currentUser.id === team.ownerId || myMembership?.role === "admin");
+    (currentUser.id === team.ownerId ||
+      myMembership?.role === "admin" ||
+      myMembership?.role === "manager");
   // Back-compat alias used by the role Select.
   const canEditRoles = canManageTeam;
 
@@ -973,6 +976,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                 Team Admin
                               </Badge>
                             )}
+                            {m.role === "manager" && (
+                              <Badge className="border-transparent bg-success-1 text-success-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                                Team Manager
+                              </Badge>
+                            )}
                             {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
                           </span>
                         </div>
@@ -988,22 +996,24 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             value={m.role}
                             // Editors can flip editor↔viewer but the
                             // BE rejects them touching anything that
-                            // involves 'admin' (promoting to it or
-                            // demoting from it). Disable the whole
-                            // control when the target is currently
-                            // admin and the caller isn't owner-level,
-                            // so the editor sees a read-only "Admin"
-                            // chip instead of an option set that
-                            // would 403 on submit.
+                            // involves 'admin' or 'manager' (promo-
+                            // ting to / demoting from). Disable the
+                            // whole control when the target is one
+                            // of those tiers and the caller isn't
+                            // owner-level, so the editor sees a
+                            // read-only chip instead of an option
+                            // set that would 403 on submit.
                             disabled={
                               !canEditRoles ||
-                              (m.role === "admin" && !hasOwnerRights)
+                              ((m.role === "admin" || m.role === "manager") &&
+                                !hasOwnerRights)
                             }
                             onValueChange={(value) =>
                               roleMutation.mutate({
                                 memberId: m.id,
                                 role: value as
                                   | "admin"
+                                  | "manager"
                                   | "editor"
                                   | "viewer",
                               })
@@ -1013,13 +1023,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              {/* 'Admin' is only offered to owner-
-                                  level callers. Stays in the list when
-                                  the target is already admin so the
-                                  Select can display the current value
-                                  even for a read-only editor view. */}
+                              {/* Admin / Manager are only offered to
+                                  owner-level callers. Stays in the
+                                  list when the target is already in
+                                  that tier so the Select can display
+                                  the current value even for a read-
+                                  only editor view. */}
                               {(hasOwnerRights || m.role === "admin") && (
                                 <SelectItem value="admin">Admin</SelectItem>
+                              )}
+                              {(hasOwnerRights || m.role === "manager") && (
+                                <SelectItem value="manager">Manager</SelectItem>
                               )}
                               <SelectItem value="editor">Editor</SelectItem>
                               <SelectItem value="viewer">Viewer</SelectItem>

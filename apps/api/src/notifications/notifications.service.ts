@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   notifications,
   teamMembers,
@@ -307,8 +307,9 @@ export class NotificationsService {
 
   /**
    * Resolve the set of users who should receive a team-budget
-   * alert: team owner + every accepted member with role='admin'.
-   * Used by the chat-transport budget gates.
+   * alert: team owner + every accepted member with role='admin'
+   * or role='manager' (the owner-equivalent set). Used by the
+   * chat-transport budget gates.
    */
   async getTeamBudgetRecipients(teamId: string): Promise<string[]> {
     const ownerRow = await this.db
@@ -323,7 +324,7 @@ export class NotificationsService {
       .where(
         and(
           eq(teamMembers.teamId, teamId),
-          eq(teamMembers.role, 'admin'),
+          inArray(teamMembers.role, ['admin', 'manager']),
           eq(teamMembers.status, 'accepted'),
         ),
       );
