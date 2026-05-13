@@ -71,9 +71,15 @@ function relativeTime(iso: string): string {
 }
 
 interface NotificationsPopoverProps {
-  /** Renders the trigger; the parent wraps whatever they want
-   *  (sidebar nav button, appbar bell, etc). */
-  children: React.ReactNode;
+  /**
+   * Render prop for the trigger. Gets the live unread count so the
+   * caller can render its own badge in-place — matters because the
+   * trigger lives inside layouts (sidebar nav row, appbar icon
+   * button) where wrapping it in a positioned span would break
+   * width / alignment. Returning a single element keeps Radix's
+   * `asChild` happy.
+   */
+  children: (state: { unreadCount: number }) => React.ReactElement;
 }
 
 /**
@@ -157,16 +163,7 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <span className="relative inline-flex">
-          {children}
-          {unreadCount > 0 && (
-            <span className="absolute -right-1 -top-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-5 px-1 text-[10px] font-semibold leading-none text-white">
-              {unreadCount > 99 ? "99+" : unreadCount}
-            </span>
-          )}
-        </span>
-      </PopoverTrigger>
+      <PopoverTrigger asChild>{children({ unreadCount })}</PopoverTrigger>
       <PopoverContent
         align="end"
         sideOffset={8}

@@ -261,32 +261,49 @@ export const SidebarContent = ({
         {/* Notifications. Lives above the dark-mode toggle by design
             — bell+badge is the highest-priority item below the main
             nav, dark-mode is a quality-of-life sibling under it.
-            NotificationsPopover wraps the trigger so the unread
-            badge / popover state is self-contained. */}
-        {collapsed ? (
-          <NotificationsPopover>
-            <button
-              type="button"
-              aria-label="Notifications"
-              title="Notifications"
-              className="flex h-[40px] w-[40px] cursor-pointer items-center justify-center rounded-md p-0 text-text-2 hover:text-text-1 hover:bg-bg-1"
-            >
-              <Bell className="h-5 w-5 text-text-3" />
-            </button>
-          </NotificationsPopover>
-        ) : (
-          <NotificationsPopover>
-            <button
-              type="button"
-              aria-label="Notifications"
-              title="Notifications"
-              className="flex h-10 w-full cursor-pointer items-center justify-start gap-3 rounded-md px-3 font-normal text-text-2 hover:bg-bg-1 hover:text-text-1"
-            >
-              <Bell className="size-5 shrink-0 text-text-3" />
-              <span>Notifications</span>
-            </button>
-          </NotificationsPopover>
-        )}
+            Render-prop pattern so the badge can sit next to the bell
+            icon and the Button shape matches the rest of the nav
+            list exactly (no extra wrapper that would offset the
+            left edge of the icon). */}
+        <NotificationsPopover>
+          {({ unreadCount }) =>
+            collapsed ? (
+              <Button
+                variant="ghost"
+                aria-label="Notifications"
+                title="Notifications"
+                className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
+              >
+                <span className="relative">
+                  <Bell className="size-5 text-text-3" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-5 px-1 text-[10px] font-semibold leading-none text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="nav"
+                aria-label="Notifications"
+                title="Notifications"
+                className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
+              >
+                <span className="relative">
+                  <Bell className="size-5 shrink-0 text-text-3" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-5 px-1 text-[10px] font-semibold leading-none text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
+                <span>Notifications</span>
+              </Button>
+            )
+          }
+        </NotificationsPopover>
         {/* Dark mode toggle */}
         {collapsed ? (
           <Button
