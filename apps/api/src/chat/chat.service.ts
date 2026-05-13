@@ -158,6 +158,110 @@ export class ChatService {
       return;
     }
 
+    // Some reasoning models (notably free-tier nvidia/nemotron-…
+    // -reasoning and a few qwen-r1 forks) wrap their thinking in raw
+    // <think>…</think> tags inside the `content` field instead of
+    // routing it through OpenRouter's `reasoning` channel. When that
+    // happens the literal tags + chain-of-thought leak into the
+    // visible bubble. The sanitizer below splits `content` deltas on
+    // the tag boundaries and re-routes the in-block text to the
+    // `reasoning` event so the FE thinking pane catches it.
+    //
+    // Stateful across the stream: a tag can straddle two chunks
+    // ("<thi" + "nk>"), so we keep `inThinkBlock` and a small
+    // `pending` buffer that holds up to one tag-width of unflushed
+    // bytes between deltas.
+    let inThinkBlock = false;
+    let pending = '';
+    const OPEN_TAG = '<think>';
+    const CLOSE_TAG = '</think>';
+
+    // How many trailing bytes of `buf` could be a prefix of `tag`?
+    // Used so we hold back the minimum necessary bytes — most chunks
+    // don't end in `<` or `</`, so most calls hold back 0 and the
+    // stream feels token-by-token rather than coalesced.
+    const tagPrefix = (buf: string, tag: string): number => {
+      const max = Math.min(buf.length, tag.length - 1);
+      for (let k = max; k > 0; k--) {
+        if (tag.startsWith(buf.slice(-k))) return k;
+      }
+      return 0;
+    };
+
+    // Walk through `text` byte-by-byte, splitting on whichever tag
+    // ends the current mode and yielding the right event type for
+    // each segment. The leftover (a partial tag at the end, if any)
+    // stays in `pending` for the next call.
+    const sanitize = function* (
+      this: void,
+      text: string,
+    ): Generator<{ type: 'content' | 'reasoning'; delta: string }> {
+      pending += text;
+      while (pending.length > 0) {
+        if (inThinkBlock) {
+          const closeIdx = pending.indexOf(CLOSE_TAG);
+          if (closeIdx === -1) {
+            // No close tag yet. Flush all but a possible trailing
+            // prefix of </think>; the next chunk will complete the
+            // match (or not, in which case the leftover is
+            // legitimate reasoning bytes).
+            const hold = tagPrefix(pending, CLOSE_TAG);
+            const flushable = pending.slice(0, pending.length - hold);
+            if (flushable.length > 0) {
+              yield { type: 'reasoning', delta: flushable };
+            }
+            pending = pending.slice(pending.length - hold);
+            break;
+          }
+          const before = pending.slice(0, closeIdx);
+          if (before.length > 0) {
+            yield { type: 'reasoning', delta: before };
+          }
+          pending = pending.slice(closeIdx + CLOSE_TAG.length);
+          inThinkBlock = false;
+          continue;
+        }
+        // Content mode: scan for whichever of <think> / </think>
+        // comes first. The orphan </think> case (close tag with no
+        // matching open in this stream) gets dropped — that's the
+        // free-tier-nemotron leak we're guarding against. Treating
+        // the orphan as a strip-only no-op (mode stays "content")
+        // keeps the visible bubble clean without misclassifying
+        // subsequent answer text as reasoning.
+        const openIdx = pending.indexOf(OPEN_TAG);
+        const orphanIdx = pending.indexOf(CLOSE_TAG);
+        const earliest =
+          openIdx === -1
+            ? orphanIdx
+            : orphanIdx === -1
+              ? openIdx
+              : Math.min(openIdx, orphanIdx);
+        if (earliest === -1) {
+          const hold = Math.max(
+            tagPrefix(pending, OPEN_TAG),
+            tagPrefix(pending, CLOSE_TAG),
+          );
+          const flushable = pending.slice(0, pending.length - hold);
+          if (flushable.length > 0) {
+            yield { type: 'content', delta: flushable };
+          }
+          pending = pending.slice(pending.length - hold);
+          break;
+        }
+        const before = pending.slice(0, earliest);
+        if (before.length > 0) {
+          yield { type: 'content', delta: before };
+        }
+        if (earliest === openIdx) {
+          pending = pending.slice(earliest + OPEN_TAG.length);
+          inThinkBlock = true;
+        } else {
+          // Orphan </think> — drop the tag, stay in content mode.
+          pending = pending.slice(earliest + CLOSE_TAG.length);
+        }
+      }
+    };
+
     try {
       for await (const chunk of stream) {
         // OpenRouter emits `reasoning` deltas through a non-standard
@@ -173,7 +277,9 @@ export class ChatService {
           yield { type: 'reasoning', delta: delta.reasoning };
         }
         if (delta?.content) {
-          yield { type: 'content', delta: delta.content };
+          for (const ev of sanitize(delta.content)) {
+            yield ev;
+          }
         }
         // The final-chunk-with-usage pattern: OpenAI/OpenRouter send a
         // chunk where choices is empty / finish_reason set and usage
@@ -189,6 +295,17 @@ export class ChatService {
             costUsd: usage.cost,
           };
         }
+      }
+      // End of stream — flush whatever's left in the sanitizer's
+      // peek buffer. We held the last few bytes back in case they
+      // were the start of a tag; now that the stream is closed, they
+      // can't be, so they belong in the user-visible event.
+      if (pending.length > 0) {
+        yield {
+          type: inThinkBlock ? 'reasoning' : 'content',
+          delta: pending,
+        };
+        pending = '';
       }
     } catch (err) {
       // User-initiated Stop arrives as an AbortError once the

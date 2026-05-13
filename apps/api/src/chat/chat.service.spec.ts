@@ -246,4 +246,76 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       },
     ]);
   });
+
+  // <think> tags in content. Some free-tier reasoning models
+  // (nvidia/nemotron-…-reasoning, certain qwen-r1 forks) wrap their
+  // chain-of-thought in raw <think>…</think> inside the `content`
+  // field instead of using OpenRouter's `reasoning` channel. The
+  // sanitizer splits those tags out so the FE thinking pane catches
+  // the reasoning and the visible bubble only ever sees the post-
+  // think answer.
+  it('reroutes <think>…</think> content into reasoning events', async () => {
+    const svc = makeServiceWithChunks([
+      {
+        choices: [
+          {
+            delta: {
+              content: '<think>let me reason</think>final answer',
+            },
+          },
+        ],
+      },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream([{ role: 'user', content: 'q' }]),
+    );
+    expect(events).toEqual([
+      { type: 'reasoning', delta: 'let me reason' },
+      { type: 'content', delta: 'final answer' },
+    ]);
+  });
+
+  it('strips an orphan </think> at the start of content', async () => {
+    // Real-world reproduction: nvidia/nemotron-3-nano-omni-reasoning
+    // splits its think block so most reasoning lands on OpenRouter's
+    // `reasoning` channel but the closing tag plus the post-think
+    // answer spill into `content`. The sanitizer drops the orphan
+    // close tag without changing mode so the answer surfaces cleanly.
+    const svc = makeServiceWithChunks([
+      { choices: [{ delta: { reasoning: 'inner reasoning' } }] },
+      { choices: [{ delta: { content: '</think>visible answer' } }] },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream([{ role: 'user', content: 'q' }]),
+    );
+    const visible = events
+      .filter((e) => e.type === 'content')
+      .map((e) => e.delta)
+      .join('');
+    expect(visible).toBe('visible answer');
+    expect(visible).not.toContain('</think>');
+  });
+
+  it('handles a <think> tag split across two chunks', async () => {
+    // Tag straddles a chunk boundary — sanitizer's MAX_PEEK buffer
+    // holds back the tail of chunk 1 until chunk 2 arrives, then the
+    // full <think> tag matches and gets consumed.
+    const svc = makeServiceWithChunks([
+      { choices: [{ delta: { content: 'pre<thi' } }] },
+      { choices: [{ delta: { content: 'nk>secret</think>post' } }] },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream([{ role: 'user', content: 'q' }]),
+    );
+    const visible = events
+      .filter((e) => e.type === 'content')
+      .map((e) => e.delta)
+      .join('');
+    const thinking = events
+      .filter((e) => e.type === 'reasoning')
+      .map((e) => e.delta)
+      .join('');
+    expect(visible).toBe('prepost');
+    expect(thinking).toBe('secret');
+  });
 });
