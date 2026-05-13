@@ -44,6 +44,7 @@ import {
   createGuardrailItem,
   updateGuardrailItem,
   toggleGuardrailItem,
+  toggleGuardrailOrgWide,
   deleteGuardrailItem,
   applyComplianceTemplate,
   removeComplianceTemplate,
@@ -51,6 +52,7 @@ import {
   type GuardrailStats,
   type ComplianceTemplateItem,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 
 type Tab = "overview" | "templates";
 type Severity = "high" | "medium" | "low";
@@ -153,15 +155,23 @@ function OverviewTab({
   stats,
   isLoading,
   onToggle,
+  onToggleOrgWide,
   onDelete,
   onEdit,
+  canOrgWide,
 }: {
   guardrailsList: GuardrailItem[];
   stats: GuardrailStats | undefined;
   isLoading: boolean;
   onToggle: (id: string) => void;
+  onToggleOrgWide: (id: string) => void;
   onDelete: (id: string) => void;
   onEdit: (rule: GuardrailItem) => void;
+  /** Org-wide is a company-only concept — for personal-profile users
+   *  the Scope column collapses to inline team pills and hides the
+   *  Switch. Passed through from the page so we don't re-call the
+   *  auth hook inside the table component. */
+  canOrgWide: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState<string>("all");
@@ -312,6 +322,7 @@ function OverviewTab({
               <th className="px-4 py-2 font-medium">Type</th>
               <th className="px-4 py-2 font-medium">Severity</th>
               <th className="px-4 py-2 font-medium">Triggers</th>
+              <th className="px-4 py-2 font-medium">Scope</th>
               <th className="px-4 py-2 font-medium">Status</th>
               <th className="px-4 py-2 font-medium">Actions</th>
             </tr>
@@ -323,14 +334,7 @@ function OverviewTab({
                 className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${SEVERITY_ROW_ACCENT[g.severity]}`}
               >
                 <td className="px-4 py-6">
-                  <div className="flex flex-col">
-                    <span className="font-medium text-text-1">{g.name}</span>
-                    {g.teamName && (
-                      <span className="text-[11px] text-text-3">
-                        {g.teamName}
-                      </span>
-                    )}
-                  </div>
+                  <span className="font-medium text-text-1">{g.name}</span>
                 </td>
                 <td className="px-6 py-4 text-text-2">{g.type}</td>
                 <td className="px-4 py-6">
@@ -342,6 +346,63 @@ function OverviewTab({
                 </td>
                 <td className="px-6 py-4 text-text-2">
                   {g.triggers.toLocaleString()}
+                </td>
+                <td className="px-4 py-6">
+                  {/* Scope cell. For company users: Switch + visible
+                      state (Org-wide pill when ON; team pill stack
+                      when OFF). For personal users: just the team
+                      pills (no switch — org-wide has no meaning
+                      without a company). */}
+                  <div className="flex items-center gap-3">
+                    {canOrgWide && (
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={g.isOrgWide}
+                        aria-label={`Toggle Org-wide for ${g.name}`}
+                        onClick={() => onToggleOrgWide(g.id)}
+                        title={
+                          g.isOrgWide
+                            ? "Org-wide ON — rule fires for every chat in your company. Click to turn off and restore per-team scope."
+                            : "Turn on Org-wide to apply this rule to every chat in your company, regardless of team."
+                        }
+                        className={`flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full px-0.5 transition-colors ${
+                          g.isOrgWide ? "bg-primary-6" : "bg-text-3"
+                        }`}
+                      >
+                        <span
+                          className={`block h-5 w-5 rounded-full bg-bg-white transition-transform ${
+                            g.isOrgWide ? "translate-x-5" : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    )}
+                    {g.isOrgWide ? (
+                      <span className="rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6">
+                        Org-wide
+                      </span>
+                    ) : g.teams.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {g.teams.map((t) => (
+                          <span
+                            key={t.id}
+                            className={`rounded-full px-2 py-0.5 text-[11px] ${
+                              t.isActive
+                                ? "bg-bg-1 text-text-3"
+                                : "bg-bg-1 text-text-3 opacity-60"
+                            }`}
+                            title={t.isActive ? t.name : `${t.name} (paused)`}
+                          >
+                            {t.name}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-text-3">
+                        Personal
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-6">
                   <button
@@ -386,7 +447,7 @@ function OverviewTab({
             {paginated.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-6 py-10 text-center text-[13px] text-text-3"
                 >
                   No guardrails found.
@@ -1156,6 +1217,26 @@ export default function GuardrailsPage() {
     onError: () => toast.error("Failed to toggle guardrail."),
   });
 
+  const toggleOrgWideMutation = useMutation({
+    mutationFn: toggleGuardrailOrgWide,
+    onSuccess: (rule) => {
+      invalidateAll();
+      // Also refresh team-detail listings — an org-wide rule shows up
+      // there too and the badge state needs to flip in sync.
+      queryClient.invalidateQueries({ queryKey: ["guardrails"] });
+      toast.success(
+        rule.isOrgWide
+          ? `"${rule.name}" is now Org-wide.`
+          : `"${rule.name}" returned to per-team scope.`,
+      );
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to toggle org-wide scope."),
+  });
+
+  const { user: currentUser } = useAuth();
+  const canOrgWide = currentUser?.profileType === "company";
+
   const deleteMutation = useMutation({
     mutationFn: deleteGuardrailItem,
     onSuccess: () => {
@@ -1231,11 +1312,13 @@ export default function GuardrailsPage() {
           stats={stats}
           isLoading={listLoading}
           onToggle={(id) => toggleMutation.mutate(id)}
+          onToggleOrgWide={(id) => toggleOrgWideMutation.mutate(id)}
           onDelete={(id) => deleteMutation.mutate(id)}
           onEdit={(rule) => {
             setEditingRule(rule);
             setAddOpen(true);
           }}
+          canOrgWide={canOrgWide}
         />
       )}
 

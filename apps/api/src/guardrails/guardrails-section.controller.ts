@@ -85,12 +85,21 @@ export class GuardrailsSectionController {
     return this.service.applyTemplate(body.templateId, user.id);
   }
 
-  @Patch(':id/toggle-team')
-  toggleTeamActive(
+  @Patch(':id/toggle-org-wide')
+  toggleOrgWide(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.toggleTeamActive(id, user.id);
+    return this.service.toggleOrgWide(id, user.id);
+  }
+
+  @Patch(':id/toggle-team')
+  toggleTeamActive(
+    @Param('id') id: string,
+    @Body() body: { teamId: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.toggleTeamActive(id, body.teamId, user.id);
   }
 
   @Delete('template/:templateId')
@@ -113,8 +122,9 @@ export class GuardrailsSectionController {
   @Patch(':id/unassign')
   unassignFromTeam(
     @Param('id') id: string,
+    @Body() body: { teamId: string },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.unassignFromTeam(id, user.id);
+    return this.service.unassignFromTeam(id, body.teamId, user.id);
   }
 }

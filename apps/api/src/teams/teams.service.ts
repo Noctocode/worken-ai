@@ -19,6 +19,7 @@ import {
   teamMembers,
   users,
   guardrails,
+  guardrailTeams,
   integrations,
   modelConfigs,
   observabilityEvents,
@@ -1058,111 +1059,105 @@ export class TeamsService {
     });
   }
 
+  /**
+   * Rules visible on this team's detail page. Two sources:
+   *
+   *  1. Rules explicitly linked via `guardrail_teams` — each gets
+   *     `teamIsActive` from the link row (per-team pause toggle).
+   *  2. Org-wide rules whose owner shares this team's company —
+   *     surfaced with `teamIsActive=true` (org-wide can't be paused
+   *     per-team) and `isOrgWide=true` so the FE can disable the
+   *     per-team Switch + "Remove from team" affordances.
+   *
+   * "Same company" resolved by joining users on `company_name`.
+   * Teams without a resolvable company (orphan teams from before the
+   * profile flow) silently skip the org-wide branch.
+   */
   async findGuardrails(teamId: string) {
-    return this.db
-      .select()
-      .from(guardrails)
-      .where(eq(guardrails.teamId, teamId));
-  }
-
-  async createGuardrail(
-    teamId: string,
-    userId: string,
-    data: { name: string; type: string; severity: string },
-  ) {
-    const [team] = await this.db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, teamId));
-
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can add guardrails',
-        );
-      }
-    }
-
-    if (!['high', 'medium', 'low'].includes(data.severity)) {
-      throw new BadRequestException('Severity must be high, medium, or low');
-    }
-
-    const [created] = await this.db
-      .insert(guardrails)
-      .values({
-        teamId,
-        ownerId: userId,
-        name: data.name,
-        type: data.type,
-        severity: data.severity,
+    const linked = await this.db
+      .select({
+        id: guardrails.id,
+        ownerId: guardrails.ownerId,
+        name: guardrails.name,
+        type: guardrails.type,
+        severity: guardrails.severity,
+        triggers: guardrails.triggers,
+        isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
+        teamIsActive: guardrailTeams.isActive,
+        validatorType: guardrails.validatorType,
+        entities: guardrails.entities,
+        pattern: guardrails.pattern,
+        target: guardrails.target,
+        onFail: guardrails.onFail,
+        templateSource: guardrails.templateSource,
+        createdAt: guardrails.createdAt,
+        updatedAt: guardrails.updatedAt,
       })
-      .returning();
-
-    return created;
-  }
-
-  async toggleGuardrail(
-    teamId: string,
-    guardrailId: string,
-    userId: string,
-    isActive: boolean,
-  ) {
-    const [team] = await this.db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, teamId));
-
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can update guardrails',
-        );
-      }
-    }
-
-    const [updated] = await this.db
-      .update(guardrails)
-      .set({ isActive })
-      .where(
-        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+      .from(guardrails)
+      .innerJoin(
+        guardrailTeams,
+        eq(guardrailTeams.guardrailId, guardrails.id),
       )
-      .returning();
+      .where(eq(guardrailTeams.teamId, teamId));
 
-    if (!updated) throw new NotFoundException('Guardrail not found');
-    return updated;
-  }
-
-  async deleteGuardrail(
-    teamId: string,
-    guardrailId: string,
-    userId: string,
-  ) {
-    const [team] = await this.db
-      .select()
+    // Resolve the team's company via its owner. The team rows have
+    // owner_id → users; users.company_name is the org boundary.
+    const [teamRow] = await this.db
+      .select({ ownerId: teams.ownerId })
       .from(teams)
       .where(eq(teams.id, teamId));
+    if (!teamRow) return linked;
+    const [teamOwner] = await this.db
+      .select({ companyName: users.companyName })
+      .from(users)
+      .where(eq(users.id, teamRow.ownerId));
+    if (!teamOwner?.companyName) return linked;
 
-    if (!team) throw new NotFoundException('Team not found');
-    {
-      const callerRole = await this.getUserTeamRole(teamId, userId);
-      if (callerRole !== 'owner' && callerRole !== 'editor') {
-        throw new ForbiddenException(
-          'Only team owners or editors can delete guardrails',
-        );
-      }
-    }
-
-    await this.db
-      .delete(guardrails)
+    const orgWide = await this.db
+      .select({
+        id: guardrails.id,
+        ownerId: guardrails.ownerId,
+        name: guardrails.name,
+        type: guardrails.type,
+        severity: guardrails.severity,
+        triggers: guardrails.triggers,
+        isActive: guardrails.isActive,
+        isOrgWide: guardrails.isOrgWide,
+        teamIsActive: sql<boolean>`true`,
+        validatorType: guardrails.validatorType,
+        entities: guardrails.entities,
+        pattern: guardrails.pattern,
+        target: guardrails.target,
+        onFail: guardrails.onFail,
+        templateSource: guardrails.templateSource,
+        createdAt: guardrails.createdAt,
+        updatedAt: guardrails.updatedAt,
+      })
+      .from(guardrails)
+      .innerJoin(users, eq(users.id, guardrails.ownerId))
       .where(
-        and(eq(guardrails.id, guardrailId), eq(guardrails.teamId, teamId)),
+        and(
+          eq(guardrails.isOrgWide, true),
+          eq(users.companyName, teamOwner.companyName),
+        ),
       );
 
-    return { success: true };
+    // Dedup: an org-wide rule that ALSO has an explicit link to this
+    // team shows up in both lists. Keep the org-wide row (it
+    // suppresses the per-team toggle on the FE).
+    const linkedIds = new Set(linked.map((r) => r.id));
+    const orgOnly = orgWide.filter((r) => !linkedIds.has(r.id));
+    return [
+      ...linked.map((r) => ({
+        ...r,
+        // Hide team UI affordances for rows that are also org-wide
+        // (e.g. admin first linked, then toggled org-wide). Same
+        // resulting shape as the orgOnly branch.
+        teamIsActive: r.isOrgWide ? true : r.teamIsActive,
+      })),
+      ...orgOnly,
+    ];
   }
 
   /**

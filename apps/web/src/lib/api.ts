@@ -1,3 +1,5 @@
+import { parseSSEFrames } from "./sse-parser";
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 export interface ApiFetchOptions extends RequestInit {
@@ -551,17 +553,29 @@ export async function updateTeamMemberCap(
   return res.json();
 }
 
-// Guardrails
+// Guardrails — per-team listing. Rules are owned + edited in
+// /guardrails-section; teams just link to them via the dialog on
+// /teams/[id]. Creation / toggle / unlink endpoints live on
+// /guardrails-section since the M2M refactor.
 
 export interface Guardrail {
   id: string;
-  teamId: string;
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
   triggers: number;
+  /** Master toggle on the rule (Guardrails page Switch). */
   isActive: boolean;
+  /** Per-team pause toggle from `guardrail_teams.is_active`. Both this
+   *  and `isActive` must be true for the evaluator to apply the rule
+   *  to this team's chats. Forced to true for rules surfaced via the
+   *  org-wide branch — org-wide rules can't be paused per-team. */
   teamIsActive: boolean;
+  /** When true the rule reached this team via the org-wide branch
+   *  (or via an org-wide-flagged direct link). FE disables the
+   *  per-team Switch + "Remove from team" affordances on these rows
+   *  since the toggle lives only on the master Guardrails page. */
+  isOrgWide: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -570,43 +584,6 @@ export async function fetchGuardrails(teamId: string): Promise<Guardrail[]> {
   const res = await apiFetch(`/teams/${teamId}/guardrails`);
   if (!res.ok) throw new Error("Failed to fetch guardrails");
   return res.json();
-}
-
-export async function createGuardrail(
-  teamId: string,
-  data: { name: string; type: string; severity: Guardrail["severity"] },
-): Promise<Guardrail> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) throw new Error("Failed to create guardrail");
-  return res.json();
-}
-
-export async function toggleGuardrail(
-  teamId: string,
-  guardrailId: string,
-  isActive: boolean,
-): Promise<Guardrail> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ isActive }),
-  });
-  if (!res.ok) throw new Error("Failed to toggle guardrail");
-  return res.json();
-}
-
-export async function deleteGuardrail(
-  teamId: string,
-  guardrailId: string,
-): Promise<void> {
-  const res = await apiFetch(`/teams/${teamId}/guardrails/${guardrailId}`, {
-    method: "DELETE",
-  });
-  if (!res.ok) throw new Error("Failed to delete guardrail");
 }
 
 // Conversations
@@ -677,13 +654,58 @@ export async function deleteConversation(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete conversation");
 }
 
-export async function sendChatMessage(
+// Non-streaming sendChatMessage has been removed in favour of
+// streamChatMessage (below). The streaming endpoint is the only
+// chat path; consumers walk the SSE event iterable and concatenate
+// `delta` events if they need the final blob.
+
+/**
+ * Discriminated union mirroring the BE SSE event shapes from
+ * `chat.controller.chatStream`. Consumers tag-switch on `type` to
+ * drive UI state (delta appends, replace overwrites, reasoning pane,
+ * done finalizer, blocked/error humanization).
+ */
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "reasoning"; text: string }
+  | { type: "replace"; text: string }
+  | { type: "blocked"; rule: string; validator: string }
+  | { type: "error"; message: string; status?: number }
+  | {
+      type: "done";
+      totalTokens?: number;
+      costUsd?: number | null;
+      partial?: boolean;
+    };
+
+/**
+ * Stream an assistant response token-by-token from POST /chat/stream.
+ *
+ * Uses `fetch` + `ReadableStream` rather than `EventSource` so we can
+ * keep the existing cookie-based auth (POST + credentials: 'include'
+ * via apiFetch) and pass an AbortController for the Stop button.
+ *
+ * The BE emits standard SSE blocks (`event: <name>\ndata: <json>\n\n`).
+ * We buffer raw bytes, split on the blank-line delimiter, and parse
+ * each block into a `ChatStreamEvent`. Yields events in arrival
+ * order — caller `for await`s and updates UI state per event type.
+ *
+ * Cancellation contract:
+ *   - signal.abort() → fetch aborts → ReadableStream closes → BE
+ *     gets req.close → BE aborts upstream LLM call + persists
+ *     whatever was buffered with metadata.partial = true. A final
+ *     `done` event with partial: true may still arrive before the
+ *     stream actually closes; consumers should treat AbortError as
+ *     a clean stop, not a failure.
+ */
+export async function* streamChatMessage(
   conversationId: string,
   content: string,
   model?: string,
   projectId?: string,
-): Promise<{ role: string; content: string; reasoning_details?: unknown }> {
-  const res = await apiFetch("/chat", {
+  signal?: AbortSignal,
+): AsyncIterable<ChatStreamEvent> {
+  const res = await apiFetch("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -693,14 +715,14 @@ export async function sendChatMessage(
       enableReasoning: true,
       projectId,
     }),
+    signal,
   });
+
   if (!res.ok) {
-    // Surface the BE error body so humanizeChatError() can route it to a
-    // specific user-facing message. The HTTP status is *always* prepended
-    // so the humanizer can rely on \b402\b / \b429\b / \b401\b matching
-    // even when the BE body itself doesn't mention the code (OpenRouter's
-    // 402 text, for example, talks about "max_tokens" + "total limit"
-    // which would otherwise false-positive as a context-length error).
+    // Pre-flight failure (guardrail input block, budget gate, …) —
+    // BE returned a JSON 4xx before opening the SSE stream. Surface
+    // the same shape as sendChatMessage so the FE humanizer routes
+    // it identically.
     let detail: string | null = null;
     try {
       const body = await res.text();
@@ -720,7 +742,95 @@ export async function sendChatMessage(
       : `${res.status} ${res.statusText}`;
     throw new Error(message);
   }
-  return res.json();
+
+  if (!res.body) {
+    throw new Error("Streaming chat response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      // parseSSEFrames lives in its own module for unit testability.
+      // It returns every complete frame in the buffer and the
+      // remaining bytes (a partial frame still waiting on more
+      // bytes from the next read).
+      const { frames, rest } = parseSSEFrames(buf);
+      buf = rest;
+      for (const frame of frames) {
+        if (!frame.data) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(frame.data);
+        } catch {
+          // Malformed JSON in a frame — skip rather than crash the
+          // whole stream. The BE shouldn't emit these, but a flaky
+          // proxy could.
+          continue;
+        }
+
+        // Map the wire event name + payload into the discriminated
+        // union. Anything unrecognised is dropped silently to keep
+        // forward-compat with future BE event types.
+        const data = parsed as Record<string, unknown>;
+        if (frame.event === "delta" && typeof data.text === "string") {
+          yield { type: "delta", text: data.text };
+        } else if (
+          frame.event === "reasoning" &&
+          typeof data.text === "string"
+        ) {
+          yield { type: "reasoning", text: data.text };
+        } else if (
+          frame.event === "replace" &&
+          typeof data.text === "string"
+        ) {
+          yield { type: "replace", text: data.text };
+        } else if (
+          frame.event === "blocked" &&
+          typeof data.rule === "string" &&
+          typeof data.validator === "string"
+        ) {
+          yield {
+            type: "blocked",
+            rule: data.rule,
+            validator: data.validator,
+          };
+        } else if (frame.event === "error") {
+          yield {
+            type: "error",
+            message:
+              typeof data.message === "string"
+                ? data.message
+                : "Stream error",
+            status:
+              typeof data.status === "number" ? data.status : undefined,
+          };
+        } else if (frame.event === "done") {
+          yield {
+            type: "done",
+            totalTokens:
+              typeof data.totalTokens === "number"
+                ? data.totalTokens
+                : undefined,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
+            partial: data.partial === true,
+          };
+        }
+      }
+    }
+  } finally {
+    // Release the reader so cancel propagates cleanly to the BE.
+    // For AbortError this no-ops (already cancelled); for a normal
+    // close it's a courtesy release.
+    reader.releaseLock();
+  }
 }
 
 // Invitations
@@ -1042,20 +1152,56 @@ export interface ModelResponse {
   };
 }
 
-export interface CompareModelsApiResult {
-  runId?: string;
-  comparison: ModelComparisonEntry[];
-  responses: ModelResponse[];
-}
+// Non-streaming sendQuestionToCompareModels was removed in favour
+// of streamCompareModels (below). Arena is SSE-only now; consumers
+// walk the event iterable and call setEvaluations on the final
+// `evaluation` event.
 
-export async function sendQuestionToCompareModels(
+/**
+ * Discriminated union mirroring the BE arena SSE event shapes
+ * (compare-models.controller.compareModelsStream). Consumer tag-
+ * switches on `type` to drive per-model panel state.
+ */
+export type CompareModelsStreamEvent =
+  | { type: "model-delta"; model: string; text: string }
+  | { type: "model-replace"; model: string; text: string }
+  | { type: "model-error"; model: string; message: string; status?: number }
+  | {
+      type: "model-done";
+      model: string;
+      totalTokens?: number;
+      costUsd?: number | null;
+      time?: number;
+    }
+  | {
+      type: "evaluation";
+      comparisonItems: (ModelComparisonEntry & {
+        totalTokens?: number;
+        totalCost?: number;
+        time?: number;
+      })[];
+      runId?: string;
+      /** Set when every retry of the evaluator failed. Empty
+       *  comparisonItems alone isn't a sufficient signal — a 0-model
+       *  response set would also produce empty items legitimately. */
+      error?: string;
+    }
+  | { type: "done" };
+
+/**
+ * Stream the arena fan-out from POST /compare-models/stream. Same
+ * fetch + ReadableStream pattern as streamChatMessage — every
+ * `model-delta` event is keyed by model id so the FE routes deltas
+ * to the right panel.
+ */
+export async function* streamCompareModels(
   models: string[],
   question: string,
   expectedOutput: string,
   context?: string,
-  teamId?: string | null,
-): Promise<CompareModelsApiResult> {
-  const res = await apiFetch(`/compare-models`, {
+  signal?: AbortSignal,
+): AsyncIterable<CompareModelsStreamEvent> {
+  const res = await apiFetch(`/compare-models/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1063,29 +1209,110 @@ export async function sendQuestionToCompareModels(
       question,
       expectedOutput,
       context,
-      // Sentinel "personal" tells the server to skip the team fallback
-      // and tag events as Personal. Undefined uses the user's primary.
-      ...(teamId !== undefined ? { teamId: teamId ?? "personal" } : {}),
     }),
+    signal,
   });
+
   if (!res.ok) {
-    const body = await res.text();
-    let serverMessage: string | undefined;
+    let detail: string | null = null;
     try {
-      const parsed = JSON.parse(body) as { message?: string | string[] };
-      serverMessage = Array.isArray(parsed.message)
-        ? parsed.message.join("; ")
-        : parsed.message;
+      const body = await res.text();
+      try {
+        const parsed = JSON.parse(body) as { message?: string | string[] };
+        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
+        else if (typeof parsed.message === "string") detail = parsed.message;
+        else if (body) detail = body;
+      } catch {
+        if (body) detail = body;
+      }
     } catch {
-      serverMessage = body;
+      /* keep null fallback */
     }
-    throw new Error(
-      `Compare-models request failed (${res.status} ${res.statusText})${
-        serverMessage ? `: ${serverMessage}` : ""
-      }`,
-    );
+    const message = detail
+      ? `${res.status} ${res.statusText}: ${detail}`
+      : `${res.status} ${res.statusText}`;
+    throw new Error(message);
   }
-  return res.json();
+  if (!res.body) {
+    throw new Error("Streaming arena response has no body");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      const { frames, rest } = parseSSEFrames(buf);
+      buf = rest;
+      for (const frame of frames) {
+        if (!frame.data) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(frame.data);
+        } catch {
+          continue;
+        }
+        const data = parsed as Record<string, unknown>;
+        if (frame.event === "model-delta") {
+          yield {
+            type: "model-delta",
+            model: data.model as string,
+            text: data.text as string,
+          };
+        } else if (frame.event === "model-replace") {
+          yield {
+            type: "model-replace",
+            model: data.model as string,
+            text: data.text as string,
+          };
+        } else if (frame.event === "model-error") {
+          yield {
+            type: "model-error",
+            model: data.model as string,
+            message: data.message as string,
+            status: typeof data.status === "number" ? data.status : undefined,
+          };
+        } else if (frame.event === "model-done") {
+          yield {
+            type: "model-done",
+            model: data.model as string,
+            totalTokens:
+              typeof data.totalTokens === "number"
+                ? data.totalTokens
+                : undefined,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
+            time: typeof data.time === "number" ? data.time : undefined,
+          };
+        } else if (frame.event === "evaluation") {
+          yield {
+            type: "evaluation",
+            comparisonItems: Array.isArray(data.comparisonItems)
+              ? (data.comparisonItems as CompareModelsStreamEvent extends {
+                  type: "evaluation";
+                  comparisonItems: infer T;
+                }
+                  ? T
+                  : never)
+              : [],
+            runId:
+              typeof data.runId === "string" ? data.runId : undefined,
+            error:
+              typeof data.error === "string" ? data.error : undefined,
+          };
+        } else if (frame.event === "done") {
+          yield { type: "done" };
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export interface ArenaRunSummary {
@@ -1123,11 +1350,9 @@ export async function deleteArenaRun(id: string): Promise<void> {
 
 export async function parseArenaAttachment(
   file: File,
-  teamId?: string | null,
 ): Promise<{ name: string; content: string }> {
   const form = new FormData();
   form.append("file", file);
-  if (teamId) form.append("teamId", teamId);
   const res = await apiFetch(`/compare-models/attachments/parse`, {
     method: "POST",
     body: form,
@@ -1656,14 +1881,27 @@ export async function fetchRecentKnowledgeFiles(): Promise<
 
 // Guardrails Section
 
+export interface GuardrailTeamLink {
+  id: string;
+  name: string;
+  /** Per-team toggle. Both this AND the rule's master `isActive` must
+   *  be true for the evaluator to load the rule for this team. */
+  isActive: boolean;
+}
+
 export interface GuardrailItem {
   id: string;
-  teamId: string | null;
   name: string;
   type: string;
   severity: "high" | "medium" | "low";
   triggers: number;
   isActive: boolean;
+  /** Org-wide scope — when true, the rule applies to every chat by
+   *  every user in the owner's company and the per-team links are
+   *  bypassed by the evaluator. `teams` may still be populated (the
+   *  links stay in the DB) but the FE treats them as inert while
+   *  this flag is on. */
+  isOrgWide: boolean;
   validatorType: string | null;
   entities: string[] | null;
   /** Free-form regex string for validatorType === 'regex_match'. Null
@@ -1672,7 +1910,9 @@ export interface GuardrailItem {
   target: string | null;
   onFail: string | null;
   templateSource: string | null;
-  teamName: string | null;
+  /** Teams this rule is linked to. Many-to-many — a single rule can
+   *  apply to multiple teams, and a team can have multiple rules. */
+  teams: GuardrailTeamLink[];
   createdAt: string;
   updatedAt: string;
 }
@@ -1775,11 +2015,28 @@ export async function deleteGuardrailItem(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete guardrail");
 }
 
+export async function toggleGuardrailOrgWide(
+  guardrailId: string,
+): Promise<GuardrailItem> {
+  const res = await apiFetch(
+    `/guardrails-section/${guardrailId}/toggle-org-wide`,
+    { method: "PATCH" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.message || "Failed to toggle org-wide scope");
+  }
+  return res.json();
+}
+
 export async function toggleGuardrailTeamActive(
   guardrailId: string,
+  teamId: string,
 ): Promise<GuardrailItem> {
   const res = await apiFetch(`/guardrails-section/${guardrailId}/toggle-team`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
   });
   if (!res.ok) throw new Error("Failed to toggle guardrail");
   return res.json();
@@ -1800,9 +2057,12 @@ export async function assignGuardrailToTeam(
 
 export async function unassignGuardrailFromTeam(
   guardrailId: string,
+  teamId: string,
 ): Promise<GuardrailItem> {
   const res = await apiFetch(`/guardrails-section/${guardrailId}/unassign`, {
     method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ teamId }),
   });
   if (!res.ok) throw new Error("Failed to remove guardrail from team");
   return res.json();

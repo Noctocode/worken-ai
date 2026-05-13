@@ -265,7 +265,13 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
     enabled: open,
   });
 
-  const unassigned = allGuardrails.filter((g) => !g.teamId);
+  // Show every guardrail that's NOT already linked to this team AND
+  // is not Org-wide. The M2M model means a rule can live in many
+  // teams at once; Org-wide rules apply everywhere by definition so
+  // there's nothing to add at the team level.
+  const unassigned = allGuardrails.filter(
+    (g) => !g.isOrgWide && !g.teams.some((t) => t.id === teamId),
+  );
 
   const mutation = useMutation({
     mutationFn: () => assignGuardrailToTeam(selectedId, teamId),
@@ -375,12 +381,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     },
   });
   const toggleMutation = useMutation({
-    mutationFn: (guardrailId: string) => toggleGuardrailTeamActive(guardrailId),
+    mutationFn: (guardrailId: string) =>
+      toggleGuardrailTeamActive(guardrailId, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
     onError: (err: Error) => toast.error(err.message || "Failed to toggle guardrail."),
   });
   const removeGuardrailMutation = useMutation({
-    mutationFn: (guardrailId: string) => unassignGuardrailFromTeam(guardrailId),
+    mutationFn: (guardrailId: string) =>
+      unassignGuardrailFromTeam(guardrailId, id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["guardrails", id] });
       queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
@@ -1052,7 +1060,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   {guardrails.map((g) => (
                     <tr key={g.id} className="h-14 border-b border-bg-1">
                       <td className="px-4 align-middle">
-                        <span className="text-[16px] text-text-1 whitespace-nowrap">{g.name}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">{g.name}</span>
+                          {g.isOrgWide && (
+                            <span
+                              className="rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6"
+                              title="This rule is Org-wide — it applies to every team in your company. Per-team pause / remove is disabled; manage it on the Guardrails page."
+                            >
+                              Org-wide
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 align-middle">
                         <div className="flex gap-2.5">
@@ -1073,8 +1091,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         <div className="flex items-center gap-2.5">
                           <Switch
                             checked={g.isActive && (g.teamIsActive ?? true)}
-                            disabled={!canManageTeam || !g.isActive}
+                            disabled={
+                              !canManageTeam || !g.isActive || g.isOrgWide
+                            }
                             onCheckedChange={() => {
+                              if (g.isOrgWide) {
+                                toast.error(
+                                  "This rule is Org-wide. Manage it on the Guardrails page — per-team pause is disabled.",
+                                );
+                                return;
+                              }
                               if (!g.isActive) {
                                 toast.error(
                                   "This guardrail is globally deactivated. Reactivate it on the Guardrails page first.",
@@ -1087,9 +1113,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <span className="text-[16px] text-text-1 whitespace-nowrap">
                             {!g.isActive
                               ? "Inactive (global)"
-                              : (g.teamIsActive ?? true)
-                                ? "Active"
-                                : "Inactive"}
+                              : g.isOrgWide
+                                ? "Active (org-wide)"
+                                : (g.teamIsActive ?? true)
+                                  ? "Active"
+                                  : "Inactive"}
                           </span>
                         </div>
                       </td>
@@ -1100,10 +1128,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="gap-2 text-danger-6 focus:text-danger-6"
-                                disabled={!canManageTeam}
+                                disabled={!canManageTeam || g.isOrgWide}
                                 onSelect={(e) => {
-                                  if (!canManageTeam) {
+                                  if (!canManageTeam || g.isOrgWide) {
                                     e.preventDefault();
+                                    if (g.isOrgWide) {
+                                      toast.error(
+                                        "Org-wide rules can't be removed from a single team. Toggle Org-wide off on the Guardrails page first.",
+                                      );
+                                    }
                                     return;
                                   }
                                   setRemoveGuardrailId(g.id);

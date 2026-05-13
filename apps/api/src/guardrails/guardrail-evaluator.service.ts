@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
-import { guardrails } from '@worken/database/schema';
+import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import { guardrails, guardrailTeams, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 
@@ -643,25 +643,62 @@ export class GuardrailEvaluatorService {
     userId: string;
     teamId: string | null;
   }): Promise<LoadedRule[]> {
-    // Personal rules: rule.teamId IS NULL AND rule.ownerId = me AND
-    // rule.isActive. Team rules: rule.teamId = X AND rule.isActive
-    // AND rule.teamIsActive — regardless of who owns the rule, every
-    // team member sees a shared rule the team admin assigned.
+    // Personal rules: the owner's rules that are NOT linked to any
+    // team and are NOT org-wide. The owner still sees their own
+    // rules in personal chats.
+    //
+    // Team rules: every rule linked to scope.teamId via an active
+    // guardrail_teams row, regardless of who owns the rule. The team
+    // link's `is_active` is the per-team pause flag — both it and the
+    // rule's master `is_active` must be true for the evaluator to
+    // load the rule.
+    //
+    // Org-wide rules: every rule with is_org_wide=true whose owner
+    // shares the current user's company_name. Bypasses the per-team
+    // links entirely — one company admin can enforce a rule across
+    // every team and every member without N link rows. Skipped for
+    // personal-profile users (null companyName) since "everyone in
+    // the company" has no meaning there.
     const personalCond = and(
-      isNull(guardrails.teamId),
       eq(guardrails.ownerId, scope.userId),
       eq(guardrails.isActive, true),
+      eq(guardrails.isOrgWide, false),
+      sql`NOT EXISTS (
+        SELECT 1 FROM ${guardrailTeams}
+        WHERE ${guardrailTeams.guardrailId} = ${guardrails.id}
+      )`,
     );
-    const whereClause = scope.teamId
-      ? or(
-          personalCond,
-          and(
-            eq(guardrails.teamId, scope.teamId),
-            eq(guardrails.isActive, true),
-            eq(guardrails.teamIsActive, true),
-          ),
+
+    const teamCond = scope.teamId
+      ? and(
+          eq(guardrails.isActive, true),
+          eq(guardrails.isOrgWide, false),
+          sql`EXISTS (
+            SELECT 1 FROM ${guardrailTeams}
+            WHERE ${guardrailTeams.guardrailId} = ${guardrails.id}
+              AND ${guardrailTeams.teamId} = ${scope.teamId}
+              AND ${guardrailTeams.isActive} = true
+          )`,
         )
-      : personalCond;
+      : null;
+
+    const orgWideCond = and(
+      eq(guardrails.isOrgWide, true),
+      eq(guardrails.isActive, true),
+      sql`EXISTS (
+        SELECT 1
+        FROM ${users} caller_u
+        INNER JOIN ${users} owner_u
+          ON owner_u.id = ${guardrails.ownerId}
+        WHERE caller_u.id = ${scope.userId}
+          AND caller_u.company_name IS NOT NULL
+          AND caller_u.company_name = owner_u.company_name
+      )`,
+    );
+
+    const branches = [personalCond, orgWideCond];
+    if (teamCond) branches.push(teamCond);
+    const whereClause = or(...branches);
 
     return await this.db
       .select({

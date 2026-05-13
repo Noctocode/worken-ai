@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uuid,
@@ -236,7 +237,6 @@ export const arenaRuns = pgTable("arena_runs", {
 
 export const guardrails = pgTable("guardrails", {
   id: uuid("id").primaryKey().defaultRandom(),
-  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
@@ -245,7 +245,12 @@ export const guardrails = pgTable("guardrails", {
   severity: text("severity").notNull().default("medium"),
   triggers: integer("triggers").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
-  teamIsActive: boolean("team_is_active").notNull().default(true),
+  // Org-wide scope: when true, this rule applies to every chat by
+  // every user in the owner's company (matched via users.company_name)
+  // and the team links in `guardrail_teams` are ignored. Lets a
+  // company admin enforce one rule across every team without N
+  // explicit link rows.
+  isOrgWide: boolean("is_org_wide").notNull().default(false),
   validatorType: text("validator_type"),
   entities: jsonb("entities"),
   // Free-form regex used by the `regex_match` validator. Nullable
@@ -260,6 +265,38 @@ export const guardrails = pgTable("guardrails", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * Many-to-many link between a guardrail and the teams it applies to.
+ * Replaces the previous `guardrails.team_id` + `team_is_active`
+ * columns so a single rule (e.g. "Hide email") can be shared across
+ * multiple teams instead of belonging to exactly one.
+ *
+ * `is_active` is the per-team toggle the admin flips when they want
+ * to pause a shared rule for one team without unassigning it. The
+ * rule's master `guardrails.is_active` still wins — both must be true
+ * for the evaluator to load it.
+ */
+export const guardrailTeams = pgTable(
+  "guardrail_teams",
+  {
+    guardrailId: uuid("guardrail_id")
+      .references(() => guardrails.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    assignedBy: uuid("assigned_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.guardrailId, table.teamId] }),
+    teamLookup: index("guardrail_teams_team_idx").on(table.teamId),
+  }),
+);
 
 // Legacy `user_llm_credentials` table dropped — see
 // `packages/database/backfill/drop-legacy-user-llm-credentials.sql`.

@@ -172,42 +172,13 @@ export class TeamsController {
     return this.teamsService.removeMember(id, memberId, user.id);
   }
 
+  // Per-team guardrail listing. Returns rules linked to this team via
+  // `guardrail_teams`. Create / toggle / unlink now live on
+  // /guardrails-section so a single rule definition can be linked to
+  // multiple teams instead of duplicated per team.
   @Get(':id/guardrails')
   findGuardrails(@Param('id') id: string) {
     return this.teamsService.findGuardrails(id);
-  }
-
-  @Post(':id/guardrails')
-  createGuardrail(
-    @Param('id') id: string,
-    @Body() body: { name: string; type: string; severity: string },
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.teamsService.createGuardrail(id, user.id, body);
-  }
-
-  @Patch(':id/guardrails/:guardrailId')
-  toggleGuardrail(
-    @Param('id') id: string,
-    @Param('guardrailId') guardrailId: string,
-    @Body() body: { isActive: boolean },
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.teamsService.toggleGuardrail(
-      id,
-      guardrailId,
-      user.id,
-      body.isActive,
-    );
-  }
-
-  @Delete(':id/guardrails/:guardrailId')
-  deleteGuardrail(
-    @Param('id') id: string,
-    @Param('guardrailId') guardrailId: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.teamsService.deleteGuardrail(id, guardrailId, user.id);
   }
 
   // Team-scoped BYOK integrations. Mirrors POST/PATCH/DELETE on

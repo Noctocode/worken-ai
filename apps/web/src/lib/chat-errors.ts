@@ -16,8 +16,15 @@ export function humanizeChatError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   const lower = raw.toLowerCase();
 
+  // Use console.warn rather than console.error here: every code path
+  // through this function returns a human-readable sentence the FE
+  // surfaces to the user (toast / inline message), so the original
+  // string is more of a debug breadcrumb than a fatal failure.
+  // console.error would trigger Next.js dev mode's red overlay,
+  // making expected user states (pending budget approval, rate
+  // limits, etc.) look like crashes.
   if (typeof console !== "undefined") {
-    console.error("[chat]", raw);
+    console.warn("[chat]", raw);
   }
 
   const modelMatch = raw.match(/for model "([^"]+)"/);

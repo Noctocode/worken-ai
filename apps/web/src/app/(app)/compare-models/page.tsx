@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   ArrowLeft,
   Bot,
   Check,
@@ -11,6 +12,7 @@ import {
   Image as ImageIcon,
   Info,
   Library,
+  Loader2,
   MoreVertical,
   Paperclip,
   Plus,
@@ -18,6 +20,7 @@ import {
   Mic,
   Send,
   Sparkles,
+  Square,
   Trash2,
   X,
 } from "lucide-react";
@@ -51,25 +54,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
   fetchPrompts,
   fetchShortcuts,
-  fetchTeams,
   parseArenaAttachment,
-  sendQuestionToCompareModels,
+  streamCompareModels,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
-  type TeamListItem,
 } from "@/lib/api";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useUserModels } from "@/lib/hooks/use-user-models";
@@ -177,6 +171,54 @@ export default function CompareModelsPage() {
   >({});
   const [loading, setLoading] = useState(false);
   const [submittedQuestion, setSubmittedQuestion] = useState<string | null>(null);
+  // Surfaces the evaluator-failed reason inline above the response
+  // grid. The toast in compareModels() fires alongside this, but an
+  // inline banner is harder to miss when you're focused on the
+  // comparison cards. Cleared on every new run.
+  const [evaluatorError, setEvaluatorError] = useState<string | null>(null);
+
+  // Pre-flight / network-level failure that prevents the run from
+  // even reaching per-panel streams (e.g. budget=0 → 402 from BE,
+  // network down). Toast alone disappears after a few seconds; an
+  // inline banner sticks around so the user knows what to fix.
+  const [arenaError, setArenaError] = useState<string | null>(null);
+
+  // Per-panel lifecycle state so each card can render an accurate
+  // pre-stream / streaming / finished label. Derived state alone
+  // (was buffer === ''?) couldn't distinguish "queued, waiting for
+  // first token" from "model already streamed nothing back".
+  type ModelStatus = "pending" | "streaming" | "done" | "error";
+  const [modelStatuses, setModelStatuses] = useState<
+    Record<string, ModelStatus>
+  >({});
+
+  // Top-level evaluator phase. After all panels reach done/error
+  // the BE moves on to running the comparison eval — the FE has no
+  // explicit "evaluator started" event, so we infer the running
+  // state from the per-panel statuses + absence of an evaluation
+  // event so far.
+  type EvaluatorStatus = "idle" | "waiting" | "running" | "done" | "error";
+  const [evaluatorStatus, setEvaluatorStatus] = useState<EvaluatorStatus>(
+    "idle",
+  );
+
+  // AbortController for the in-flight arena fan-out. Drives the
+  // Stop button in the composer; abort propagates through fetch →
+  // BE req.close → every model stream cancels at once.
+  const arenaAbortRef = useRef<AbortController | null>(null);
+  // Wall-clock of the last Stop click. Used as a cooldown guard in
+  // compareModels — Stop's click sometimes fires the form's
+  // onSubmit a beat later (React re-renders Stop → Send mid-event;
+  // browser dispatches the synthetic submit to the newly-rendered
+  // Send button at the same DOM position). Without this guard, the
+  // form would re-submit and reset every panel back to "Waiting to
+  // start…". 200ms is plenty for the re-render race; intentional
+  // clicks come well after.
+  const lastStopAtRef = useRef<number>(0);
+  const handleStopArena = () => {
+    lastStopAtRef.current = Date.now();
+    arenaAbortRef.current?.abort();
+  };
 
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
@@ -193,11 +235,6 @@ export default function CompareModelsPage() {
     { name: string; content: string } | null
   >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
-  const [teamsList, setTeamsList] = useState<TeamListItem[]>([]);
-  // Personal-first: events default to no team scope unless the user
-  // explicitly picks one. "personal" is the sentinel for null teamId;
-  // anything else is a real team UUID.
-  const [selectedTeamId, setSelectedTeamId] = useState<string>("personal");
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -241,15 +278,6 @@ export default function CompareModelsPage() {
           err instanceof Error ? err.message : "Couldn't load history.";
         toast.error(message);
       });
-    // Teams list for the picker. Failure is non-fatal — the page still works
-    // without a picker; events just default to the user's primary team.
-    fetchTeams()
-      .then((rows) => {
-        if (!cancelled) setTeamsList(rows);
-      })
-      .catch(() => {
-        /* swallow — picker just stays empty */
-      });
     return () => {
       cancelled = true;
     };
@@ -257,11 +285,38 @@ export default function CompareModelsPage() {
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
+    // Belt-and-braces guard against double-submission: if a run is
+    // already in flight, ignore the second submit. The Send button
+    // is replaced by Stop during loading, so this only fires when
+    // an event somehow slipped through (synthetic event quirks,
+    // Enter-key on a stale form, devtools, …).
+    if (loading) return;
+    // Cooldown after a Stop click. React tears down the Stop button
+    // and renders Send at the same DOM coordinates while the user's
+    // click is still being dispatched — the browser ends up firing
+    // submit on the freshly-rendered Send button. Drop those submits
+    // for 200ms after Stop so they don't visibly re-launch the run.
+    if (Date.now() - lastStopAtRef.current < 200) return;
     setLoading(true);
-    setResponses({});
+    // Reset to empty-string per panel so the streaming loop can
+    // append into each model's slot without first checking null.
+    // Errors flip the panel back to null below.
+    const initialResponses: Record<string, string | null> = {};
+    for (const id of activeModels) initialResponses[id] = "";
+    setResponses(initialResponses);
     setEvaluations({});
+    setEvaluatorError(null);
+    setArenaError(null);
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
+
+    // Every panel starts in "pending" — no tokens yet. First
+    // model-delta flips it to "streaming"; model-done/-error settle
+    // it. Evaluator stays "waiting" until all panels settle.
+    const initialStatuses: Record<string, ModelStatus> = {};
+    for (const id of activeModels) initialStatuses[id] = "pending";
+    setModelStatuses(initialStatuses);
+    setEvaluatorStatus("waiting");
 
     const contextParts: string[] = [];
     if (attachedFile) {
@@ -276,42 +331,187 @@ export default function CompareModelsPage() {
     }
     const context = contextParts.length ? contextParts.join("\n\n") : undefined;
 
+    // Local accumulators that the setState calls below mirror onto
+    // React state. Direct dict so we don't pay re-render cost on
+    // every token (we batch each call into one setResponses).
+    const buffers: Record<string, string> = {};
+    for (const id of activeModels) buffers[id] = "";
+
+    // Per-run AbortController so the Stop button can cancel the
+    // whole fan-out. fetch signal → BE req.close → every in-flight
+    // upstream call aborts. The catch below distinguishes user-
+    // initiated stop from real errors.
+    const controller = new AbortController();
+    arenaAbortRef.current = controller;
+
     try {
-      // "personal" → null teamId (Personal scope, the default).
-      // Anything else → real team UUID, server validates membership.
-      const teamIdForCall =
-        selectedTeamId === "personal" ? null : selectedTeamId;
-      const result = await sendQuestionToCompareModels(
+      // Arena always bills against the user's Personal Monthly Budget.
+      // Team / company budget routing was intentionally removed —
+      // every arena run is metered against `user.monthlyBudgetCents`.
+      for await (const event of streamCompareModels(
         activeModels,
         question,
         expectedOutput,
         context,
-        teamIdForCall,
-      );
-
-      const nextResponses: Record<string, string | null> = {};
-      const nextEvaluations: Record<string, ModelEvaluation | null> = {};
-      for (const id of activeModels) {
-        nextResponses[id] =
-          result.responses.find((r) => r.model === id)?.response.content ??
-          null;
-        nextEvaluations[id] =
-          result.comparison.find((c) => c.name === id) ?? null;
-      }
-      setResponses(nextResponses);
-      setEvaluations(nextEvaluations);
-
-      if (result.runId) {
-        const newEntry: HistoryEntry = {
-          id: result.runId,
-          question,
-          createdAt: new Date().toISOString(),
-        };
-        setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+        controller.signal,
+      )) {
+        // Defensive: if the user pressed Stop, the abort signal is
+        // set but BE-side bytes already on the wire still surface
+        // here as model-delta events. Processing them would
+        // re-flip panels back to "streaming" and look like the
+        // run had restarted. Bail into the catch with a synthetic
+        // AbortError to take the standard cleanup path.
+        if (controller.signal.aborted) {
+          throw new DOMException("Aborted by user", "AbortError");
+        }
+        if (event.type === "model-delta") {
+          // Flip status to "streaming" on the first byte. Subsequent
+          // deltas keep it streaming; functional update so we don't
+          // race with another panel's status transition.
+          setModelStatuses((prev) =>
+            prev[event.model] === "streaming"
+              ? prev
+              : { ...prev, [event.model]: "streaming" },
+          );
+          buffers[event.model] = (buffers[event.model] ?? "") + event.text;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: buffers[event.model],
+          }));
+        } else if (event.type === "model-replace") {
+          // Per-model output guardrail fix-rule pass; swap the
+          // panel's visible text for the redacted version.
+          buffers[event.model] = event.text;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: event.text,
+          }));
+        } else if (event.type === "model-error") {
+          // Only this panel fails; the rest keep streaming. Show
+          // humanized message inside the panel so the user can see
+          // which model went wrong and why.
+          const errMessage = humanizeChatError(
+            new Error(
+              event.status
+                ? `${event.status}: ${event.message}`
+                : event.message,
+            ),
+          );
+          buffers[event.model] = errMessage;
+          setResponses((prev) => ({
+            ...prev,
+            [event.model]: errMessage,
+          }));
+          setModelStatuses((prev) => {
+            const next = { ...prev, [event.model]: "error" as ModelStatus };
+            // If this was the last unsettled panel AND at least one
+            // panel actually succeeded, the BE evaluator is about
+            // to start running. When EVERY panel errored (e.g.
+            // budget gate hit all of them), the BE skips the
+            // evaluator entirely — flashing "Scoring responses…"
+            // would be misleading.
+            const allSettled = activeModels.every(
+              (id) => next[id] === "done" || next[id] === "error",
+            );
+            const anySuccess = activeModels.some(
+              (id) => next[id] === "done",
+            );
+            if (allSettled) {
+              setEvaluatorStatus(anySuccess ? "running" : "idle");
+            }
+            return next;
+          });
+        } else if (event.type === "model-done") {
+          // Per-model totals arrive here. We don't surface them
+          // outside the evaluation card below today; the BE
+          // already records observability events. Settle the
+          // panel's status and check whether the evaluator phase
+          // should start on the FE — the BE has no explicit
+          // "evaluator started" event so we infer it from "all
+          // panels are settled".
+          setModelStatuses((prev) => {
+            const next = { ...prev, [event.model]: "done" as ModelStatus };
+            const allSettled = activeModels.every(
+              (id) => next[id] === "done" || next[id] === "error",
+            );
+            // Mirror the model-error branch above: only enter the
+            // "Scoring responses…" state when at least one panel
+            // actually has a successful answer for the evaluator
+            // to grade. This `done` branch should always have
+            // anySuccess = true (we got here because a panel
+            // succeeded), but guard anyway for parity.
+            const anySuccess = activeModels.some(
+              (id) => next[id] === "done",
+            );
+            if (allSettled) {
+              setEvaluatorStatus(anySuccess ? "running" : "idle");
+            }
+            return next;
+          });
+        } else if (event.type === "evaluation") {
+          // Evaluator ran post-fan-out — paint the score cards.
+          // If every retry failed, BE surfaces the reason in
+          // `error`; show it as a toast so the user knows the
+          // visible answers are real but the comparison didn't
+          // make it through (likely :free-tier rate limit on the
+          // evaluator model).
+          if (event.error) {
+            setEvaluatorError(event.error);
+            setEvaluatorStatus("error");
+            toast.error(
+              `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
+            );
+          } else {
+            setEvaluatorStatus("done");
+          }
+          const nextEvaluations: Record<string, ModelEvaluation | null> =
+            {};
+          for (const id of activeModels) {
+            const item = event.comparisonItems.find((c) => c.name === id);
+            nextEvaluations[id] = item ?? null;
+          }
+          setEvaluations(nextEvaluations);
+          if (event.runId) {
+            const newEntry: HistoryEntry = {
+              id: event.runId,
+              question,
+              createdAt: new Date().toISOString(),
+            };
+            setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+          }
+        }
+        // `done` event is a noop — loop exits naturally after it.
       }
     } catch (err) {
-      toast.error(humanizeChatError(err));
+      // AbortError → user pressed Stop. Don't surface as toast
+      // error; instead mark every panel that hadn't settled yet as
+      // stopped, and roll the evaluator status back so the FE
+      // doesn't sit on "Scoring responses…" forever.
+      const isAbort =
+        err instanceof DOMException && err.name === "AbortError";
+      if (isAbort) {
+        toast.info("Comparison stopped.");
+        setModelStatuses((prev) => {
+          const next = { ...prev };
+          for (const id of activeModels) {
+            if (next[id] === "pending" || next[id] === "streaming") {
+              next[id] = "done";
+            }
+          }
+          return next;
+        });
+        setEvaluatorStatus("idle");
+      } else {
+        const humanized = humanizeChatError(err);
+        toast.error(humanized);
+        // Inline banner so the message persists once the toast
+        // fades — especially important for soft errors like
+        // pending budget approval where the user needs the text
+        // long enough to act on it (open Management → Users).
+        setArenaError(humanized);
+      }
     } finally {
+      arenaAbortRef.current = null;
       setLoading(false);
     }
   }
@@ -321,6 +521,10 @@ export default function CompareModelsPage() {
     setExpectedOutput("");
     setResponses({});
     setEvaluations({});
+    setEvaluatorError(null);
+    setArenaError(null);
+    setModelStatuses({});
+    setEvaluatorStatus("idle");
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
     setAttachedFile(null);
@@ -435,6 +639,73 @@ export default function CompareModelsPage() {
               </>
             )}
 
+            {/* Pre-flight / run-level error banner — fires when the
+                run never reached the per-panel stream (e.g. budget
+                gate 402 from the BE before any model could start).
+                Sticks around past the toast so the user can act on
+                it. Cleared on the next submit / "New comparison". */}
+            {arenaError && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="h-5 w-5 shrink-0 text-warning-7 mt-0.5"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Comparison didn&apos;t run.
+                  </p>
+                  <p className="text-text-3">{arenaError}</p>
+                </div>
+              </div>
+            )}
+
+            {/* "Scoring responses…" banner. Shows after every panel
+                has settled (done/error) but before the evaluation
+                event arrives. The evaluator runs server-side and
+                can take 5-15s on the :free-tier nemotron, so without
+                this banner the user sees stale "done" cards and
+                wonders why scores haven't appeared. */}
+            {evaluatorStatus === "running" && (
+              <div className="mb-3 flex items-center gap-3 rounded-lg border border-primary-2 bg-primary-1/30 px-4 py-3">
+                <Loader2
+                  className="h-5 w-5 shrink-0 animate-spin text-primary-7"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Scoring responses…
+                  </p>
+                  <p className="text-text-3">
+                    All models have finished. Comparing their answers
+                    against your expected output now.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Inline evaluator-failure banner — sits above the
+                response grid so it's unmissable. Fires only after
+                the stream resolves with an evaluator error set;
+                clears on every new run. */}
+            {evaluatorError && (
+              <div className="mb-3 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="h-5 w-5 shrink-0 text-warning-7 mt-0.5"
+                  strokeWidth={2}
+                />
+                <div className="text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Couldn&apos;t score the responses.
+                  </p>
+                  <p className="text-text-3">
+                    Evaluator failed: {evaluatorError}. The model
+                    answers above are still valid; rerun the
+                    comparison or pick fewer models.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {(loading || hasResults) && (
               // Up to 3 cards per row, each 1/3 of the available width.
               // 4th+ wrap to the next row at the same 1/3 width — so a
@@ -457,7 +728,7 @@ export default function CompareModelsPage() {
                     modelId={id}
                     response={responses[id] ?? null}
                     evaluation={evaluations[id] ?? null}
-                    loading={loading && (responses[id] ?? null) === null}
+                    status={modelStatuses[id] ?? (loading ? "pending" : "done")}
                     onCopy={(t) => copyText(t, getModelLabel(id))}
                   />
                 ))}
@@ -474,12 +745,12 @@ export default function CompareModelsPage() {
             loading={loading}
             activeModelCount={activeModels.length}
             onSubmit={compareModels}
+            onStop={handleStopArena}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
             attachedImage={attachedImage}
             setAttachedImage={setAttachedImage}
             onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
-            selectedTeamId={selectedTeamId}
           />
         </section>
 
@@ -508,15 +779,25 @@ export default function CompareModelsPage() {
                   setLoadedRunCreatedAt(run.createdAt);
                   const nextResponses: Record<string, string | null> = {};
                   const nextEvaluations: Record<string, ModelEvaluation | null> = {};
+                  const nextStatuses: Record<string, ModelStatus> = {};
                   for (const id of run.models) {
                     nextResponses[id] =
                       run.responses.find((r) => r.model === id)?.response.content ??
                       null;
                     nextEvaluations[id] =
                       run.comparison.find((c) => c.name === id) ?? null;
+                    // Historical runs were already completed — mark
+                    // every panel done so the body renders content
+                    // (not the "Waiting…" placeholder) on load.
+                    nextStatuses[id] = "done";
                   }
                   setResponses(nextResponses);
                   setEvaluations(nextEvaluations);
+                  setModelStatuses(nextStatuses);
+                  setEvaluatorStatus(
+                    run.comparison.length > 0 ? "done" : "idle",
+                  );
+                  setEvaluatorError(null);
                 })
                 .catch((err) => {
                   const message =
@@ -526,9 +807,6 @@ export default function CompareModelsPage() {
             }}
             onClose={() => setRailOpen(false)}
             onAddModel={() => setAddModelOpen(true)}
-            teams={teamsList}
-            selectedTeamId={selectedTeamId}
-            onSelectTeam={setSelectedTeamId}
           />
         ) : (
           <button
@@ -633,13 +911,20 @@ function ResponseCard({
   modelId,
   response,
   evaluation,
-  loading,
+  status,
   onCopy,
 }: {
   modelId: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
-  loading: boolean;
+  /** Per-panel lifecycle. Drives the body's loading-style text:
+   *   pending   → "Waiting to start…"
+   *   streaming → if response is empty, "Generating…"; once tokens
+   *               arrive, render content with a subtle inline
+   *               typing cursor at the end.
+   *   done      → render content as-is.
+   *   error     → render content (already the humanized message). */
+  status: "pending" | "streaming" | "done" | "error";
   onCopy: (text: string) => void;
 }) {
   const { getLabel: getModelLabel } = useUserModels();
@@ -712,12 +997,30 @@ function ResponseCard({
         </div>
       </header>
 
-      {/* Body */}
+      {/* Body — driven by `status` so each lifecycle phase has its
+          own visual treatment instead of conflating "no content
+          yet" with "no response will ever arrive". */}
       <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1">
-        {loading ? (
-          <ResponseSkeleton />
+        {status === "pending" ? (
+          <span className="flex items-center gap-2 text-text-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Waiting to start…
+          </span>
+        ) : status === "streaming" && !response ? (
+          <span className="flex items-center gap-2 text-text-3">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Generating response…
+          </span>
         ) : response ? (
-          <AiResponseRender content={response} />
+          // Streaming-with-content + done both render the markdown.
+          // While streaming, append a subtle blinking cursor to
+          // signal more tokens are still on the way.
+          <div>
+            <AiResponseRender content={response} />
+            {status === "streaming" && (
+              <span className="ml-0.5 inline-block h-3 w-1 animate-pulse rounded-sm bg-primary-6 align-middle" />
+            )}
+          </div>
         ) : (
           <span className="text-text-3">No response.</span>
         )}
@@ -923,12 +1226,12 @@ function Composer({
   loading,
   activeModelCount,
   onSubmit,
+  onStop,
   attachedFile,
   setAttachedFile,
   attachedImage,
   setAttachedImage,
   onOpenPromptLibrary,
-  selectedTeamId,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -937,12 +1240,15 @@ function Composer({
   loading: boolean;
   activeModelCount: number;
   onSubmit: (e: React.FormEvent) => void;
+  /** Called when the user clicks the Stop button mid-stream. Wired
+   *  to the page-level AbortController so cancel propagates to the
+   *  BE and every in-flight model stream tears down. */
+  onStop: () => void;
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
   attachedImage: { name: string; content: string } | null;
   setAttachedImage: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
-  selectedTeamId: string;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1009,7 +1315,7 @@ function Composer({
       const verb = isImageFile(file) ? "Reading" : "Parsing";
       const toastId = toast.loading(`${verb} ${file.name}…`);
       try {
-        const parsed = await parseArenaAttachment(file, selectedTeamId);
+        const parsed = await parseArenaAttachment(file);
         setTarget(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
@@ -1172,15 +1478,39 @@ function Composer({
             >
               <Mic className="h-4 w-4" />
             </button>
-            <button
-              type="submit"
-              disabled={!question.trim() || !expectedOutput.trim() || loading || activeModelCount < MIN_MODELS}
-              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
-              title={loading ? "Comparing…" : "Compare"}
-              aria-label="Compare"
-            >
-              <Send className="h-4 w-4" />
-            </button>
+            {/* Send swaps to Stop while the arena fan-out is in
+                flight. Stop fires the page-level abort which
+                propagates through fetch → BE req.close → cancels
+                every model stream at once. */}
+            {loading ? (
+              <button
+                type="button"
+                onClick={onStop}
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-danger-6 text-white transition-colors hover:bg-danger-7"
+                title="Stop generating"
+                aria-label="Stop"
+              >
+                <Square
+                  className="h-3.5 w-3.5"
+                  fill="currentColor"
+                  strokeWidth={0}
+                />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={
+                  !question.trim() ||
+                  !expectedOutput.trim() ||
+                  activeModelCount < MIN_MODELS
+                }
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Compare"
+                aria-label="Compare"
+              >
+                <Send className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1230,9 +1560,6 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
-  teams,
-  selectedTeamId,
-  onSelectTeam,
 }: {
   selectedModels: string[];
   disabledModels: Set<string>;
@@ -1248,9 +1575,6 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
-  teams: TeamListItem[];
-  selectedTeamId: string;
-  onSelectTeam: (id: string) => void;
 }) {
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
@@ -1312,33 +1636,6 @@ function RightRail({
           Add Model
         </button>
       </RailSection>
-
-      {/* Team context — only render the picker when the user actually
-          belongs to ≥1 team. Solo users keep their composer clean and
-          their events default to Personal scope server-side. */}
-      {teams.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <span className="text-[16px] font-medium leading-[1.3] text-text-1">
-            Team Context
-          </span>
-          <Select value={selectedTeamId} onValueChange={onSelectTeam}>
-            <SelectTrigger className="h-10 rounded-md border-border-2 text-[13px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="personal">Personal (no team)</SelectItem>
-              {teams.map((t) => (
-                <SelectItem key={t.id} value={t.id}>
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="text-[11px] text-text-3">
-            Attributes this run&apos;s spend and tokens to the chosen team.
-          </p>
-        </section>
-      )}
 
       {/* History section */}
       <RailSection
@@ -2046,10 +2343,27 @@ function ShortcutsPopover({
 
 /* ─── Markdown renderer (kept from previous implementation) ──────────── */
 
+// Some models (notably Anthropic Claude) occasionally emit HTML entities
+// like `&quot;` directly in the response text. Without this pre-pass our
+// `escapeHtml` re-escapes the leading `&` to `&amp;`, so the browser only
+// half-decodes and the user sees literal `&quot;` instead of a quote.
+// Decode first, then let the renderer do its single escape pass.
+// `&amp;` must come last so we don't re-decode entities we just produced.
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
 function aiResponseToHtml(raw: string): string {
   if (!raw) return "";
 
-  const lines = raw.split(/\r?\n/);
+  const lines = decodeHtmlEntities(raw).split(/\r?\n/);
 
   const htmlLines: string[] = [];
   let i = 0;
