@@ -2343,10 +2343,27 @@ function ShortcutsPopover({
 
 /* ─── Markdown renderer (kept from previous implementation) ──────────── */
 
+// Some models (notably Anthropic Claude) occasionally emit HTML entities
+// like `&quot;` directly in the response text. Without this pre-pass our
+// `escapeHtml` re-escapes the leading `&` to `&amp;`, so the browser only
+// half-decodes and the user sees literal `&quot;` instead of a quote.
+// Decode first, then let the renderer do its single escape pass.
+// `&amp;` must come last so we don't re-decode entities we just produced.
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&");
+}
+
 function aiResponseToHtml(raw: string): string {
   if (!raw) return "";
 
-  const lines = raw.split(/\r?\n/);
+  const lines = decodeHtmlEntities(raw).split(/\r?\n/);
 
   const htmlLines: string[] = [];
   let i = 0;
