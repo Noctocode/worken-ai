@@ -1764,11 +1764,33 @@ export async function deleteKnowledgeFolder(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete folder");
 }
 
+/**
+ * Per-file duplicate descriptor returned by the upload endpoint when
+ * the same SHA-256 content is already in the uploader's Knowledge
+ * Core. `existing.id` is null when the duplicate is detected against
+ * another file in the same upload batch (no row to link to yet —
+ * only the first occurrence got inserted).
+ */
+export interface KnowledgeUploadDuplicate {
+  name: string;
+  existing: {
+    id: string | null;
+    name: string;
+    folderId: string;
+    folderName: string;
+  };
+}
+
+export interface KnowledgeUploadResult {
+  uploaded: Omit<KnowledgeFile, "uploadedByName">[];
+  duplicates: KnowledgeUploadDuplicate[];
+}
+
 export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
   visibility: KnowledgeFileVisibility = "all",
-): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
+): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only

@@ -212,13 +212,31 @@ export default function FolderDetailPage({
       files: File[];
       visibility: KnowledgeFileVisibility;
     }) => uploadKnowledgeFiles(folderId, files, visibility),
-    onSuccess: (uploaded) => {
+    onSuccess: ({ uploaded, duplicates }) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success(`Uploaded ${uploaded.length} file(s).`);
+      // Same three-outcome shape as the root KC page: mixed batches
+      // fire both toasts (one success for what got saved, one info
+      // for what was skipped) so the user always knows the exact
+      // result of their drop.
+      if (uploaded.length > 0) {
+        toast.success(`Uploaded ${uploaded.length} file(s).`);
+      }
+      if (duplicates.length > 0) {
+        toast.info(
+          duplicates.length === 1
+            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
+          {
+            description: duplicates
+              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .join("\n"),
+          },
+        );
+      }
     },
     onError: () => toast.error("Failed to upload files."),
   });

@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq, desc, inArray, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import {
   knowledgeFolders,
   knowledgeFiles,
@@ -14,8 +14,26 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
+import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+
+/**
+ * Stream a file from disk through SHA-256. Avoids loading the whole
+ * buffer into memory — multer already wrote the file to disk so we
+ * just need a hash, not the bytes. Used by the upload path to
+ * detect duplicates the same user already has in their KC.
+ */
+export async function sha256File(filePath: string): Promise<string> {
+  const hash = crypto.createHash('sha256');
+  await new Promise<void>((resolve, reject) => {
+    const stream = fs.createReadStream(filePath);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve());
+    stream.on('error', reject);
+  });
+  return hash.digest('hex');
+}
 
 @Injectable()
 export class KnowledgeCoreService {
@@ -174,7 +192,121 @@ export class KnowledgeCoreService {
       uploader?.role,
     );
 
-    const values = files.map((file) => {
+    // Hash every uploaded file up front so we can dedupe within the
+    // batch and against the DB in two passes. Multer already wrote
+    // each file to disk; we stream from there to keep memory flat.
+    const hashed = await Promise.all(
+      files.map(async (file) => ({
+        file,
+        hash: await sha256File(file.path),
+      })),
+    );
+
+    // Look up existing rows by this user with any of the candidate
+    // hashes. Scope is the uploader's whole KC (across all their
+    // folders) per product decision — re-uploading the same bytes
+    // anywhere surfaces the prior copy instead of creating a second
+    // row. Limited to non-null hashes because legacy rows opt out.
+    const candidateHashes = Array.from(new Set(hashed.map((h) => h.hash)));
+    const existingRows = candidateHashes.length
+      ? await this.db
+          .select({
+            id: knowledgeFiles.id,
+            name: knowledgeFiles.name,
+            folderId: knowledgeFiles.folderId,
+            contentSha256: knowledgeFiles.contentSha256,
+            folderName: knowledgeFolders.name,
+          })
+          .from(knowledgeFiles)
+          .innerJoin(
+            knowledgeFolders,
+            eq(knowledgeFolders.id, knowledgeFiles.folderId),
+          )
+          .where(
+            and(
+              eq(knowledgeFiles.uploadedById, userId),
+              inArray(knowledgeFiles.contentSha256, candidateHashes),
+            ),
+          )
+      : [];
+    const existingByHash = new Map<
+      string,
+      { id: string; name: string; folderId: string; folderName: string }
+    >();
+    for (const row of existingRows) {
+      if (!row.contentSha256 || existingByHash.has(row.contentSha256)) continue;
+      existingByHash.set(row.contentSha256, {
+        id: row.id,
+        name: row.name,
+        folderId: row.folderId,
+        folderName: row.folderName,
+      });
+    }
+
+    // Split the batch: hashes already present in DB are duplicates;
+    // remaining hashes that appear more than once within the batch
+    // keep only the first occurrence (rest are flagged against the
+    // first). The first occurrence is what gets inserted.
+    const duplicates: Array<{
+      name: string;
+      existing: {
+        id: string | null;
+        name: string;
+        folderId: string;
+        folderName: string;
+      };
+    }> = [];
+    const toInsert: Array<{
+      file: Express.Multer.File;
+      hash: string;
+    }> = [];
+    const firstInBatch = new Map<
+      string,
+      { name: string; folderName: string }
+    >();
+    for (const entry of hashed) {
+      const dbHit = existingByHash.get(entry.hash);
+      if (dbHit) {
+        duplicates.push({
+          name: entry.file.originalname,
+          existing: dbHit,
+        });
+        continue;
+      }
+      const batchHit = firstInBatch.get(entry.hash);
+      if (batchHit) {
+        duplicates.push({
+          name: entry.file.originalname,
+          existing: {
+            id: null,
+            name: batchHit.name,
+            folderId,
+            folderName: batchHit.folderName,
+          },
+        });
+        continue;
+      }
+      firstInBatch.set(entry.hash, {
+        name: entry.file.originalname,
+        folderName: folder.name,
+      });
+      toInsert.push(entry);
+    }
+
+    // Disk hygiene: tmp files multer wrote for duplicates won't be
+    // referenced by any row, so they'd leak otherwise. Best-effort —
+    // a leftover here is harmless except for disk space.
+    if (duplicates.length > 0) {
+      await Promise.allSettled(
+        hashed
+          .filter(
+            (h) => !toInsert.includes(h) && h.file.path,
+          )
+          .map((h) => fs.promises.unlink(h.file.path)),
+      );
+    }
+
+    const values = toInsert.map(({ file, hash }) => {
       const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
       const fileType = ext || 'FILE';
       return {
@@ -189,6 +321,7 @@ export class KnowledgeCoreService {
         uploadedById: userId,
         scope,
         visibility,
+        contentSha256: hash,
       };
     });
 
@@ -197,10 +330,12 @@ export class KnowledgeCoreService {
         ? await this.db.insert(knowledgeFiles).values(values).returning()
         : [];
 
-      await this.db
-        .update(knowledgeFolders)
-        .set({ updatedAt: new Date() })
-        .where(eq(knowledgeFolders.id, folderId));
+      if (inserted.length > 0) {
+        await this.db
+          .update(knowledgeFolders)
+          .set({ updatedAt: new Date() })
+          .where(eq(knowledgeFolders.id, folderId));
+      }
 
       // Kick off chunk + embed in the background. Same fire-and-
       // forget pattern as onboarding ingestion — the HTTP response
@@ -212,12 +347,12 @@ export class KnowledgeCoreService {
         this.knowledgeIngestion.ingestPendingFilesForUser(userId);
       }
 
-      return inserted;
+      return { uploaded: inserted, duplicates };
     } catch (error) {
       await Promise.allSettled(
-        files
-          .filter((file) => file.path)
-          .map((file) => fs.promises.unlink(file.path)),
+        toInsert
+          .filter((entry) => entry.file.path)
+          .map((entry) => fs.promises.unlink(entry.file.path)),
       );
       throw error;
     }

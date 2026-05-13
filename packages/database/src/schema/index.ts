@@ -479,8 +479,23 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // already), kept on every row for shape uniformity + search filter
   // simplicity.
   visibility: text("visibility").notNull().default("all"),
+  // Content hash (hex SHA-256) of the uploaded bytes. Used by the
+  // upload path to skip files the same uploader already has elsewhere
+  // in their Knowledge Core — we surface them as duplicates on the FE
+  // instead of inserting another row. Nullable for legacy rows
+  // uploaded before this column existed; those simply opt out of
+  // duplicate detection until they're re-uploaded.
+  contentSha256: text("content_sha256"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  // Fast lookup for the upload-path dupe check: given an uploader and
+  // a set of candidate hashes, find any pre-existing row. Two-column
+  // index so the per-user scope is enforced in the same probe.
+  index("knowledge_files_owner_hash_idx").on(
+    table.uploadedById,
+    table.contentSha256,
+  ),
+]);
 
 export const shortcuts = pgTable("shortcuts", {
   id: uuid("id").primaryKey().defaultRandom(),

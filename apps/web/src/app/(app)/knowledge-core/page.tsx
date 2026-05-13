@@ -334,13 +334,34 @@ export default function KnowledgeCorePage() {
     setUploading(true);
     try {
       const folderId = await getAllFilesFolderId();
-      await uploadKnowledgeFiles(folderId, stagedFiles, stagedVisibility);
+      const { uploaded, duplicates } = await uploadKnowledgeFiles(
+        folderId,
+        stagedFiles,
+        stagedVisibility,
+      );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-folder", folderId] }),
       ]);
-      toast.success(`Uploaded ${stagedFiles.length} file(s) to All Files.`);
+      // Three outcomes: all-new, mixed, all-duplicates. The mixed
+      // case fires both toasts so the user sees what was actually
+      // saved AND why a few were skipped.
+      if (uploaded.length > 0) {
+        toast.success(`Uploaded ${uploaded.length} file(s) to All Files.`);
+      }
+      if (duplicates.length > 0) {
+        toast.info(
+          duplicates.length === 1
+            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
+          {
+            description: duplicates
+              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .join("\n"),
+          },
+        );
+      }
       setStagedFiles([]);
       setStagedVisibility("all");
     } catch {

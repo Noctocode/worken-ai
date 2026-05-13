@@ -30,6 +30,7 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
+import { sha256File } from '../knowledge-core/knowledge-core.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -235,6 +236,7 @@ export class OnboardingService {
       fileType: string;
       storagePath: string;
       sizeBytes: number;
+      contentSha256: string;
     }> = [];
     for (const file of files) {
       const safeName = sanitizeFilename(file.originalname);
@@ -262,6 +264,11 @@ export class OnboardingService {
       // and the /knowledge-core UI treat onboarding uploads identically
       // to ones the user adds later via the dropzone.
       const ext = extname(safeName).replace('.', '').toUpperCase();
+      // Hash here (post-rename, before the DB insert) so the row goes
+      // in with content_sha256 populated. Lets the post-onboarding
+      // upload path detect re-uploads of the same bytes against
+      // onboarding-time files without a backfill pass.
+      const contentSha256 = await sha256File(absolutePath);
       writtenFiles.push({
         // Preserve the original display name (post-sanitize) so the
         // /account page and /knowledge-core list show something the
@@ -272,6 +279,7 @@ export class OnboardingService {
         // dev (Windows) and prod (Linux) without per-OS quirks.
         storagePath: pathPosix.join('uploads/knowledge-core', storedName),
         sizeBytes: file.size,
+        contentSha256,
       });
     }
 
