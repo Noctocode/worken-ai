@@ -13,6 +13,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
@@ -76,6 +77,7 @@ export class KnowledgeIngestionService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
     private readonly keyResolver: KeyResolverService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -170,6 +172,12 @@ export class KnowledgeIngestionService {
             ingestionCompletedAt: new Date(),
           })
           .where(eq(knowledgeFiles.id, file.id));
+        await this.notifyIngestionFailure(
+          userId,
+          file.id,
+          file.name,
+          'No extractable text',
+        );
         return;
       }
 
@@ -209,6 +217,32 @@ export class KnowledgeIngestionService {
           ingestionCompletedAt: new Date(),
         })
         .where(eq(knowledgeFiles.id, file.id));
+      await this.notifyIngestionFailure(userId, file.id, file.name, message);
+    }
+  }
+
+  /**
+   * Notify the uploader that one of their Knowledge Core files
+   * didn't make it through ingestion. Best-effort — alert failures
+   * never bubble up; the worker keeps going on the remaining
+   * `pending` rows.
+   */
+  private async notifyIngestionFailure(
+    uploaderId: string,
+    fileId: string,
+    fileName: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.notifications.create({
+        userId: uploaderId,
+        type: 'file_ingestion_failed',
+        title: `"${fileName}" couldn't be added to Knowledge Core`,
+        body: reason.slice(0, 200),
+        data: { fileId, fileName, reason: reason.slice(0, 500) },
+      });
+    } catch {
+      // swallow — this is fire-and-forget audit
     }
   }
 

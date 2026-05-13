@@ -26,7 +26,14 @@ export type NotificationType =
   | 'budget_alert'
   | 'budget_changed'
   | 'team_renamed'
-  | 'team_role_changed';
+  | 'team_role_changed'
+  | 'team_member_added'
+  | 'team_member_removed'
+  | 'team_deleted'
+  | 'account_role_changed'
+  | 'account_budget_changed'
+  | 'member_cap_changed'
+  | 'file_ingestion_failed';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 

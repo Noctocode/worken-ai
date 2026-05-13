@@ -242,6 +242,48 @@ export class TeamsService {
     }
   }
 
+  /**
+   * Fan out a 'team_deleted' notification to a pre-resolved list
+   * of former members. Caller is expected to snapshot the recipient
+   * list BEFORE deleting the team_members rows, since they're gone
+   * after the cascade. Best-effort, never throws.
+   */
+  private async announceTeamDeleted(
+    teamName: string,
+    callerUserId: string,
+    recipients: string[],
+  ): Promise<void> {
+    if (recipients.length === 0) return;
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_deleted',
+            title: `Team "${teamName}" was deleted`,
+            body: `Deleted by ${actorName}.`,
+            data: {
+              teamName,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team deletion for "${teamName}": ${msg}`,
+      );
+    }
+  }
+
   async deleteTeam(teamId: string, userId: string) {
     const [team] = await this.db
       .select()
@@ -261,12 +303,24 @@ export class TeamsService {
       );
     }
 
+    // Snapshot the member set BEFORE the cascade — once teamMembers
+    // rows are gone we can't resolve recipients anymore. Excludes
+    // the caller (they pressed Delete).
+    const recipientsToNotify = (
+      await this.notifications.getTeamMembers(teamId)
+    ).filter((id) => id !== userId);
+
     // Remove all members first (cascade should handle this, but be explicit)
     await this.db
       .delete(teamMembers)
       .where(eq(teamMembers.teamId, teamId));
 
     await this.db.delete(teams).where(eq(teams.id, teamId));
+
+    // Tell every former member their team is gone so a stale UI
+    // refetch doesn't read as "membership disappeared, must be a
+    // bug". Best-effort.
+    await this.announceTeamDeleted(team.name, userId, recipientsToNotify);
 
     return { success: true };
   }
@@ -1278,7 +1332,93 @@ export class TeamsService {
       .delete(teamMembers)
       .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
+    // Announce the removal. Affected user (the one we just kicked)
+    // gets a direct notif; remaining team members get a heads-up
+    // so they're not surprised when a familiar name disappears.
+    // Skip pending invites (no account-having user to notify) and
+    // self-removal (already blocked above anyway).
+    if (member.userId && member.userId !== userId) {
+      await this.announceMemberRemoved(
+        member.userId,
+        teamId,
+        team.name,
+        userId,
+      );
+    }
+
     return { success: true };
+  }
+
+  /**
+   * Notify the removed user (direct, "you were removed") and the
+   * remaining team members (broadcast, "X was removed from team")
+   * after a successful membership delete. Best-effort, never throws.
+   */
+  private async announceMemberRemoved(
+    removedUserId: string,
+    teamId: string,
+    teamName: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const [removed] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, removedUserId))
+        .limit(1);
+      const removedName = removed?.name || removed?.email || 'A team member';
+
+      // 1) Direct notif to the removed user.
+      await this.notifications.create({
+        userId: removedUserId,
+        type: 'team_member_removed',
+        title: `You were removed from "${teamName}"`,
+        body: `Removed by ${actorName}.`,
+        data: {
+          teamId,
+          teamName,
+          actorId: callerUserId,
+          actorName,
+          self: true,
+        },
+      });
+
+      // 2) Broadcast to remaining team members (minus the actor +
+      //    the just-removed user). One row per recipient.
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== callerUserId && id !== removedUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_member_removed',
+            title: `${removedName} was removed from "${teamName}"`,
+            body: `Removed by ${actorName}.`,
+            data: {
+              teamId,
+              teamName,
+              removedUserId,
+              removedName,
+              actorId: callerUserId,
+              actorName,
+              self: false,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce removal of ${removedUserId} from team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async getUserTeamRole(
@@ -1486,7 +1626,62 @@ export class TeamsService {
       .where(eq(teamMembers.id, member.id))
       .returning();
 
+    // Announce the new join to every other existing member so the
+    // team sees who joined. The accepter themselves doesn't need
+    // a notif — they pressed Accept and already know.
+    await this.announceMemberAdded(userId, member.teamId);
+
     return updated;
+  }
+
+  /**
+   * Fan out a 'team_member_added' notification to every existing
+   * accepted team member except the joiner. Resolves the joiner's
+   * display name in one round-trip so the title reads naturally.
+   * Best-effort, never throws.
+   */
+  private async announceMemberAdded(
+    joinerUserId: string,
+    teamId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      if (!team) return;
+      const [joiner] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, joinerUserId))
+        .limit(1);
+      const joinerName = joiner?.name || joiner?.email || 'A new member';
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== joinerUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_member_added',
+            title: `${joinerName} joined "${team.name}"`,
+            body: null,
+            data: {
+              teamId,
+              teamName: team.name,
+              joinerUserId,
+              joinerName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce member added for ${joinerUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async findSubteams(parentTeamId: string) {
@@ -2186,6 +2381,21 @@ export class TeamsService {
         'monthlyCapCents must be null or a non-negative integer (cents).',
       );
     }
+    // Snapshot target's previous cap + user id so the notification
+    // can render "$X → $Y" and we know who to ping.
+    const [target] = await this.db
+      .select({
+        userId: teamMembers.userId,
+        monthlyCapCents: teamMembers.monthlyCapCents,
+      })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      );
+
     const [updated] = await this.db
       .update(teamMembers)
       .set({ monthlyCapCents })
@@ -2202,7 +2412,73 @@ export class TeamsService {
     if (!updated) {
       throw new NotFoundException('Member not found');
     }
+
+    // Notify the affected user about their new cap. Skip:
+    //   - Pending invites (no account)
+    //   - Self-edits (caller adjusted their own cap)
+    //   - No-op (same value)
+    if (
+      target?.userId &&
+      target.userId !== callerId &&
+      target.monthlyCapCents !== monthlyCapCents
+    ) {
+      await this.announceMemberCapChange(
+        target.userId,
+        teamId,
+        target.monthlyCapCents,
+        monthlyCapCents,
+        callerId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Notify the affected user when an admin moves their per-member
+   * monthly cap on a team. Best-effort, never throws.
+   */
+  private async announceMemberCapChange(
+    targetUserId: string,
+    teamId: string,
+    previousCents: number | null,
+    nextCents: number | null,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const fmt = (c: number | null) =>
+        c == null ? 'No cap' : `$${(c / 100).toFixed(2)}/mo`;
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'member_cap_changed',
+        title: `Your cap on "${team?.name ?? 'team'}" was set to ${fmt(nextCents)}`,
+        body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+        data: {
+          teamId,
+          teamName: team?.name ?? null,
+          previousCents,
+          nextCents,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce member cap change for ${targetUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   /**

@@ -5,6 +5,7 @@ import {
   Bell,
   CheckCheck,
   CircleDollarSign,
+  FileWarning,
   Loader2,
   Users,
   X,
@@ -34,12 +35,28 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       <CircleDollarSign className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
   }
-  if (type === "budget_changed") {
+  if (
+    type === "budget_changed" ||
+    type === "account_budget_changed" ||
+    type === "member_cap_changed"
+  ) {
     return (
       <CircleDollarSign className="h-4 w-4 text-text-3" strokeWidth={2} />
     );
   }
-  if (type === "team_renamed" || type === "team_role_changed") {
+  if (type === "file_ingestion_failed") {
+    return (
+      <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
+    );
+  }
+  if (
+    type === "team_renamed" ||
+    type === "team_role_changed" ||
+    type === "team_member_added" ||
+    type === "team_member_removed" ||
+    type === "team_deleted" ||
+    type === "account_role_changed"
+  ) {
     return <Users className="h-4 w-4 text-text-3" strokeWidth={2} />;
   }
   return <Bell className="h-4 w-4 text-text-3" strokeWidth={2} />;

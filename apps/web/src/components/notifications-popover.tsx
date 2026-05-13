@@ -8,6 +8,7 @@ import {
   X,
   Users,
   CircleDollarSign,
+  FileWarning,
   Loader2,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -42,16 +43,31 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       <CircleDollarSign className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
   }
-  if (type === "budget_changed") {
-    // Muted tone vs budget_alert — this is informational ("FYI a
-    // cap moved"), not a threshold warning.
+  if (
+    type === "budget_changed" ||
+    type === "account_budget_changed" ||
+    type === "member_cap_changed"
+  ) {
+    // Muted tone — these are informational ("FYI a cap moved"),
+    // not threshold warnings.
     return (
       <CircleDollarSign className="h-4 w-4 text-text-3" strokeWidth={2} />
     );
   }
-  if (type === "team_renamed" || type === "team_role_changed") {
-    // Same Users glyph as the team_invite family, muted tone since
-    // this is purely informational (no Accept/Decline).
+  if (type === "file_ingestion_failed") {
+    return (
+      <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
+    );
+  }
+  if (
+    type === "team_renamed" ||
+    type === "team_role_changed" ||
+    type === "team_member_added" ||
+    type === "team_member_removed" ||
+    type === "team_deleted" ||
+    type === "account_role_changed"
+  ) {
+    // Membership / role changes — Users glyph in muted tone.
     return <Users className="h-4 w-4 text-text-3" strokeWidth={2} />;
   }
   return <Bell className="h-4 w-4 text-text-3" strokeWidth={2} />;
