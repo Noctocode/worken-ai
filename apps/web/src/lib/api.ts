@@ -341,7 +341,11 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  role: "owner" | "editor" | "viewer";
+  // 'admin' is owner-equivalent: same permissions as the team owner
+  // (budget, invites, role changes, integrations) except they aren't
+  // the literal team owner so they can't be removed as such. Only
+  // an owner or another admin can promote / demote to this role.
+  role: "owner" | "admin" | "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
@@ -446,7 +450,7 @@ export async function inviteUser(
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "editor" | "viewer",
+  role: "admin" | "editor" | "viewer",
   monthlyCapCents?: number | null,
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
@@ -492,14 +496,17 @@ export async function revokeInvitation(memberId: string): Promise<void> {
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "editor" | "viewer",
+  role: "admin" | "editor" | "viewer",
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
-  if (!res.ok) throw new Error("Failed to update member role");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update member role");
+  }
   return res.json();
 }
 

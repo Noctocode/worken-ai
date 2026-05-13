@@ -298,7 +298,7 @@ export default function UserDetailPage({
     }: {
       teamId: string;
       memberId: string;
-      role: "editor" | "viewer";
+      role: "admin" | "editor" | "viewer";
     }) => updateMemberRole(teamId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
@@ -709,7 +709,7 @@ export default function UserDetailPage({
                             teamRoleMutation.mutate({
                               teamId: t.id,
                               memberId: t.memberId,
-                              role: value as "editor" | "viewer",
+                              role: value as "admin" | "editor" | "viewer",
                             })
                           }
                         >
@@ -717,6 +717,13 @@ export default function UserDetailPage({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            {/* 'Admin' is gated by the BE — promoting
+                                to / from admin requires owner-level
+                                rights. Keep the option visible so the
+                                Select can render the current value
+                                even when read-only; the 403 surfaces
+                                as a toast for editors who try. */}
+                            <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
                             <SelectItem value="viewer">Viewer</SelectItem>
                           </SelectContent>

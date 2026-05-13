@@ -370,8 +370,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
   const roleMutation = useMutation({
-    mutationFn: ({ memberId, role }: { memberId: string; role: "editor" | "viewer" }) => updateMemberRole(id, memberId, role),
+    mutationFn: ({
+      memberId,
+      role,
+    }: {
+      memberId: string;
+      role: "admin" | "editor" | "viewer";
+    }) => updateMemberRole(id, memberId, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
+    onError: (err: Error) =>
+      toast.error(err.message || "Couldn't update member role."),
   });
   const removeMutation = useMutation({
     mutationFn: (memberId: string) => removeTeamMember(id, memberId),
@@ -491,7 +499,16 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   );
   const canManageTeam =
     !!currentUser &&
-    (currentUser.id === team.ownerId || myMembership?.role === "owner" || myMembership?.role === "editor");
+    (currentUser.id === team.ownerId ||
+      myMembership?.role === "owner" ||
+      myMembership?.role === "admin" ||
+      myMembership?.role === "editor");
+  // Owner-equivalent rights: owner or admin. Required to promote /
+  // demote 'admin' roles and (later) to surface budget / invitation
+  // controls scoped to the team.
+  const hasOwnerRights =
+    !!currentUser &&
+    (currentUser.id === team.ownerId || myMembership?.role === "admin");
   // Back-compat alias used by the role Select.
   const canEditRoles = canManageTeam;
 
@@ -951,6 +968,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                 Team Owner
                               </Badge>
                             )}
+                            {m.role === "admin" && (
+                              <Badge className="border-transparent bg-warning-1 text-warning-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
+                                Team Admin
+                              </Badge>
+                            )}
                             {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
                           </span>
                         </div>
@@ -964,11 +986,26 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         ) : (
                           <Select
                             value={m.role}
-                            disabled={!canEditRoles}
+                            // Editors can flip editor↔viewer but the
+                            // BE rejects them touching anything that
+                            // involves 'admin' (promoting to it or
+                            // demoting from it). Disable the whole
+                            // control when the target is currently
+                            // admin and the caller isn't owner-level,
+                            // so the editor sees a read-only "Admin"
+                            // chip instead of an option set that
+                            // would 403 on submit.
+                            disabled={
+                              !canEditRoles ||
+                              (m.role === "admin" && !hasOwnerRights)
+                            }
                             onValueChange={(value) =>
                               roleMutation.mutate({
                                 memberId: m.id,
-                                role: value as "editor" | "viewer",
+                                role: value as
+                                  | "admin"
+                                  | "editor"
+                                  | "viewer",
                               })
                             }
                           >
@@ -976,6 +1013,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
+                              {/* 'Admin' is only offered to owner-
+                                  level callers. Stays in the list when
+                                  the target is already admin so the
+                                  Select can display the current value
+                                  even for a read-only editor view. */}
+                              {(hasOwnerRights || m.role === "admin") && (
+                                <SelectItem value="admin">Admin</SelectItem>
+                              )}
                               <SelectItem value="editor">Editor</SelectItem>
                               <SelectItem value="viewer">Viewer</SelectItem>
                             </SelectContent>

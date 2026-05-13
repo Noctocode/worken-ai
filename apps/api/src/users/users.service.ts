@@ -269,6 +269,7 @@ export class UsersService {
         status: m.status,
         canManage:
           callerOwnedIds.has(m.teamId) ||
+          callerRoleByTeam.get(m.teamId) === 'admin' ||
           callerRoleByTeam.get(m.teamId) === 'editor',
       })),
       createdAt: user.createdAt,

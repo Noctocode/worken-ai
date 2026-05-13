@@ -57,7 +57,11 @@ export class TeamsService {
     // editors of the parent can create children.
     if (parentTeamId) {
       const parentRole = await this.getUserTeamRole(parentTeamId, userId);
-      if (parentRole !== 'owner' && parentRole !== 'editor') {
+      if (
+        parentRole !== 'owner' &&
+        parentRole !== 'admin' &&
+        parentRole !== 'editor'
+      ) {
         throw new ForbiddenException(
           'Only team owners or editors can add subteams',
         );
@@ -137,9 +141,13 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const updateCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (updateCallerRole !== 'owner' && updateCallerRole !== 'editor') {
+    if (
+      updateCallerRole !== 'owner' &&
+      updateCallerRole !== 'admin' &&
+      updateCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can update the team',
+        'Only team owners, admins, or editors can update the team',
       );
     }
 
@@ -169,9 +177,13 @@ export class TeamsService {
 
     if (!team) throw new NotFoundException('Team not found');
     const deleteCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'editor') {
+    if (
+      deleteCallerRole !== 'owner' &&
+      deleteCallerRole !== 'admin' &&
+      deleteCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can delete the team',
+        'Only team owners, admins, or editors can delete the team',
       );
     }
 
@@ -208,8 +220,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update the budget');
+    const budgetCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (!this.hasOwnerRights(budgetCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can update the budget',
+      );
     }
 
     // Suspend semantic: budgetUsd === 0 means "block this team from
@@ -366,9 +381,11 @@ export class TeamsService {
         members: membersMap.get(t.id) ?? [],
         spentCents: usage?.spentCents ?? 0,
         projectedCents: usage?.projectedCents ?? 0,
-        // Matches the backend gate for edit/delete/invite/etc: owner or
-        // advanced member. Everyone else sees read-only controls.
-        canManage: isOwner || myRole === 'editor',
+        // Matches the backend gate for edit/delete/invite/etc: owner,
+        // admin, or editor member. Everyone else sees read-only
+        // controls.
+        canManage:
+          isOwner || myRole === 'admin' || myRole === 'editor',
       };
     });
   }
@@ -449,14 +466,26 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'editor') {
+    if (
+      callerRole !== 'owner' &&
+      callerRole !== 'admin' &&
+      callerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can invite users',
+        'Only team owners, admins, or editors can invite users',
       );
     }
 
-    if (role !== 'editor' && role !== 'viewer') {
-      throw new BadRequestException('Role must be editor or viewer');
+    if (role !== 'admin' && role !== 'editor' && role !== 'viewer') {
+      throw new BadRequestException('Role must be admin, editor, or viewer');
+    }
+    // Promoting an invitee straight to 'admin' is an owner-level
+    // action — editors can invite editors / viewers but can't seed
+    // someone with their own privilege ceiling.
+    if (role === 'admin' && !this.hasOwnerRights(callerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can invite someone as admin',
+      );
     }
 
     if (
@@ -653,8 +682,11 @@ export class TeamsService {
       .from(teams)
       .where(eq(teams.id, teamId));
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can list invitations');
+    const listCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (!this.hasOwnerRights(listCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can list invitations',
+      );
     }
 
     const rows = await this.db
@@ -701,8 +733,11 @@ export class TeamsService {
       .where(eq(teamMembers.id, memberId));
 
     if (!row) throw new NotFoundException('Invitation not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can revoke invitations');
+    const revokeCallerRole = await this.getUserTeamRole(row.teamId, userId);
+    if (!this.hasOwnerRights(revokeCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can revoke invitations',
+      );
     }
     if (row.status === 'accepted') {
       throw new BadRequestException(
@@ -737,16 +772,57 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    // Owners and editors can update roles; viewers/non-members can't.
+    // Owners, admins, and editors can update roles; viewers / non-
+    // members can't. Promoting someone to / from 'admin' is owner-
+    // level only, enforced below.
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'editor') {
+    if (
+      callerRole !== 'owner' &&
+      callerRole !== 'admin' &&
+      callerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can update member roles',
+        'Only team owners, admins, or editors can update member roles',
       );
     }
 
-    if (role !== 'editor' && role !== 'viewer') {
-      throw new BadRequestException('Role must be editor or viewer');
+    if (role !== 'admin' && role !== 'editor' && role !== 'viewer') {
+      throw new BadRequestException('Role must be admin, editor, or viewer');
+    }
+    if (role === 'admin' && !this.hasOwnerRights(callerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can promote someone to admin',
+      );
+    }
+
+    // Always look up the target so we can apply the owner-row guard
+    // below — and so the demote-admin gate has the role to inspect.
+    // Cheap: one indexed PK probe.
+    const [target] = await this.db
+      .select({ userId: teamMembers.userId, role: teamMembers.role })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      );
+
+    // Owner row is pinned to `team.ownerId`; demoting it would leave
+    // a team with a member row whose role contradicts `teams.owner_id`.
+    // Mirror the removeMember guard so any caller, owner included,
+    // has to transfer ownership before fiddling with this row.
+    if (target?.userId && target.userId === team.ownerId) {
+      throw new BadRequestException(
+        'Cannot change the team owner\'s role. Transfer ownership first.',
+      );
+    }
+
+    // Symmetric guard: demoting an existing admin is also owner-level.
+    if (target?.role === 'admin' && !this.hasOwnerRights(callerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can change another admin\'s role',
+      );
     }
 
     const [updated] = await this.db
@@ -772,9 +848,13 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const removeCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (removeCallerRole !== 'owner' && removeCallerRole !== 'editor') {
+    if (
+      removeCallerRole !== 'owner' &&
+      removeCallerRole !== 'admin' &&
+      removeCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can remove members',
+        'Only team owners, admins, or editors can remove members',
       );
     }
 
@@ -786,6 +866,15 @@ export class TeamsService {
 
     if (!member) {
       throw new NotFoundException('Member not found');
+    }
+
+    // Mirror of the demote-admin guard in updateMemberRole: an editor
+    // can't kick an admin out, since admins are owner-equivalent and
+    // editors aren't.
+    if (member.role === 'admin' && !this.hasOwnerRights(removeCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can remove another admin',
+      );
     }
 
     if (member.userId === userId) {
@@ -810,7 +899,7 @@ export class TeamsService {
   async getUserTeamRole(
     teamId: string,
     userId: string,
-  ): Promise<'owner' | 'editor' | 'viewer' | null> {
+  ): Promise<'owner' | 'admin' | 'editor' | 'viewer' | null> {
     const [team] = await this.db
       .select()
       .from(teams)
@@ -831,14 +920,35 @@ export class TeamsService {
       );
 
     if (!member) return null;
-    const roleMap: Record<string, 'owner' | 'editor' | 'viewer'> = {
+    // `admin` is the new owner-equivalent member role; legacy
+    // `advanced` / `basic` remain mapped for back-compat with older
+    // rows that haven't been migrated.
+    const roleMap: Record<
+      string,
+      'owner' | 'admin' | 'editor' | 'viewer'
+    > = {
       owner: 'owner',
+      admin: 'admin',
       advanced: 'editor',
       editor: 'editor',
       basic: 'viewer',
       viewer: 'viewer',
     };
     return roleMap[member.role] ?? 'viewer';
+  }
+
+  /**
+   * Owner-level rights: real team owner OR member with role='admin'.
+   * Used for paths previously gated by `team.ownerId !== userId` —
+   * budget, invitations, role promotions. Admin is meant to mirror
+   * owner permissions exactly except they can't be the literal owner
+   * (i.e. they can't be removed as the team's owner — there is only
+   * one of those at any time).
+   */
+  private hasOwnerRights(
+    role: 'owner' | 'admin' | 'editor' | 'viewer' | null,
+  ): boolean {
+    return role === 'owner' || role === 'admin';
   }
 
   async getUserTeamIds(userId: string): Promise<string[]> {
@@ -1373,9 +1483,9 @@ export class TeamsService {
     },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (role !== 'owner' && role !== 'admin' && role !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, or editors can manage team integrations',
       );
     }
     const isCustom = input.providerId === 'custom';
@@ -1513,9 +1623,9 @@ export class TeamsService {
     },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (role !== 'owner' && role !== 'admin' && role !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, or editors can manage team integrations',
       );
     }
     const [row] = await this.db
@@ -1599,9 +1709,9 @@ export class TeamsService {
     integrationId: string,
   ): Promise<{ success: true }> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (role !== 'owner' && role !== 'admin' && role !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, or editors can manage team integrations',
       );
     }
     const [row] = await this.db
@@ -1652,9 +1762,9 @@ export class TeamsService {
     callerId: string,
   ) {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (role !== 'owner' && role !== 'admin' && role !== 'editor') {
       throw new ForbiddenException(
-        'Only team owners or editors can set member caps',
+        'Only team owners, admins, or editors can set member caps',
       );
     }
     if (
