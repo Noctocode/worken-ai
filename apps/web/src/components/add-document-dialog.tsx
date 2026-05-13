@@ -1,14 +1,25 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
   createDocument,
   fetchDocumentGroups,
   deleteDocumentGroup,
-  uploadDocumentFile,
+  fetchKnowledgeFolders,
+  fetchKnowledgeFolder,
+  fetchProjectKnowledgeFiles,
+  fetchProjectKnowledgeUploadDefaults,
+  fetchTeams,
+  attachKnowledgeFiles,
+  detachKnowledgeFile,
+  uploadProjectKnowledgeFiles,
   type DocumentGroup,
+  type ProjectKnowledgeFile,
+  type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +28,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -24,7 +42,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { FileText, Trash2, Loader2, Upload } from "lucide-react";
+import {
+  FileText,
+  Trash2,
+  Loader2,
+  Upload,
+  CheckCircle2,
+  AlertTriangle,
+  Link2,
+} from "lucide-react";
 
 interface AddDocumentDialogProps {
   projectId: string;
@@ -32,67 +58,284 @@ interface AddDocumentDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
+/* ── Small visual helpers (kept local — not reused elsewhere) ──── */
+
+function VisibilityBadge({ visibility }: { visibility: string }) {
+  const tone =
+    visibility === "admins"
+      ? "bg-warning-1 text-warning-7"
+      : visibility === "teams"
+        ? "bg-primary-1 text-primary-7"
+        : "bg-bg-1 text-text-3";
+  const label =
+    visibility === "admins"
+      ? "Admins"
+      : visibility === "teams"
+        ? "Teams"
+        : "Everyone";
+  return (
+    <Badge className={`shrink-0 text-[10px] uppercase tracking-wide ${tone}`}>
+      {label}
+    </Badge>
+  );
+}
+
+function IngestionBadge({ status }: { status: string }) {
+  if (status === "done") {
+    return (
+      <span
+        title="Indexed for chat search"
+        className="inline-flex items-center gap-1 text-[11px] text-success-7"
+      >
+        <CheckCircle2 className="h-3 w-3" /> Indexed
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        title="Couldn't be indexed"
+        className="inline-flex items-center gap-1 text-[11px] text-warning-7"
+      >
+        <AlertTriangle className="h-3 w-3" /> Skipped
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] text-text-3">
+      <Loader2 className="h-3 w-3 animate-spin" /> Indexing…
+    </span>
+  );
+}
+
+/* ── Dialog ───────────────────────────────────────────────────────── */
+
 export function AddDocumentDialog({
   projectId,
   open,
   onOpenChange,
 }: AddDocumentDialogProps) {
-  const [content, setContent] = useState("");
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
+  /* Paste-text state (legacy `documents` table) */
+  const [content, setContent] = useState("");
+
+  /* Upload tab state */
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [uploadFolderId, setUploadFolderId] = useState<string>("");
+  const [uploadVisibility, setUploadVisibility] =
+    useState<KnowledgeFileVisibility>("all");
+  const [uploadTeamIds, setUploadTeamIds] = useState<string[]>([]);
+  const [uploadDefaultsApplied, setUploadDefaultsApplied] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* Attach tab state */
+  const [attachSelectedIds, setAttachSelectedIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [attachFolderId, setAttachFolderId] = useState<string>("");
+  const [attachQuery, setAttachQuery] = useState("");
+
+  /* Delete-confirm shared by both lists */
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  /* ── Queries ──────────────────────────────────────────────────── */
+
+  // Legacy paste-text snippets (existing /documents data, plus
+  // anything still using the old upload path).
   const { data: groups, isLoading: groupsLoading } = useQuery({
     queryKey: ["documentGroups", projectId],
     queryFn: () => fetchDocumentGroups(projectId),
     enabled: open,
   });
 
+  // KC files attached to this project.
+  const { data: attachedFiles = [], isLoading: attachedLoading } = useQuery({
+    queryKey: ["project-knowledge-files", projectId],
+    queryFn: () => fetchProjectKnowledgeFiles(projectId),
+    enabled: open,
+  });
+
+  // Smart defaults the BE picks for the upload picker — folder +
+  // visibility + team set are all initialised from this so the
+  // user sees a reasonable preset on first open.
+  const { data: uploadDefaults } = useQuery({
+    queryKey: ["project-upload-defaults", projectId],
+    queryFn: () => fetchProjectKnowledgeUploadDefaults(projectId),
+    enabled: open,
+  });
+
+  // KC folders for the upload-folder picker AND the attach-tab
+  // folder filter.
+  const { data: kcFolders = [] } = useQuery({
+    queryKey: ["knowledge-folders"],
+    queryFn: fetchKnowledgeFolders,
+    enabled: open,
+  });
+
+  // User's teams — populates the team-checkbox panel when
+  // visibility='teams' is picked.
+  const { data: userTeams = [] } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+    enabled: open && uploadVisibility === "teams",
+  });
+
+  // Files inside the selected folder on the Attach tab — fetched
+  // lazily so we don't pull every KC file in the workspace.
+  const { data: attachFolderDetail } = useQuery({
+    queryKey: ["knowledge-folder", attachFolderId],
+    queryFn: () => fetchKnowledgeFolder(attachFolderId),
+    enabled: open && !!attachFolderId,
+  });
+
+  /* ── Effects ──────────────────────────────────────────────────── */
+
+  // Apply smart defaults once when they first arrive. Reset the
+  // applied flag on dialog close so reopening pulls fresh state.
+  useEffect(() => {
+    if (!open) {
+      setUploadDefaultsApplied(false);
+      return;
+    }
+    if (uploadDefaults && !uploadDefaultsApplied) {
+      setUploadFolderId(uploadDefaults.folderId);
+      setUploadVisibility(uploadDefaults.visibility);
+      setUploadTeamIds(uploadDefaults.teamIds);
+      // Also default the attach-folder filter to "Projects" so the
+      // user sees something useful when they switch tabs.
+      setAttachFolderId(uploadDefaults.folderId);
+      setUploadDefaultsApplied(true);
+    }
+  }, [open, uploadDefaults, uploadDefaultsApplied]);
+
+  /* ── Mutations ────────────────────────────────────────────────── */
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({
+      queryKey: ["documentGroups", projectId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ["project-knowledge-files", projectId],
+    });
+    queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+  };
+
   const addMutation = useMutation({
     mutationFn: (text: string) => createDocument(projectId, text),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["documentGroups", projectId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+      invalidate();
       setContent("");
+      toast.success("Text added to project context.");
     },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to add text."),
   });
 
   const uploadMutation = useMutation({
-    mutationFn: (file: File) => uploadDocumentFile(projectId, file),
-    onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["documentGroups", projectId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
-      setSelectedFile(null);
+    mutationFn: () =>
+      uploadProjectKnowledgeFiles(projectId, selectedFiles, {
+        folderId: uploadFolderId || undefined,
+        visibility: uploadVisibility,
+        teamIds: uploadVisibility === "teams" ? uploadTeamIds : undefined,
+      }),
+    onSuccess: (result) => {
+      invalidate();
+      // Also refresh KC views so the file shows up there too.
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      if (uploadFolderId) {
+        queryClient.invalidateQueries({
+          queryKey: ["knowledge-folder", uploadFolderId],
+        });
+      }
+      setSelectedFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
+      if (result.uploaded.length > 0) {
+        toast.success(
+          `Uploaded ${result.uploaded.length} file(s) and attached to project.`,
+        );
+      }
+      if (result.duplicates.length > 0) {
+        toast.info(
+          result.duplicates.length === 1
+            ? `"${result.duplicates[0].name}" is already in your Knowledge Core.`
+            : `${result.duplicates.length} file(s) already in your Knowledge Core.`,
+          {
+            description: result.duplicates
+              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .join("\n"),
+          },
+        );
+      }
     },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to upload."),
+  });
+
+  const attachMutation = useMutation({
+    mutationFn: (fileIds: string[]) =>
+      attachKnowledgeFiles(projectId, fileIds),
+    onSuccess: () => {
+      invalidate();
+      setAttachSelectedIds(new Set());
+      toast.success("Attached to project.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to attach."),
+  });
+
+  const detachMutation = useMutation({
+    mutationFn: (fileId: string) => detachKnowledgeFile(projectId, fileId),
+    onSuccess: () => {
+      invalidate();
+      setConfirmDeleteId(null);
+      toast.success("Detached from project.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to detach."),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (groupId: string) => deleteDocumentGroup(projectId, groupId),
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ["documentGroups", projectId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["documents", projectId] });
+      invalidate();
       setConfirmDeleteId(null);
+      toast.success("Removed from project.");
     },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to remove."),
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  /* ── Handlers ─────────────────────────────────────────────────── */
+
+  const handleAddText = (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
     addMutation.mutate(content.trim());
   };
 
   const handleUpload = () => {
-    if (!selectedFile) return;
-    uploadMutation.mutate(selectedFile);
+    if (selectedFiles.length === 0) return;
+    if (uploadVisibility === "teams" && uploadTeamIds.length === 0) {
+      toast.error("Pick at least one team for Teams visibility.");
+      return;
+    }
+    uploadMutation.mutate();
   };
+
+  const filteredAttachCandidates = useMemo(() => {
+    const all = attachFolderDetail?.files ?? [];
+    const attachedSet = new Set(attachedFiles.map((f) => f.fileId));
+    const q = attachQuery.trim().toLowerCase();
+    return all
+      .filter((f) => !attachedSet.has(f.id))
+      .filter((f) => (q ? f.name.toLowerCase().includes(q) : true));
+  }, [attachFolderDetail, attachedFiles, attachQuery]);
+
+  /* ── Render ──────────────────────────────────────────────────── */
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -100,8 +343,9 @@ export function AddDocumentDialog({
         <DialogHeader>
           <DialogTitle>Manage Context</DialogTitle>
           <DialogDescription>
-            View existing context documents or add new ones. Text is chunked and
-            embedded for semantic search in chat.
+            Project context for chat. Uploaded files live in your
+            Knowledge Core so visibility, indexing, and team sharing
+            are managed in one place.
           </DialogDescription>
         </DialogHeader>
 
@@ -113,16 +357,21 @@ export function AddDocumentDialog({
             <TabsTrigger value="upload" className="flex-1">
               Upload File
             </TabsTrigger>
+            <TabsTrigger value="attach" className="flex-1">
+              From Knowledge Core
+            </TabsTrigger>
           </TabsList>
 
-          {/* Paste Text tab */}
+          {/* Paste-text tab — unchanged: snippets stay project-
+              scoped in the `documents` table, they're not a "file"
+              that belongs in KC. */}
           <TabsContent value="paste">
-            <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+            <form onSubmit={handleAddText} className="space-y-4 pt-2">
               <div className="space-y-2">
-                <Label htmlFor="document-content">Add New Context</Label>
+                <Label htmlFor="document-content">Add new context</Label>
                 <Textarea
                   id="document-content"
-                  placeholder="Paste your document text here..."
+                  placeholder="Paste your document text here…"
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   rows={6}
@@ -135,57 +384,246 @@ export function AddDocumentDialog({
                   type="submit"
                   disabled={addMutation.isPending || !content.trim()}
                 >
-                  {addMutation.isPending ? "Adding..." : "Add Context"}
+                  {addMutation.isPending ? "Adding…" : "Add Context"}
                 </Button>
               </DialogFooter>
             </form>
           </TabsContent>
 
-          {/* Upload File tab */}
+          {/* Upload tab — sends to KC + auto-attaches. */}
           <TabsContent value="upload">
             <div className="space-y-4 pt-2">
               <div className="space-y-2">
-                <Label>Upload PDF or DOCX</Label>
+                <Label>Files</Label>
                 <div
-                  className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-slate-300 px-4 py-5 transition-colors hover:border-slate-400 hover:bg-slate-50"
+                  className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-border-3 px-4 py-5 transition-colors hover:border-border-4 hover:bg-bg-1"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="h-5 w-5 shrink-0 text-slate-400" />
-                  <span className="text-sm text-slate-500">
-                    {selectedFile
-                      ? selectedFile.name
-                      : "Click to select a .pdf or .docx file"}
+                  <Upload className="h-5 w-5 shrink-0 text-text-3" />
+                  <span className="text-sm text-text-3">
+                    {selectedFiles.length === 0
+                      ? "Click to select files (.pdf, .docx, .xlsx, .png, .jpg)"
+                      : selectedFiles.length === 1
+                        ? selectedFiles[0].name
+                        : `${selectedFiles.length} files selected`}
                   </span>
                 </div>
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.docx"
+                  multiple
+                  accept=".pdf,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
                   className="hidden"
                   onChange={(e) =>
-                    setSelectedFile(e.target.files?.[0] ?? null)
+                    setSelectedFiles(Array.from(e.target.files ?? []))
                   }
                 />
-                {uploadMutation.isError && (
-                  <p className="text-sm text-red-500">
-                    {uploadMutation.error?.message ?? "Upload failed."}
-                  </p>
-                )}
               </div>
+
+              {/* Folder + visibility pickers. Defaults from BE so
+                  the user can press Upload without picking
+                  anything. */}
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Folder in Knowledge Core</Label>
+                  <Select
+                    value={uploadFolderId}
+                    onValueChange={setUploadFolderId}
+                  >
+                    <SelectTrigger className="h-10 cursor-pointer">
+                      <SelectValue placeholder="Select a folder" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kcFolders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {uploadDefaults &&
+                    uploadFolderId === uploadDefaults.folderId && (
+                      <p className="text-[11px] text-text-3">
+                        Default — auto-created if missing.
+                      </p>
+                    )}
+                </div>
+                <div className="space-y-2">
+                  <Label>Visibility</Label>
+                  <Select
+                    value={uploadVisibility}
+                    onValueChange={(v) =>
+                      setUploadVisibility(v as KnowledgeFileVisibility)
+                    }
+                  >
+                    <SelectTrigger className="h-10 cursor-pointer">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">
+                        Everyone in the company
+                      </SelectItem>
+                      {isAdmin && (
+                        <SelectItem value="admins">Admins only</SelectItem>
+                      )}
+                      <SelectItem value="teams">Specific teams…</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {uploadVisibility === "teams" && (
+                <div className="space-y-2">
+                  <Label>Teams with access</Label>
+                  {userTeams.length === 0 ? (
+                    <p className="text-[11px] text-text-3">
+                      You aren&rsquo;t a member of any team yet — create or
+                      join one first to use this visibility option.
+                    </p>
+                  ) : (
+                    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                      {userTeams.map((t) => {
+                        const checked = uploadTeamIds.includes(t.id);
+                        return (
+                          <label
+                            key={t.id}
+                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() =>
+                                setUploadTeamIds((prev) =>
+                                  checked
+                                    ? prev.filter((id) => id !== t.id)
+                                    : [...prev, t.id],
+                                )
+                              }
+                              className="h-3.5 w-3.5 accent-primary-6"
+                            />
+                            <span className="truncate">{t.name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <DialogFooter>
                 <Button
                   type="button"
-                  disabled={uploadMutation.isPending || !selectedFile}
+                  disabled={
+                    uploadMutation.isPending || selectedFiles.length === 0
+                  }
                   onClick={handleUpload}
                 >
                   {uploadMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading...
+                      Uploading…
                     </>
                   ) : (
-                    "Upload File"
+                    "Upload to Knowledge Core"
                   )}
+                </Button>
+              </DialogFooter>
+            </div>
+          </TabsContent>
+
+          {/* Attach tab — pick existing KC files. */}
+          <TabsContent value="attach">
+            <div className="space-y-3 pt-2">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Folder</Label>
+                  <Select
+                    value={attachFolderId}
+                    onValueChange={setAttachFolderId}
+                  >
+                    <SelectTrigger className="h-10 cursor-pointer">
+                      <SelectValue placeholder="Pick a folder" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {kcFolders.map((f) => (
+                        <SelectItem key={f.id} value={f.id}>
+                          {f.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="attach-search">Search</Label>
+                  <input
+                    id="attach-search"
+                    type="text"
+                    placeholder="Filter files in this folder…"
+                    value={attachQuery}
+                    onChange={(e) => setAttachQuery(e.target.value)}
+                    className="h-10 w-full rounded-md border border-border-3 bg-transparent px-3 text-[14px] outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                </div>
+              </div>
+
+              <div className="rounded border border-border-2">
+                <ScrollArea className="h-44">
+                  {!attachFolderId ? (
+                    <p className="py-6 text-center text-sm text-text-3">
+                      Pick a folder to see its files.
+                    </p>
+                  ) : filteredAttachCandidates.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-text-3">
+                      No files available to attach.
+                    </p>
+                  ) : (
+                    <div className="divide-y divide-border-2">
+                      {filteredAttachCandidates.map((f) => {
+                        const checked = attachSelectedIds.has(f.id);
+                        return (
+                          <label
+                            key={f.id}
+                            className="flex cursor-pointer items-center gap-3 px-3 py-2 text-[13px] hover:bg-bg-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                setAttachSelectedIds((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(f.id)) next.delete(f.id);
+                                  else next.add(f.id);
+                                  return next;
+                                });
+                              }}
+                              className="h-3.5 w-3.5 accent-primary-6"
+                            />
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                            <span className="flex-1 truncate text-text-1">
+                              {f.name}
+                            </span>
+                            <VisibilityBadge visibility={f.visibility} />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  disabled={
+                    attachMutation.isPending || attachSelectedIds.size === 0
+                  }
+                  onClick={() =>
+                    attachMutation.mutate(Array.from(attachSelectedIds))
+                  }
+                >
+                  {attachMutation.isPending
+                    ? "Attaching…"
+                    : `Attach ${attachSelectedIds.size > 0 ? `(${attachSelectedIds.size})` : ""}`}
                 </Button>
               </DialogFooter>
             </div>
@@ -194,41 +632,56 @@ export function AddDocumentDialog({
 
         <Separator />
 
-        {/* Existing document groups */}
+        {/* Unified Documents list — paste-text snippets (legacy
+            `documents` rows) + attached KC files. Origin badge
+            distinguishes the two. */}
         <div className="space-y-2">
-          <Label className="text-sm font-medium">Documents</Label>
+          <Label className="text-sm font-medium">In this project</Label>
           <ScrollArea className="h-48">
-            {groupsLoading ? (
+            {groupsLoading || attachedLoading ? (
               <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                <Loader2 className="h-4 w-4 animate-spin text-text-3" />
               </div>
-            ) : groups && groups.length > 0 ? (
+            ) : (groups?.length ?? 0) === 0 && attachedFiles.length === 0 ? (
+              <p className="py-4 text-center text-sm text-text-3">
+                No context yet. Paste text, upload a file, or attach one
+                from Knowledge Core.
+              </p>
+            ) : (
               <div className="space-y-1">
-                {groups.map((group: DocumentGroup) => (
+                {/* Attached KC files first — they're the richer
+                    surface and most users will reach for them. */}
+                {attachedFiles.map((f: ProjectKnowledgeFile) => (
                   <div
-                    key={group.groupId}
-                    className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2"
+                    key={f.fileId}
+                    className="flex items-center justify-between rounded-md border border-border-2 px-3 py-2"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                      <span className="truncate text-sm text-slate-700">
-                        {group.title}
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                      <span className="truncate text-sm text-text-1">
+                        {f.name}
                       </span>
-                      <Badge variant="secondary" className="shrink-0 text-xs">
-                        {group.chunkCount}{" "}
-                        {group.chunkCount === 1 ? "chunk" : "chunks"}
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 text-[10px]"
+                        title={`In folder "${f.folderName}"`}
+                      >
+                        <Link2 className="mr-1 h-2.5 w-2.5" /> KC
                       </Badge>
+                      <VisibilityBadge visibility={f.visibility} />
+                      <IngestionBadge status={f.ingestionStatus} />
                     </div>
-                    {confirmDeleteId === group.groupId ? (
-                      <div className="flex items-center gap-1 shrink-0">
+                    {confirmDeleteId === f.fileId ? (
+                      <div className="flex shrink-0 items-center gap-1">
                         <Button
                           variant="destructive"
                           size="sm"
                           className="h-7 text-xs"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(group.groupId)}
+                          disabled={detachMutation.isPending}
+                          onClick={() => detachMutation.mutate(f.fileId)}
+                          title="Removes from project — the file stays in Knowledge Core"
                         >
-                          {deleteMutation.isPending ? "..." : "Confirm"}
+                          {detachMutation.isPending ? "…" : "Detach"}
                         </Button>
                         <Button
                           variant="ghost"
@@ -243,7 +696,62 @@ export function AddDocumentDialog({
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-7 w-7 shrink-0 text-slate-400 hover:text-red-500"
+                        className="h-7 w-7 shrink-0 text-text-3 hover:text-danger-6"
+                        onClick={() => setConfirmDeleteId(f.fileId)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+
+                {/* Then paste-text snippets. */}
+                {(groups ?? []).map((group: DocumentGroup) => (
+                  <div
+                    key={group.groupId}
+                    className="flex items-center justify-between rounded-md border border-border-2 px-3 py-2"
+                  >
+                    <div className="flex min-w-0 items-center gap-2">
+                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                      <span className="truncate text-sm text-text-1">
+                        {group.title}
+                      </span>
+                      <Badge
+                        variant="secondary"
+                        className="shrink-0 text-[10px]"
+                      >
+                        Text
+                      </Badge>
+                      <Badge variant="secondary" className="shrink-0 text-xs">
+                        {group.chunkCount}{" "}
+                        {group.chunkCount === 1 ? "chunk" : "chunks"}
+                      </Badge>
+                    </div>
+                    {confirmDeleteId === group.groupId ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          className="h-7 text-xs"
+                          disabled={deleteMutation.isPending}
+                          onClick={() => deleteMutation.mutate(group.groupId)}
+                        >
+                          {deleteMutation.isPending ? "…" : "Confirm"}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() => setConfirmDeleteId(null)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-text-3 hover:text-danger-6"
                         onClick={() => setConfirmDeleteId(group.groupId)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -252,10 +760,6 @@ export function AddDocumentDialog({
                   </div>
                 ))}
               </div>
-            ) : (
-              <p className="py-4 text-center text-sm text-slate-400">
-                No documents added yet.
-              </p>
             )}
           </ScrollArea>
         </div>

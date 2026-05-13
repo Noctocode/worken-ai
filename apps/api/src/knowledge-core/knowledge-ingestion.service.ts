@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, cosineDistance, desc, eq, or, sql } from 'drizzle-orm';
+import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -380,6 +380,38 @@ export class KnowledgeIngestionService {
           companyBranch,
         ),
       )
+      .orderBy(desc(similarity))
+      .limit(limit);
+  }
+
+  /**
+   * Cosine-similarity search restricted to KC files explicitly
+   * attached to a project. Unlike `searchAccessibleChunks`, this
+   * bypasses the visibility scopes — attaching a file to a
+   * project is itself an authoritative share, so project members
+   * see those chunks in RAG regardless of the file's broader
+   * audience.
+   *
+   * The `fileIds` set is pre-resolved by the chat path so this
+   * service doesn't have to know about `project_knowledge_files`.
+   */
+  async searchProjectAttachedChunks(
+    fileIds: string[],
+    query: string,
+    limit = 5,
+  ) {
+    if (fileIds.length === 0) return [];
+    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+    return this.db
+      .select({
+        id: knowledgeChunks.id,
+        fileId: knowledgeChunks.fileId,
+        content: knowledgeChunks.content,
+        similarity,
+      })
+      .from(knowledgeChunks)
+      .where(inArray(knowledgeChunks.fileId, fileIds))
       .orderBy(desc(similarity))
       .limit(limit);
   }

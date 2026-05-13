@@ -9,6 +9,7 @@ import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { ModelsModule } from '../models/models.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
+import { ProjectsModule } from '../projects/projects.module.js';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
     KnowledgeCoreModule, // KnowledgeIngestionService for user-scoped RAG
     ModelsModule,
     OpenRouterModule,
+    ProjectsModule, // ProjectKnowledgeService for project-attached KC RAG
   ],
   controllers: [ChatController],
   providers: [ChatService],

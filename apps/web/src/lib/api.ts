@@ -318,6 +318,120 @@ export async function uploadDocumentFile(
   return res.json();
 }
 
+// ─── Project ↔ Knowledge Core attachments ─────────────────────────
+//
+// Manage Context routes file uploads through Knowledge Core now —
+// see ProjectKnowledgeService on the BE. The legacy
+// `uploadDocumentFile` above stays for paste-text snippets and
+// existing data; the helpers below replace the project-scoped
+// upload path with KC linking + KC upload (auto-attach).
+
+export interface ProjectKnowledgeFile {
+  fileId: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  folderId: string;
+  folderName: string;
+  visibility: KnowledgeFileVisibility;
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
+  teams: KnowledgeFileTeamRef[];
+  attachedAt: string;
+}
+
+export interface ProjectKnowledgeUploadDefaults {
+  folderId: string;
+  folderName: string;
+  visibility: "all" | "teams";
+  teamIds: string[];
+}
+
+export async function fetchProjectKnowledgeFiles(
+  projectId: string,
+): Promise<ProjectKnowledgeFile[]> {
+  const res = await apiFetch(`/projects/${projectId}/knowledge-files`);
+  if (!res.ok) throw new Error("Failed to fetch project knowledge files");
+  return res.json();
+}
+
+export async function fetchProjectKnowledgeUploadDefaults(
+  projectId: string,
+): Promise<ProjectKnowledgeUploadDefaults> {
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/upload-defaults`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch upload defaults");
+  return res.json();
+}
+
+export async function attachKnowledgeFiles(
+  projectId: string,
+  fileIds: string[],
+): Promise<{ attached: string[] }> {
+  const res = await apiFetch(`/projects/${projectId}/knowledge-files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to attach files");
+  }
+  return res.json();
+}
+
+export async function detachKnowledgeFile(
+  projectId: string,
+  fileId: string,
+): Promise<{ ok: true }> {
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/${fileId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to detach file");
+  return res.json();
+}
+
+export interface ProjectKnowledgeUploadResult {
+  uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
+  duplicates: KnowledgeUploadDuplicate[];
+}
+
+/**
+ * Upload one or more files from the Manage Context dialog. Routes
+ * through the BE which writes to KC + auto-attaches to the
+ * project. `folderId` / `visibility` / `teamIds` are optional —
+ * omit them to use the smart-default ("Projects" folder, scope-
+ * aware visibility).
+ */
+export async function uploadProjectKnowledgeFiles(
+  projectId: string,
+  files: File[],
+  options: {
+    folderId?: string;
+    visibility?: KnowledgeFileVisibility;
+    teamIds?: string[];
+  } = {},
+): Promise<ProjectKnowledgeUploadResult> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  if (options.folderId) form.append("folderId", options.folderId);
+  if (options.visibility) form.append("visibility", options.visibility);
+  if (options.visibility === "teams" && options.teamIds) {
+    options.teamIds.forEach((id) => form.append("teamIds", id));
+  }
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/upload`,
+    { method: "POST", body: form },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to upload files");
+  }
+  return res.json();
+}
+
 // Teams
 
 export interface Team {

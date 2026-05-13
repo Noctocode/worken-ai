@@ -24,6 +24,7 @@ import { ChatTransportService } from '../integrations/chat-transport.service.js'
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
+import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { ChatService } from './chat.service.js';
 
 interface ChatRequestBody {
@@ -45,6 +46,7 @@ export class ChatController {
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
+    private readonly projectKnowledge: ProjectKnowledgeService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -161,11 +163,28 @@ export class ChatController {
 
     const contextChunks: string[] = [];
     if (body.projectId) {
+      // Project-scoped paste-text snippets (legacy + still active).
       const relevant = await this.documentsService.searchRelevant(
         body.projectId,
         safePrompt,
       );
       for (const doc of relevant) contextChunks.push(doc.content);
+
+      // KC files explicitly attached to the project — separate from
+      // the user-wide `searchAccessibleChunks` below so the
+      // attachment itself authorises read access (visibility scopes
+      // are bypassed for these). Resolve attached ids first; if
+      // none, skip the embedding round-trip.
+      const attachedFileIds =
+        await this.projectKnowledge.getAttachedFileIds(body.projectId);
+      if (attachedFileIds.length > 0) {
+        const attachedChunks =
+          await this.knowledgeIngestion.searchProjectAttachedChunks(
+            attachedFileIds,
+            safePrompt,
+          );
+        for (const chunk of attachedChunks) contextChunks.push(chunk.content);
+      }
     }
     const userKnowledge =
       await this.knowledgeIngestion.searchAccessibleChunks(

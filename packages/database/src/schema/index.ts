@@ -499,6 +499,35 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   ),
 ]);
 
+// Many-to-many link between `projects` and `knowledge_files`. Lets
+// a project "attach" KC files so the chat RAG for that project
+// pulls those chunks in addition to its own `documents` rows.
+// Replaces the old per-project upload destination — uploads from
+// Manage Context now land in KC and get linked here.
+//
+// Cascade on both sides so a deleted project / file auto-cleans
+// the link rows. (project_id, file_id) composite PK keeps the link
+// inherently idempotent under repeat-attach attempts.
+export const projectKnowledgeFiles = pgTable(
+  "project_knowledge_files",
+  {
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    attachedBy: uuid("attached_by").references(() => users.id),
+    attachedAt: timestamp("attached_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.fileId] }),
+    // Reverse lookup: "which projects reference this KC file?" —
+    // useful for detach-on-file-delete UIs and audit.
+    index("project_knowledge_files_file_idx").on(table.fileId),
+  ],
+);
+
 // Many-to-many link between `knowledge_files` and `teams` for the
 // `visibility = 'teams'` mode. Each row grants one team read access
 // to the file at chat / arena time. Empty link set === no team can
