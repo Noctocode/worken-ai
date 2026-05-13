@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import { createModel, fetchIntegrations } from "@/lib/api";
@@ -138,7 +138,13 @@ export function AddModelDialog({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [customName, setCustomName] = useState("Model 1");
+  const [customName, setCustomName] = useState("");
+  // Tracks whether the user has manually typed into the Custom name
+  // field. While false, the field auto-syncs to the picked model's
+  // display label so the user doesn't stare at "Model 1" by default.
+  // Flips true on the first user edit so a later model swap doesn't
+  // clobber their typed-in alias.
+  const [customNameTouched, setCustomNameTouched] = useState(false);
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
@@ -146,6 +152,17 @@ export function AddModelDialog({
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
     useAvailableModels();
+
+  // Auto-fill the alias as soon as a model is picked, unless the
+  // user has already typed something themselves. Runs after the
+  // models list resolves too — picking a model before models[]
+  // hydrates would otherwise fill with the id (fallback in
+  // getLabel) until the list arrives.
+  useEffect(() => {
+    if (!customNameTouched && modelId) {
+      setCustomName(getModelLabel(modelId));
+    }
+  }, [modelId, customNameTouched, getModelLabel]);
 
   // Custom LLMs the user has registered in Management → Integration.
   // Listed as an optional binding so an alias can route to a self-hosted
@@ -162,7 +179,8 @@ export function AddModelDialog({
     mutationFn: createModel,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["models"] });
-      setCustomName("Model 1");
+      setCustomName("");
+      setCustomNameTouched(false);
       setModelId("");
       setFallbacks([]);
       setIntegrationId("");
@@ -224,6 +242,14 @@ export function AddModelDialog({
   };
 
   const handleClose = () => {
+    // Reset on close so reopening starts clean — otherwise a half-
+    // filled previous attempt (e.g. cancelled after typing a custom
+    // name) leaks into the next dialog open.
+    setCustomName("");
+    setCustomNameTouched(false);
+    setModelId("");
+    setFallbacks([]);
+    setIntegrationId("");
     setOpen(false);
   };
 
@@ -293,7 +319,11 @@ export function AddModelDialog({
               <input
                 type="text"
                 value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
+                onChange={(e) => {
+                  setCustomName(e.target.value);
+                  setCustomNameTouched(true);
+                }}
+                placeholder="Pick a model to autofill"
                 className={`${inputClass} outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
               />
             </div>
