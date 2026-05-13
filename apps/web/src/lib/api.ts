@@ -2806,6 +2806,9 @@ export type NotificationType =
   | "account_budget_changed"
   | "member_cap_changed"
   | "file_ingestion_failed"
+  | "project_created"
+  | "project_deleted"
+  | "guardrail_added"
   | (string & {});
 
 export type NotificationStatus = "pending" | "acted" | "dismissed";

@@ -6,7 +6,9 @@ import {
   CheckCheck,
   CircleDollarSign,
   FileWarning,
+  FolderOpen,
   Loader2,
+  Shield,
   Users,
   X,
 } from "lucide-react";
@@ -48,6 +50,12 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
     return (
       <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
+  }
+  if (type === "project_created" || type === "project_deleted") {
+    return <FolderOpen className="h-4 w-4 text-text-3" strokeWidth={2} />;
+  }
+  if (type === "guardrail_added") {
+    return <Shield className="h-4 w-4 text-text-3" strokeWidth={2} />;
   }
   if (
     type === "team_renamed" ||

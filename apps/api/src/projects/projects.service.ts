@@ -7,6 +7,7 @@ import {
 import { and, desc, eq, isNull, inArray, or } from 'drizzle-orm';
 import { projects, teams, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 
 export interface CreateProjectDto {
@@ -21,6 +22,7 @@ export class ProjectsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly teamsService: TeamsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private selectWithTeamName() {
@@ -134,6 +136,19 @@ export class ProjectsService {
         teamId: dto.teamId ?? null,
       })
       .returning();
+
+    // Team transparency: tell every other team member a new project
+    // landed in their workspace. Personal projects have no audience
+    // to ping. Best-effort.
+    if (project.teamId) {
+      await this.announceTeamProjectCreated(
+        project.id,
+        project.name,
+        project.teamId,
+        userId,
+      );
+    }
+
     return project;
   }
 
@@ -151,7 +166,121 @@ export class ProjectsService {
       throw new ForbiddenException('Only the project owner can delete it');
     }
 
+    // Snapshot team scope + name BEFORE the delete so we can resolve
+    // recipients and render the title even after the row is gone.
+    const teamId = project.teamId;
+    const projectName = project.name;
+
     await this.db.delete(projects).where(eq(projects.id, id));
+
+    if (teamId) {
+      await this.announceTeamProjectDeleted(
+        id,
+        projectName,
+        teamId,
+        userId,
+      );
+    }
     return { success: true };
+  }
+
+  /**
+   * Notify every team member (minus the creator) that a new
+   * team-scoped project exists. Best-effort, never throws.
+   */
+  private async announceTeamProjectCreated(
+    projectId: string,
+    projectName: string,
+    teamId: string,
+    creatorUserId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      if (!team) return;
+      const [creator] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, creatorUserId))
+        .limit(1);
+      const creatorName =
+        creator?.name || creator?.email || 'A team member';
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== creatorUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'project_created',
+            title: `${creatorName} created project "${projectName}" in "${team.name}"`,
+            body: null,
+            data: {
+              projectId,
+              projectName,
+              teamId,
+              teamName: team.name,
+              actorId: creatorUserId,
+              actorName: creatorName,
+            },
+          }),
+        ),
+      );
+    } catch {
+      // swallow — never abort the project insert
+    }
+  }
+
+  /**
+   * Notify every team member (minus the deleter) that a project is
+   * gone. Best-effort.
+   */
+  private async announceTeamProjectDeleted(
+    projectId: string,
+    projectName: string,
+    teamId: string,
+    deleterUserId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      const teamName = team?.name ?? 'team';
+      const [deleter] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, deleterUserId))
+        .limit(1);
+      const actorName =
+        deleter?.name || deleter?.email || 'A team member';
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== deleterUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'project_deleted',
+            title: `Project "${projectName}" was deleted from "${teamName}"`,
+            body: `Deleted by ${actorName}.`,
+            data: {
+              projectId,
+              projectName,
+              teamId,
+              teamName,
+              actorId: deleterUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch {
+      // swallow
+    }
   }
 }

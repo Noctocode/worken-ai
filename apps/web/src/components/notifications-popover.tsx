@@ -9,7 +9,9 @@ import {
   Users,
   CircleDollarSign,
   FileWarning,
+  FolderOpen,
   Loader2,
+  Shield,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -58,6 +60,12 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
     return (
       <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
+  }
+  if (type === "project_created" || type === "project_deleted") {
+    return <FolderOpen className="h-4 w-4 text-text-3" strokeWidth={2} />;
+  }
+  if (type === "guardrail_added") {
+    return <Shield className="h-4 w-4 text-text-3" strokeWidth={2} />;
   }
   if (
     type === "team_renamed" ||

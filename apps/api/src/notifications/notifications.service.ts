@@ -33,7 +33,10 @@ export type NotificationType =
   | 'account_role_changed'
   | 'account_budget_changed'
   | 'member_cap_changed'
-  | 'file_ingestion_failed';
+  | 'file_ingestion_failed'
+  | 'project_created'
+  | 'project_deleted'
+  | 'guardrail_added';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 
@@ -342,6 +345,27 @@ export class NotificationsService {
       if (r.userId) set.add(r.userId);
     }
     return Array.from(set);
+  }
+
+  /**
+   * Every user in the caller's company. Used by transparency-style
+   * notifications (org-wide guardrail added, etc) where the audience
+   * is the whole org, not just admins. Excludes the caller; if the
+   * caller has no company_name (personal profile), returns empty.
+   */
+  async getCompanyUsers(callerUserId: string): Promise<string[]> {
+    const callerRow = await this.db
+      .select({ companyName: users.companyName })
+      .from(users)
+      .where(eq(users.id, callerUserId))
+      .limit(1);
+    const companyName = callerRow[0]?.companyName ?? null;
+    if (!companyName) return [];
+    const rows = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.companyName, companyName));
+    return rows.map((r) => r.id).filter((id) => id !== callerUserId);
   }
 
   /**
