@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -12,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
+import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from './projects.service.js';
@@ -19,6 +21,15 @@ import type { CreateProjectDto } from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+
+// Shared upload dir with the Knowledge Core controller. Same path,
+// same on-disk shape — uploads from Manage Context land alongside
+// regular KC uploads so the storage_path saved on the row keeps
+// resolving from `uploads/knowledge-core/<uuid>-<name>`. Created
+// once at module load so the first request doesn't race the
+// directory creation.
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 @Controller('projects')
 export class ProjectsController {
@@ -112,8 +123,7 @@ export class ProjectsController {
   @UseInterceptors(
     FilesInterceptor('files', 20, {
       storage: diskStorage({
-        destination: (_req, _file, cb) =>
-          cb(null, path.join(process.cwd(), 'uploads', 'knowledge-core')),
+        destination: UPLOAD_DIR,
         filename: (_req, file, cb) => {
           const unique = randomUUID();
           const safe = file.originalname
@@ -131,7 +141,12 @@ export class ProjectsController {
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
         ) {
-          cb(new Error(`Unsupported file type: ${file.originalname}`), false);
+          cb(
+            new BadRequestException(
+              `Unsupported file type: ${file.originalname}`,
+            ),
+            false,
+          );
           return;
         }
         cb(null, true);
