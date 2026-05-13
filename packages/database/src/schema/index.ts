@@ -537,6 +537,55 @@ export const shortcuts = pgTable("shortcuts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// In-app notification inbox. Mirrors the actionable subset of what
+// the mail service sends (team / org invitations) plus auto-emitted
+// info-only alerts (budget thresholds). Email stays as a parallel
+// channel for now — both fire so we don't drop invites for users
+// who never open the app.
+//
+// `type` is a loose-typed discriminator; `data` carries per-type
+// payload (e.g. team_invite has { teamId, teamName, inviterName,
+// invitationToken, memberId } so the FE can render Accept/Decline
+// without an extra round-trip). Keeping the schema generic means
+// future types (file_failed, guardrail_blocked, …) drop in without
+// migrations.
+//
+// `status` lifecycle:
+//   - 'pending'   : surfaced in the panel with action buttons live
+//   - 'acted'     : user accepted/declined (or the row is otherwise
+//                   resolved); keep the row visible for ~24h then
+//                   age out of the default list
+//   - 'dismissed' : user X'd the row, no action needed
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    data: jsonb("data").notNull().default({}),
+    status: text("status").notNull().default("pending"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Default list query: pending + acted for this user, newest
+    // first. Covering for the common bell-popover fetch.
+    index("notifications_user_status_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+    ),
+    // Unread badge probe — partial would be tighter but a regular
+    // index on read_at suffices since the user_id filter narrows
+    // the scan first.
+    index("notifications_user_read_idx").on(table.userId, table.readAt),
+  ],
+);
+
 export const prompts = pgTable("prompts", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

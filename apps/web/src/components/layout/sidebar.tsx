@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Bell,
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
@@ -35,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { NotificationsPopover } from "@/components/notifications-popover";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
 
@@ -256,6 +258,35 @@ export const SidebarContent = ({
 
       {/* User Profile */}
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
+        {/* Notifications. Lives above the dark-mode toggle by design
+            — bell+badge is the highest-priority item below the main
+            nav, dark-mode is a quality-of-life sibling under it.
+            NotificationsPopover wraps the trigger so the unread
+            badge / popover state is self-contained. */}
+        {collapsed ? (
+          <NotificationsPopover>
+            <button
+              type="button"
+              aria-label="Notifications"
+              title="Notifications"
+              className="flex h-[40px] w-[40px] cursor-pointer items-center justify-center rounded-md p-0 text-text-2 hover:text-text-1 hover:bg-bg-1"
+            >
+              <Bell className="h-5 w-5 text-text-3" />
+            </button>
+          </NotificationsPopover>
+        ) : (
+          <NotificationsPopover>
+            <button
+              type="button"
+              aria-label="Notifications"
+              title="Notifications"
+              className="flex h-10 w-full cursor-pointer items-center justify-start gap-3 rounded-md px-3 font-normal text-text-2 hover:bg-bg-1 hover:text-text-1"
+            >
+              <Bell className="size-5 shrink-0 text-text-3" />
+              <span>Notifications</span>
+            </button>
+          </NotificationsPopover>
+        )}
         {/* Dark mode toggle */}
         {collapsed ? (
           <Button

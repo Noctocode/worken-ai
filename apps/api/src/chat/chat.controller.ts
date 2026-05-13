@@ -151,6 +151,7 @@ export class ChatController {
     });
     await this.chatTransport.assertOrgBudgetNotExceeded({
       estimatedCostCents,
+      callerUserId: user.id,
     });
 
     const apiMessages = conversationAfterPersist.messages.map((m) => ({

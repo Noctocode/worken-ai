@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm';
 import { users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 
 @Controller('users')
@@ -30,6 +31,7 @@ export class UsersController {
     private readonly teamsService: TeamsService,
     private readonly mailService: MailService,
     private readonly observabilityService: ObservabilityService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Get()
@@ -167,6 +169,22 @@ export class UsersController {
       if (Object.keys(patch).length > 0) {
         await this.db.update(users).set(patch).where(eq(users.id, existing.id));
       }
+      // Existing user re-invited / role updated — surface it in
+      // their inbox so they know what changed. Info-only; no
+      // Accept/Decline since the role flip already happened.
+      await this.notifications.create({
+        userId: existing.id,
+        type: 'org_invite',
+        title: `${inviterName} updated your access to ${
+          inviterCompany ?? 'the workspace'
+        }`,
+        body: `Your role is now ${body.role}.`,
+        data: {
+          role: body.role,
+          companyName: inviterCompany ?? null,
+          inviterName,
+        },
+      });
       return { status: 'updated', email, role: body.role };
     }
 

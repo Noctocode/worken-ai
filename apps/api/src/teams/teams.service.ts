@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
   ForbiddenException,
   Inject,
   Injectable,
@@ -26,6 +27,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 import {
@@ -43,6 +45,10 @@ export class TeamsService {
     private readonly mailService: MailService,
     private readonly provisioningService: OpenRouterProvisioningService,
     private readonly encryptionService: EncryptionService,
+    // forwardRef matches the module-level cycle break — see
+    // TeamsModule for the matching forwardRef on NotificationsModule.
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(
@@ -281,7 +287,109 @@ export class TeamsService {
       .set({ monthlyBudgetCents: budgetCents })
       .where(eq(teams.id, teamId));
 
+    // Proactive threshold check after admin-driven budget change.
+    // Mirrors the chat-transport gate's logic but triggers off the
+    // ADMIN ACTION instead of a chat call — handles the case where
+    // lowering the cap suddenly puts the team past 80% / 100%
+    // without anyone making a call. Fire-and-forget; alert failures
+    // never abort the budget update.
+    if (budgetCents > 0) {
+      await this.checkAndAlertTeamBudgetThresholds(
+        teamId,
+        team.name,
+        budgetCents,
+      );
+    }
+
     return { monthlyBudgetCents: budgetCents };
+  }
+
+  /**
+   * After a team-budget patch lands, compute the team's current-month
+   * spend and enqueue 80% / 100% notifications if the NEW cap puts
+   * the team at or past those thresholds. Idempotent via the
+   * thresholdKey carried in `data` — re-running for the same
+   * (team, threshold, month) is a no-op.
+   *
+   * Kept private + best-effort: any failure here logs but never
+   * throws, so a flaky notification path can't break the budget
+   * update itself.
+   */
+  private async checkAndAlertTeamBudgetThresholds(
+    teamId: string,
+    teamName: string,
+    budgetCents: number,
+  ): Promise<void> {
+    try {
+      const [agg] = await this.db
+        .select({
+          total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+        })
+        .from(observabilityEvents)
+        .where(
+          and(
+            eq(observabilityEvents.teamId, teamId),
+            eq(observabilityEvents.success, true),
+            gte(observabilityEvents.createdAt, sql`date_trunc('month', now())`),
+          ),
+        );
+      const spentUsd = agg ? parseFloat(agg.total) : 0;
+      const spentCents = Math.round(spentUsd * 100);
+      const eightyPct = Math.floor(budgetCents * 0.8);
+
+      const now = new Date();
+      const periodKey = `${now.getUTCFullYear()}-${String(
+        now.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
+
+      const recipients = await this.notifications.getTeamBudgetRecipients(
+        teamId,
+      );
+      const fanout = async (
+        threshold: 80 | 100,
+        title: string,
+        body: string,
+      ) => {
+        await Promise.allSettled(
+          recipients.map((userId) =>
+            this.notifications.createIfNotExists({
+              userId,
+              type: 'budget_alert',
+              title,
+              body,
+              data: {
+                scope: 'team',
+                teamId,
+                teamName,
+                threshold,
+                budgetCents,
+                spentCents,
+                thresholdKey: `${periodKey}:team:${teamId}:${threshold}`,
+              },
+            }),
+          ),
+        );
+      };
+
+      if (spentCents >= budgetCents) {
+        await fanout(
+          100,
+          `Team "${teamName}" is over its monthly budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}. The new cap is already exceeded — chat is blocked until you raise it or next month resets.`,
+        );
+      } else if (spentCents >= eightyPct) {
+        await fanout(
+          80,
+          `Team "${teamName}" has used 80% of its monthly budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}.`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to evaluate budget-threshold alerts for team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async findAllForUser(userId: string) {
@@ -578,6 +686,26 @@ export class TeamsService {
         this.logger.error(`Failed to resend invitation email: ${msg}`);
       }
 
+      // In-app companion to the email, only for invitees who already
+      // have an account (new users can't see the inbox until they
+      // sign up — they get the email link instead).
+      if (existingUser) {
+        await this.notifications.create({
+          userId: existingUser.id,
+          type: 'team_invite',
+          title: `You're invited to ${team.name}`,
+          body: `${inviterName} invited you as ${role}.`,
+          data: {
+            teamId,
+            teamName: team.name,
+            inviterName,
+            role,
+            invitationToken: token,
+            memberId: refreshed.id,
+          },
+        });
+      }
+
       return { ...refreshed, resent: true };
     }
 
@@ -671,6 +799,26 @@ export class TeamsService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Failed to send invitation email: ${msg}`);
+    }
+
+    // Mirror the email with an in-app notification, but only for
+    // invitees who already have an account — new-user invitees
+    // can't see the bell yet, they get the email link only.
+    if (existingUser) {
+      await this.notifications.create({
+        userId: existingUser.id,
+        type: 'team_invite',
+        title: `You're invited to ${team.name}`,
+        body: `${inviterName} invited you as ${role}.`,
+        data: {
+          teamId,
+          teamName: team.name,
+          inviterName,
+          role,
+          invitationToken: token,
+          memberId: member.id,
+        },
+      });
     }
 
     return { ...member, resent: false };

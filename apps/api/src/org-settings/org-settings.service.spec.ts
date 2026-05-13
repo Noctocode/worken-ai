@@ -21,7 +21,16 @@ function svc() {
       get: () => exploder,
     },
   );
-  return new OrgSettingsService(db as never);
+  return new OrgSettingsService(
+    db as never,
+    // NotificationsService stub — validation tests don't reach the
+    // alert fanout path, but the constructor requires the injection.
+    {
+      getOrgBudgetRecipients: async () => [] as string[],
+      createIfNotExists: async () => null,
+      create: async () => null,
+    } as never,
+  );
 }
 
 describe('OrgSettingsService.update validation', () => {

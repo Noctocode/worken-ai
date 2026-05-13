@@ -17,6 +17,7 @@ import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
 import { ProjectsModule } from './projects/projects.module';
 import { RedisModule } from './redis/redis.module';
 import { ModelsModule } from './models/models.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
@@ -41,6 +42,7 @@ import { UsersModule } from './users/users.module';
     IntegrationsModule,
     KnowledgeCoreModule,
     ModelsModule,
+    NotificationsModule,
     ObservabilityModule,
     OnboardingModule,
     OrgSettingsModule,

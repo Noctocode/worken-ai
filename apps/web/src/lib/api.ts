@@ -2782,3 +2782,82 @@ export async function revokeApiKey(id: string): Promise<void> {
   }
 }
 
+// ─── Notifications ───────────────────────────────────────────────────
+
+/**
+ * Discriminated `type` values the BE emits. Loose-typed string at
+ * the wire so a new type added on the BE doesn't break the FE; the
+ * union covers the renderer-aware ones.
+ */
+export type NotificationType =
+  | "team_invite"
+  | "org_invite"
+  | "budget_alert"
+  | (string & {});
+
+export type NotificationStatus = "pending" | "acted" | "dismissed";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  /** Discriminated payload — schema depends on `type`. Renderers
+   *  cast within their branch. */
+  data: Record<string, unknown>;
+  status: NotificationStatus;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export async function fetchNotifications(): Promise<Notification[]> {
+  const res = await apiFetch("/notifications");
+  if (!res.ok) throw new Error("Failed to fetch notifications");
+  return res.json();
+}
+
+export async function fetchNotificationsUnreadCount(): Promise<{ count: number }> {
+  const res = await apiFetch("/notifications/unread-count");
+  if (!res.ok) throw new Error("Failed to fetch unread count");
+  return res.json();
+}
+
+export async function markNotificationRead(id: string): Promise<Notification> {
+  const res = await apiFetch(`/notifications/${id}/read`, { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark notification read");
+  return res.json();
+}
+
+export async function markAllNotificationsRead(): Promise<{ markedCount: number }> {
+  const res = await apiFetch("/notifications/read-all", { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark all read");
+  return res.json();
+}
+
+export async function acceptNotification(id: string): Promise<{
+  type: NotificationType;
+  teamId?: string;
+}> {
+  const res = await apiFetch(`/notifications/${id}/accept`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to accept");
+  }
+  return res.json();
+}
+
+export async function declineNotification(id: string): Promise<{ ok: true }> {
+  const res = await apiFetch(`/notifications/${id}/decline`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to decline");
+  }
+  return res.json();
+}
+
+export async function dismissNotification(id: string): Promise<{ id: string }> {
+  const res = await apiFetch(`/notifications/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to dismiss notification");
+  return res.json();
+}
+

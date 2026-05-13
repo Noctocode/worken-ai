@@ -338,6 +338,7 @@ export class CompareModelsController {
           });
           await this.chatTransport.assertOrgBudgetNotExceeded({
             estimatedCostCents,
+            callerUserId: user.id,
           });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

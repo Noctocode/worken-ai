@@ -48,6 +48,7 @@ describe('UsersController auth gates', () => {
       {} as never, // teamsService — unused by the gated endpoints
       {} as never, // mailService
       {} as never, // observabilityService
+      {} as never, // notificationsService — unused by these gates
     );
   }
 
