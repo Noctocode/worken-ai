@@ -101,12 +101,23 @@ export default function ProjectChatPage() {
   const lastStopAtRef = useRef<number>(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Fetch conversation messages when activeConversationId changes
+  // Fetch conversation messages when activeConversationId changes.
+  //
+  // Gated on `!isSending` to prevent a streaming-race: on a fresh
+  // chat we `createConversation()` first, then call `streamChatMessage`
+  // which is what actually persists the user prompt. If this query
+  // fired between those two, BE would respond with 0 messages and the
+  // sync effect below would wipe the optimistic + streaming-token
+  // state, leaving the user staring at an empty chat. With the gate,
+  // the query holds off until the stream ends (`setIsSending(false)`
+  // in the finally block) and then refetches the canonical BE view
+  // exactly once — swapping the local `temp-…` and `resp-…` ids for
+  // the real DB rows.
   const { data: conversationData, isLoading: isLoadingConversation } = useQuery(
     {
       queryKey: ["conversation", activeConversationId],
       queryFn: () => fetchConversation(activeConversationId!),
-      enabled: !!activeConversationId,
+      enabled: !!activeConversationId && !isSending,
     },
   );
 
@@ -390,6 +401,19 @@ export default function ProjectChatPage() {
     } finally {
       abortRef.current = null;
       setIsSending(false);
+      // Force the conversation query to refetch once `isSending` flips
+      // back to false. The useQuery is gated on `!isSending`, so its
+      // cached data (possibly stale or absent for a fresh chat) would
+      // otherwise be used as-is by the sync effect. Invalidating here
+      // guarantees the BE canonical view replaces the local
+      // optimistic state — `temp-…` and `resp-…` ids get swapped for
+      // real DB rows, and any guardrail input redaction the BE
+      // applied to the user prompt becomes visible.
+      if (activeConversationId) {
+        queryClient.invalidateQueries({
+          queryKey: ["conversation", activeConversationId],
+        });
+      }
       // No-op assignment to satisfy "unused" lint while preserving
       // the explicit state for future telemetry. The partial-flag
       // metadata is already persisted on the BE side.
