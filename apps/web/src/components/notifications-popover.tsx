@@ -42,6 +42,13 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
       <CircleDollarSign className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
   }
+  if (type === "budget_changed") {
+    // Muted tone vs budget_alert — this is informational ("FYI a
+    // cap moved"), not a threshold warning.
+    return (
+      <CircleDollarSign className="h-4 w-4 text-text-3" strokeWidth={2} />
+    );
+  }
   return <Bell className="h-4 w-4 text-text-3" strokeWidth={2} />;
 }
 

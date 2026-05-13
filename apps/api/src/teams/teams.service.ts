@@ -282,6 +282,7 @@ export class TeamsService {
     // the block. Owner can raise the budget later to enable.
 
     const budgetCents = Math.round(budgetUsd * 100);
+    const previousBudgetCents = team.monthlyBudgetCents;
     await this.db
       .update(teams)
       .set({ monthlyBudgetCents: budgetCents })
@@ -301,7 +302,74 @@ export class TeamsService {
       );
     }
 
+    // Info-only "budget changed" announcement for owner + admins
+    // (minus the caller — they pressed Save, no need to notify them
+    // about their own action). Independent of threshold alerts:
+    // every actual value change drops a row so the inbox doubles as
+    // a lightweight audit trail. Skipped when the new value equals
+    // the old (no-op patch).
+    if (previousBudgetCents !== budgetCents) {
+      await this.announceTeamBudgetChange(
+        teamId,
+        team.name,
+        previousBudgetCents,
+        budgetCents,
+        userId,
+      );
+    }
+
     return { monthlyBudgetCents: budgetCents };
+  }
+
+  /**
+   * Fan out a 'budget_changed' info-only notification when the team
+   * budget actually moves. Recipients = team owner + admins minus
+   * the caller. Best-effort, never throws.
+   */
+  private async announceTeamBudgetChange(
+    teamId: string,
+    teamName: string,
+    previousCents: number,
+    nextCents: number,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const recipients = (
+        await this.notifications.getTeamBudgetRecipients(teamId)
+      ).filter((id) => id !== callerUserId);
+      if (recipients.length === 0) return;
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'An admin';
+      const fmt = (c: number) => `$${(c / 100).toFixed(2)}`;
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'budget_changed',
+            title: `Team "${teamName}"'s monthly budget was changed`,
+            body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+            data: {
+              scope: 'team',
+              teamId,
+              teamName,
+              previousCents,
+              nextCents,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team-budget change for ${teamId}: ${msg}`,
+      );
+    }
   }
 
   /**

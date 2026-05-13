@@ -23,7 +23,8 @@ import { DATABASE, type Database } from '../database/database.module.js';
 export type NotificationType =
   | 'team_invite'
   | 'org_invite'
-  | 'budget_alert';
+  | 'budget_alert'
+  | 'budget_changed';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 

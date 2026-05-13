@@ -2793,6 +2793,7 @@ export type NotificationType =
   | "team_invite"
   | "org_invite"
   | "budget_alert"
+  | "budget_changed"
   | (string & {});
 
 export type NotificationStatus = "pending" | "acted" | "dismissed";

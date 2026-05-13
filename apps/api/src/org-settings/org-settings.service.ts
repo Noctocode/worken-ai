@@ -1,6 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
-import { observabilityEvents, orgSettings } from '@worken/database/schema';
+import { observabilityEvents, orgSettings, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
@@ -91,7 +91,76 @@ export class OrgSettingsService {
       );
     }
 
+    // Info-only 'budget_changed' announcement for every company
+    // admin minus the caller. Independent of threshold alerts —
+    // every actual value change drops a row so the inbox doubles
+    // as a lightweight audit trail. Skipped when the cap is left
+    // alone or rewritten to the same value.
+    if (
+      callerUserId &&
+      input.monthlyBudgetCents !== undefined &&
+      input.monthlyBudgetCents !== current.monthlyBudgetCents
+    ) {
+      await this.announceOrgBudgetChange(
+        callerUserId,
+        current.monthlyBudgetCents,
+        input.monthlyBudgetCents,
+      );
+    }
+
     return this.getCurrent();
+  }
+
+  /**
+   * Fan out a 'budget_changed' info-only notification for the org
+   * budget. Recipients = every company admin minus the caller.
+   * Best-effort, never throws.
+   *
+   * `previousCents` / `nextCents` can be null when the cap toggles
+   * between "no target" and a concrete value — formatted as
+   * "(no target)" so the body still reads naturally.
+   */
+  private async announceOrgBudgetChange(
+    callerUserId: string,
+    previousCents: number | null,
+    nextCents: number | null,
+  ): Promise<void> {
+    try {
+      const recipients = (
+        await this.notifications.getOrgBudgetRecipients(callerUserId)
+      ).filter((id) => id !== callerUserId);
+      if (recipients.length === 0) return;
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'An admin';
+      const fmt = (c: number | null) =>
+        c === null ? '(no target)' : `$${(c / 100).toFixed(2)}`;
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'budget_changed',
+            title: `Company monthly AI budget was changed`,
+            body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+            data: {
+              scope: 'org',
+              previousCents,
+              nextCents,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce org-budget change: ${msg}`,
+      );
+    }
   }
 
   /**
