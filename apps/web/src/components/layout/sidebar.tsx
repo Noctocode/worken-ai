@@ -258,14 +258,18 @@ export const SidebarContent = ({
 
       {/* User Profile */}
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
-        {/* Notifications. Lives above the dark-mode toggle by design
-            — bell+badge is the highest-priority item below the main
-            nav, dark-mode is a quality-of-life sibling under it.
-            Render-prop pattern so the badge can sit next to the bell
-            icon and the Button shape matches the rest of the nav
-            list exactly (no extra wrapper that would offset the
-            left edge of the icon). */}
-        <NotificationsPopover>
+        {/* Notifications + dark-mode share a tighter sub-cluster.
+            Both are quick-action toggles, so visually they read as
+            a pair — keeping them at `gap-1` distinguishes them from
+            the heavier `gap-3` between the cluster and the user
+            avatar row below. Wrapper is `w-full` in expanded mode so
+            the buttons keep filling the sidebar width. */}
+        <div
+          className={`flex flex-col items-center gap-1 ${
+            collapsed ? "" : "w-full"
+          }`}
+        >
+          <NotificationsPopover>
           {({ unreadCount }) =>
             collapsed ? (
               <Button
@@ -328,6 +332,7 @@ export const SidebarContent = ({
             <span>{themeButtonText}</span>
           </Button>
         )}
+        </div>
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >

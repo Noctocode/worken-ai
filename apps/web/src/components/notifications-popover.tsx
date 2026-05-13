@@ -165,7 +165,12 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
     <Popover open={open} onOpenChange={handleOpenChange}>
       <PopoverTrigger asChild>{children({ unreadCount })}</PopoverTrigger>
       <PopoverContent
-        align="end"
+        // Anchored at the bottom of the sidebar, so opening up + to
+        // the right keeps the popup on-screen and away from the row
+        // it was triggered from. Radix' collision handler will flip
+        // if the screen is too short.
+        side="top"
+        align="start"
         sideOffset={8}
         className="w-[360px] max-w-[calc(100vw-2rem)] p-0"
       >
