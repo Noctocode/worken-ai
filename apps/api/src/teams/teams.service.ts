@@ -1149,7 +1149,74 @@ export class TeamsService {
       throw new NotFoundException('Member not found');
     }
 
+    // Tell the affected user their role moved. Skip:
+    //   - rows still on a pending invite (target.userId is null —
+    //     they don't have an account / inbox yet, the email-link
+    //     flow will surface their final role when they accept)
+    //   - self-edits (caller demoting themselves) since they
+    //     pressed Save and already know
+    //   - no-op patches (role unchanged) — would be confusing
+    if (
+      target?.userId &&
+      target.userId !== userId &&
+      target.role !== role
+    ) {
+      await this.announceRoleChange(
+        target.userId,
+        teamId,
+        team.name,
+        target.role,
+        role,
+        userId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Notify a single team member that their role on a given team
+   * changed. Best-effort — alert failures must not unwind the role
+   * patch above. Used by updateMemberRole; not generalised to
+   * batch since role updates are one row at a time.
+   */
+  private async announceRoleChange(
+    targetUserId: string,
+    teamId: string,
+    teamName: string,
+    previousRole: string,
+    nextRole: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const niceRole = (r: string) =>
+        r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'team_role_changed',
+        title: `Your role in "${teamName}" was changed to ${niceRole(nextRole)}`,
+        body: `${niceRole(previousRole)} → ${niceRole(nextRole)}. Set by ${actorName}.`,
+        data: {
+          teamId,
+          teamName,
+          previousRole,
+          nextRole,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce role change for user ${targetUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async removeMember(teamId: string, memberId: string, userId: string) {

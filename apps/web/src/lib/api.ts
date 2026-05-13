@@ -2798,6 +2798,7 @@ export type NotificationType =
   | "budget_alert"
   | "budget_changed"
   | "team_renamed"
+  | "team_role_changed"
   | (string & {});
 
 export type NotificationStatus = "pending" | "acted" | "dismissed";

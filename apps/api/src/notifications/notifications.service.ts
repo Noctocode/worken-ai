@@ -25,7 +25,8 @@ export type NotificationType =
   | 'org_invite'
   | 'budget_alert'
   | 'budget_changed'
-  | 'team_renamed';
+  | 'team_renamed'
+  | 'team_role_changed';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 
