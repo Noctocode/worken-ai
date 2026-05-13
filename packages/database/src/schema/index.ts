@@ -469,15 +469,17 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // uploader-only; company accounts → org-wide. Set from the
   // uploader's profileType at upload time.
   scope: text("scope").notNull().default("personal"),
-  // Within company-scope, a second layer of gating: 'all' lets every
-  // company user (regardless of role) pull these chunks at chat /
-  // arena time; 'admins' restricts them to role='admin'. The choice
-  // is exposed to admins at upload time and is editable post-upload
-  // via PATCH /knowledge-core/files/:id/visibility. Default 'all'
-  // matches the pre-feature behaviour so legacy rows keep working
-  // without a backfill. Irrelevant for scope='personal' (owner-only
-  // already), kept on every row for shape uniformity + search filter
-  // simplicity.
+  // Within company-scope, a second layer of gating:
+  //   - 'all'    : every company user can pull these chunks at chat /
+  //                arena time (default; matches pre-feature behaviour).
+  //   - 'admins' : restricted to role='admin' (admin-only privilege).
+  //   - 'teams'  : restricted to members of the team set in
+  //                `knowledge_file_teams`. Empty link set === no one
+  //                can read; the upload path validates non-empty.
+  // The choice is exposed at upload time and is editable post-upload
+  // via PATCH /knowledge-core/files/:id/visibility. Irrelevant for
+  // scope='personal' (owner-only already), kept on every row for
+  // shape uniformity + search-filter simplicity.
   visibility: text("visibility").notNull().default("all"),
   // Content hash (hex SHA-256) of the uploaded bytes. Used by the
   // upload path to skip files the same uploader already has elsewhere
@@ -496,6 +498,31 @@ export const knowledgeFiles = pgTable("knowledge_files", {
     table.contentSha256,
   ),
 ]);
+
+// Many-to-many link between `knowledge_files` and `teams` for the
+// `visibility = 'teams'` mode. Each row grants one team read access
+// to the file at chat / arena time. Empty link set === no team can
+// read the file; the upload path validates the array is non-empty
+// when visibility='teams'. Cascade on both sides so deleting a file
+// or a team auto-cleans the links — no orphans, no broken RAG.
+export const knowledgeFileTeams = pgTable(
+  "knowledge_file_teams",
+  {
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.fileId, table.teamId] }),
+    // Reverse lookup: "which files does team X get to see?" — used by
+    // the team detail page and the chat-time membership check.
+    index("knowledge_file_teams_team_idx").on(table.teamId),
+  ],
+);
 
 export const shortcuts = pgTable("shortcuts", {
   id: uuid("id").primaryKey().defaultRandom(),

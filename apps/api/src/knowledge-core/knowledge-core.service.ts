@@ -9,7 +9,10 @@ import { and, eq, desc, inArray, sql } from 'drizzle-orm';
 import {
   knowledgeFolders,
   knowledgeFiles,
+  knowledgeFileTeams,
   knowledgeChunks,
+  teamMembers,
+  teams,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -110,7 +113,43 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFiles.folderId, id))
       .orderBy(desc(knowledgeFiles.createdAt));
 
-    return { ...folder, files };
+    // Hydrate team links for files in 'teams' visibility mode. One
+    // round-trip for the whole folder keeps this O(1) round-trips
+    // regardless of file count.
+    const teamLinks = await this.hydrateTeamLinks(files.map((f) => f.id));
+    const filesWithTeams = files.map((f) => ({
+      ...f,
+      teams: teamLinks.get(f.id) ?? [],
+    }));
+
+    return { ...folder, files: filesWithTeams };
+  }
+
+  /**
+   * Resolve per-file team-link maps in a single query so callers
+   * (folder detail, recent list) can stamp `teams: [{id, name}]`
+   * onto every file without an N+1.
+   */
+  private async hydrateTeamLinks(
+    fileIds: string[],
+  ): Promise<Map<string, Array<{ id: string; name: string }>>> {
+    const out = new Map<string, Array<{ id: string; name: string }>>();
+    if (fileIds.length === 0) return out;
+    const links = await this.db
+      .select({
+        fileId: knowledgeFileTeams.fileId,
+        teamId: teams.id,
+        teamName: teams.name,
+      })
+      .from(knowledgeFileTeams)
+      .innerJoin(teams, eq(teams.id, knowledgeFileTeams.teamId))
+      .where(inArray(knowledgeFileTeams.fileId, fileIds));
+    for (const link of links) {
+      const arr = out.get(link.fileId) ?? [];
+      arr.push({ id: link.teamId, name: link.teamName });
+      out.set(link.fileId, arr);
+    }
+    return out;
   }
 
   async createFolder(name: string, userId: string) {
@@ -159,6 +198,7 @@ export class KnowledgeCoreService {
     userId: string,
     files: Express.Multer.File[],
     visibilityInput?: string,
+    teamIdsInput?: string[],
   ) {
     const [folder] = await this.db
       .select()
@@ -190,7 +230,22 @@ export class KnowledgeCoreService {
     const visibility = this.resolveUploadVisibility(
       visibilityInput,
       uploader?.role,
+      scope,
     );
+
+    // For 'teams' visibility: resolve the caller-supplied team IDs to
+    // a validated set the caller actually belongs to (admin bypass —
+    // any company team is fair game). Bail out before any file write
+    // if the input is empty or contains a team the caller can't
+    // assign to.
+    const allowedTeamIds =
+      visibility === 'teams'
+        ? await this.resolveAssignableTeamIds(
+            teamIdsInput ?? [],
+            userId,
+            uploader?.role === 'admin',
+          )
+        : [];
 
     // Hash every uploaded file up front so we can dedupe within the
     // batch and against the DB in two passes. Multer already wrote
@@ -330,6 +385,25 @@ export class KnowledgeCoreService {
         ? await this.db.insert(knowledgeFiles).values(values).returning()
         : [];
 
+      // Link every inserted file to the resolved team set so the
+      // chat-time RAG filter (and the FE row badge) can see which
+      // teams have access. Done in one INSERT regardless of how many
+      // files / teams to keep the upload path fast.
+      if (
+        visibility === 'teams' &&
+        inserted.length > 0 &&
+        allowedTeamIds.length > 0
+      ) {
+        await this.db.insert(knowledgeFileTeams).values(
+          inserted.flatMap((row) =>
+            allowedTeamIds.map((teamId) => ({
+              fileId: row.id,
+              teamId,
+            })),
+          ),
+        );
+      }
+
       if (inserted.length > 0) {
         await this.db
           .update(knowledgeFolders)
@@ -347,7 +421,15 @@ export class KnowledgeCoreService {
         this.knowledgeIngestion.ingestPendingFilesForUser(userId);
       }
 
-      return { uploaded: inserted, duplicates };
+      // Stamp the inserted rows with the team set so the FE doesn't
+      // have to refetch separately to render the row badge. Empty
+      // array for non-teams visibility keeps the shape uniform.
+      const insertedWithTeams = inserted.map((row) => ({
+        ...row,
+        teamIds: visibility === 'teams' ? allowedTeamIds : [],
+      }));
+
+      return { uploaded: insertedWithTeams, duplicates };
     } catch (error) {
       await Promise.allSettled(
         toInsert
@@ -362,15 +444,22 @@ export class KnowledgeCoreService {
    * Validate the visibility enum + enforce the admin-only privilege
    * for 'admins'. Shared between upload and PATCH so the same gate
    * applies regardless of how a row gets flipped.
+   *
+   * 'teams' is only meaningful for company-scope uploads — personal
+   * scope is owner-only already, so a teams-restricted personal file
+   * would just be owner-only with extra steps. Rejected up front
+   * instead of silently downgraded so the FE can show a clear error
+   * if it ever sends the wrong shape.
    */
   private resolveUploadVisibility(
     input: string | undefined,
     callerRole: string | null | undefined,
-  ): 'all' | 'admins' {
+    scope?: 'personal' | 'company',
+  ): 'all' | 'admins' | 'teams' {
     if (input == null || input === '') return 'all';
-    if (input !== 'all' && input !== 'admins') {
+    if (input !== 'all' && input !== 'admins' && input !== 'teams') {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all' or 'admins'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', or 'teams'.`,
       );
     }
     if (input === 'admins' && callerRole !== 'admin') {
@@ -378,7 +467,93 @@ export class KnowledgeCoreService {
         'Only admins can mark a knowledge file as admin-only.',
       );
     }
+    if (input === 'teams' && scope === 'personal') {
+      throw new BadRequestException(
+        'Team visibility requires a company profile — personal-scope files are owner-only.',
+      );
+    }
     return input;
+  }
+
+  /**
+   * Normalize + authorize the team-IDs array a caller sends with a
+   * 'teams' visibility request. Rules:
+   *
+   *   - Non-empty after dedupe; otherwise 'teams' visibility is
+   *     meaningless (no one can read the file). 400.
+   *   - Non-admin: every supplied id must be a team the caller owns
+   *     or is an accepted member of. Surfacing 403 here catches a
+   *     client passing arbitrary team uuids.
+   *   - Admin: bypasses membership — admins have org-wide management
+   *     privilege, so any team id that exists is fair game. We still
+   *     validate the rows exist so a typo doesn't silently create
+   *     orphan link rows (FK would catch insert-time, but a 404-style
+   *     400 is friendlier).
+   *
+   * Returns the deduped, validated array ready for INSERT.
+   */
+  private async resolveAssignableTeamIds(
+    input: string[],
+    callerId: string,
+    isAdmin: boolean,
+  ): Promise<string[]> {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException(
+        '`teamIds` must be an array when visibility is "teams".',
+      );
+    }
+    const unique = Array.from(new Set(input.filter((s) => typeof s === 'string' && s.length > 0)));
+    if (unique.length === 0) {
+      throw new BadRequestException(
+        'Pick at least one team for "Teams" visibility.',
+      );
+    }
+
+    if (isAdmin) {
+      // Admins can target any existing team. Validate existence so a
+      // stale id surfaces as a clear 400 rather than an FK error.
+      const rows = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(inArray(teams.id, unique));
+      const existing = new Set(rows.map((r) => r.id));
+      const missing = unique.filter((id) => !existing.has(id));
+      if (missing.length > 0) {
+        throw new BadRequestException(
+          `Unknown team id(s): ${missing.join(', ')}.`,
+        );
+      }
+      return unique;
+    }
+
+    // Non-admin: union of owned + accepted-member team ids.
+    const [ownedRows, memberRows] = await Promise.all([
+      this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(eq(teams.ownerId, callerId), inArray(teams.id, unique))),
+      this.db
+        .select({ teamId: teamMembers.teamId })
+        .from(teamMembers)
+        .where(
+          and(
+            eq(teamMembers.userId, callerId),
+            eq(teamMembers.status, 'accepted'),
+            inArray(teamMembers.teamId, unique),
+          ),
+        ),
+    ]);
+    const allowed = new Set<string>([
+      ...ownedRows.map((r) => r.id),
+      ...memberRows.map((r) => r.teamId),
+    ]);
+    const denied = unique.filter((id) => !allowed.has(id));
+    if (denied.length > 0) {
+      throw new ForbiddenException(
+        'You can only assign teams you own or are a member of.',
+      );
+    }
+    return unique;
   }
 
   /**
@@ -469,6 +644,7 @@ export class KnowledgeCoreService {
     fileId: string,
     callerId: string,
     visibilityInput: string,
+    teamIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
@@ -479,9 +655,13 @@ export class KnowledgeCoreService {
         'Only admins can change a file\'s visibility.',
       );
     }
-    if (visibilityInput !== 'all' && visibilityInput !== 'admins') {
+    if (
+      visibilityInput !== 'all' &&
+      visibilityInput !== 'admins' &&
+      visibilityInput !== 'teams'
+    ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all' or 'admins'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'teams'.`,
       );
     }
 
@@ -507,6 +687,14 @@ export class KnowledgeCoreService {
       );
     }
 
+    // Resolve the team set BEFORE the transaction so validation
+    // errors don't leave a half-applied state. Empty teamIds for
+    // non-teams visibility is fine (we'll clear any existing links).
+    const teamIds =
+      visibilityInput === 'teams'
+        ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        : [];
+
     await this.db.transaction(async (tx) => {
       await tx
         .update(knowledgeFiles)
@@ -516,9 +704,21 @@ export class KnowledgeCoreService {
         .update(knowledgeChunks)
         .set({ visibility: visibilityInput })
         .where(eq(knowledgeChunks.fileId, fileId));
+      // Replace, not merge: wiping and re-inserting keeps the link
+      // set authoritative — flipping away from 'teams' clears the
+      // links entirely; flipping into 'teams' replaces any old set
+      // with the new one. Simpler than diffing.
+      await tx
+        .delete(knowledgeFileTeams)
+        .where(eq(knowledgeFileTeams.fileId, fileId));
+      if (visibilityInput === 'teams' && teamIds.length > 0) {
+        await tx
+          .insert(knowledgeFileTeams)
+          .values(teamIds.map((teamId) => ({ fileId, teamId })));
+      }
     });
 
-    return { id: fileId, visibility: visibilityInput };
+    return { id: fileId, visibility: visibilityInput, teamIds };
   }
 
   /**
@@ -536,6 +736,7 @@ export class KnowledgeCoreService {
     fileIds: string[],
     callerId: string,
     visibilityInput: string,
+    teamIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
@@ -546,14 +747,26 @@ export class KnowledgeCoreService {
         'Only admins can change a file\'s visibility.',
       );
     }
-    if (visibilityInput !== 'all' && visibilityInput !== 'admins') {
+    if (
+      visibilityInput !== 'all' &&
+      visibilityInput !== 'admins' &&
+      visibilityInput !== 'teams'
+    ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all' or 'admins'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'teams'.`,
       );
     }
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       throw new BadRequestException('`fileIds` must be a non-empty array.');
     }
+
+    // Same pre-transaction team resolution as the per-file path.
+    // For non-teams visibility the empty array is intentional — the
+    // transaction below will wipe any pre-existing links.
+    const teamIds =
+      visibilityInput === 'teams'
+        ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        : [];
 
     // Cheap dedupe in case the FE accidentally sends duplicates;
     // drizzle inArray would still work but we'd update twice.
@@ -597,12 +810,27 @@ export class KnowledgeCoreService {
             .update(knowledgeChunks)
             .set({ visibility: visibilityInput })
             .where(inArray(knowledgeChunks.fileId, affectedIds));
+          // Replace team links for every affected row. Same shape as
+          // the per-file path — wipe-then-insert is cheaper than
+          // diffing for the bulk case and keeps the link set
+          // authoritative regardless of prior state.
+          await tx
+            .delete(knowledgeFileTeams)
+            .where(inArray(knowledgeFileTeams.fileId, affectedIds));
+          if (visibilityInput === 'teams' && teamIds.length > 0) {
+            await tx.insert(knowledgeFileTeams).values(
+              affectedIds.flatMap((fileId) =>
+                teamIds.map((teamId) => ({ fileId, teamId })),
+              ),
+            );
+          }
         }
       });
     }
 
     return {
-      visibility: visibilityInput as 'all' | 'admins',
+      visibility: visibilityInput as 'all' | 'admins' | 'teams',
+      teamIds,
       affectedIds,
       skippedIds,
     };
@@ -733,6 +961,7 @@ export class KnowledgeCoreService {
       .orderBy(desc(knowledgeFiles.createdAt))
       .limit(10);
 
-    return rows;
+    const teamLinks = await this.hydrateTeamLinks(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, teams: teamLinks.get(r.id) ?? [] }));
   }
 }

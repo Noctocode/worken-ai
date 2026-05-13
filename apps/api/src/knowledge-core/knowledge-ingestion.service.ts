@@ -6,7 +6,9 @@ import { resolve } from 'node:path';
 import {
   knowledgeChunks,
   knowledgeFiles,
+  knowledgeFileTeams,
   knowledgeFolders,
+  teamMembers,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -294,15 +296,37 @@ export class KnowledgeIngestionService {
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
-    // Company-scope filter: 'all' is universally readable; 'admins'
-    // is only readable when the caller is admin. Building the
-    // company branch as a sub-AND keeps the personal branch alone
-    // when the caller isn't admin AND the chunk is admin-only.
+    // Company-scope filter, now tri-state:
+    //   - admin caller: every company chunk is fair game (admins see
+    //     all + admins-only + every teams-restricted file regardless
+    //     of membership; admins manage the org).
+    //   - non-admin caller: 'all' chunks always; 'teams' chunks only
+    //     when caller is an accepted member of one of the linked
+    //     teams. 'admins' chunks are off-limits.
+    //
+    // The teams branch probes via EXISTS against the join table.
+    // Indexes on knowledge_file_teams (file_id) and team_members
+    // (user_id, status) keep this sub-millisecond per chunk.
     const companyBranch = isAdmin
       ? eq(knowledgeChunks.scope, 'company')
-      : and(
-          eq(knowledgeChunks.scope, 'company'),
-          eq(knowledgeChunks.visibility, 'all'),
+      : or(
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'all'),
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'teams'),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${knowledgeFileTeams} kft
+              INNER JOIN ${teamMembers} tm
+                ON tm.team_id = kft.team_id
+              WHERE kft.file_id = ${knowledgeChunks.fileId}
+                AND tm.user_id = ${userId}
+                AND tm.status = 'accepted'
+            )`,
+          ),
         );
 
     return this.db

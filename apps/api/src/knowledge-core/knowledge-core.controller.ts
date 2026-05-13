@@ -103,10 +103,26 @@ export class KnowledgeCoreController {
     @UploadedFiles() files: Express.Multer.File[],
     // Multer parses non-file fields onto the request body; multipart
     // strings come through verbatim. Service validates the value
-    // against the 'all' | 'admins' enum.
-    @Body() body: { visibility?: string },
+    // against the 'all' | 'admins' | 'teams' enum.
+    //
+    // teamIds arrives as either a single string ("uuid") or an array
+    // depending on how the FE serialized it ("teamIds=a" vs. multiple
+    // `teamIds=a&teamIds=b` appends). Normalize before passing on so
+    // the service only deals with `string[]`.
+    @Body() body: { visibility?: string; teamIds?: string | string[] },
   ) {
-    return this.service.uploadFiles(folderId, user.id, files, body?.visibility);
+    const teamIds = Array.isArray(body?.teamIds)
+      ? body.teamIds
+      : body?.teamIds
+        ? [body.teamIds]
+        : [];
+    return this.service.uploadFiles(
+      folderId,
+      user.id,
+      files,
+      body?.visibility,
+      teamIds,
+    );
   }
 
   /**
@@ -118,10 +134,15 @@ export class KnowledgeCoreController {
   @Patch('files/:id/visibility')
   updateFileVisibility(
     @Param('id') id: string,
-    @Body() body: { visibility: string },
+    @Body() body: { visibility: string; teamIds?: string[] },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.updateFileVisibility(id, user.id, body?.visibility);
+    return this.service.updateFileVisibility(
+      id,
+      user.id,
+      body?.visibility,
+      body?.teamIds,
+    );
   }
 
   /**
@@ -150,13 +171,19 @@ export class KnowledgeCoreController {
    */
   @Patch('files/visibility')
   updateFilesVisibility(
-    @Body() body: { fileIds: string[]; visibility: string },
+    @Body()
+    body: {
+      fileIds: string[];
+      visibility: string;
+      teamIds?: string[];
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.updateFilesVisibility(
       body?.fileIds ?? [],
       user.id,
       body?.visibility,
+      body?.teamIds,
     );
   }
 

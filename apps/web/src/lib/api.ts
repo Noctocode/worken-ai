@@ -1686,7 +1686,17 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
-export type KnowledgeFileVisibility = "all" | "admins";
+export type KnowledgeFileVisibility = "all" | "admins" | "teams";
+
+/**
+ * Compact representation of a team link on a knowledge file. Carries
+ * just enough to render the row badge ("Teams: HR, Sales") without
+ * the FE having to lookup names from a separate query.
+ */
+export interface KnowledgeFileTeamRef {
+  id: string;
+  name: string;
+}
 
 export interface KnowledgeFile {
   id: string;
@@ -1702,10 +1712,14 @@ export interface KnowledgeFile {
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
   // Secondary visibility within company scope: 'all' is readable
-  // by every company user, 'admins' restricts to role='admin'.
-  // Default 'all'. Admins toggle via the action menu / upload
-  // dialog; basic users see this read-only.
+  // by every company user, 'admins' restricts to role='admin',
+  // 'teams' restricts to members of the linked team set. Default
+  // 'all'. Admins toggle via the action menu / upload dialog;
+  // basic users can pick 'all' or 'teams' but never 'admins'.
   visibility: KnowledgeFileVisibility;
+  // Populated only when visibility='teams'; empty array otherwise.
+  // Drives the row badge that names the teams with access.
+  teams: KnowledgeFileTeamRef[];
   createdAt: string;
 }
 
@@ -1728,6 +1742,7 @@ export interface KnowledgeRecentFile {
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
   visibility: KnowledgeFileVisibility;
+  teams: KnowledgeFileTeamRef[];
   createdAt: string;
 }
 
@@ -1790,18 +1805,28 @@ export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
   visibility: KnowledgeFileVisibility = "all",
+  teamIds: string[] = [],
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only
-  // admins can set 'admins'; for non-admin callers any value other
-  // than 'all' is rejected, so the caller MUST omit it / pass 'all'.
+  // admins can set 'admins'; non-admin callers can pick 'all' or
+  // 'teams'. 'teams' requires teamIds non-empty.
   form.append("visibility", visibility);
+  // Append each teamId as a repeated field — multer parses repeats
+  // into an array on the body, matching the controller's expected
+  // `string | string[]` shape.
+  if (visibility === "teams") {
+    teamIds.forEach((id) => form.append("teamIds", id));
+  }
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to upload files");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to upload files");
+  }
   return res.json();
 }
 
@@ -1812,13 +1837,25 @@ export async function uploadKnowledgeFiles(
 export async function updateKnowledgeFileVisibility(
   fileId: string,
   visibility: KnowledgeFileVisibility,
-): Promise<{ id: string; visibility: KnowledgeFileVisibility }> {
+  teamIds: string[] = [],
+): Promise<{
+  id: string;
+  visibility: KnowledgeFileVisibility;
+  teamIds: string[];
+}> {
   const res = await apiFetch(
     `/knowledge-core/files/${fileId}/visibility`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visibility }),
+      // `teamIds` is sent only when meaningful — for 'all' / 'admins'
+      // the BE clears any prior links regardless, so the field is
+      // redundant. Keep the payload tight.
+      body: JSON.stringify(
+        visibility === "teams"
+          ? { visibility, teamIds }
+          : { visibility },
+      ),
     },
   );
   if (!res.ok) {
@@ -1853,8 +1890,10 @@ export async function reingestKnowledgeFile(
 export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
+  teamIds: string[] = [],
 ): Promise<{
   visibility: KnowledgeFileVisibility;
+  teamIds: string[];
   affectedIds: string[];
   /** Files skipped because they were mid-ingestion at the time of the
    *  call — BE refuses to flip during processing to avoid leaving
@@ -1865,7 +1904,11 @@ export async function updateKnowledgeFilesVisibilityBulk(
   const res = await apiFetch(`/knowledge-core/files/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileIds, visibility }),
+    body: JSON.stringify(
+      visibility === "teams"
+        ? { fileIds, visibility, teamIds }
+        : { fileIds, visibility },
+    ),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
