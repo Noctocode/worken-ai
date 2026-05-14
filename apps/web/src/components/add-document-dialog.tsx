@@ -48,6 +48,10 @@ import {
   AlertTriangle,
   Link2,
   Unplug,
+  X,
+  ClipboardPaste,
+  FolderOpen,
+  Inbox,
 } from "lucide-react";
 
 interface AddDocumentDialogProps {
@@ -57,6 +61,14 @@ interface AddDocumentDialogProps {
 }
 
 /* ── Small visual helpers (kept local — not reused elsewhere) ──── */
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
 
 function VisibilityBadge({ visibility }: { visibility: string }) {
   const tone =
@@ -137,6 +149,9 @@ export function AddDocumentDialog({
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadFolderId, setUploadFolderId] = useState<string>("");
   const [uploadDefaultsApplied, setUploadDefaultsApplied] = useState(false);
+  // Track drag-over state so the dropzone can highlight while the
+  // user is hovering with files. Reset on dragleave / drop.
+  const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* Attach tab state */
@@ -322,6 +337,16 @@ export function AddDocumentDialog({
     uploadMutation.mutate();
   };
 
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const dropped = Array.from(e.dataTransfer.files);
+    if (dropped.length > 0) setSelectedFiles((prev) => [...prev, ...dropped]);
+  };
+
+  const removeSelectedFile = (idx: number) =>
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
+
   const filteredAttachCandidates = useMemo(() => {
     const all = attachFolderDetail?.files ?? [];
     const attachedSet = new Set(attachedFiles.map((f) => f.fileId));
@@ -335,154 +360,184 @@ export function AddDocumentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Manage Context</DialogTitle>
-          <DialogDescription>
+      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-3xl">
+        <DialogHeader className="border-b border-border-2 px-5 py-4 sm:px-6">
+          <DialogTitle className="text-base sm:text-lg">
+            Manage Context
+          </DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
             Project context for chat. Uploaded files live in your
             Knowledge Core so visibility, indexing, and team sharing
-            are managed in one place.
+            stay in one place.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="paste">
-          <TabsList className="w-full">
-            <TabsTrigger value="paste" className="flex-1">
-              Paste Text
-            </TabsTrigger>
-            <TabsTrigger value="upload" className="flex-1">
-              Upload File
-            </TabsTrigger>
-            <TabsTrigger value="attach" className="flex-1">
-              From Knowledge Core
-            </TabsTrigger>
-          </TabsList>
+        <div className="flex max-h-[calc(90vh-72px)] flex-col overflow-y-auto px-5 py-4 sm:px-6">
+          <Tabs defaultValue="paste" className="gap-4">
+            <TabsList className="h-9 w-full bg-bg-1 p-1">
+              <TabsTrigger
+                value="paste"
+                className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Paste Text</span>
+                <span className="sm:hidden">Paste</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="upload"
+                className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Upload File</span>
+                <span className="sm:hidden">Upload</span>
+              </TabsTrigger>
+              <TabsTrigger
+                value="attach"
+                className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">From Knowledge Core</span>
+                <span className="sm:hidden">Attach</span>
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Paste-text tab — unchanged: snippets stay project-
-              scoped in the `documents` table, they're not a "file"
-              that belongs in KC. */}
-          <TabsContent value="paste">
-            <form onSubmit={handleAddText} className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label htmlFor="document-content">Add new context</Label>
-                <Textarea
-                  id="document-content"
-                  placeholder="Paste your document text here…"
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  rows={6}
-                  className="resize-y"
-                  required
-                />
-              </div>
-              <DialogFooter>
-                <Button
-                  type="submit"
-                  disabled={addMutation.isPending || !content.trim()}
-                >
-                  {addMutation.isPending ? "Adding…" : "Add Context"}
-                </Button>
-              </DialogFooter>
-            </form>
-          </TabsContent>
-
-          {/* Upload tab — sends to KC + auto-attaches. */}
-          <TabsContent value="upload">
-            <div className="space-y-4 pt-2">
-              <div className="space-y-2">
-                <Label>Files</Label>
-                <div
-                  className="flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-border-3 px-4 py-5 transition-colors hover:border-border-4 hover:bg-bg-1"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  <Upload className="h-5 w-5 shrink-0 text-text-3" />
-                  <span className="text-sm text-text-3">
-                    {selectedFiles.length === 0
-                      ? "Click to select files (.pdf, .docx, .xlsx, .png, .jpg)"
-                      : selectedFiles.length === 1
-                        ? selectedFiles[0].name
-                        : `${selectedFiles.length} files selected`}
-                  </span>
-                </div>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  accept=".pdf,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={(e) =>
-                    setSelectedFiles(Array.from(e.target.files ?? []))
-                  }
-                />
-              </div>
-
-              {/* Folder picker only — visibility is hardcoded to
-                  'project' (this project) so the file shows up only
-                  in this project's chat. Cross-project reuse lives on
-                  the /knowledge-core upload flow. */}
-              <div className="space-y-2">
-                <Label>Folder in Knowledge Core</Label>
-                <Select
-                  value={uploadFolderId}
-                  onValueChange={setUploadFolderId}
-                >
-                  <SelectTrigger className="h-10 cursor-pointer">
-                    <SelectValue placeholder="Select a folder" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {kcFolders.map((f) => (
-                      <SelectItem key={f.id} value={f.id}>
-                        {f.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {uploadDefaults &&
-                  uploadFolderId === uploadDefaults.folderId && (
-                    <p className="text-[11px] text-text-3">
-                      Default — auto-created if missing.
-                    </p>
-                  )}
-                <p className="text-[11px] text-text-3">
-                  These files will only be searchable in this project&rsquo;s
-                  chat. To share across projects, upload via{" "}
-                  <span className="font-medium">Knowledge Core</span> instead.
-                </p>
-              </div>
-
-              <DialogFooter>
-                <Button
-                  type="button"
-                  disabled={
-                    uploadMutation.isPending || selectedFiles.length === 0
-                  }
-                  onClick={handleUpload}
-                >
-                  {uploadMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Uploading…
-                    </>
-                  ) : (
-                    "Upload to Knowledge Core"
-                  )}
-                </Button>
-              </DialogFooter>
-            </div>
-          </TabsContent>
-
-          {/* Attach tab — pick existing KC files. */}
-          <TabsContent value="attach">
-            <div className="space-y-3 pt-2">
-              <div className="grid gap-3 sm:grid-cols-2">
+            {/* Paste-text tab — snippets stay project-scoped in the
+                `documents` table, they're not a "file" that belongs
+                in KC. */}
+            <TabsContent value="paste" className="mt-0">
+              <form onSubmit={handleAddText} className="space-y-4">
                 <div className="space-y-2">
-                  <Label>Folder</Label>
-                  <Select
-                    value={attachFolderId}
-                    onValueChange={setAttachFolderId}
+                  <Label htmlFor="document-content">Add new context</Label>
+                  <Textarea
+                    id="document-content"
+                    placeholder="Paste your document text here…"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    rows={6}
+                    className="resize-y"
+                    required
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="submit"
+                    disabled={addMutation.isPending || !content.trim()}
+                    className="cursor-pointer bg-primary-6 hover:bg-primary-7"
                   >
-                    <SelectTrigger className="h-10 cursor-pointer">
-                      <SelectValue placeholder="Pick a folder" />
+                    {addMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Adding…
+                      </>
+                    ) : (
+                      "Add Context"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </TabsContent>
+
+            {/* Upload tab — sends to KC + auto-attaches with project
+                visibility. */}
+            <TabsContent value="upload" className="mt-0">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Files</Label>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => fileInputRef.current?.click()}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        fileInputRef.current?.click();
+                      }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setIsDragOver(true);
+                    }}
+                    onDragLeave={() => setIsDragOver(false)}
+                    onDrop={handleDrop}
+                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                      isDragOver
+                        ? "border-primary-6 bg-primary-1/40"
+                        : "border-border-3 hover:border-border-4 hover:bg-bg-1"
+                    }`}
+                  >
+                    <Upload
+                      className={`h-6 w-6 shrink-0 ${
+                        isDragOver ? "text-primary-6" : "text-text-3"
+                      }`}
+                    />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-text-1">
+                        {isDragOver
+                          ? "Drop to add files"
+                          : "Click to browse or drag files here"}
+                      </p>
+                      <p className="text-[11px] text-text-3">
+                        PDF, DOCX, XLSX, PNG, JPG
+                      </p>
+                    </div>
+                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    accept=".pdf,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const picked = Array.from(e.target.files ?? []);
+                      if (picked.length > 0) {
+                        setSelectedFiles((prev) => [...prev, ...picked]);
+                      }
+                      // Reset so picking the same file again re-fires
+                      // the onChange handler.
+                      e.target.value = "";
+                    }}
+                  />
+                  {selectedFiles.length > 0 && (
+                    <div className="flex flex-col gap-1.5 pt-1">
+                      {selectedFiles.map((f, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center gap-2.5 rounded-md border border-border-2 bg-bg-1 px-3 py-2"
+                        >
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                          <div className="flex min-w-0 flex-1 flex-col">
+                            <span className="truncate text-[13px] font-medium text-text-1">
+                              {f.name}
+                            </span>
+                            <span className="text-[11px] text-text-3">
+                              {formatBytes(f.size)}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSelectedFile(i)}
+                            disabled={uploadMutation.isPending}
+                            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-2 hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Folder picker only — visibility is hardcoded to
+                    'project' (this project) so the file shows up only
+                    in this project's chat. */}
+                <div className="space-y-2">
+                  <Label>Folder in Knowledge Core</Label>
+                  <Select
+                    value={uploadFolderId}
+                    onValueChange={setUploadFolderId}
+                  >
+                    <SelectTrigger className="h-10 w-full cursor-pointer">
+                      <SelectValue placeholder="Select a folder" />
                     </SelectTrigger>
                     <SelectContent>
                       {kcFolders.map((f) => (
@@ -492,216 +547,312 @@ export function AddDocumentDialog({
                       ))}
                     </SelectContent>
                   </Select>
+                  <p className="text-[11px] text-text-3">
+                    Searchable only in this project&rsquo;s chat. To share
+                    across projects, upload via{" "}
+                    <span className="font-medium">Knowledge Core</span>.
+                  </p>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="attach-search">Search</Label>
-                  <input
-                    id="attach-search"
-                    type="text"
-                    placeholder="Filter files in this folder…"
-                    value={attachQuery}
-                    onChange={(e) => setAttachQuery(e.target.value)}
-                    className="h-10 w-full rounded-md border border-border-3 bg-transparent px-3 text-[14px] outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-                  />
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    disabled={
+                      uploadMutation.isPending || selectedFiles.length === 0
+                    }
+                    onClick={handleUpload}
+                    className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+                  >
+                    {uploadMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Uploading…
+                      </>
+                    ) : (
+                      `Upload${
+                        selectedFiles.length > 0
+                          ? ` ${selectedFiles.length} file${selectedFiles.length !== 1 ? "s" : ""}`
+                          : ""
+                      }`
+                    )}
+                  </Button>
+                </DialogFooter>
+              </div>
+            </TabsContent>
+
+            {/* Attach tab — pick existing KC files. */}
+            <TabsContent value="attach" className="mt-0">
+              <div className="space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Folder</Label>
+                    <Select
+                      value={attachFolderId}
+                      onValueChange={setAttachFolderId}
+                    >
+                      <SelectTrigger className="h-10 w-full cursor-pointer">
+                        <SelectValue placeholder="Pick a folder" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {kcFolders.map((f) => (
+                          <SelectItem key={f.id} value={f.id}>
+                            {f.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="attach-search">Search</Label>
+                    <input
+                      id="attach-search"
+                      type="text"
+                      placeholder="Filter files in this folder…"
+                      value={attachQuery}
+                      onChange={(e) => setAttachQuery(e.target.value)}
+                      className="h-10 w-full rounded-md border border-border-3 bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="rounded border border-border-2">
-                <ScrollArea className="h-44">
-                  {!attachFolderId ? (
-                    <p className="py-6 text-center text-sm text-text-3">
-                      Pick a folder to see its files.
-                    </p>
-                  ) : filteredAttachCandidates.length === 0 ? (
-                    <p className="py-6 text-center text-sm text-text-3">
-                      No files available to attach.
-                    </p>
-                  ) : (
-                    <div className="divide-y divide-border-2">
-                      {filteredAttachCandidates.map((f) => {
-                        const checked = attachSelectedIds.has(f.id);
-                        return (
-                          <label
-                            key={f.id}
-                            className="flex cursor-pointer items-center gap-3 px-3 py-2 text-[13px] hover:bg-bg-1"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                setAttachSelectedIds((prev) => {
-                                  const next = new Set(prev);
-                                  if (next.has(f.id)) next.delete(f.id);
-                                  else next.add(f.id);
-                                  return next;
-                                });
-                              }}
-                              className="h-3.5 w-3.5 accent-primary-6"
-                            />
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
-                            <span className="flex-1 truncate text-text-1">
-                              {f.name}
-                            </span>
-                            <VisibilityBadge visibility={f.visibility} />
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </ScrollArea>
-              </div>
+                <div className="overflow-hidden rounded-md border border-border-2">
+                  <ScrollArea className="h-48 sm:h-44">
+                    {!attachFolderId ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                        <FolderOpen className="h-6 w-6 text-text-3" />
+                        <p className="text-sm text-text-3">
+                          Pick a folder to see its files.
+                        </p>
+                      </div>
+                    ) : filteredAttachCandidates.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                        <Inbox className="h-6 w-6 text-text-3" />
+                        <p className="text-sm text-text-3">
+                          No files available to attach.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-border-2">
+                        {filteredAttachCandidates.map((f) => {
+                          const checked = attachSelectedIds.has(f.id);
+                          return (
+                            <label
+                              key={f.id}
+                              className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-bg-1"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setAttachSelectedIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(f.id)) next.delete(f.id);
+                                    else next.add(f.id);
+                                    return next;
+                                  });
+                                }}
+                                className="h-3.5 w-3.5 shrink-0 accent-primary-6"
+                              />
+                              <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                              <span className="flex-1 truncate text-text-1">
+                                {f.name}
+                              </span>
+                              <VisibilityBadge visibility={f.visibility} />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </ScrollArea>
+                </div>
 
-              <DialogFooter>
-                <Button
-                  type="button"
-                  disabled={
-                    attachMutation.isPending || attachSelectedIds.size === 0
-                  }
-                  onClick={() =>
-                    attachMutation.mutate(Array.from(attachSelectedIds))
-                  }
-                >
-                  {attachMutation.isPending
-                    ? "Attaching…"
-                    : `Attach ${attachSelectedIds.size > 0 ? `(${attachSelectedIds.size})` : ""}`}
-                </Button>
-              </DialogFooter>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    disabled={
+                      attachMutation.isPending || attachSelectedIds.size === 0
+                    }
+                    onClick={() =>
+                      attachMutation.mutate(Array.from(attachSelectedIds))
+                    }
+                    className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+                  >
+                    {attachMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Attaching…
+                      </>
+                    ) : (
+                      `Attach${
+                        attachSelectedIds.size > 0
+                          ? ` ${attachSelectedIds.size} file${attachSelectedIds.size !== 1 ? "s" : ""}`
+                          : ""
+                      }`
+                    )}
+                  </Button>
+                </DialogFooter>
+              </div>
+            </TabsContent>
+          </Tabs>
+
+          <Separator className="my-4" />
+
+          {/* Unified Documents list — paste-text snippets (legacy
+              `documents` rows) + attached KC files. Origin badge
+              distinguishes the two. */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-sm font-medium text-text-1">
+                In this project
+              </Label>
+              <span className="text-[11px] text-text-3">
+                {attachedFiles.length + (groups?.length ?? 0)} item
+                {attachedFiles.length + (groups?.length ?? 0) !== 1 ? "s" : ""}
+              </span>
             </div>
-          </TabsContent>
-        </Tabs>
-
-        <Separator />
-
-        {/* Unified Documents list — paste-text snippets (legacy
-            `documents` rows) + attached KC files. Origin badge
-            distinguishes the two. */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">In this project</Label>
-          <ScrollArea className="h-48">
-            {groupsLoading || attachedLoading ? (
-              <div className="flex items-center justify-center py-6">
-                <Loader2 className="h-4 w-4 animate-spin text-text-3" />
-              </div>
-            ) : (groups?.length ?? 0) === 0 && attachedFiles.length === 0 ? (
-              <p className="py-4 text-center text-sm text-text-3">
-                No context yet. Paste text, upload a file, or attach one
-                from Knowledge Core.
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {/* Attached KC files first — they're the richer
-                    surface and most users will reach for them. */}
-                {attachedFiles.map((f: ProjectKnowledgeFile) => (
-                  <div
-                    key={f.fileId}
-                    className="flex items-center justify-between rounded-md border border-border-2 px-3 py-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
-                      <span className="truncate text-sm text-text-1">
-                        {f.name}
-                      </span>
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 text-[10px]"
-                        title={`In folder "${f.folderName}"`}
-                      >
-                        <Link2 className="mr-1 h-2.5 w-2.5" /> KC
-                      </Badge>
-                      <VisibilityBadge visibility={f.visibility} />
-                      <IngestionBadge status={f.ingestionStatus} />
-                    </div>
-                    {confirmDeleteId === f.fileId ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-7 text-xs"
-                          disabled={detachMutation.isPending}
-                          onClick={() => detachMutation.mutate(f.fileId)}
-                          title="Removes from project — the file stays in Knowledge Core"
-                        >
-                          {detachMutation.isPending ? "…" : "Detach"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-text-3 hover:text-danger-6"
-                        onClick={() => setConfirmDeleteId(f.fileId)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+            <div className="overflow-hidden rounded-md border border-border-2">
+              <ScrollArea className="h-48">
+                {groupsLoading || attachedLoading ? (
+                  <div className="flex items-center justify-center py-10">
+                    <Loader2 className="h-4 w-4 animate-spin text-text-3" />
                   </div>
-                ))}
-
-                {/* Then paste-text snippets. */}
-                {(groups ?? []).map((group: DocumentGroup) => (
-                  <div
-                    key={group.groupId}
-                    className="flex items-center justify-between rounded-md border border-border-2 px-3 py-2"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
-                      <span className="truncate text-sm text-text-1">
-                        {group.title}
-                      </span>
-                      <Badge
-                        variant="secondary"
-                        className="shrink-0 text-[10px]"
-                      >
-                        Text
-                      </Badge>
-                      <Badge variant="secondary" className="shrink-0 text-xs">
-                        {group.chunkCount}{" "}
-                        {group.chunkCount === 1 ? "chunk" : "chunks"}
-                      </Badge>
-                    </div>
-                    {confirmDeleteId === group.groupId ? (
-                      <div className="flex shrink-0 items-center gap-1">
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          className="h-7 text-xs"
-                          disabled={deleteMutation.isPending}
-                          onClick={() => deleteMutation.mutate(group.groupId)}
-                        >
-                          {deleteMutation.isPending ? "…" : "Confirm"}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 shrink-0 text-text-3 hover:text-danger-6"
-                        onClick={() => setConfirmDeleteId(group.groupId)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
+                ) : (groups?.length ?? 0) === 0 &&
+                  attachedFiles.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+                    <Inbox className="h-6 w-6 text-text-3" />
+                    <p className="text-sm text-text-3">
+                      No context yet. Paste text, upload a file, or attach
+                      one from Knowledge Core.
+                    </p>
                   </div>
-                ))}
-              </div>
-            )}
-          </ScrollArea>
+                ) : (
+                  <div className="divide-y divide-border-2">
+                    {/* Attached KC files first — they're the richer
+                        surface and most users will reach for them. */}
+                    {attachedFiles.map((f: ProjectKnowledgeFile) => (
+                      <div
+                        key={f.fileId}
+                        className="flex items-center justify-between gap-2 px-3 py-2.5"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-text-1">
+                            {f.name}
+                          </span>
+                          <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                              title={`In folder "${f.folderName}"`}
+                            >
+                              <Link2 className="mr-1 h-2.5 w-2.5" /> KC
+                            </Badge>
+                            <VisibilityBadge visibility={f.visibility} />
+                            <IngestionBadge status={f.ingestionStatus} />
+                          </div>
+                        </div>
+                        {confirmDeleteId === f.fileId ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-7 cursor-pointer text-xs"
+                              disabled={detachMutation.isPending}
+                              onClick={() =>
+                                detachMutation.mutate(f.fileId)
+                              }
+                              title="Removes from project — the file stays in Knowledge Core"
+                            >
+                              {detachMutation.isPending ? "…" : "Detach"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 cursor-pointer text-xs"
+                              onClick={() => setConfirmDeleteId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 cursor-pointer text-text-3 hover:text-danger-6"
+                            onClick={() => setConfirmDeleteId(f.fileId)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+
+                    {/* Then paste-text snippets. */}
+                    {(groups ?? []).map((group: DocumentGroup) => (
+                      <div
+                        key={group.groupId}
+                        className="flex items-center justify-between gap-2 px-3 py-2.5"
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <ClipboardPaste className="h-4 w-4 shrink-0 text-text-3" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-text-1">
+                            {group.title}
+                          </span>
+                          <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              Text
+                            </Badge>
+                            <Badge
+                              variant="secondary"
+                              className="shrink-0 text-[10px]"
+                            >
+                              {group.chunkCount}{" "}
+                              {group.chunkCount === 1 ? "chunk" : "chunks"}
+                            </Badge>
+                          </div>
+                        </div>
+                        {confirmDeleteId === group.groupId ? (
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              className="h-7 cursor-pointer text-xs"
+                              disabled={deleteMutation.isPending}
+                              onClick={() =>
+                                deleteMutation.mutate(group.groupId)
+                              }
+                            >
+                              {deleteMutation.isPending ? "…" : "Confirm"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 cursor-pointer text-xs"
+                              onClick={() => setConfirmDeleteId(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 cursor-pointer text-text-3 hover:text-danger-6"
+                            onClick={() => setConfirmDeleteId(group.groupId)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
