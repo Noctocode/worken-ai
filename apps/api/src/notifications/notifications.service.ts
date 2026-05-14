@@ -5,7 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   notifications,
   teamMembers,
@@ -268,17 +268,37 @@ export class NotificationsService {
     const data = (row.data ?? {}) as Record<string, unknown>;
     const memberId = typeof data.memberId === 'string' ? data.memberId : null;
     if (memberId) {
-      // Revoke the pending team_members row directly — keeps the
-      // existing row shape (status='pending', invitationStatus=
-      // 'revoked') the inviter sees in their pending-list UI.
-      await this.db
-        .update(teamMembers)
-        .set({
-          invitationStatus: 'revoked',
-          invitationRevokedAt: new Date(),
-          invitationToken: null,
-        })
-        .where(eq(teamMembers.id, memberId));
+      // Defense-in-depth: scope the UPDATE to a row that actually
+      // belongs to the caller (email match) and is still actionable
+      // (status='pending', invitationStatus pending/null). Without
+      // this, a wrong memberId in notification.data would revoke an
+      // unrelated row. If the invite was already resolved elsewhere
+      // (owner revoked, expired) the update is a no-op and we still
+      // flip the notification to 'acted' so the inbox clears.
+      const [caller] = await this.db
+        .select({ email: users.email })
+        .from(users)
+        .where(eq(users.id, userId));
+      if (caller?.email) {
+        await this.db
+          .update(teamMembers)
+          .set({
+            invitationStatus: 'revoked',
+            invitationRevokedAt: new Date(),
+            invitationToken: null,
+          })
+          .where(
+            and(
+              eq(teamMembers.id, memberId),
+              eq(teamMembers.email, caller.email),
+              eq(teamMembers.status, 'pending'),
+              or(
+                isNull(teamMembers.invitationStatus),
+                eq(teamMembers.invitationStatus, 'pending'),
+              ),
+            ),
+          );
+      }
     }
     await this.markActed(id, userId);
     return { ok: true };
