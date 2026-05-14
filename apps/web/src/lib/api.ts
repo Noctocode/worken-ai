@@ -412,6 +412,7 @@ export async function uploadProjectKnowledgeFiles(
     folderId?: string;
     visibility?: KnowledgeFileVisibility;
     teamIds?: string[];
+    projectIds?: string[];
   } = {},
 ): Promise<ProjectKnowledgeUploadResult> {
   const form = new FormData();
@@ -420,6 +421,9 @@ export async function uploadProjectKnowledgeFiles(
   if (options.visibility) form.append("visibility", options.visibility);
   if (options.visibility === "teams" && options.teamIds) {
     options.teamIds.forEach((id) => form.append("teamIds", id));
+  }
+  if (options.visibility === "project" && options.projectIds) {
+    options.projectIds.forEach((id) => form.append("projectIds", id));
   }
   const res = await apiFetch(
     `/projects/${projectId}/knowledge-files/upload`,

@@ -161,6 +161,7 @@ export class ProjectsController {
       folderId?: string;
       visibility?: string;
       teamIds?: string | string[];
+      projectIds?: string | string[];
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -169,10 +170,16 @@ export class ProjectsController {
       : body?.teamIds
         ? [body.teamIds]
         : [];
+    const projectIds = Array.isArray(body?.projectIds)
+      ? body.projectIds
+      : body?.projectIds
+        ? [body.projectIds]
+        : [];
     return this.projectKnowledge.uploadAndAttach(id, user.id, files, {
       folderId: body?.folderId,
       visibility: body?.visibility,
       teamIds,
+      projectIds,
     });
   }
 }

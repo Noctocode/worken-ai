@@ -11,15 +11,12 @@ import {
   fetchKnowledgeFolder,
   fetchProjectKnowledgeFiles,
   fetchProjectKnowledgeUploadDefaults,
-  fetchTeams,
   attachKnowledgeFiles,
   detachKnowledgeFile,
   uploadProjectKnowledgeFiles,
   type DocumentGroup,
   type ProjectKnowledgeFile,
-  type KnowledgeFileVisibility,
 } from "@/lib/api";
-import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -65,7 +62,7 @@ function VisibilityBadge({ visibility }: { visibility: string }) {
   const tone =
     visibility === "admins"
       ? "bg-warning-1 text-warning-7"
-      : visibility === "teams"
+      : visibility === "teams" || visibility === "project"
         ? "bg-primary-1 text-primary-7"
         : "bg-bg-1 text-text-3";
   const label =
@@ -73,7 +70,9 @@ function VisibilityBadge({ visibility }: { visibility: string }) {
       ? "Admins"
       : visibility === "teams"
         ? "Teams"
-        : "Everyone";
+        : visibility === "project"
+          ? "Project"
+          : "Everyone";
   return (
     <Badge className={`shrink-0 text-[10px] uppercase tracking-wide ${tone}`}>
       {label}
@@ -127,18 +126,16 @@ export function AddDocumentDialog({
   onOpenChange,
 }: AddDocumentDialogProps) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const isAdmin = user?.role === "admin";
 
   /* Paste-text state (legacy `documents` table) */
   const [content, setContent] = useState("");
 
-  /* Upload tab state */
+  /* Upload tab state — Manage Context uploads are project-scoped by
+     design (visibility='project' pinned to this project). No
+     visibility / teams selector here; that lives on /knowledge-core
+     for files meant to be reused across projects. */
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadFolderId, setUploadFolderId] = useState<string>("");
-  const [uploadVisibility, setUploadVisibility] =
-    useState<KnowledgeFileVisibility>("all");
-  const [uploadTeamIds, setUploadTeamIds] = useState<string[]>([]);
   const [uploadDefaultsApplied, setUploadDefaultsApplied] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -186,14 +183,6 @@ export function AddDocumentDialog({
     enabled: open,
   });
 
-  // User's teams — populates the team-checkbox panel when
-  // visibility='teams' is picked.
-  const { data: userTeams = [] } = useQuery({
-    queryKey: ["teams"],
-    queryFn: fetchTeams,
-    enabled: open && uploadVisibility === "teams",
-  });
-
   // Files inside the selected folder on the Attach tab — fetched
   // lazily so we don't pull every KC file in the workspace.
   const { data: attachFolderDetail } = useQuery({
@@ -213,8 +202,6 @@ export function AddDocumentDialog({
     }
     if (uploadDefaults && !uploadDefaultsApplied) {
       setUploadFolderId(uploadDefaults.folderId);
-      setUploadVisibility(uploadDefaults.visibility);
-      setUploadTeamIds(uploadDefaults.teamIds);
       // Also default the attach-folder filter to "Projects" so the
       // user sees something useful when they switch tabs.
       setAttachFolderId(uploadDefaults.folderId);
@@ -249,8 +236,10 @@ export function AddDocumentDialog({
     mutationFn: () =>
       uploadProjectKnowledgeFiles(projectId, selectedFiles, {
         folderId: uploadFolderId || undefined,
-        visibility: uploadVisibility,
-        teamIds: uploadVisibility === "teams" ? uploadTeamIds : undefined,
+        // Manage Context uploads are always pinned to this project —
+        // searchable only inside its chat, never via the org-wide RAG.
+        visibility: "project",
+        projectIds: [projectId],
       }),
     onSuccess: (result) => {
       invalidate();
@@ -330,10 +319,6 @@ export function AddDocumentDialog({
 
   const handleUpload = () => {
     if (selectedFiles.length === 0) return;
-    if (uploadVisibility === "teams" && uploadTeamIds.length === 0) {
-      toast.error("Pick at least one team for Teams visibility.");
-      return;
-    }
     uploadMutation.mutate();
   };
 
@@ -431,95 +416,39 @@ export function AddDocumentDialog({
                 />
               </div>
 
-              {/* Folder + visibility pickers. Defaults from BE so
-                  the user can press Upload without picking
-                  anything. */}
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Folder in Knowledge Core</Label>
-                  <Select
-                    value={uploadFolderId}
-                    onValueChange={setUploadFolderId}
-                  >
-                    <SelectTrigger className="h-10 cursor-pointer">
-                      <SelectValue placeholder="Select a folder" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kcFolders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {uploadDefaults &&
-                    uploadFolderId === uploadDefaults.folderId && (
-                      <p className="text-[11px] text-text-3">
-                        Default — auto-created if missing.
-                      </p>
-                    )}
-                </div>
-                <div className="space-y-2">
-                  <Label>Visibility</Label>
-                  <Select
-                    value={uploadVisibility}
-                    onValueChange={(v) =>
-                      setUploadVisibility(v as KnowledgeFileVisibility)
-                    }
-                  >
-                    <SelectTrigger className="h-10 cursor-pointer">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">
-                        Everyone in the company
+              {/* Folder picker only — visibility is hardcoded to
+                  'project' (this project) so the file shows up only
+                  in this project's chat. Cross-project reuse lives on
+                  the /knowledge-core upload flow. */}
+              <div className="space-y-2">
+                <Label>Folder in Knowledge Core</Label>
+                <Select
+                  value={uploadFolderId}
+                  onValueChange={setUploadFolderId}
+                >
+                  <SelectTrigger className="h-10 cursor-pointer">
+                    <SelectValue placeholder="Select a folder" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kcFolders.map((f) => (
+                      <SelectItem key={f.id} value={f.id}>
+                        {f.name}
                       </SelectItem>
-                      {isAdmin && (
-                        <SelectItem value="admins">Admins only</SelectItem>
-                      )}
-                      <SelectItem value="teams">Specific teams…</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {uploadVisibility === "teams" && (
-                <div className="space-y-2">
-                  <Label>Teams with access</Label>
-                  {userTeams.length === 0 ? (
+                    ))}
+                  </SelectContent>
+                </Select>
+                {uploadDefaults &&
+                  uploadFolderId === uploadDefaults.folderId && (
                     <p className="text-[11px] text-text-3">
-                      You aren&rsquo;t a member of any team yet — create or
-                      join one first to use this visibility option.
+                      Default — auto-created if missing.
                     </p>
-                  ) : (
-                    <div className="flex max-h-32 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
-                      {userTeams.map((t) => {
-                        const checked = uploadTeamIds.includes(t.id);
-                        return (
-                          <label
-                            key={t.id}
-                            className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setUploadTeamIds((prev) =>
-                                  checked
-                                    ? prev.filter((id) => id !== t.id)
-                                    : [...prev, t.id],
-                                )
-                              }
-                              className="h-3.5 w-3.5 accent-primary-6"
-                            />
-                            <span className="truncate">{t.name}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
                   )}
-                </div>
-              )}
+                <p className="text-[11px] text-text-3">
+                  These files will only be searchable in this project&rsquo;s
+                  chat. To share across projects, upload via{" "}
+                  <span className="font-medium">Knowledge Core</span> instead.
+                </p>
+              </div>
 
               <DialogFooter>
                 <Button

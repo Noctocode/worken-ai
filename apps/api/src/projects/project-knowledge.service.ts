@@ -242,6 +242,7 @@ export class ProjectKnowledgeService {
       folderId?: string;
       visibility?: string;
       teamIds?: string[];
+      projectIds?: string[];
     },
   ): Promise<{
     uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
@@ -265,6 +266,7 @@ export class ProjectKnowledgeService {
       files,
       options.visibility,
       options.teamIds,
+      options.projectIds,
     );
 
     // Auto-attach every successful upload to this project. The
