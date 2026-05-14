@@ -174,11 +174,23 @@ export function AddDocumentDialog({
     enabled: open,
   });
 
-  // KC files attached to this project.
+  // KC files attached to this project. Poll while any attached
+  // file is mid-ingestion so the "Indexing…" badge flips to
+  // "Indexed" (or "Skipped") on its own — the user shouldn't have
+  // to close + reopen the dialog to see the worker finish.
   const { data: attachedFiles = [], isLoading: attachedLoading } = useQuery({
     queryKey: ["project-knowledge-files", projectId],
     queryFn: () => fetchProjectKnowledgeFiles(projectId),
     enabled: open,
+    refetchInterval: (q) => {
+      const rows = q.state.data ?? [];
+      const inFlight = rows.some(
+        (f) =>
+          f.ingestionStatus === "pending" ||
+          f.ingestionStatus === "processing",
+      );
+      return inFlight ? 2000 : false;
+    },
   });
 
   // Smart defaults the BE picks for the upload picker — folder +
