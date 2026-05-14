@@ -2012,6 +2012,25 @@ export async function reingestKnowledgeFile(
 }
 
 /**
+ * Wipe a file's embeddings without deleting the upload. Inverse of
+ * `reingestKnowledgeFile` — chunks go away, the file row stays so
+ * download still works, and chat-time RAG stops surfacing it until
+ * the owner triggers Retrain.
+ */
+export async function untrainKnowledgeFile(
+  fileId: string,
+): Promise<{ id: string; ingestionStatus: "untrained" }> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/untrain`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to untrain this file");
+  }
+  return res.json();
+}
+
+/**
  * Bulk visibility flip — one round-trip, single BE transaction.
  * Admin-only at the BE. Used by the multi-select action bar.
  */
@@ -2474,7 +2493,8 @@ export type IngestionDocStatus =
   | "pending"
   | "processing"
   | "done"
-  | "failed";
+  | "failed"
+  | "untrained";
 
 export interface IngestionStatusResponse {
   total: number;

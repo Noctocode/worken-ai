@@ -14,6 +14,7 @@ import {
   Search,
   Shield,
   Trash2,
+  Unplug,
   Upload,
   Users,
   X,
@@ -55,6 +56,7 @@ import {
   updateKnowledgeFileVisibility,
   updateKnowledgeFilesVisibilityBulk,
   reingestKnowledgeFile,
+  untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFileVisibility,
@@ -113,7 +115,7 @@ function IngestionStatusBadge({
   status,
   error,
 }: {
-  status: "pending" | "processing" | "done" | "failed";
+  status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
   if (status === "done") {
@@ -132,6 +134,17 @@ function IngestionStatusBadge({
       >
         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
         Skipped
+      </span>
+    );
+  }
+  if (status === "untrained") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title="Embeddings removed — Retrain to make this file searchable again."
+      >
+        <Unplug className="h-3 w-3" strokeWidth={2} />
+        Untrained
       </span>
     );
   }
@@ -283,6 +296,23 @@ export default function FolderDetailPage({
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to re-train this file."),
+  });
+
+  // Inverse of Retrain — drops the file's embeddings so chat RAG
+  // ignores it, but keeps the row + disk copy. See the root page's
+  // mutation comment for the BE-side semantics.
+  const untrainMutation = useMutation({
+    mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success("File untrained — embeddings removed.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to untrain this file."),
   });
 
   // Admin-only PATCH to flip visibility post-upload. BE rejects
@@ -803,6 +833,17 @@ export default function FolderDetailPage({
                           <RotateCw className="mr-2 h-3.5 w-3.5" />
                           Retrain
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => untrainMutation.mutate(f.id)}
+                          disabled={
+                            f.ingestionStatus === "processing" ||
+                            f.ingestionStatus === "untrained" ||
+                            untrainMutation.isPending
+                          }
+                        >
+                          <Unplug className="mr-2 h-3.5 w-3.5" />
+                          Untrain
+                        </DropdownMenuItem>
                         {isAdmin && (
                           <DropdownMenuItem
                             onSelect={() =>
@@ -918,6 +959,17 @@ export default function FolderDetailPage({
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
                     Retrain
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => untrainMutation.mutate(f.id)}
+                    disabled={
+                      f.ingestionStatus === "processing" ||
+                      f.ingestionStatus === "untrained" ||
+                      untrainMutation.isPending
+                    }
+                  >
+                    <Unplug className="mr-2 h-3.5 w-3.5" />
+                    Untrain
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem

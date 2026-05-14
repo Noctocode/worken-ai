@@ -50,6 +50,7 @@ import {
   CheckCircle2,
   AlertTriangle,
   Link2,
+  Unplug,
 } from "lucide-react";
 
 interface AddDocumentDialogProps {
@@ -98,6 +99,16 @@ function IngestionBadge({ status }: { status: string }) {
         className="inline-flex items-center gap-1 text-[11px] text-warning-7"
       >
         <AlertTriangle className="h-3 w-3" /> Skipped
+      </span>
+    );
+  }
+  if (status === "untrained") {
+    return (
+      <span
+        title="Embeddings removed — chat RAG ignores this file until the owner re-trains it."
+        className="inline-flex items-center gap-1 text-[11px] text-text-3"
+      >
+        <Unplug className="h-3 w-3" /> Untrained
       </span>
     );
   }

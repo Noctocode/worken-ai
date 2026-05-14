@@ -160,6 +160,20 @@ export class KnowledgeCoreController {
   }
 
   /**
+   * Wipe a file's embeddings without deleting the upload. Owner-only;
+   * blocked if mid-ingestion. The row stays in KC (still listed,
+   * still downloadable), but chat-time RAG won't surface it until
+   * the owner triggers Retrain.
+   */
+  @Post('files/:id/untrain')
+  untrainFile(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.untrainFile(id, user.id);
+  }
+
+  /**
    * Bulk variant of the per-file PATCH. Lets the multi-select action
    * bar flip many rows in one round-trip and one DB transaction.
    * Admin-only — same gate as the per-file endpoint, just applied

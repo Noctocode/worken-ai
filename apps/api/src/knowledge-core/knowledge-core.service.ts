@@ -11,6 +11,7 @@ import {
   knowledgeFiles,
   knowledgeFileTeams,
   knowledgeChunks,
+  projectKnowledgeFiles,
   teamMembers,
   teams,
   users,
@@ -630,6 +631,64 @@ export class KnowledgeCoreService {
   }
 
   /**
+   * Wipe a file's chunks while keeping the file row + disk copy.
+   * Exposed as the "Untrain" action — the inverse of "Retrain":
+   *
+   *   Retrain → drop chunks, requeue for ingestion
+   *   Untrain → drop chunks, mark as 'untrained' so the worker
+   *             (which only claims 'pending') leaves it alone
+   *
+   * Useful when the owner wants to take a file out of RAG without
+   * deleting the underlying upload (e.g. paused content, archival).
+   * Re-training via the same dialog flips it back to 'pending' and
+   * the worker rehydrates the embeddings.
+   *
+   * Same ownership + processing-race gates as reingestFile so the
+   * two paths share a coherent invariant.
+   */
+  async untrainFile(fileId: string, callerId: string) {
+    const [file] = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        folderId: knowledgeFiles.folderId,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+        ownerId: knowledgeFolders.ownerId,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .where(eq(knowledgeFiles.id, fileId));
+
+    if (!file) throw new NotFoundException('File not found');
+    if (file.ownerId !== callerId) {
+      throw new ForbiddenException('Access denied');
+    }
+    if (file.ingestionStatus === 'processing') {
+      throw new BadRequestException(
+        'This file is being trained right now. Try again once the current run finishes.',
+      );
+    }
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(knowledgeChunks)
+        .where(eq(knowledgeChunks.fileId, fileId));
+      await tx
+        .update(knowledgeFiles)
+        .set({
+          ingestionStatus: 'untrained',
+          ingestionError: null,
+          ingestionCompletedAt: null,
+        })
+        .where(eq(knowledgeFiles.id, fileId));
+    });
+
+    return { id: fileId, ingestionStatus: 'untrained' as const };
+  }
+
+  /**
    * Flip an existing file's visibility between 'all' and 'admins'.
    * Admin-only — non-admins can't elevate (would be a privilege
    * escalation) nor demote (no good reason; admin owns the curation).
@@ -951,7 +1010,24 @@ export class KnowledgeCoreService {
       }
     }
 
-    await this.db.delete(knowledgeFiles).where(eq(knowledgeFiles.id, fileId));
+    // Defense-in-depth: clear child rows explicitly inside a
+    // transaction before deleting the file. FK cascade should handle
+    // this, but explicit deletes guarantee chat-time RAG no longer
+    // surfaces this file even if the live DB lost the CASCADE rule.
+    // Order: chunks (RAG embeddings) → team links → project
+    // attachments → the file row itself.
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(knowledgeChunks)
+        .where(eq(knowledgeChunks.fileId, fileId));
+      await tx
+        .delete(knowledgeFileTeams)
+        .where(eq(knowledgeFileTeams.fileId, fileId));
+      await tx
+        .delete(projectKnowledgeFiles)
+        .where(eq(projectKnowledgeFiles.fileId, fileId));
+      await tx.delete(knowledgeFiles).where(eq(knowledgeFiles.id, fileId));
+    });
 
     await this.db
       .update(knowledgeFolders)

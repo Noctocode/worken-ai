@@ -14,6 +14,7 @@ import {
   Search,
   Shield,
   Trash2,
+  Unplug,
   Upload,
   Users,
   X,
@@ -31,6 +32,7 @@ import {
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
   reingestKnowledgeFile,
+  untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFolder,
@@ -98,7 +100,7 @@ function IngestionStatusBadge({
   status,
   error,
 }: {
-  status: "pending" | "processing" | "done" | "failed";
+  status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
   if (status === "done") {
@@ -117,6 +119,17 @@ function IngestionStatusBadge({
       >
         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
         Skipped
+      </span>
+    );
+  }
+  if (status === "untrained") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title="Embeddings removed — Retrain to make this file searchable again."
+      >
+        <Unplug className="h-3 w-3" strokeWidth={2} />
+        Untrained
       </span>
     );
   }
@@ -292,6 +305,22 @@ export default function KnowledgeCorePage() {
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to re-train this file."),
+  });
+
+  // Inverse of Retrain: drop the file's embeddings so chat RAG stops
+  // surfacing it, but keep the row + disk copy so Download / Retrain
+  // still work. BE gates on owner + mid-ingestion same way Retrain
+  // does, so we share the same disabled rule on the menu item.
+  const untrainMutation = useMutation({
+    mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+      toast.success("File untrained — embeddings removed.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to untrain this file."),
   });
 
   // Admin-only PATCH to flip a file's visibility between 'all' and
@@ -640,6 +669,17 @@ export default function KnowledgeCorePage() {
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
                     Retrain
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => untrainMutation.mutate(file.id)}
+                    disabled={
+                      file.ingestionStatus === "processing" ||
+                      file.ingestionStatus === "untrained" ||
+                      untrainMutation.isPending
+                    }
+                  >
+                    <Unplug className="mr-2 h-3.5 w-3.5" />
+                    Untrain
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
