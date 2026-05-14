@@ -144,6 +144,9 @@ function scoreBadgeTone(score: number): string {
 }
 
 const MIN_MODELS = 2;
+// Where the picked-model set is mirrored so revisits restore the
+// last selection instead of resetting to the catalog's first two.
+const ARENA_MODELS_STORAGE_KEY = "arena.selectedModels";
 
 function slotLabel(index: number): string {
   // A, B, C, ... AA after Z. Plenty for our purposes.
@@ -154,16 +157,64 @@ function slotLabel(index: number): string {
 export default function CompareModelsPage() {
   const { models: availableModels, isLoading: modelsLoading, getLabel: getModelLabel } =
     useUserModels();
-  const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  // Persist the picked model set across navigation / reload via
+  // localStorage. Server-render returns [] (no window), then the
+  // first client effect rehydrates from storage if anything was
+  // saved. Stale IDs (admin disabled the model since last visit)
+  // are filtered out once the catalog loads.
+  const [selectedModels, setSelectedModels] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(ARENA_MODELS_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed)
+        ? parsed.filter((x): x is string => typeof x === "string")
+        : [];
+    } catch {
+      return [];
+    }
+  });
 
-  // Seed the comparison with the first two enabled models once the catalog
-  // loads. Done in an effect so the initial render doesn't depend on async
-  // data and so we don't clobber the user's later picks.
+  // Drop any persisted IDs that are no longer in the catalog. Only
+  // depends on availableModels so it runs exactly when the catalog
+  // changes (avoids a feedback loop with the setter below).
+  useEffect(() => {
+    if (availableModels.length === 0) return;
+    const validIds = new Set(availableModels.map((m) => m.id));
+    setSelectedModels((prev) => {
+      const cleaned = prev.filter((id) => validIds.has(id));
+      return cleaned.length === prev.length ? prev : cleaned;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableModels]);
+
+  // Seed the comparison with the first two enabled models once the
+  // catalog loads AND nothing was restored from localStorage. The
+  // seed runs as a separate effect so the restore-or-seed paths
+  // share the same MIN_MODELS contract without duplicating logic.
   useEffect(() => {
     if (selectedModels.length === 0 && availableModels.length >= MIN_MODELS) {
       setSelectedModels([availableModels[0].id, availableModels[1].id]);
     }
   }, [availableModels, selectedModels.length]);
+
+  // Mirror every change back to localStorage so the next mount
+  // (re-navigation, refresh) restores the same selection. Skip the
+  // empty state — that's the unseeded initial render and would
+  // overwrite a still-good prior selection with [].
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (selectedModels.length === 0) return;
+    try {
+      window.localStorage.setItem(
+        ARENA_MODELS_STORAGE_KEY,
+        JSON.stringify(selectedModels),
+      );
+    } catch {
+      // Quota / privacy mode — non-fatal, just lose persistence.
+    }
+  }, [selectedModels]);
   const [question, setQuestion] = useState("");
   const [expectedOutput, setExpectedOutput] = useState("");
   const [responses, setResponses] = useState<Record<string, string | null>>({});
