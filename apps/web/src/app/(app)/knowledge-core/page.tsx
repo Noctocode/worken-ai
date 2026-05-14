@@ -12,6 +12,7 @@ import {
   Download,
   RotateCw,
   Search,
+  Settings2,
   Shield,
   Trash2,
   Unplug,
@@ -65,6 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -372,6 +374,16 @@ export default function KnowledgeCorePage() {
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const deleteFileName =
     recentFiles.find((f) => f.id === deleteFileId)?.name ?? "";
+
+  // Currently-edited file for the full visibility dialog. Stays
+  // separate from the inline binary toggle so admins can keep using
+  // the one-click admin-only flip for hot rows and reach for the
+  // dialog only when they need teams / project tiers.
+  const [editingVisibilityFileId, setEditingVisibilityFileId] = useState<
+    string | null
+  >(null);
+  const editingVisibilityFile =
+    recentFiles.find((f) => f.id === editingVisibilityFileId) ?? null;
 
   const handleDeleteFolder = (id: string) => {
     setDeleteFolderId(id);
@@ -740,6 +752,15 @@ export default function KnowledgeCorePage() {
                           Make admin-only
                         </>
                       )}
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() => setEditingVisibilityFileId(file.id)}
+                      disabled={file.ingestionStatus === "processing"}
+                    >
+                      <Settings2 className="mr-2 h-3.5 w-3.5" />
+                      Change visibility…
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
@@ -1114,6 +1135,22 @@ export default function KnowledgeCorePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full visibility editor — covers all four tiers including
+          teams / project, beyond what the inline admin toggle does. */}
+      <ChangeFileVisibilityDialog
+        file={editingVisibilityFile}
+        open={editingVisibilityFile !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingVisibilityFileId(null);
+        }}
+        isAdmin={isAdmin}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+        }}
+      />
     </div>
   );
 }

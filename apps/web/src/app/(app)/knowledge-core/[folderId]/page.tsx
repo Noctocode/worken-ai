@@ -12,6 +12,7 @@ import {
   MoreVertical,
   RotateCw,
   Search,
+  Settings2,
   Shield,
   Trash2,
   Unplug,
@@ -63,6 +64,7 @@ import {
   type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -542,6 +544,15 @@ export default function FolderDetailPage({
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
 
+  // Same pattern as on the root /knowledge-core page — full
+  // visibility editor lives in a shared dialog, opened per file by
+  // the dropdown menu item.
+  const [editingVisibilityFileId, setEditingVisibilityFileId] = useState<
+    string | null
+  >(null);
+  const editingVisibilityFile =
+    folder?.files.find((f) => f.id === editingVisibilityFileId) ?? null;
+
   const handleBrowse = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) setStagedFiles(files);
@@ -904,6 +915,15 @@ export default function FolderDetailPage({
                             )}
                           </DropdownMenuItem>
                         )}
+                        {isAdmin && (
+                          <DropdownMenuItem
+                            onSelect={() => setEditingVisibilityFileId(f.id)}
+                            disabled={f.ingestionStatus === "processing"}
+                          >
+                            <Settings2 className="mr-2 h-3.5 w-3.5" />
+                            Change visibility…
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onSelect={() => handleDelete(f.id)}
@@ -1033,6 +1053,15 @@ export default function FolderDetailPage({
                           Make admin-only
                         </>
                       )}
+                    </DropdownMenuItem>
+                  )}
+                  {isAdmin && (
+                    <DropdownMenuItem
+                      onSelect={() => setEditingVisibilityFileId(f.id)}
+                      disabled={f.ingestionStatus === "processing"}
+                    >
+                      <Settings2 className="mr-2 h-3.5 w-3.5" />
+                      Change visibility…
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
@@ -1377,6 +1406,24 @@ export default function FolderDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full visibility editor — same shared dialog the root KC
+          page uses; opened per file via the dropdown menu. */}
+      <ChangeFileVisibilityDialog
+        file={editingVisibilityFile}
+        open={editingVisibilityFile !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingVisibilityFileId(null);
+        }}
+        isAdmin={isAdmin}
+        onSuccess={() => {
+          queryClient.invalidateQueries({
+            queryKey: ["knowledge-folder", folderId],
+          });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+        }}
+      />
     </div>
   );
 }
