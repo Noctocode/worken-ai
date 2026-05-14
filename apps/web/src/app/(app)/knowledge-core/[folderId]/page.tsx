@@ -51,6 +51,7 @@ import {
 import {
   fetchKnowledgeFolder,
   fetchKnowledgeFolders,
+  fetchProjects,
   fetchTeams,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
@@ -165,9 +166,11 @@ function IngestionStatusBadge({
 function VisibilityBadge({
   visibility,
   teams = [],
+  projects = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
+  projects?: { id: string; name: string }[];
 }) {
   if (visibility === "admins") {
     return (
@@ -195,6 +198,22 @@ function VisibilityBadge({
       >
         <Users className="h-3 w-3" strokeWidth={2} />
         {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+      </span>
+    );
+  }
+  if (visibility === "project") {
+    const names = projects.map((p) => p.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Surfaced only in the chat of these projects: ${names}.`
+            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+        }
+      >
+        <Folder className="h-3 w-3" strokeWidth={2} />
+        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
       </span>
     );
   }
@@ -247,11 +266,14 @@ export default function FolderDetailPage({
       files,
       visibility,
       teamIds,
+      projectIds,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
       teamIds: string[];
-    }) => uploadKnowledgeFiles(folderId, files, visibility, teamIds),
+      projectIds: string[];
+    }) =>
+      uploadKnowledgeFiles(folderId, files, visibility, teamIds, projectIds),
     onSuccess: ({ uploaded, duplicates }) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
@@ -386,16 +408,21 @@ export default function FolderDetailPage({
   // Per-batch visibility staging. Same lifecycle as on the root
   // /knowledge-core page: select is open to all users, reset to
   // 'all' after each confirmed upload so the choice doesn't leak
-  // across batches. Team IDs reset alongside visibility.
+  // across batches. Team / project IDs reset alongside visibility.
   const [stagedVisibility, setStagedVisibility] =
     useState<KnowledgeFileVisibility>("all");
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
+  const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
 
   // Same user-teams list the root page renders. Cached by react-query
   // key 'teams' so navigating between KC pages reuses one fetch.
   const { data: userTeams = [] } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
+  });
+  const { data: userProjects = [] } = useQuery({
+    queryKey: ["projects", "kc-upload"],
+    queryFn: () => fetchProjects("all"),
   });
 
   // Multi-select state for the bulk action bar. Set<string> over
@@ -527,14 +554,20 @@ export default function FolderDetailPage({
       toast.error("Pick at least one team for Teams visibility.");
       return;
     }
+    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
+      toast.error("Pick at least one project for Project visibility.");
+      return;
+    }
     uploadMutation.mutate({
       files: stagedFiles,
       visibility: stagedVisibility,
       teamIds: stagedTeamIds,
+      projectIds: stagedProjectIds,
     });
     setStagedFiles([]);
     setStagedVisibility("all");
     setStagedTeamIds([]);
+    setStagedProjectIds([]);
   };
 
   const removeStagedFile = (idx: number) =>
@@ -774,7 +807,11 @@ export default function FolderDetailPage({
                         status={f.ingestionStatus}
                         error={f.ingestionError}
                       />
-                      <VisibilityBadge visibility={f.visibility} teams={f.teams} />
+                      <VisibilityBadge
+                        visibility={f.visibility}
+                        teams={f.teams}
+                        projects={f.projects}
+                      />
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -923,7 +960,11 @@ export default function FolderDetailPage({
                     status={f.ingestionStatus}
                     error={f.ingestionError}
                   />
-                  <VisibilityBadge visibility={f.visibility} teams={f.teams} />
+                  <VisibilityBadge
+                        visibility={f.visibility}
+                        teams={f.teams}
+                        projects={f.projects}
+                      />
                 </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
@@ -1130,6 +1171,7 @@ export default function FolderDetailPage({
                   <SelectItem value="admins">Admins only</SelectItem>
                 )}
                 <SelectItem value="teams">Specific teams…</SelectItem>
+                <SelectItem value="project">Specific project…</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1137,7 +1179,9 @@ export default function FolderDetailPage({
                 ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
                 : stagedVisibility === "teams"
                   ? "Only members of the teams you pick below will see these files in chat / arena."
-                  : "Every user in the company can see these files in chat / arena."}
+                  : stagedVisibility === "project"
+                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
+                    : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
 
@@ -1182,6 +1226,54 @@ export default function FolderDetailPage({
             </div>
           )}
 
+          {stagedVisibility === "project" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Projects with access
+              </label>
+              {userProjects.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You don&rsquo;t have access to any projects yet — create
+                  one first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userProjects.map((p) => {
+                    const checked = stagedProjectIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploadMutation.isPending}
+                          onChange={() => {
+                            setStagedProjectIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== p.id)
+                                : [...prev, p.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">
+                          {p.name}
+                          {p.teamName ? (
+                            <span className="ml-1 text-text-3">
+                              · {p.teamName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1189,6 +1281,7 @@ export default function FolderDetailPage({
                 setStagedFiles([]);
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
+                setStagedProjectIds([]);
               }}
               disabled={uploadMutation.isPending}
               className="cursor-pointer"

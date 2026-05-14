@@ -25,6 +25,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   fetchKnowledgeFolders,
+  fetchProjects,
   fetchRecentKnowledgeFiles,
   fetchTeams,
   createKnowledgeFolder,
@@ -151,9 +152,11 @@ function IngestionStatusBadge({
 function VisibilityBadge({
   visibility,
   teams = [],
+  projects = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
+  projects?: { id: string; name: string }[];
 }) {
   if (visibility === "admins") {
     return (
@@ -179,6 +182,22 @@ function VisibilityBadge({
       >
         <Users className="h-3 w-3" strokeWidth={2} />
         {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+      </span>
+    );
+  }
+  if (visibility === "project") {
+    const names = projects.map((p) => p.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Surfaced only in the chat of these projects: ${names}.`
+            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+        }
+      >
+        <Folder className="h-3 w-3" strokeWidth={2} />
+        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
       </span>
     );
   }
@@ -380,10 +399,11 @@ export default function KnowledgeCorePage() {
   // across batches.
   const [stagedVisibility, setStagedVisibility] =
     useState<KnowledgeFileVisibility>("all");
-  // Selected team IDs for the 'teams' visibility option. Reset along
-  // with `stagedVisibility` so a previous batch's selection doesn't
-  // leak into the next one.
+  // Selected team / project IDs for 'teams' / 'project' visibility.
+  // Both reset alongside `stagedVisibility` so a previous batch's
+  // selection doesn't leak into the next one.
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
+  const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
 
   // Pull the user's team list once; only meaningful for company
   // profiles, but we render it lazily anyway (the picker only appears
@@ -392,14 +412,26 @@ export default function KnowledgeCorePage() {
     queryKey: ["teams"],
     queryFn: fetchTeams,
   });
+  // Same lazy pattern for projects — only the 'project' visibility
+  // branch reads this. fetchProjects('all') returns every project
+  // the caller can access (personal + team).
+  const { data: userProjects = [] } = useQuery({
+    queryKey: ["projects", "kc-upload"],
+    queryFn: () => fetchProjects("all"),
+  });
 
   const confirmUpload = async () => {
     if (stagedFiles.length === 0) return;
-    // Block submit when 'teams' is picked but no team is checked —
-    // the BE would reject this too, but a client-side guard keeps
-    // the dialog from collapsing on a 400 with stale staged files.
+    // Block submit when the chosen visibility requires a non-empty
+    // selection but the picker is empty — the BE rejects this too,
+    // but a client guard keeps the dialog from collapsing on a 400
+    // with stale staged files.
     if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
       toast.error("Pick at least one team for Teams visibility.");
+      return;
+    }
+    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
+      toast.error("Pick at least one project for Project visibility.");
       return;
     }
     setUploading(true);
@@ -410,6 +442,7 @@ export default function KnowledgeCorePage() {
         stagedFiles,
         stagedVisibility,
         stagedTeamIds,
+        stagedProjectIds,
       );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -437,6 +470,7 @@ export default function KnowledgeCorePage() {
       setStagedFiles([]);
       setStagedVisibility("all");
       setStagedTeamIds([]);
+      setStagedProjectIds([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to upload files.");
     } finally {
@@ -621,7 +655,11 @@ export default function KnowledgeCorePage() {
                     status={file.ingestionStatus}
                     error={file.ingestionError}
                   />
-                  <VisibilityBadge visibility={file.visibility} teams={file.teams} />
+                  <VisibilityBadge
+                    visibility={file.visibility}
+                    teams={file.teams}
+                    projects={file.projects}
+                  />
                 </div>
                 <span className="truncate text-[13px] text-text-3">
                   {file.folderName} • {formatBytes(file.sizeBytes)} •
@@ -902,6 +940,7 @@ export default function KnowledgeCorePage() {
                   <SelectItem value="admins">Admins only</SelectItem>
                 )}
                 <SelectItem value="teams">Specific teams…</SelectItem>
+                <SelectItem value="project">Specific project…</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -909,7 +948,9 @@ export default function KnowledgeCorePage() {
                 ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
                 : stagedVisibility === "teams"
                   ? "Only members of the teams you pick below will see these files in chat / arena."
-                  : "Every user in the company can see these files in chat / arena."}
+                  : stagedVisibility === "project"
+                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
+                    : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
 
@@ -958,6 +999,59 @@ export default function KnowledgeCorePage() {
               )}
             </div>
           )}
+
+          {/* Project checkbox panel — shown only when
+              visibility='project'. Same shape as the teams panel.
+              Lists every project the caller can access (their own
+              + team projects). Empty state mirrors the teams case
+              so the dialog stays consistent. */}
+          {stagedVisibility === "project" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Projects with access
+              </label>
+              {userProjects.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You don&rsquo;t have access to any projects yet — create
+                  one first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userProjects.map((p) => {
+                    const checked = stagedProjectIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploading}
+                          onChange={() => {
+                            setStagedProjectIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== p.id)
+                                : [...prev, p.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">
+                          {p.name}
+                          {p.teamName ? (
+                            <span className="ml-1 text-text-3">
+                              · {p.teamName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -965,6 +1059,7 @@ export default function KnowledgeCorePage() {
                 setStagedFiles([]);
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
+                setStagedProjectIds([]);
               }}
               disabled={uploading}
               className="cursor-pointer"

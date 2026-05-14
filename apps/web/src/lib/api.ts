@@ -1814,7 +1814,11 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
-export type KnowledgeFileVisibility = "all" | "admins" | "teams";
+export type KnowledgeFileVisibility =
+  | "all"
+  | "admins"
+  | "teams"
+  | "project";
 
 /**
  * Compact representation of a team link on a knowledge file. Carries
@@ -1822,6 +1826,16 @@ export type KnowledgeFileVisibility = "all" | "admins" | "teams";
  * the FE having to lookup names from a separate query.
  */
 export interface KnowledgeFileTeamRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * Same shape as KnowledgeFileTeamRef but for the project visibility
+ * tier — the row badge can resolve project names without a second
+ * round-trip.
+ */
+export interface KnowledgeFileProjectRef {
   id: string;
   name: string;
 }
@@ -1839,15 +1853,18 @@ export interface KnowledgeFile {
   // this file. Surfaced as a badge on the folder detail page.
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
-  // Secondary visibility within company scope: 'all' is readable
-  // by every company user, 'admins' restricts to role='admin',
-  // 'teams' restricts to members of the linked team set. Default
-  // 'all'. Admins toggle via the action menu / upload dialog;
-  // basic users can pick 'all' or 'teams' but never 'admins'.
+  // Secondary visibility within company scope:
+  //   - 'all'     : every company user
+  //   - 'admins'  : role='admin' only
+  //   - 'teams'   : members of the linked team set
+  //   - 'project' : visible only in the chat of linked project(s);
+  //                 NEVER in the org-wide RAG.
   visibility: KnowledgeFileVisibility;
-  // Populated only when visibility='teams'; empty array otherwise.
-  // Drives the row badge that names the teams with access.
+  // Populated only when visibility='teams' / 'project'; empty array
+  // otherwise. Drives the row badge that names the teams / projects
+  // with access.
   teams: KnowledgeFileTeamRef[];
+  projects: KnowledgeFileProjectRef[];
   createdAt: string;
 }
 
@@ -1871,6 +1888,7 @@ export interface KnowledgeRecentFile {
   ingestionError: string | null;
   visibility: KnowledgeFileVisibility;
   teams: KnowledgeFileTeamRef[];
+  projects: KnowledgeFileProjectRef[];
   createdAt: string;
 }
 
@@ -1934,18 +1952,23 @@ export async function uploadKnowledgeFiles(
   files: File[],
   visibility: KnowledgeFileVisibility = "all",
   teamIds: string[] = [],
+  projectIds: string[] = [],
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only
-  // admins can set 'admins'; non-admin callers can pick 'all' or
-  // 'teams'. 'teams' requires teamIds non-empty.
+  // admins can set 'admins'; non-admin callers can pick 'all',
+  // 'teams', or 'project'. 'teams' requires teamIds non-empty;
+  // 'project' requires projectIds non-empty.
   form.append("visibility", visibility);
-  // Append each teamId as a repeated field — multer parses repeats
-  // into an array on the body, matching the controller's expected
+  // Append each id as a repeated field — multer parses repeats into
+  // an array on the body, matching the controller's expected
   // `string | string[]` shape.
   if (visibility === "teams") {
     teamIds.forEach((id) => form.append("teamIds", id));
+  }
+  if (visibility === "project") {
+    projectIds.forEach((id) => form.append("projectIds", id));
   }
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
@@ -1966,23 +1989,26 @@ export async function updateKnowledgeFileVisibility(
   fileId: string,
   visibility: KnowledgeFileVisibility,
   teamIds: string[] = [],
+  projectIds: string[] = [],
 ): Promise<{
   id: string;
   visibility: KnowledgeFileVisibility;
   teamIds: string[];
+  projectIds: string[];
 }> {
   const res = await apiFetch(
     `/knowledge-core/files/${fileId}/visibility`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // `teamIds` is sent only when meaningful — for 'all' / 'admins'
-      // the BE clears any prior links regardless, so the field is
-      // redundant. Keep the payload tight.
+      // Only ship the id array that matches the chosen visibility —
+      // for 'all' / 'admins' the BE clears any prior links anyway.
       body: JSON.stringify(
         visibility === "teams"
           ? { visibility, teamIds }
-          : { visibility },
+          : visibility === "project"
+            ? { visibility, projectIds }
+            : { visibility },
       ),
     },
   );
@@ -2038,9 +2064,11 @@ export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
   teamIds: string[] = [],
+  projectIds: string[] = [],
 ): Promise<{
   visibility: KnowledgeFileVisibility;
   teamIds: string[];
+  projectIds: string[];
   affectedIds: string[];
   /** Files skipped because they were mid-ingestion at the time of the
    *  call — BE refuses to flip during processing to avoid leaving
@@ -2054,7 +2082,9 @@ export async function updateKnowledgeFilesVisibilityBulk(
     body: JSON.stringify(
       visibility === "teams"
         ? { fileIds, visibility, teamIds }
-        : { fileIds, visibility },
+        : visibility === "project"
+          ? { fileIds, visibility, projectIds }
+          : { fileIds, visibility },
     ),
   });
   if (!res.ok) {

@@ -103,18 +103,29 @@ export class KnowledgeCoreController {
     @UploadedFiles() files: Express.Multer.File[],
     // Multer parses non-file fields onto the request body; multipart
     // strings come through verbatim. Service validates the value
-    // against the 'all' | 'admins' | 'teams' enum.
+    // against the 'all' | 'admins' | 'teams' | 'project' enum.
     //
-    // teamIds arrives as either a single string ("uuid") or an array
-    // depending on how the FE serialized it ("teamIds=a" vs. multiple
-    // `teamIds=a&teamIds=b` appends). Normalize before passing on so
-    // the service only deals with `string[]`.
-    @Body() body: { visibility?: string; teamIds?: string | string[] },
+    // teamIds / projectIds arrive as either a single string ("uuid")
+    // or an array depending on how the FE serialized it
+    // ("teamIds=a" vs. multiple `teamIds=a&teamIds=b` appends).
+    // Normalize before passing on so the service only deals with
+    // `string[]`.
+    @Body()
+    body: {
+      visibility?: string;
+      teamIds?: string | string[];
+      projectIds?: string | string[];
+    },
   ) {
     const teamIds = Array.isArray(body?.teamIds)
       ? body.teamIds
       : body?.teamIds
         ? [body.teamIds]
+        : [];
+    const projectIds = Array.isArray(body?.projectIds)
+      ? body.projectIds
+      : body?.projectIds
+        ? [body.projectIds]
         : [];
     return this.service.uploadFiles(
       folderId,
@@ -122,6 +133,7 @@ export class KnowledgeCoreController {
       files,
       body?.visibility,
       teamIds,
+      projectIds,
     );
   }
 
@@ -134,7 +146,8 @@ export class KnowledgeCoreController {
   @Patch('files/:id/visibility')
   updateFileVisibility(
     @Param('id') id: string,
-    @Body() body: { visibility: string; teamIds?: string[] },
+    @Body()
+    body: { visibility: string; teamIds?: string[]; projectIds?: string[] },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.updateFileVisibility(
@@ -142,6 +155,7 @@ export class KnowledgeCoreController {
       user.id,
       body?.visibility,
       body?.teamIds,
+      body?.projectIds,
     );
   }
 
@@ -190,6 +204,7 @@ export class KnowledgeCoreController {
       fileIds: string[];
       visibility: string;
       teamIds?: string[];
+      projectIds?: string[];
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -198,6 +213,7 @@ export class KnowledgeCoreController {
       user.id,
       body?.visibility,
       body?.teamIds,
+      body?.projectIds,
     );
   }
 

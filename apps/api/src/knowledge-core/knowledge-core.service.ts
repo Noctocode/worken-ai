@@ -12,6 +12,7 @@ import {
   knowledgeFileTeams,
   knowledgeChunks,
   projectKnowledgeFiles,
+  projects,
   teamMembers,
   teams,
   users,
@@ -114,16 +115,21 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFiles.folderId, id))
       .orderBy(desc(knowledgeFiles.createdAt));
 
-    // Hydrate team links for files in 'teams' visibility mode. One
-    // round-trip for the whole folder keeps this O(1) round-trips
-    // regardless of file count.
-    const teamLinks = await this.hydrateTeamLinks(files.map((f) => f.id));
-    const filesWithTeams = files.map((f) => ({
+    // Hydrate team + project links so the row badge can render names
+    // without an N+1. Two round-trips for the whole folder keeps
+    // this O(1) regardless of file count.
+    const fileIds = files.map((f) => f.id);
+    const [teamLinks, projectLinks] = await Promise.all([
+      this.hydrateTeamLinks(fileIds),
+      this.hydrateProjectLinks(fileIds),
+    ]);
+    const filesWithLinks = files.map((f) => ({
       ...f,
       teams: teamLinks.get(f.id) ?? [],
+      projects: projectLinks.get(f.id) ?? [],
     }));
 
-    return { ...folder, files: filesWithTeams };
+    return { ...folder, files: filesWithLinks };
   }
 
   /**
@@ -148,6 +154,33 @@ export class KnowledgeCoreService {
     for (const link of links) {
       const arr = out.get(link.fileId) ?? [];
       arr.push({ id: link.teamId, name: link.teamName });
+      out.set(link.fileId, arr);
+    }
+    return out;
+  }
+
+  /**
+   * Mirror of hydrateTeamLinks but for project links — used to stamp
+   * `projects: [{id, name}]` onto files with visibility='project' so
+   * the row badge can render names without a per-file lookup.
+   */
+  private async hydrateProjectLinks(
+    fileIds: string[],
+  ): Promise<Map<string, Array<{ id: string; name: string }>>> {
+    const out = new Map<string, Array<{ id: string; name: string }>>();
+    if (fileIds.length === 0) return out;
+    const links = await this.db
+      .select({
+        fileId: projectKnowledgeFiles.fileId,
+        projectId: projects.id,
+        projectName: projects.name,
+      })
+      .from(projectKnowledgeFiles)
+      .innerJoin(projects, eq(projects.id, projectKnowledgeFiles.projectId))
+      .where(inArray(projectKnowledgeFiles.fileId, fileIds));
+    for (const link of links) {
+      const arr = out.get(link.fileId) ?? [];
+      arr.push({ id: link.projectId, name: link.projectName });
       out.set(link.fileId, arr);
     }
     return out;
@@ -200,6 +233,7 @@ export class KnowledgeCoreService {
     files: Express.Multer.File[],
     visibilityInput?: string,
     teamIdsInput?: string[],
+    projectIdsInput?: string[],
   ) {
     const [folder] = await this.db
       .select()
@@ -243,6 +277,19 @@ export class KnowledgeCoreService {
       visibility === 'teams'
         ? await this.resolveAssignableTeamIds(
             teamIdsInput ?? [],
+            userId,
+            uploader?.role === 'admin',
+          )
+        : [];
+
+    // For 'project' visibility: same shape as teams but for projects.
+    // The project link rows in project_knowledge_files double as the
+    // access grant — chat-time RAG only surfaces these chunks inside
+    // the linked project, never via the org-wide search.
+    const allowedProjectIds =
+      visibility === 'project'
+        ? await this.resolveAssignableProjectIds(
+            projectIdsInput ?? [],
             userId,
             uploader?.role === 'admin',
           )
@@ -405,6 +452,27 @@ export class KnowledgeCoreService {
         );
       }
 
+      // 'project' visibility reuses project_knowledge_files for the
+      // access grant — same table Manage Context populates when the
+      // user attaches a KC file to a project. Inserting here both
+      // pins the file to the chosen project's chat and surfaces it
+      // in the project's Manage Context list automatically.
+      if (
+        visibility === 'project' &&
+        inserted.length > 0 &&
+        allowedProjectIds.length > 0
+      ) {
+        await this.db.insert(projectKnowledgeFiles).values(
+          inserted.flatMap((row) =>
+            allowedProjectIds.map((projectId) => ({
+              projectId,
+              fileId: row.id,
+              attachedBy: userId,
+            })),
+          ),
+        );
+      }
+
       if (inserted.length > 0) {
         await this.db
           .update(knowledgeFolders)
@@ -443,21 +511,26 @@ export class KnowledgeCoreService {
    * for 'admins'. Shared between upload and PATCH so the same gate
    * applies regardless of how a row gets flipped.
    *
-   * 'teams' is only meaningful for company-scope uploads — personal
-   * scope is owner-only already, so a teams-restricted personal file
-   * would just be owner-only with extra steps. Rejected up front
-   * instead of silently downgraded so the FE can show a clear error
-   * if it ever sends the wrong shape.
+   * 'teams' / 'project' are only meaningful for company-scope uploads
+   * — personal scope is owner-only already, so a teams- or project-
+   * restricted personal file would just be owner-only with extra
+   * steps. Rejected up front instead of silently downgraded so the FE
+   * can show a clear error if it ever sends the wrong shape.
    */
   private resolveUploadVisibility(
     input: string | undefined,
     callerRole: string | null | undefined,
     scope?: 'personal' | 'company',
-  ): 'all' | 'admins' | 'teams' {
+  ): 'all' | 'admins' | 'teams' | 'project' {
     if (input == null || input === '') return 'all';
-    if (input !== 'all' && input !== 'admins' && input !== 'teams') {
+    if (
+      input !== 'all' &&
+      input !== 'admins' &&
+      input !== 'teams' &&
+      input !== 'project'
+    ) {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all', 'admins', or 'teams'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', or 'project'.`,
       );
     }
     if (input === 'admins' && callerRole !== 'admin') {
@@ -468,6 +541,11 @@ export class KnowledgeCoreService {
     if (input === 'teams' && scope === 'personal') {
       throw new BadRequestException(
         'Team visibility requires a company profile — personal-scope files are owner-only.',
+      );
+    }
+    if (input === 'project' && scope === 'personal') {
+      throw new BadRequestException(
+        'Project visibility requires a company profile — personal-scope files are owner-only.',
       );
     }
     return input;
@@ -549,6 +627,105 @@ export class KnowledgeCoreService {
     if (denied.length > 0) {
       throw new ForbiddenException(
         'You can only assign teams you own or are a member of.',
+      );
+    }
+    return unique;
+  }
+
+  /**
+   * Same shape as resolveAssignableTeamIds but for project visibility.
+   * A project-visibility file is one the uploader wants pinned to a
+   * specific project's chat — searchable only inside that project,
+   * never via the org-wide RAG path.
+   *
+   * Rules mirror project-knowledge.service.ts#assertProjectAccess:
+   *   - admin: any project in the deployment, validate existence only
+   *   - non-admin: project owner, team owner of project's team, or
+   *     accepted team member
+   *
+   * Returns the deduped, validated array ready to insert into
+   * project_knowledge_files (which doubles as the access grant).
+   */
+  private async resolveAssignableProjectIds(
+    input: string[],
+    callerId: string,
+    isAdmin: boolean,
+  ): Promise<string[]> {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException(
+        '`projectIds` must be an array when visibility is "project".',
+      );
+    }
+    const unique = Array.from(
+      new Set(input.filter((s) => typeof s === 'string' && s.length > 0)),
+    );
+    if (unique.length === 0) {
+      throw new BadRequestException(
+        'Pick at least one project for "Project" visibility.',
+      );
+    }
+
+    const rows = await this.db
+      .select({
+        id: projects.id,
+        ownerId: projects.userId,
+        teamId: projects.teamId,
+      })
+      .from(projects)
+      .where(inArray(projects.id, unique));
+    const existing = new Set(rows.map((r) => r.id));
+    const missing = unique.filter((id) => !existing.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException(
+        `Unknown project id(s): ${missing.join(', ')}.`,
+      );
+    }
+    if (isAdmin) return unique;
+
+    // Non-admin: must own the project OR be team-owner / accepted
+    // member of the project's team. One round-trip to pull all team
+    // memberships referenced by these projects.
+    const teamIds = Array.from(
+      new Set(rows.map((r) => r.teamId).filter((id): id is string => !!id)),
+    );
+    const [teamRows, memberRows] =
+      teamIds.length > 0
+        ? await Promise.all([
+            this.db
+              .select({ id: teams.id, ownerId: teams.ownerId })
+              .from(teams)
+              .where(inArray(teams.id, teamIds)),
+            this.db
+              .select({ teamId: teamMembers.teamId })
+              .from(teamMembers)
+              .where(
+                and(
+                  eq(teamMembers.userId, callerId),
+                  eq(teamMembers.status, 'accepted'),
+                  inArray(teamMembers.teamId, teamIds),
+                ),
+              ),
+          ])
+        : [
+            [] as Array<{ id: string; ownerId: string }>,
+            [] as Array<{ teamId: string }>,
+          ];
+    const teamOwners = new Map(teamRows.map((t) => [t.id, t.ownerId]));
+    const memberOf = new Set(memberRows.map((r) => r.teamId));
+
+    const denied = rows
+      .filter((r) => {
+        if (r.ownerId === callerId) return false;
+        if (r.teamId) {
+          if (teamOwners.get(r.teamId) === callerId) return false;
+          if (memberOf.has(r.teamId)) return false;
+        }
+        return true;
+      })
+      .map((r) => r.id);
+    if (denied.length > 0) {
+      throw new ForbiddenException(
+        'You can only assign projects you own or have team access to.',
       );
     }
     return unique;
@@ -701,6 +878,7 @@ export class KnowledgeCoreService {
     callerId: string,
     visibilityInput: string,
     teamIdsInput?: string[],
+    projectIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
@@ -714,10 +892,11 @@ export class KnowledgeCoreService {
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams'
+      visibilityInput !== 'teams' &&
+      visibilityInput !== 'project'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'teams'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
       );
     }
 
@@ -731,13 +910,16 @@ export class KnowledgeCoreService {
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.id, fileId));
     if (!file) throw new NotFoundException('File not found');
-    // Mirror the upload-path invariant: 'teams' is only meaningful
-    // for company-scope rows. Personal files are owner-only at chat
-    // time, so a teams-restricted personal file would just leave
-    // stray knowledge_file_teams links nobody ever reads.
-    if (visibilityInput === 'teams' && file.scope === 'personal') {
+    // Mirror the upload-path invariant: 'teams' / 'project' are only
+    // meaningful for company-scope rows. Personal files are owner-
+    // only at chat time, so a restricted personal file would just
+    // leave stray link rows nobody ever reads.
+    if (
+      (visibilityInput === 'teams' || visibilityInput === 'project') &&
+      file.scope === 'personal'
+    ) {
       throw new BadRequestException(
-        'Team visibility requires a company profile — personal-scope files are owner-only.',
+        `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
       );
     }
     // Block visibility flips while the worker is mid-ingestion.
@@ -753,12 +935,21 @@ export class KnowledgeCoreService {
       );
     }
 
-    // Resolve the team set BEFORE the transaction so validation
-    // errors don't leave a half-applied state. Empty teamIds for
-    // non-teams visibility is fine (we'll clear any existing links).
+    // Resolve link sets BEFORE the transaction so validation errors
+    // don't leave a half-applied state. Empty arrays for unrelated
+    // visibility levels are intentional — the transaction below wipes
+    // any pre-existing links regardless.
     const teamIds =
       visibilityInput === 'teams'
         ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        : [];
+    const projectIds =
+      visibilityInput === 'project'
+        ? await this.resolveAssignableProjectIds(
+            projectIdsInput ?? [],
+            callerId,
+            true,
+          )
         : [];
 
     await this.db.transaction(async (tx) => {
@@ -771,20 +962,31 @@ export class KnowledgeCoreService {
         .set({ visibility: visibilityInput })
         .where(eq(knowledgeChunks.fileId, fileId));
       // Replace, not merge: wiping and re-inserting keeps the link
-      // set authoritative — flipping away from 'teams' clears the
-      // links entirely; flipping into 'teams' replaces any old set
-      // with the new one. Simpler than diffing.
+      // sets authoritative — flipping away clears the prior links;
+      // flipping in replaces with the new set.
       await tx
         .delete(knowledgeFileTeams)
         .where(eq(knowledgeFileTeams.fileId, fileId));
+      await tx
+        .delete(projectKnowledgeFiles)
+        .where(eq(projectKnowledgeFiles.fileId, fileId));
       if (visibilityInput === 'teams' && teamIds.length > 0) {
         await tx
           .insert(knowledgeFileTeams)
           .values(teamIds.map((teamId) => ({ fileId, teamId })));
       }
+      if (visibilityInput === 'project' && projectIds.length > 0) {
+        await tx.insert(projectKnowledgeFiles).values(
+          projectIds.map((projectId) => ({
+            projectId,
+            fileId,
+            attachedBy: callerId,
+          })),
+        );
+      }
     });
 
-    return { id: fileId, visibility: visibilityInput, teamIds };
+    return { id: fileId, visibility: visibilityInput, teamIds, projectIds };
   }
 
   /**
@@ -803,6 +1005,7 @@ export class KnowledgeCoreService {
     callerId: string,
     visibilityInput: string,
     teamIdsInput?: string[],
+    projectIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
@@ -816,22 +1019,31 @@ export class KnowledgeCoreService {
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams'
+      visibilityInput !== 'teams' &&
+      visibilityInput !== 'project'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'teams'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
       );
     }
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       throw new BadRequestException('`fileIds` must be a non-empty array.');
     }
 
-    // Same pre-transaction team resolution as the per-file path.
-    // For non-teams visibility the empty array is intentional — the
-    // transaction below will wipe any pre-existing links.
+    // Same pre-transaction link resolution as the per-file path.
+    // Empty arrays for unrelated visibility levels are intentional —
+    // the transaction below wipes any pre-existing links regardless.
     const teamIds =
       visibilityInput === 'teams'
         ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        : [];
+    const projectIds =
+      visibilityInput === 'project'
+        ? await this.resolveAssignableProjectIds(
+            projectIdsInput ?? [],
+            callerId,
+            true,
+          )
         : [];
 
     // Cheap dedupe in case the FE accidentally sends duplicates;
@@ -858,11 +1070,11 @@ export class KnowledgeCoreService {
       })
       .from(knowledgeFiles)
       .where(inArray(knowledgeFiles.id, uniqueIds));
-    if (visibilityInput === 'teams') {
+    if (visibilityInput === 'teams' || visibilityInput === 'project') {
       const personal = statuses.filter((r) => r.scope === 'personal');
       if (personal.length > 0) {
         throw new BadRequestException(
-          'Team visibility requires a company profile — personal-scope files are owner-only.',
+          `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
         );
       }
     }
@@ -891,17 +1103,31 @@ export class KnowledgeCoreService {
             .update(knowledgeChunks)
             .set({ visibility: visibilityInput })
             .where(inArray(knowledgeChunks.fileId, affectedIds));
-          // Replace team links for every affected row. Same shape as
-          // the per-file path — wipe-then-insert is cheaper than
-          // diffing for the bulk case and keeps the link set
+          // Replace team/project links for every affected row. Same
+          // shape as the per-file path — wipe-then-insert is cheaper
+          // than diffing for the bulk case and keeps the link sets
           // authoritative regardless of prior state.
           await tx
             .delete(knowledgeFileTeams)
             .where(inArray(knowledgeFileTeams.fileId, affectedIds));
+          await tx
+            .delete(projectKnowledgeFiles)
+            .where(inArray(projectKnowledgeFiles.fileId, affectedIds));
           if (visibilityInput === 'teams' && teamIds.length > 0) {
             await tx.insert(knowledgeFileTeams).values(
               affectedIds.flatMap((fileId) =>
                 teamIds.map((teamId) => ({ fileId, teamId })),
+              ),
+            );
+          }
+          if (visibilityInput === 'project' && projectIds.length > 0) {
+            await tx.insert(projectKnowledgeFiles).values(
+              affectedIds.flatMap((fileId) =>
+                projectIds.map((projectId) => ({
+                  projectId,
+                  fileId,
+                  attachedBy: callerId,
+                })),
               ),
             );
           }
@@ -910,8 +1136,9 @@ export class KnowledgeCoreService {
     }
 
     return {
-      visibility: visibilityInput as 'all' | 'admins' | 'teams',
+      visibility: visibilityInput as 'all' | 'admins' | 'teams' | 'project',
       teamIds,
+      projectIds,
       affectedIds,
       skippedIds,
     };
@@ -1059,7 +1286,15 @@ export class KnowledgeCoreService {
       .orderBy(desc(knowledgeFiles.createdAt))
       .limit(10);
 
-    const teamLinks = await this.hydrateTeamLinks(rows.map((r) => r.id));
-    return rows.map((r) => ({ ...r, teams: teamLinks.get(r.id) ?? [] }));
+    const fileIds = rows.map((r) => r.id);
+    const [teamLinks, projectLinks] = await Promise.all([
+      this.hydrateTeamLinks(fileIds),
+      this.hydrateProjectLinks(fileIds),
+    ]);
+    return rows.map((r) => ({
+      ...r,
+      teams: teamLinks.get(r.id) ?? [],
+      projects: projectLinks.get(r.id) ?? [],
+    }));
   }
 }

@@ -330,19 +330,24 @@ export class KnowledgeIngestionService {
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
-    // Company-scope filter, now tri-state:
-    //   - admin caller: every company chunk is fair game (admins see
-    //     all + admins-only + every teams-restricted file regardless
-    //     of membership; admins manage the org).
-    //   - non-admin caller: 'all' chunks always; 'teams' chunks only
-    //     when caller is an accepted member of one of the linked
-    //     teams. 'admins' chunks are off-limits.
+    // Company-scope filter — four-state:
+    //   - 'all'     : every company user including admin
+    //   - 'admins'  : admin caller only
+    //   - 'teams'   : admin OR accepted member of one of the linked
+    //                 teams
+    //   - 'project' : NEVER reached by this org-wide path; project-
+    //                 only chunks are surfaced exclusively via
+    //                 searchProjectAttachedChunks inside that
+    //                 project's chat. Excluded even for admin.
     //
     // The teams branch probes via EXISTS against the join table.
     // Indexes on knowledge_file_teams (file_id) and team_members
     // (user_id, status) keep this sub-millisecond per chunk.
     const companyBranch = isAdmin
-      ? eq(knowledgeChunks.scope, 'company')
+      ? and(
+          eq(knowledgeChunks.scope, 'company'),
+          sql`${knowledgeChunks.visibility} <> 'project'`,
+        )
       : or(
           and(
             eq(knowledgeChunks.scope, 'company'),
@@ -413,11 +418,15 @@ export class KnowledgeIngestionService {
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
-    // Same tri-state company-scope filter searchAccessibleChunks uses,
-    // just constrained to the attached fileIds. Admin gets every
-    // company chunk; non-admin needs visibility='all' or membership in
-    // a linked team for visibility='teams'. 'admins'-visibility chunks
-    // remain off-limits to non-admins regardless of attachment.
+    // Visibility filter constrained to the attached fileIds:
+    //   - admin: any company chunk (admins-only / teams / project all
+    //     OK; project files are by definition attached or wouldn't
+    //     be in fileIds)
+    //   - non-admin: visibility='all'; OR visibility='teams' AND
+    //     member of a linked team; OR visibility='project' (no
+    //     further check — being in fileIds means the file is in
+    //     project_knowledge_files, which is the access grant for
+    //     project visibility). 'admins'-visibility stays off-limits.
     const companyBranch = isAdmin
       ? eq(knowledgeChunks.scope, 'company')
       : or(
@@ -437,6 +446,10 @@ export class KnowledgeIngestionService {
                 AND tm.user_id = ${userId}
                 AND tm.status = 'accepted'
             )`,
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'project'),
           ),
         );
 
