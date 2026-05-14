@@ -171,15 +171,18 @@ export class ChatController {
       for (const doc of relevant) contextChunks.push(doc.content);
 
       // KC files explicitly attached to the project — separate from
-      // the user-wide `searchAccessibleChunks` below so the
-      // attachment itself authorises read access (visibility scopes
-      // are bypassed for these). Resolve attached ids first; if
-      // none, skip the embedding round-trip.
+      // the user-wide `searchAccessibleChunks` below to keep the
+      // attached-file path narrowly scoped. Visibility scopes still
+      // apply (the inner service enforces them per chunk), so an
+      // 'admins'-only file remains admins-only even when attached.
+      // Resolve attached ids first; if none, skip the embedding
+      // round-trip.
       const attachedFileIds =
         await this.projectKnowledge.getAttachedFileIds(body.projectId);
       if (attachedFileIds.length > 0) {
         const attachedChunks =
           await this.knowledgeIngestion.searchProjectAttachedChunks(
+            user.id,
             attachedFileIds,
             safePrompt,
           );

@@ -386,23 +386,60 @@ export class KnowledgeIngestionService {
 
   /**
    * Cosine-similarity search restricted to KC files explicitly
-   * attached to a project. Unlike `searchAccessibleChunks`, this
-   * bypasses the visibility scopes — attaching a file to a
-   * project is itself an authoritative share, so project members
-   * see those chunks in RAG regardless of the file's broader
-   * audience.
+   * attached to a project. Applies the SAME visibility scopes as
+   * `searchAccessibleChunks` so flipping a file to 'admins' / 'teams'
+   * also restricts its content inside any project it's attached to.
+   * Attaching is a discoverability signal, not a privilege override —
+   * the file owner's visibility choice is authoritative.
    *
-   * The `fileIds` set is pre-resolved by the chat path so this
-   * service doesn't have to know about `project_knowledge_files`.
+   * The `fileIds` set is pre-resolved by the chat path (project's
+   * project_knowledge_files rows); this service then enforces who's
+   * allowed to read each one's chunks.
    */
   async searchProjectAttachedChunks(
+    userId: string,
     fileIds: string[],
     query: string,
     limit = 5,
   ) {
     if (fileIds.length === 0) return [];
+
+    const [caller] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, userId));
+    const isAdmin = caller?.role === 'admin';
+
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+
+    // Same tri-state company-scope filter searchAccessibleChunks uses,
+    // just constrained to the attached fileIds. Admin gets every
+    // company chunk; non-admin needs visibility='all' or membership in
+    // a linked team for visibility='teams'. 'admins'-visibility chunks
+    // remain off-limits to non-admins regardless of attachment.
+    const companyBranch = isAdmin
+      ? eq(knowledgeChunks.scope, 'company')
+      : or(
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'all'),
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'teams'),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${knowledgeFileTeams} kft
+              INNER JOIN ${teamMembers} tm
+                ON tm.team_id = kft.team_id
+              WHERE kft.file_id = ${knowledgeChunks.fileId}
+                AND tm.user_id = ${userId}
+                AND tm.status = 'accepted'
+            )`,
+          ),
+        );
+
     return this.db
       .select({
         id: knowledgeChunks.id,
@@ -411,7 +448,20 @@ export class KnowledgeIngestionService {
         similarity,
       })
       .from(knowledgeChunks)
-      .where(inArray(knowledgeChunks.fileId, fileIds))
+      .where(
+        and(
+          inArray(knowledgeChunks.fileId, fileIds),
+          or(
+            // Personal-scope files attached to a project are still
+            // owner-only — attaching doesn't escalate read access.
+            and(
+              eq(knowledgeChunks.userId, userId),
+              eq(knowledgeChunks.scope, 'personal'),
+            ),
+            companyBranch,
+          ),
+        ),
+      )
       .orderBy(desc(similarity))
       .limit(limit);
   }
