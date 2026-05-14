@@ -421,15 +421,12 @@ export class KnowledgeCoreService {
         this.knowledgeIngestion.ingestPendingFilesForUser(userId);
       }
 
-      // Stamp the inserted rows with the team set so the FE doesn't
-      // have to refetch separately to render the row badge. Empty
-      // array for non-teams visibility keeps the shape uniform.
-      const insertedWithTeams = inserted.map((row) => ({
-        ...row,
-        teamIds: visibility === 'teams' ? allowedTeamIds : [],
-      }));
-
-      return { uploaded: insertedWithTeams, duplicates };
+      // Keep the upload response aligned with KnowledgeFile —
+      // callers refetch the folder detail after upload, which
+      // hydrates `teams: [{id,name}]` via hydrateTeamLinks. Adding
+      // an ad-hoc `teamIds` here would break that contract for no
+      // benefit.
+      return { uploaded: inserted, duplicates };
     } catch (error) {
       await Promise.allSettled(
         toInsert
@@ -670,10 +667,20 @@ export class KnowledgeCoreService {
         id: knowledgeFiles.id,
         folderId: knowledgeFiles.folderId,
         ingestionStatus: knowledgeFiles.ingestionStatus,
+        scope: knowledgeFiles.scope,
       })
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.id, fileId));
     if (!file) throw new NotFoundException('File not found');
+    // Mirror the upload-path invariant: 'teams' is only meaningful
+    // for company-scope rows. Personal files are owner-only at chat
+    // time, so a teams-restricted personal file would just leave
+    // stray knowledge_file_teams links nobody ever reads.
+    if (visibilityInput === 'teams' && file.scope === 'personal') {
+      throw new BadRequestException(
+        'Team visibility requires a company profile — personal-scope files are owner-only.',
+      );
+    }
     // Block visibility flips while the worker is mid-ingestion.
     // KnowledgeIngestionService captures `visibility` at claim time
     // and inserts chunks with that captured value — if we updated the
@@ -778,13 +785,28 @@ export class KnowledgeCoreService {
     // here would leave them out of sync. Skip processing rows
     // entirely so the rest of the batch still flips, and return the
     // skipped ids so the FE can surface a partial-success toast.
+    //
+    // Also fetch scope so we can enforce the same invariant the
+    // upload path does — 'teams' visibility is meaningless on a
+    // personal-scope row (owner-only already). Reject the whole
+    // batch up front rather than half-flipping it; in legitimate FE
+    // flows a single bulk PATCH never mixes scopes anyway.
     const statuses = await this.db
       .select({
         id: knowledgeFiles.id,
         ingestionStatus: knowledgeFiles.ingestionStatus,
+        scope: knowledgeFiles.scope,
       })
       .from(knowledgeFiles)
       .where(inArray(knowledgeFiles.id, uniqueIds));
+    if (visibilityInput === 'teams') {
+      const personal = statuses.filter((r) => r.scope === 'personal');
+      if (personal.length > 0) {
+        throw new BadRequestException(
+          'Team visibility requires a company profile — personal-scope files are owner-only.',
+        );
+      }
+    }
     const eligibleIds: string[] = [];
     const skippedIds: string[] = [];
     for (const row of statuses) {
