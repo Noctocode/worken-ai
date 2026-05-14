@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import {
   users,
   teamMembers,
@@ -20,10 +20,12 @@ import {
   knowledgeFolders,
   knowledgeFiles,
   modelConfigs,
+  observabilityEvents,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 
 @Injectable()
 export class UsersService {
@@ -33,6 +35,7 @@ export class UsersService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly provisioningService: OpenRouterProvisioningService,
     private readonly encryptionService: EncryptionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -355,7 +358,94 @@ export class UsersService {
       .set({ monthlyBudgetCents: budgetCents })
       .where(eq(users.id, userId));
 
+    // Mirror teams.service.checkAndAlertTeamBudgetThresholds — when
+    // the new personal cap puts the user at / past 80% or 100% of
+    // month-to-date spend, drop a budget_alert in their inbox. Fire-
+    // and-forget so a flaky notification path can't block the save.
+    void this.checkAndAlertUserBudgetThresholds(userId, budgetCents);
+
     return { monthlyBudgetCents: budgetCents };
+  }
+
+  /**
+   * After a personal-budget patch lands, sum the user's month-to-date
+   * spend (observability_events) and fire 80% / 100% budget_alert
+   * notifications if the new cap already lands them past those
+   * thresholds. Idempotent via the thresholdKey in `data` — re-running
+   * for the same (user, threshold, month) is a no-op thanks to
+   * NotificationsService.createIfNotExists.
+   *
+   * Recipient = the affected user; they're the one whose chat is
+   * about to be blocked. Best-effort: any failure logs but never
+   * throws.
+   */
+  private async checkAndAlertUserBudgetThresholds(
+    userId: string,
+    budgetCents: number,
+  ): Promise<void> {
+    if (budgetCents <= 0) return;
+    try {
+      const [agg] = await this.db
+        .select({
+          total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+        })
+        .from(observabilityEvents)
+        .where(
+          and(
+            eq(observabilityEvents.userId, userId),
+            eq(observabilityEvents.success, true),
+            gte(observabilityEvents.createdAt, sql`date_trunc('month', now())`),
+          ),
+        );
+      const spentUsd = agg ? parseFloat(agg.total) : 0;
+      const spentCents = Math.round(spentUsd * 100);
+      const eightyPct = Math.floor(budgetCents * 0.8);
+
+      const now = new Date();
+      const periodKey = `${now.getUTCFullYear()}-${String(
+        now.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
+
+      const fire = async (
+        threshold: 80 | 100,
+        title: string,
+        body: string,
+      ) => {
+        await this.notifications.createIfNotExists({
+          userId,
+          type: 'budget_alert',
+          title,
+          body,
+          data: {
+            scope: 'user',
+            userId,
+            threshold,
+            budgetCents,
+            spentCents,
+            thresholdKey: `${periodKey}:user:${userId}:${threshold}`,
+          },
+        });
+      };
+
+      if (spentCents >= budgetCents) {
+        await fire(
+          100,
+          `You are over your monthly AI budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}. The new cap is already exceeded — chat is blocked until it's raised or next month resets.`,
+        );
+      } else if (spentCents >= eightyPct) {
+        await fire(
+          80,
+          `You've used 80% of your monthly AI budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}.`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to evaluate budget-threshold alerts for user ${userId}: ${msg}`,
+      );
+    }
   }
 
   /**
