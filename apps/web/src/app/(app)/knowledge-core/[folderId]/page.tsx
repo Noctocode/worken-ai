@@ -915,15 +915,16 @@ export default function FolderDetailPage({
                             )}
                           </DropdownMenuItem>
                         )}
-                        {isAdmin && (
-                          <DropdownMenuItem
-                            onSelect={() => setEditingVisibilityFileId(f.id)}
-                            disabled={f.ingestionStatus === "processing"}
-                          >
-                            <Settings2 className="mr-2 h-3.5 w-3.5" />
-                            Change visibility…
-                          </DropdownMenuItem>
-                        )}
+                        {/* Open to file owners too; folder detail
+                            requires folder ownership to load, so the
+                            caller is always the uploader (or admin). */}
+                        <DropdownMenuItem
+                          onSelect={() => setEditingVisibilityFileId(f.id)}
+                          disabled={f.ingestionStatus === "processing"}
+                        >
+                          <Settings2 className="mr-2 h-3.5 w-3.5" />
+                          Change visibility…
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onSelect={() => handleDelete(f.id)}
@@ -1055,15 +1056,13 @@ export default function FolderDetailPage({
                       )}
                     </DropdownMenuItem>
                   )}
-                  {isAdmin && (
-                    <DropdownMenuItem
-                      onSelect={() => setEditingVisibilityFileId(f.id)}
-                      disabled={f.ingestionStatus === "processing"}
-                    >
-                      <Settings2 className="mr-2 h-3.5 w-3.5" />
-                      Change visibility…
-                    </DropdownMenuItem>
-                  )}
+                  <DropdownMenuItem
+                    onSelect={() => setEditingVisibilityFileId(f.id)}
+                    disabled={f.ingestionStatus === "processing"}
+                  >
+                    <Settings2 className="mr-2 h-3.5 w-3.5" />
+                    Change visibility…
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => handleDelete(f.id)}

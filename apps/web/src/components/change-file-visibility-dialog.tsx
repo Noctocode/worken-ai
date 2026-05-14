@@ -147,9 +147,14 @@ export function ChangeFileVisibilityDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Everyone in the company</SelectItem>
-                {isAdmin && (
-                  <SelectItem value="admins">Admins only</SelectItem>
-                )}
+                {/* Always rendered so the trigger label still resolves
+                    for files an admin previously set to 'admins'.
+                    Disabled for non-admin so they can switch AWAY
+                    but never INTO that tier — privilege escalation
+                    block matches the BE gate. */}
+                <SelectItem value="admins" disabled={!isAdmin}>
+                  Admins only{!isAdmin ? " (admins only)" : ""}
+                </SelectItem>
                 <SelectItem value="teams">Specific teams…</SelectItem>
                 <SelectItem value="project">Specific project…</SelectItem>
               </SelectContent>

@@ -866,12 +866,15 @@ export class KnowledgeCoreService {
   }
 
   /**
-   * Flip an existing file's visibility between 'all' and 'admins'.
-   * Admin-only — non-admins can't elevate (would be a privilege
-   * escalation) nor demote (no good reason; admin owns the curation).
-   * Mirrored onto knowledge_chunks so the RAG filter (which only
-   * reads chunks, never re-JOINs to the file row) immediately
-   * respects the new setting.
+   * Flip an existing file's visibility across the four tiers
+   * (all / admins / teams / project). Allowed for the file's
+   * uploader (so users can re-target their own uploads post-hoc)
+   * OR for admins (org-wide management). Non-admin uploaders are
+   * still blocked from setting 'admins' visibility — that tier is
+   * an admin privilege; the lower tiers (all / teams / project) are
+   * fair game for the owner. Mirrored onto knowledge_chunks so the
+   * RAG filter (which only reads chunks, never re-JOINs to the file
+   * row) immediately respects the new setting.
    */
   async updateFileVisibility(
     fileId: string,
@@ -884,11 +887,7 @@ export class KnowledgeCoreService {
       .select({ role: users.role })
       .from(users)
       .where(eq(users.id, callerId));
-    if (caller?.role !== 'admin') {
-      throw new ForbiddenException(
-        'Only admins can change a file\'s visibility.',
-      );
-    }
+    const isAdmin = caller?.role === 'admin';
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
@@ -906,10 +905,22 @@ export class KnowledgeCoreService {
         folderId: knowledgeFiles.folderId,
         ingestionStatus: knowledgeFiles.ingestionStatus,
         scope: knowledgeFiles.scope,
+        uploadedById: knowledgeFiles.uploadedById,
       })
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.id, fileId));
     if (!file) throw new NotFoundException('File not found');
+    const isOwner = file.uploadedById === callerId;
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        "Only the file's uploader or an admin can change its visibility.",
+      );
+    }
+    if (visibilityInput === 'admins' && !isAdmin) {
+      throw new ForbiddenException(
+        "Only admins can mark a file as admin-only.",
+      );
+    }
     // Mirror the upload-path invariant: 'teams' / 'project' are only
     // meaningful for company-scope rows. Personal files are owner-
     // only at chat time, so a restricted personal file would just
@@ -938,17 +949,23 @@ export class KnowledgeCoreService {
     // Resolve link sets BEFORE the transaction so validation errors
     // don't leave a half-applied state. Empty arrays for unrelated
     // visibility levels are intentional — the transaction below wipes
-    // any pre-existing links regardless.
+    // any pre-existing links regardless. isAdmin gates whether the
+    // caller can target arbitrary teams/projects; non-admin owners
+    // are limited to their own membership.
     const teamIds =
       visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        ? await this.resolveAssignableTeamIds(
+            teamIdsInput ?? [],
+            callerId,
+            isAdmin,
+          )
         : [];
     const projectIds =
       visibilityInput === 'project'
         ? await this.resolveAssignableProjectIds(
             projectIdsInput ?? [],
             callerId,
-            true,
+            isAdmin,
           )
         : [];
 
@@ -990,12 +1007,13 @@ export class KnowledgeCoreService {
   }
 
   /**
-   * Bulk variant of `updateFileVisibility`. Same gates (admin-only,
-   * enum validation), one transaction so a partial run can't leave
-   * the user in a half-flipped state. Drops unknown / invalid IDs
-   * silently (caller-side typically constructs the array from rows
-   * it already rendered, so the only way IDs go stale is concurrent
-   * deletes — surfacing a 404 in that race would be misleading).
+   * Bulk variant of `updateFileVisibility`. Same gates (owner-or-
+   * admin per row, enum validation), one transaction so a partial
+   * run can't leave the user in a half-flipped state. Drops unknown
+   * / invalid IDs silently (caller-side typically constructs the
+   * array from rows it already rendered, so the only way IDs go
+   * stale is concurrent deletes — surfacing a 404 in that race
+   * would be misleading).
    *
    * Returns the affected ids so the FE knows exactly which rows to
    * optimistically update.
@@ -1011,11 +1029,7 @@ export class KnowledgeCoreService {
       .select({ role: users.role })
       .from(users)
       .where(eq(users.id, callerId));
-    if (caller?.role !== 'admin') {
-      throw new ForbiddenException(
-        'Only admins can change a file\'s visibility.',
-      );
-    }
+    const isAdmin = caller?.role === 'admin';
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
@@ -1026,23 +1040,32 @@ export class KnowledgeCoreService {
         `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
       );
     }
+    if (visibilityInput === 'admins' && !isAdmin) {
+      throw new ForbiddenException(
+        "Only admins can mark a file as admin-only.",
+      );
+    }
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       throw new BadRequestException('`fileIds` must be a non-empty array.');
     }
 
-    // Same pre-transaction link resolution as the per-file path.
-    // Empty arrays for unrelated visibility levels are intentional —
-    // the transaction below wipes any pre-existing links regardless.
+    // Same pre-transaction link resolution as the per-file path —
+    // non-admin owners can only point to teams/projects they
+    // themselves can reach.
     const teamIds =
       visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, true)
+        ? await this.resolveAssignableTeamIds(
+            teamIdsInput ?? [],
+            callerId,
+            isAdmin,
+          )
         : [];
     const projectIds =
       visibilityInput === 'project'
         ? await this.resolveAssignableProjectIds(
             projectIdsInput ?? [],
             callerId,
-            true,
+            isAdmin,
           )
         : [];
 
@@ -1067,9 +1090,18 @@ export class KnowledgeCoreService {
         id: knowledgeFiles.id,
         ingestionStatus: knowledgeFiles.ingestionStatus,
         scope: knowledgeFiles.scope,
+        uploadedById: knowledgeFiles.uploadedById,
       })
       .from(knowledgeFiles)
       .where(inArray(knowledgeFiles.id, uniqueIds));
+    if (!isAdmin) {
+      const notOwned = statuses.filter((r) => r.uploadedById !== callerId);
+      if (notOwned.length > 0) {
+        throw new ForbiddenException(
+          "Only the file's uploader or an admin can change its visibility.",
+        );
+      }
+    }
     if (visibilityInput === 'teams' || visibilityInput === 'project') {
       const personal = statuses.filter((r) => r.scope === 'personal');
       if (personal.length > 0) {

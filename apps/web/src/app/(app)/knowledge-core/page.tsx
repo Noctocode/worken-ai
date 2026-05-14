@@ -754,15 +754,17 @@ export default function KnowledgeCorePage() {
                       )}
                     </DropdownMenuItem>
                   )}
-                  {isAdmin && (
-                    <DropdownMenuItem
-                      onSelect={() => setEditingVisibilityFileId(file.id)}
-                      disabled={file.ingestionStatus === "processing"}
-                    >
-                      <Settings2 className="mr-2 h-3.5 w-3.5" />
-                      Change visibility…
-                    </DropdownMenuItem>
-                  )}
+                  {/* Open to file owners too — /knowledge-core lists
+                      only the caller's own folders, so anyone seeing
+                      this menu is the file's uploader (or admin).
+                      BE rejects 'admins' for non-admin owners. */}
+                  <DropdownMenuItem
+                    onSelect={() => setEditingVisibilityFileId(file.id)}
+                    disabled={file.ingestionStatus === "processing"}
+                  >
+                    <Settings2 className="mr-2 h-3.5 w-3.5" />
+                    Change visibility…
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => setDeleteFileId(file.id)}
