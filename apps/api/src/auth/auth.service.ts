@@ -533,12 +533,7 @@ export class AuthService {
             and(
               eq(teamMembers.userId, user.id),
               eq(teamMembers.status, 'accepted'),
-              inArray(teamMembers.role, [
-                'admin',
-                'manager',
-                'editor',
-                'advanced',
-              ]),
+              inArray(teamMembers.role, ['admin', 'manager', 'editor']),
             ),
           )
           .limit(1);
