@@ -247,18 +247,30 @@ export function AddDocumentDialog({
       toast.error(err.message || "Failed to add text."),
   });
 
-  const uploadMutation = useMutation({
-    mutationFn: () =>
-      uploadProjectKnowledgeFiles(projectId, selectedFiles, {
-        folderId: uploadFolderId || undefined,
-        // Manage Context uploads are always pinned to this project —
-        // searchable only inside its chat, never via the org-wide RAG.
-        visibility: "project",
-        projectIds: [projectId],
-      }),
-    onSuccess: (result) => {
+  // Combined "Add Files" pipeline: upload pending files first
+  // (visibility='project' pinned to this project), then attach the
+  // checked KC files. Either side can be empty; if both are, the
+  // mutation never fires (the CTA guards on total === 0). One
+  // mutation owns both calls so we can show a single combined
+  // toast and refresh queries once.
+  const addFilesMutation = useMutation({
+    mutationFn: async () => {
+      const attachIds = Array.from(attachSelectedIds);
+      const uploadResult =
+        selectedFiles.length > 0
+          ? await uploadProjectKnowledgeFiles(projectId, selectedFiles, {
+              folderId: uploadFolderId || undefined,
+              visibility: "project",
+              projectIds: [projectId],
+            })
+          : null;
+      if (attachIds.length > 0) {
+        await attachKnowledgeFiles(projectId, attachIds);
+      }
+      return { uploadResult, attachedCount: attachIds.length };
+    },
+    onSuccess: ({ uploadResult, attachedCount }) => {
       invalidate();
-      // Also refresh KC views so the file shows up there too.
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       if (uploadFolderId) {
@@ -267,19 +279,24 @@ export function AddDocumentDialog({
         });
       }
       setSelectedFiles([]);
+      setAttachSelectedIds(new Set());
       if (fileInputRef.current) fileInputRef.current.value = "";
-      if (result.uploaded.length > 0) {
+
+      const uploadedCount = uploadResult?.uploaded.length ?? 0;
+      const duplicates = uploadResult?.duplicates ?? [];
+      const totalAdded = uploadedCount + attachedCount;
+      if (totalAdded > 0) {
         toast.success(
-          `Uploaded ${result.uploaded.length} file(s) and attached to project.`,
+          `Added ${totalAdded} file${totalAdded !== 1 ? "s" : ""} to project context.`,
         );
       }
-      if (result.duplicates.length > 0) {
+      if (duplicates.length > 0) {
         toast.info(
-          result.duplicates.length === 1
-            ? `"${result.duplicates[0].name}" is already in your Knowledge Core.`
-            : `${result.duplicates.length} file(s) already in your Knowledge Core.`,
+          duplicates.length === 1
+            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            : `${duplicates.length} file(s) already in your Knowledge Core.`,
           {
-            description: result.duplicates
+            description: duplicates
               .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
               .join("\n"),
           },
@@ -287,19 +304,7 @@ export function AddDocumentDialog({
       }
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to upload."),
-  });
-
-  const attachMutation = useMutation({
-    mutationFn: (fileIds: string[]) =>
-      attachKnowledgeFiles(projectId, fileIds),
-    onSuccess: () => {
-      invalidate();
-      setAttachSelectedIds(new Set());
-      toast.success("Attached to project.");
-    },
-    onError: (err: Error) =>
-      toast.error(err.message || "Failed to attach."),
+      toast.error(err.message || "Failed to add files."),
   });
 
   const detachMutation = useMutation({
@@ -332,9 +337,10 @@ export function AddDocumentDialog({
     addMutation.mutate(content.trim());
   };
 
-  const handleUpload = () => {
-    if (selectedFiles.length === 0) return;
-    uploadMutation.mutate();
+  const handleAddFiles = () => {
+    const total = selectedFiles.length + attachSelectedIds.size;
+    if (total === 0) return;
+    addFilesMutation.mutate();
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -384,20 +390,12 @@ export function AddDocumentDialog({
                 <span className="sm:hidden">Paste</span>
               </TabsTrigger>
               <TabsTrigger
-                value="upload"
+                value="files"
                 className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
               >
                 <Upload className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Upload File</span>
-                <span className="sm:hidden">Upload</span>
-              </TabsTrigger>
-              <TabsTrigger
-                value="attach"
-                className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
-              >
-                <FolderOpen className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">From Knowledge Core</span>
-                <span className="sm:hidden">Attach</span>
+                <span className="hidden sm:inline">Add Files</span>
+                <span className="sm:hidden">Files</span>
               </TabsTrigger>
             </TabsList>
 
@@ -437,12 +435,23 @@ export function AddDocumentDialog({
               </form>
             </TabsContent>
 
-            {/* Upload tab — sends to KC + auto-attaches with project
-                visibility. */}
-            <TabsContent value="upload" className="mt-0">
-              <div className="space-y-4">
+            {/* Add Files tab — unifies upload + attach in one flow.
+                Top section uploads a fresh file to KC pinned to this
+                project; bottom section picks an existing KC file.
+                Both feed into a single CTA at the bottom so the user
+                can mix sources in one go. */}
+            <TabsContent value="files" className="mt-0">
+              <div className="space-y-5">
+                {/* ── Upload new ───────────────────────────────── */}
                 <div className="space-y-2">
-                  <Label>Files</Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-text-1">Upload new</Label>
+                    {selectedFiles.length > 0 && (
+                      <span className="text-[11px] text-text-3">
+                        {selectedFiles.length} ready
+                      </span>
+                    )}
+                  </div>
                   <div
                     role="button"
                     tabIndex={0}
@@ -459,7 +468,7 @@ export function AddDocumentDialog({
                     }}
                     onDragLeave={() => setIsDragOver(false)}
                     onDrop={handleDrop}
-                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-8 text-center transition-colors ${
+                    className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-7 text-center transition-colors ${
                       isDragOver
                         ? "border-primary-6 bg-primary-1/40"
                         : "border-border-3 hover:border-border-4 hover:bg-bg-1"
@@ -492,8 +501,6 @@ export function AddDocumentDialog({
                       if (picked.length > 0) {
                         setSelectedFiles((prev) => [...prev, ...picked]);
                       }
-                      // Reset so picking the same file again re-fires
-                      // the onChange handler.
                       e.target.value = "";
                     }}
                   />
@@ -516,7 +523,7 @@ export function AddDocumentDialog({
                           <button
                             type="button"
                             onClick={() => removeSelectedFile(i)}
-                            disabled={uploadMutation.isPending}
+                            disabled={addFilesMutation.isPending}
                             className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-2 hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -525,72 +532,57 @@ export function AddDocumentDialog({
                       ))}
                     </div>
                   )}
+                  {selectedFiles.length > 0 && (
+                    <div className="grid gap-2 pt-1 sm:grid-cols-[auto_1fr] sm:items-center">
+                      <Label className="text-[12px] font-normal text-text-3">
+                        Save to folder
+                      </Label>
+                      <Select
+                        value={uploadFolderId}
+                        onValueChange={setUploadFolderId}
+                      >
+                        <SelectTrigger className="h-9 w-full cursor-pointer text-sm">
+                          <SelectValue placeholder="Select a folder" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {kcFolders.map((f) => (
+                            <SelectItem key={f.id} value={f.id}>
+                              {f.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
 
-                {/* Folder picker only — visibility is hardcoded to
-                    'project' (this project) so the file shows up only
-                    in this project's chat. */}
+                {/* ── OR divider ───────────────────────────────── */}
+                <div className="flex items-center gap-3">
+                  <div className="h-px flex-1 bg-border-2" />
+                  <span className="text-[11px] font-medium uppercase tracking-wider text-text-3">
+                    or
+                  </span>
+                  <div className="h-px flex-1 bg-border-2" />
+                </div>
+
+                {/* ── Pick from Knowledge Core ─────────────────── */}
                 <div className="space-y-2">
-                  <Label>Folder in Knowledge Core</Label>
-                  <Select
-                    value={uploadFolderId}
-                    onValueChange={setUploadFolderId}
-                  >
-                    <SelectTrigger className="h-10 w-full cursor-pointer">
-                      <SelectValue placeholder="Select a folder" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {kcFolders.map((f) => (
-                        <SelectItem key={f.id} value={f.id}>
-                          {f.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[11px] text-text-3">
-                    Searchable only in this project&rsquo;s chat. To share
-                    across projects, upload via{" "}
-                    <span className="font-medium">Knowledge Core</span>.
-                  </p>
-                </div>
-
-                <DialogFooter>
-                  <Button
-                    type="button"
-                    disabled={
-                      uploadMutation.isPending || selectedFiles.length === 0
-                    }
-                    onClick={handleUpload}
-                    className="cursor-pointer bg-primary-6 hover:bg-primary-7"
-                  >
-                    {uploadMutation.isPending ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Uploading…
-                      </>
-                    ) : (
-                      `Upload${
-                        selectedFiles.length > 0
-                          ? ` ${selectedFiles.length} file${selectedFiles.length !== 1 ? "s" : ""}`
-                          : ""
-                      }`
+                  <div className="flex items-center justify-between">
+                    <Label className="text-text-1">
+                      Pick from Knowledge Core
+                    </Label>
+                    {attachSelectedIds.size > 0 && (
+                      <span className="text-[11px] text-text-3">
+                        {attachSelectedIds.size} selected
+                      </span>
                     )}
-                  </Button>
-                </DialogFooter>
-              </div>
-            </TabsContent>
-
-            {/* Attach tab — pick existing KC files. */}
-            <TabsContent value="attach" className="mt-0">
-              <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label>Folder</Label>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <Select
                       value={attachFolderId}
                       onValueChange={setAttachFolderId}
                     >
-                      <SelectTrigger className="h-10 w-full cursor-pointer">
+                      <SelectTrigger className="h-9 w-full cursor-pointer text-sm">
                         <SelectValue placeholder="Pick a folder" />
                       </SelectTrigger>
                       <SelectContent>
@@ -601,93 +593,98 @@ export function AddDocumentDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="attach-search">Search</Label>
                     <input
                       id="attach-search"
                       type="text"
-                      placeholder="Filter files in this folder…"
+                      placeholder="Filter files…"
                       value={attachQuery}
                       onChange={(e) => setAttachQuery(e.target.value)}
-                      className="h-10 w-full rounded-md border border-border-3 bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                      className="h-9 w-full rounded-md border border-border-3 bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
                     />
+                  </div>
+
+                  <div className="overflow-hidden rounded-md border border-border-2">
+                    <ScrollArea className="h-40">
+                      {!attachFolderId ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                          <FolderOpen className="h-6 w-6 text-text-3" />
+                          <p className="text-sm text-text-3">
+                            Pick a folder to see its files.
+                          </p>
+                        </div>
+                      ) : filteredAttachCandidates.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                          <Inbox className="h-6 w-6 text-text-3" />
+                          <p className="text-sm text-text-3">
+                            No files available to attach.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-border-2">
+                          {filteredAttachCandidates.map((f) => {
+                            const checked = attachSelectedIds.has(f.id);
+                            return (
+                              <label
+                                key={f.id}
+                                className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-bg-1"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => {
+                                    setAttachSelectedIds((prev) => {
+                                      const next = new Set(prev);
+                                      if (next.has(f.id)) next.delete(f.id);
+                                      else next.add(f.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="h-3.5 w-3.5 shrink-0 accent-primary-6"
+                                />
+                                <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                                <span className="flex-1 truncate text-text-1">
+                                  {f.name}
+                                </span>
+                                <VisibilityBadge visibility={f.visibility} />
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </ScrollArea>
                   </div>
                 </div>
 
-                <div className="overflow-hidden rounded-md border border-border-2">
-                  <ScrollArea className="h-48 sm:h-44">
-                    {!attachFolderId ? (
-                      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                        <FolderOpen className="h-6 w-6 text-text-3" />
-                        <p className="text-sm text-text-3">
-                          Pick a folder to see its files.
-                        </p>
-                      </div>
-                    ) : filteredAttachCandidates.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                        <Inbox className="h-6 w-6 text-text-3" />
-                        <p className="text-sm text-text-3">
-                          No files available to attach.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-border-2">
-                        {filteredAttachCandidates.map((f) => {
-                          const checked = attachSelectedIds.has(f.id);
-                          return (
-                            <label
-                              key={f.id}
-                              className="flex cursor-pointer items-center gap-3 px-3 py-2.5 text-sm transition-colors hover:bg-bg-1"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => {
-                                  setAttachSelectedIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(f.id)) next.delete(f.id);
-                                    else next.add(f.id);
-                                    return next;
-                                  });
-                                }}
-                                className="h-3.5 w-3.5 shrink-0 accent-primary-6"
-                              />
-                              <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
-                              <span className="flex-1 truncate text-text-1">
-                                {f.name}
-                              </span>
-                              <VisibilityBadge visibility={f.visibility} />
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </div>
+                <p className="text-[11px] text-text-3">
+                  Uploads land in Knowledge Core scoped to this project.
+                  Picking an existing file just attaches it — its
+                  original visibility stays as-is.
+                </p>
 
                 <DialogFooter>
                   <Button
                     type="button"
                     disabled={
-                      attachMutation.isPending || attachSelectedIds.size === 0
+                      addFilesMutation.isPending ||
+                      (selectedFiles.length === 0 &&
+                        attachSelectedIds.size === 0)
                     }
-                    onClick={() =>
-                      attachMutation.mutate(Array.from(attachSelectedIds))
-                    }
+                    onClick={handleAddFiles}
                     className="cursor-pointer bg-primary-6 hover:bg-primary-7"
                   >
-                    {attachMutation.isPending ? (
+                    {addFilesMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Attaching…
+                        Adding…
                       </>
                     ) : (
-                      `Attach${
-                        attachSelectedIds.size > 0
-                          ? ` ${attachSelectedIds.size} file${attachSelectedIds.size !== 1 ? "s" : ""}`
-                          : ""
-                      }`
+                      (() => {
+                        const total =
+                          selectedFiles.length + attachSelectedIds.size;
+                        return total > 0
+                          ? `Add ${total} file${total !== 1 ? "s" : ""} to project`
+                          : "Add to project";
+                      })()
                     )}
                   </Button>
                 </DialogFooter>
