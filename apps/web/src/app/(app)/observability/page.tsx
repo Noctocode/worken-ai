@@ -661,7 +661,7 @@ export default function ObservabilityPage() {
           </table>
         </div>
 
-        {events && events.total > events.pageSize && (
+        {events && (
           <Pagination
             page={page}
             totalPages={totalPages}

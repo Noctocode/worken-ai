@@ -10,9 +10,11 @@ interface PaginationProps {
   totalPages: number;
   onPageChange: (next: number) => void;
   /**
-   * Hide the bar entirely when only one page exists. Defaults to true
-   * because a single-page "1" pill with disabled Prev/Next adds visual
-   * noise without giving the user anything to act on.
+   * Hide the bar entirely when only one page exists. Defaults to
+   * *false* to match the Figma comp, which always renders the bar
+   * under the table for visual anchoring — even on single-page
+   * datasets where Prev/Next are disabled and only "1" is active.
+   * Pass `true` to fall back to the hide-when-trivial behavior.
    */
   hideOnSinglePage?: boolean;
   /** Visual sibling count on each side of the current page. Defaults
@@ -71,7 +73,7 @@ export function Pagination({
   page,
   totalPages,
   onPageChange,
-  hideOnSinglePage = true,
+  hideOnSinglePage = false,
   siblingCount = 1,
   className,
 }: PaginationProps) {
