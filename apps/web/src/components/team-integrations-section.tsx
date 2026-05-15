@@ -264,12 +264,6 @@ export function TeamIntegrationsSection({
           <p className="font-medium text-text-1">
             AI Provider Keys are configured in the Integration tab.
           </p>
-          <p className="mt-1 text-text-3">
-            Add or rotate keys there. Below, activate the ones you want
-            this team&apos;s members to use. Rotation on the Integration
-            tab applies everywhere a key is linked — no need to update
-            per team.
-          </p>
         </div>
         <Link
           href="/teams?tab=integration"
