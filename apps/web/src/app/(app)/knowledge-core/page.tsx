@@ -40,8 +40,11 @@ import {
   type KnowledgeFolder,
   type KnowledgeFileVisibility,
   type KnowledgeRecentFile,
+  type KnowledgeUploadNameConflict,
+  type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -416,6 +419,17 @@ export default function KnowledgeCorePage() {
   // selection doesn't leak into the next one.
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+  // Held between the first upload and the user's resolution choice.
+  // Mirrors the per-folder page state — see the comment there for
+  // the full lifecycle (`pendingConflicts` → dialog → re-upload).
+  const [pendingConflicts, setPendingConflicts] = useState<{
+    folderId: string;
+    conflicts: KnowledgeUploadNameConflict[];
+    files: File[];
+    visibility: KnowledgeFileVisibility;
+    teamIds: string[];
+    projectIds: string[];
+  } | null>(null);
 
   // Pull the user's team list once; only meaningful for company
   // profiles, but we render it lazily anyway (the picker only appears
@@ -449,35 +463,22 @@ export default function KnowledgeCorePage() {
     setUploading(true);
     try {
       const folderId = await getAllFilesFolderId();
-      const { uploaded, duplicates } = await uploadKnowledgeFiles(
-        folderId,
-        stagedFiles,
-        stagedVisibility,
-        stagedTeamIds,
-        stagedProjectIds,
-      );
-      await Promise.all([
-        queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
-        queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
-        queryClient.refetchQueries({ queryKey: ["knowledge-folder", folderId] }),
-      ]);
-      // Three outcomes: all-new, mixed, all-duplicates. The mixed
-      // case fires both toasts so the user sees what was actually
-      // saved AND why a few were skipped.
-      if (uploaded.length > 0) {
-        toast.success(`Uploaded ${uploaded.length} file(s) to All Files.`);
-      }
-      if (duplicates.length > 0) {
-        toast.info(
-          duplicates.length === 1
-            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
-            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
-          {
-            description: duplicates
-              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
-              .join("\n"),
-          },
-        );
+      const result = await runUpload(folderId, stagedFiles, undefined);
+      if (result.nameConflicts.length > 0) {
+        // Hold the conflict context so the resolution dialog can
+        // re-upload the right files in the right folder with the
+        // chosen actions. Don't clear the staged-files dialog yet
+        // either — actually do clear it so the user can stage a
+        // separate batch in parallel; the held `files` reference
+        // is enough to drive the resolution call.
+        setPendingConflicts({
+          folderId,
+          conflicts: result.nameConflicts,
+          files: stagedFiles,
+          visibility: stagedVisibility,
+          teamIds: stagedTeamIds,
+          projectIds: stagedProjectIds,
+        });
       }
       setStagedFiles([]);
       setStagedVisibility("all");
@@ -485,6 +486,112 @@ export default function KnowledgeCorePage() {
       setStagedProjectIds([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to upload files.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  /**
+   * Shared upload runner used by the initial submit AND the
+   * resolution-dialog re-submit. Calls the API, fires the
+   * regular success/duplicates toasts, and returns the BE
+   * response so the caller can drive name-conflict UX off the
+   * `nameConflicts[]` field. The toast for "files skipped after
+   * resolution" lives at the call site so it can suppress it on
+   * the initial pass (where conflicts are not yet "skipped" —
+   * they're "to be resolved").
+   */
+  const runUpload = async (
+    folderId: string,
+    files: File[],
+    actions: Record<string, NameConflictAction> | undefined,
+  ) => {
+    const result = await uploadKnowledgeFiles(
+      folderId,
+      files,
+      stagedVisibility,
+      stagedTeamIds,
+      stagedProjectIds,
+      actions,
+    );
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
+      queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
+      queryClient.refetchQueries({
+        queryKey: ["knowledge-folder", folderId],
+      }),
+    ]);
+    if (result.uploaded.length > 0) {
+      toast.success(
+        `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+      );
+    }
+    if (result.duplicates.length > 0) {
+      toast.info(
+        result.duplicates.length === 1
+          ? `"${result.duplicates[0].name}" is already in your Knowledge Core.`
+          : `${result.duplicates.length} file(s) were already in your Knowledge Core.`,
+        {
+          description: result.duplicates
+            .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+            .join("\n"),
+        },
+      );
+    }
+    return result;
+  };
+
+  const resolveNameConflicts = async (
+    actions: Record<string, NameConflictAction>,
+  ) => {
+    if (!pendingConflicts) return;
+    const conflictNames = new Set(
+      pendingConflicts.conflicts.map((c) => c.name),
+    );
+    const filesToResend = pendingConflicts.files.filter(
+      (f) => conflictNames.has(f.name) && actions[f.name] !== "skip",
+    );
+    const skippedCount = pendingConflicts.conflicts.filter(
+      (c) => (actions[c.name] ?? "skip") === "skip",
+    ).length;
+    const ctx = pendingConflicts;
+    setPendingConflicts(null);
+    if (filesToResend.length === 0) {
+      if (skippedCount > 0) toast.info(`Skipped ${skippedCount} file(s).`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const result = await uploadKnowledgeFiles(
+        ctx.folderId,
+        filesToResend,
+        ctx.visibility,
+        ctx.teamIds,
+        ctx.projectIds,
+        actions,
+      );
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
+        queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
+        queryClient.refetchQueries({
+          queryKey: ["knowledge-folder", ctx.folderId],
+        }),
+      ]);
+      if (result.uploaded.length > 0) {
+        toast.success(
+          `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+        );
+      }
+      if (skippedCount > 0) {
+        toast.info(`Skipped ${skippedCount} file(s).`);
+      }
+      // If the BE still reports conflicts here, the user kept some
+      // as 'skip' — silent on this branch because the toast above
+      // already covers the skip count.
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upload files.",
+      );
     } finally {
       setUploading(false);
     }
@@ -1152,6 +1259,15 @@ export default function KnowledgeCorePage() {
           queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
           queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
         }}
+      />
+
+      {/* Soft warning when uploads collide on name (different
+          bytes) with existing files in this folder. */}
+      <KnowledgeNameConflictDialog
+        open={pendingConflicts !== null}
+        conflicts={pendingConflicts?.conflicts ?? []}
+        onResolve={resolveNameConflicts}
+        onCancel={() => setPendingConflicts(null)}
       />
     </div>
   );

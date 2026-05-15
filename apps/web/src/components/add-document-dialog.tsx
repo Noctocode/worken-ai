@@ -16,7 +16,10 @@ import {
   uploadProjectKnowledgeFiles,
   type DocumentGroup,
   type ProjectKnowledgeFile,
+  type KnowledgeUploadNameConflict,
+  type NameConflictAction,
 } from "@/lib/api";
+import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -164,6 +167,16 @@ export function AddDocumentDialog({
   /* Delete-confirm shared by both lists */
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
+  /* Held between an upload that hit same-name-different-content
+     collisions and the user's resolution choice. Powers the
+     KnowledgeNameConflictDialog below. Identical shape to the
+     two KC pages — see those for the lifecycle comment. */
+  const [pendingConflicts, setPendingConflicts] = useState<{
+    folderId: string;
+    conflicts: KnowledgeUploadNameConflict[];
+    files: File[];
+  } | null>(null);
+
   /* ── Queries ──────────────────────────────────────────────────── */
 
   // Legacy paste-text snippets (existing /documents data, plus
@@ -279,9 +292,16 @@ export function AddDocumentDialog({
       if (attachIds.length > 0) {
         await attachKnowledgeFiles(projectId, attachIds);
       }
-      return { uploadResult, attachedCount: attachIds.length };
+      // Pass the *original* File[] through so the resolution dialog
+      // can re-upload the conflicting ones without re-prompting the
+      // user via the OS file picker.
+      return {
+        uploadResult,
+        attachedCount: attachIds.length,
+        sourceFiles: selectedFiles,
+      };
     },
-    onSuccess: ({ uploadResult, attachedCount }) => {
+    onSuccess: ({ uploadResult, attachedCount, sourceFiles }) => {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
@@ -296,6 +316,7 @@ export function AddDocumentDialog({
 
       const uploadedCount = uploadResult?.uploaded.length ?? 0;
       const duplicates = uploadResult?.duplicates ?? [];
+      const nameConflicts = uploadResult?.nameConflicts ?? [];
       const totalAdded = uploadedCount + attachedCount;
       if (totalAdded > 0) {
         toast.success(
@@ -314,10 +335,74 @@ export function AddDocumentDialog({
           },
         );
       }
+      if (nameConflicts.length > 0 && uploadFolderId) {
+        setPendingConflicts({
+          folderId: uploadFolderId,
+          conflicts: nameConflicts,
+          files: sourceFiles,
+        });
+      }
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to add files."),
   });
+
+  /**
+   * Re-upload the conflicting files with the user's per-name
+   * decisions. Same pattern as the two KC pages: drop 'skip's
+   * client-side and toast the skipped count, then post the rest
+   * with `nameConflictActions` so the BE can apply overwrites /
+   * "keep both" renames.
+   */
+  const resolveNameConflicts = async (
+    actions: Record<string, NameConflictAction>,
+  ) => {
+    if (!pendingConflicts) return;
+    const ctx = pendingConflicts;
+    setPendingConflicts(null);
+    const conflictNames = new Set(ctx.conflicts.map((c) => c.name));
+    const filesToResend = ctx.files.filter(
+      (f) => conflictNames.has(f.name) && actions[f.name] !== "skip",
+    );
+    const skippedCount = ctx.conflicts.filter(
+      (c) => (actions[c.name] ?? "skip") === "skip",
+    ).length;
+    if (filesToResend.length === 0) {
+      if (skippedCount > 0) toast.info(`Skipped ${skippedCount} file(s).`);
+      return;
+    }
+    try {
+      const result = await uploadProjectKnowledgeFiles(
+        projectId,
+        filesToResend,
+        {
+          folderId: ctx.folderId,
+          visibility: "project",
+          projectIds: [projectId],
+          nameConflictActions: actions,
+        },
+      );
+      invalidate();
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", ctx.folderId],
+      });
+      const addedAfterResolve = result.uploaded.length;
+      if (addedAfterResolve > 0) {
+        toast.success(
+          `Added ${addedAfterResolve} file${addedAfterResolve !== 1 ? "s" : ""} to project context.`,
+        );
+      }
+      if (skippedCount > 0) {
+        toast.info(`Skipped ${skippedCount} file(s).`);
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to add files.",
+      );
+    }
+  };
 
   const detachMutation = useMutation({
     mutationFn: (fileId: string) => detachKnowledgeFile(projectId, fileId),
@@ -377,6 +462,7 @@ export function AddDocumentDialog({
   /* ── Render ──────────────────────────────────────────────────── */
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-border-2 px-5 py-4 sm:px-6">
@@ -865,5 +951,15 @@ export function AddDocumentDialog({
         </div>
       </DialogContent>
     </Dialog>
+    {/* Sibling dialog. Sits outside the main dialog so closing
+        the parent doesn't unmount mid-resolution; both are
+        portalled by Radix anyway. */}
+    <KnowledgeNameConflictDialog
+      open={pendingConflicts !== null}
+      conflicts={pendingConflicts?.conflicts ?? []}
+      onResolve={resolveNameConflicts}
+      onCancel={() => setPendingConflicts(null)}
+    />
+    </>
   );
 }

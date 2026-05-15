@@ -396,6 +396,7 @@ export async function detachKnowledgeFile(
 export interface ProjectKnowledgeUploadResult {
   uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
   duplicates: KnowledgeUploadDuplicate[];
+  nameConflicts: KnowledgeUploadNameConflict[];
 }
 
 /**
@@ -404,6 +405,11 @@ export interface ProjectKnowledgeUploadResult {
  * project. `folderId` / `visibility` / `teamIds` are optional —
  * omit them to use the smart-default ("Projects" folder, scope-
  * aware visibility).
+ *
+ * `nameConflictActions` (optional) carries the user's resolution for
+ * same-name-different-content collisions surfaced by a prior call.
+ * See `uploadKnowledgeFiles` for the semantics; the BE routes both
+ * uploads through the same service so behaviour is identical.
  */
 export async function uploadProjectKnowledgeFiles(
   projectId: string,
@@ -413,6 +419,7 @@ export async function uploadProjectKnowledgeFiles(
     visibility?: KnowledgeFileVisibility;
     teamIds?: string[];
     projectIds?: string[];
+    nameConflictActions?: Record<string, NameConflictAction>;
   } = {},
 ): Promise<ProjectKnowledgeUploadResult> {
   const form = new FormData();
@@ -424,6 +431,15 @@ export async function uploadProjectKnowledgeFiles(
   }
   if (options.visibility === "project" && options.projectIds) {
     options.projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (
+    options.nameConflictActions &&
+    Object.keys(options.nameConflictActions).length > 0
+  ) {
+    form.append(
+      "nameConflictActions",
+      JSON.stringify(options.nameConflictActions),
+    );
   }
   const res = await apiFetch(
     `/projects/${projectId}/knowledge-files/upload`,
@@ -1946,9 +1962,24 @@ export interface KnowledgeUploadDuplicate {
   };
 }
 
+/**
+ * Surfaced by the BE when an upload hits a same-name-different-bytes
+ * row in the *same folder*, under the same uploader. Content-hash
+ * duplicates land in `duplicates` instead — these are the cases
+ * where the user is plausibly uploading a new revision of a doc and
+ * needs to pick what happens to the prior copy.
+ */
+export interface KnowledgeUploadNameConflict {
+  name: string;
+  existing: { id: string };
+}
+
+export type NameConflictAction = "overwrite" | "keep_both" | "skip";
+
 export interface KnowledgeUploadResult {
   uploaded: Omit<KnowledgeFile, "uploadedByName">[];
   duplicates: KnowledgeUploadDuplicate[];
+  nameConflicts: KnowledgeUploadNameConflict[];
 }
 
 export async function uploadKnowledgeFiles(
@@ -1957,6 +1988,13 @@ export async function uploadKnowledgeFiles(
   visibility: KnowledgeFileVisibility = "all",
   teamIds: string[] = [],
   projectIds: string[] = [],
+  // Per-name decisions the user picked on the resolution dialog.
+  // Keys are the original `File.name` values; values are the action
+  // the BE should take for that specific file. Missing entries are
+  // treated as 'skip' BE-side, so the safe default is "no map → no
+  // overwrite", and the BE will simply bounce conflicts back to the
+  // FE again.
+  nameConflictActions?: Record<string, NameConflictAction>,
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
@@ -1973,6 +2011,11 @@ export async function uploadKnowledgeFiles(
   }
   if (visibility === "project") {
     projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (nameConflictActions && Object.keys(nameConflictActions).length > 0) {
+    // Multipart can't carry an object natively; serialise to JSON.
+    // The controller parses + validates.
+    form.append("nameConflictActions", JSON.stringify(nameConflictActions));
   }
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",

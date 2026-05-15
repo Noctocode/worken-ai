@@ -62,9 +62,12 @@ import {
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFileVisibility,
+  type KnowledgeUploadNameConflict,
+  type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
+import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -263,20 +266,43 @@ export default function FolderDetailPage({
     },
   });
 
+  // Same-name-different-content conflicts surfaced by the BE on the
+  // last upload call. Held in state so the resolution dialog can
+  // re-trigger an upload of *only* the conflicting files once the
+  // user picks per-name actions. `pendingFiles` is the original
+  // File[] from the first call so we don't ask the user to re-pick
+  // them in the OS file dialog.
+  const [pendingConflicts, setPendingConflicts] = useState<{
+    conflicts: KnowledgeUploadNameConflict[];
+    files: File[];
+    visibility: KnowledgeFileVisibility;
+    teamIds: string[];
+    projectIds: string[];
+  } | null>(null);
+
   const uploadMutation = useMutation({
     mutationFn: ({
       files,
       visibility,
       teamIds,
       projectIds,
+      nameConflictActions,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
       teamIds: string[];
       projectIds: string[];
+      nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
-      uploadKnowledgeFiles(folderId, files, visibility, teamIds, projectIds),
-    onSuccess: ({ uploaded, duplicates }) => {
+      uploadKnowledgeFiles(
+        folderId,
+        files,
+        visibility,
+        teamIds,
+        projectIds,
+        nameConflictActions,
+      ),
+    onSuccess: ({ uploaded, duplicates, nameConflicts }, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
       });
@@ -301,10 +327,66 @@ export default function FolderDetailPage({
           },
         );
       }
+      // Name conflicts kick off a separate resolution dialog. If we
+      // get here with conflicts AFTER the user already picked
+      // actions in the prior pass, treat it as a no-op + a warning
+      // — re-opening the dialog would loop on 'skip' picks.
+      if (nameConflicts.length > 0) {
+        if (variables.nameConflictActions) {
+          toast.info(
+            `${nameConflicts.length} file(s) were skipped.`,
+            {
+              description: nameConflicts
+                .map((c) => `"${c.name}"`)
+                .join("\n"),
+            },
+          );
+          return;
+        }
+        setPendingConflicts({
+          conflicts: nameConflicts,
+          files: variables.files,
+          visibility: variables.visibility,
+          teamIds: variables.teamIds,
+          projectIds: variables.projectIds,
+        });
+      }
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to upload files."),
   });
+
+  const resolveNameConflicts = (
+    actions: Record<string, NameConflictAction>,
+  ) => {
+    if (!pendingConflicts) return;
+    // Re-upload only the files the user *actually* wants to act on
+    // — anything left as 'skip' is dropped client-side so we don't
+    // round-trip just to have the BE bounce it back unchanged.
+    const conflictNames = new Set(
+      pendingConflicts.conflicts.map((c) => c.name),
+    );
+    const filesToResend = pendingConflicts.files.filter(
+      (f) => conflictNames.has(f.name) && actions[f.name] !== "skip",
+    );
+    const skippedCount = pendingConflicts.conflicts.filter(
+      (c) => (actions[c.name] ?? "skip") === "skip",
+    ).length;
+    setPendingConflicts(null);
+    if (filesToResend.length === 0) {
+      if (skippedCount > 0) {
+        toast.info(`Skipped ${skippedCount} file(s).`);
+      }
+      return;
+    }
+    uploadMutation.mutate({
+      files: filesToResend,
+      visibility: pendingConflicts.visibility,
+      teamIds: pendingConflicts.teamIds,
+      projectIds: pendingConflicts.projectIds,
+      nameConflictActions: actions,
+    });
+  };
 
   // Single-file re-train. Mirror of the root /knowledge-core page;
   // see its comment for details.
@@ -1422,6 +1504,17 @@ export default function FolderDetailPage({
           queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
           queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
         }}
+      />
+
+      {/* Same-name resolution. Only fires when the BE flagged at
+          least one file as conflicting in this folder under the
+          same uploader; user picks overwrite / keep both / skip
+          per file (or in bulk) and we re-upload accordingly. */}
+      <KnowledgeNameConflictDialog
+        open={pendingConflicts !== null}
+        conflicts={pendingConflicts?.conflicts ?? []}
+        onResolve={resolveNameConflicts}
+        onCancel={() => setPendingConflicts(null)}
       />
     </div>
   );
