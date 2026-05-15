@@ -2153,6 +2153,13 @@ export class TeamsService {
           // (if any survived the backfill) are intentionally invisible
           // so they age out of the UX entirely.
           sql`${integrations.teamId} IS NULL`,
+          // Only integrations the user actually has active on their
+          // Integration tab can be linked from here. A disabled key
+          // can't be picked anyway (it'd be a no-op at chat time), so
+          // showing it just clutters the team picker. To manage a
+          // disabled key, the admin re-enables it on the Integration
+          // tab first.
+          eq(integrations.isEnabled, true),
         ),
       );
 
