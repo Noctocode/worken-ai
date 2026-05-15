@@ -24,7 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type TeamRole = "editor" | "viewer";
+type TeamRole = "admin" | "manager" | "editor" | "viewer";
 type OrgRole = "basic" | "advanced";
 
 function TeamInviteDialog({
@@ -119,6 +119,12 @@ function TeamInviteDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="admin">
+                  Admin — Full team management rights
+                </SelectItem>
+                <SelectItem value="manager">
+                  Manager — Manage members, budgets and integrations
+                </SelectItem>
                 <SelectItem value="editor">
                   Editor — Can edit projects and content
                 </SelectItem>
