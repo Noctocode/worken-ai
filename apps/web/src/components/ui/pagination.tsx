@@ -91,7 +91,7 @@ export function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className={`flex w-full items-stretch justify-between border-t border-border-2 ${className ?? ""}`}
+      className={`flex h-14 w-full items-stretch justify-between border-t border-border-2 ${className ?? ""}`}
     >
       <StepLink
         direction="prev"
@@ -106,7 +106,7 @@ export function Pagination({
               <li
                 key={item}
                 aria-hidden="true"
-                className="flex w-10 items-start justify-center border-t-2 border-transparent pt-4 text-[13px] text-text-3"
+                className="flex min-w-10 items-center justify-center border-t-2 border-transparent px-2 text-[13px] text-text-3"
               >
                 …
               </li>
@@ -122,7 +122,7 @@ export function Pagination({
                 }}
                 aria-current={isCurrent ? "page" : undefined}
                 aria-label={`Page ${item}`}
-                className={`flex min-w-10 items-start justify-center border-t-2 px-4 pt-4 text-[13px] transition-colors ${
+                className={`flex min-w-10 items-center justify-center border-t-2 px-4 text-[13px] transition-colors ${
                   isCurrent
                     ? "cursor-default border-primary-6 font-medium text-text-1"
                     : "cursor-pointer border-transparent text-text-3 hover:border-border-4 hover:text-text-1"
@@ -162,9 +162,7 @@ function StepLink({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className={`flex items-start gap-3 border-t-2 border-transparent pt-4 text-[13px] transition-colors ${
-        isPrev ? "pr-1" : "pl-1"
-      } ${
+      className={`flex items-center gap-3 border-t-2 border-transparent px-2 text-[13px] transition-colors ${
         disabled
           ? "cursor-not-allowed text-text-3/40"
           : "cursor-pointer text-text-3 hover:border-border-4 hover:text-text-1"
