@@ -113,8 +113,9 @@ export class OrgSettingsService {
 
   /**
    * Fan out a 'budget_changed' info-only notification for the org
-   * budget. Recipients = every company admin minus the caller.
-   * Best-effort, never throws.
+   * budget. Recipients = every company admin INCLUDING the caller,
+   * so the actor also gets a row in their own inbox as an audit
+   * trail of changes they made. Best-effort, never throws.
    *
    * `previousCents` / `nextCents` can be null when the cap toggles
    * between "no target" and a concrete value — formatted as
@@ -126,9 +127,8 @@ export class OrgSettingsService {
     nextCents: number | null,
   ): Promise<void> {
     try {
-      const recipients = (
-        await this.notifications.getOrgBudgetRecipients(callerUserId)
-      ).filter((id) => id !== callerUserId);
+      const recipients =
+        await this.notifications.getOrgBudgetRecipients(callerUserId);
       if (recipients.length === 0) return;
       const [actor] = await this.db
         .select({ name: users.name, email: users.email })

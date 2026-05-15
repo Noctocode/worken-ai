@@ -241,14 +241,11 @@ export class UsersController {
       .from(users)
       .where(eq(users.id, id));
     const result = await this.usersService.updateBudget(id, body.budgetUsd);
-    // Only fire when admin updates someone else's budget. Self-
-    // updates are silent — the user pressed Save, no reason to
-    // ping their own inbox.
-    if (
-      caller.id !== id &&
-      prev &&
-      prev.monthlyBudgetCents !== result.monthlyBudgetCents
-    ) {
+    // Fire on every actual value change — including self-updates,
+    // so the inbox doubles as an audit trail of who set what when.
+    // The actor / target relationship is preserved in the notif body
+    // ("Set by <actorName>") so a self-update reads naturally too.
+    if (prev && prev.monthlyBudgetCents !== result.monthlyBudgetCents) {
       await this.notifyAccountBudgetChange(
         id,
         prev.monthlyBudgetCents,
