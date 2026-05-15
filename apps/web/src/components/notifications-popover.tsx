@@ -119,19 +119,25 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
   const { data: items = [], isLoading } = useQuery({
     queryKey: ["notifications"],
     queryFn: fetchNotifications,
-    // 30s polling matches the bell-badge refresh; pausing when the
-    // tab is hidden is the default react-query behaviour, so we
-    // don't burn requests in a background tab.
+    // The full list is heavier (every notification body / data
+    // payload) so it stays on a relaxed 30s cadence — the user is
+    // looking at the popover when this matters, and clicking the
+    // bell triggers an instant refetch via refetchOnWindowFocus.
     refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
   });
 
-  // Bell badge — sourced from a dedicated unread-count endpoint so
-  // the bell can mount on every authed page without paying for the
-  // full list fetch. Same 30s cadence.
+  // Bell badge — sourced from a dedicated unread-count endpoint
+  // (SELECT count → indexed cheap). Polled aggressively at 5s so
+  // server-generated notifications (budget alerts, account changes,
+  // file ingestion failures, etc.) surface on the badge within a
+  // few seconds of being created. refetchOnWindowFocus catches the
+  // common "alt-tab back into the app" case immediately.
   const { data: unread } = useQuery({
     queryKey: ["notifications", "unread"],
     queryFn: fetchNotificationsUnreadCount,
-    refetchInterval: 30_000,
+    refetchInterval: 5_000,
+    refetchOnWindowFocus: true,
   });
   const unreadCount = unread?.count ?? 0;
 
