@@ -13,6 +13,7 @@ import {
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { COMPLIANCE_TEMPLATES } from './compliance-templates.js';
 
@@ -35,6 +36,7 @@ export class GuardrailsSectionService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly teamsService: TeamsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async findAll(userId: string) {
@@ -342,9 +344,14 @@ export class GuardrailsSectionService {
     if (teamRole === null) {
       throw new NotFoundException('Team not found');
     }
-    if (teamRole !== 'owner' && teamRole !== 'editor') {
+    if (
+      teamRole !== 'owner' &&
+      teamRole !== 'admin' &&
+      teamRole !== 'manager' &&
+      teamRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can assign guardrails to a team',
+        'Only team owners, admins, managers, or editors can assign guardrails to a team',
       );
     }
 
@@ -352,12 +359,72 @@ export class GuardrailsSectionService {
     // shouldn't list already-linked teams, but a double-click race
     // shouldn't 409 either. Return the resulting link so the FE can
     // refresh its picker state.
-    await this.db
+    const linkRows = await this.db
       .insert(guardrailTeams)
       .values({ guardrailId, teamId, assignedBy: userId })
-      .onConflictDoNothing();
+      .onConflictDoNothing()
+      .returning({ guardrailId: guardrailTeams.guardrailId });
+
+    // Only announce when the INSERT actually landed (new link).
+    // Re-assignments shouldn't fire a fresh "X added a guardrail"
+    // toast at every member because someone clicked twice. Pulled
+    // outside the conditional helper so we can also pre-resolve
+    // rule + team names once.
+    if (linkRows.length > 0) {
+      await this.announceGuardrailAssignedToTeam(guardrailId, teamId, userId);
+    }
 
     return this.getRuleWithTeams(guardrailId);
+  }
+
+  /**
+   * Tell every team member (minus the assigner) that a new
+   * guardrail is now active for their team. Best-effort, never
+   * throws. Resolves rule + team names so the title reads
+   * naturally without the FE having to do another lookup.
+   */
+  private async announceGuardrailAssignedToTeam(
+    guardrailId: string,
+    teamId: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [rule] = await this.db
+        .select({ name: guardrails.name })
+        .from(guardrails)
+        .where(eq(guardrails.id, guardrailId))
+        .limit(1);
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== callerUserId);
+      const ruleName = rule?.name ?? 'A guardrail';
+      const teamName = team?.name ?? 'team';
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'guardrail_added',
+            title: `Guardrail "${ruleName}" is now active for "${teamName}"`,
+            body: null,
+            data: {
+              scope: 'team',
+              guardrailId,
+              guardrailName: ruleName,
+              teamId,
+              teamName,
+              actorId: callerUserId,
+            },
+          }),
+        ),
+      );
+    } catch {
+      // swallow — informational
+    }
   }
 
   /**
@@ -447,12 +514,59 @@ export class GuardrailsSectionService {
       }
     }
 
+    const nextOrgWide = !rule.isOrgWide;
     await this.db
       .update(guardrails)
-      .set({ isOrgWide: !rule.isOrgWide, updatedAt: new Date() })
+      .set({ isOrgWide: nextOrgWide, updatedAt: new Date() })
       .where(eq(guardrails.id, guardrailId));
 
+    // Only fire the company-wide transparency notif when the rule
+    // becomes org-wide — not on the reverse transition (turning it
+    // back off doesn't need to ping everyone).
+    if (nextOrgWide) {
+      await this.announceGuardrailOrgWide(guardrailId, userId);
+    }
+
     return this.getRuleWithTeams(guardrailId);
+  }
+
+  /**
+   * Fan out a 'guardrail_added' (scope='org') notification to every
+   * user in the caller's company so they know a new rule applies
+   * to all their chats. Best-effort.
+   */
+  private async announceGuardrailOrgWide(
+    guardrailId: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [rule] = await this.db
+        .select({ name: guardrails.name })
+        .from(guardrails)
+        .where(eq(guardrails.id, guardrailId))
+        .limit(1);
+      const ruleName = rule?.name ?? 'A guardrail';
+      const recipients =
+        await this.notifications.getCompanyUsers(callerUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'guardrail_added',
+            title: `Guardrail "${ruleName}" now applies company-wide`,
+            body: null,
+            data: {
+              scope: 'org',
+              guardrailId,
+              guardrailName: ruleName,
+              actorId: callerUserId,
+            },
+          }),
+        ),
+      );
+    } catch {
+      // swallow — informational
+    }
   }
 
   /**

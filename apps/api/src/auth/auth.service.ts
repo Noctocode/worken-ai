@@ -508,7 +508,38 @@ export class AuthService {
     }
 
     const userRole = (user.role as string) || 'basic';
-    const canCreateProject = userRole === 'admin' || userRole === 'advanced';
+    // Personal-project creation is gated on the user's org-level
+    // role (admin / advanced). Basic users can ALSO create projects
+    // when they hold a manager-tier role on at least one team
+    // (owner / admin / manager / editor) — those flow into the
+    // team-scope branch of projects.service.create, which doesn't
+    // care about the org-level role. Detecting that here so the
+    // FE can render the "Create project" button instead of hiding
+    // it for everyone who isn't admin/advanced.
+    let canCreateProject = userRole === 'admin' || userRole === 'advanced';
+    if (!canCreateProject) {
+      const ownedTeam = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.ownerId, user.id))
+        .limit(1);
+      if (ownedTeam.length > 0) {
+        canCreateProject = true;
+      } else {
+        const managedTeam = await this.db
+          .select({ id: teamMembers.id })
+          .from(teamMembers)
+          .where(
+            and(
+              eq(teamMembers.userId, user.id),
+              eq(teamMembers.status, 'accepted'),
+              inArray(teamMembers.role, ['admin', 'manager', 'editor']),
+            ),
+          )
+          .limit(1);
+        canCreateProject = managedTeam.length > 0;
+      }
+    }
 
     return {
       id: user.id,

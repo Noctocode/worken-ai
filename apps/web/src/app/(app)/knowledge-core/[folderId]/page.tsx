@@ -12,8 +12,10 @@ import {
   MoreVertical,
   RotateCw,
   Search,
+  Settings2,
   Shield,
   Trash2,
+  Unplug,
   Upload,
   Users,
   X,
@@ -50,15 +52,19 @@ import {
 import {
   fetchKnowledgeFolder,
   fetchKnowledgeFolders,
+  fetchProjects,
+  fetchTeams,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
   updateKnowledgeFilesVisibilityBulk,
   reingestKnowledgeFile,
+  untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -112,7 +118,7 @@ function IngestionStatusBadge({
   status,
   error,
 }: {
-  status: "pending" | "processing" | "done" | "failed";
+  status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
   if (status === "done") {
@@ -134,6 +140,17 @@ function IngestionStatusBadge({
       </span>
     );
   }
+  if (status === "untrained") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title="Embeddings removed — Retrain to make this file searchable again."
+      >
+        <Unplug className="h-3 w-3" strokeWidth={2} />
+        Untrained
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
@@ -148,7 +165,15 @@ function IngestionStatusBadge({
  * IngestionStatusBadge: the two pages don't share a components
  * file for this domain yet.
  */
-function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }) {
+function VisibilityBadge({
+  visibility,
+  teams = [],
+  projects = [],
+}: {
+  visibility: KnowledgeFileVisibility;
+  teams?: { id: string; name: string }[];
+  projects?: { id: string; name: string }[];
+}) {
   if (visibility === "admins") {
     return (
       <span
@@ -157,6 +182,40 @@ function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }
       >
         <Shield className="h-3 w-3" strokeWidth={2} />
         Admins only
+      </span>
+    );
+  }
+  if (visibility === "teams") {
+    // Team list as a comma-joined hover tooltip; the pill itself
+    // stays compact so the row keeps a single-line layout.
+    const names = teams.map((t) => t.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Only members of these teams can see this file in chat / arena: ${names}.`
+            : "Visibility is set to specific teams, but no team is linked yet — no one can see this file."
+        }
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+      </span>
+    );
+  }
+  if (visibility === "project") {
+    const names = projects.map((p) => p.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Surfaced only in the chat of these projects: ${names}.`
+            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+        }
+      >
+        <Folder className="h-3 w-3" strokeWidth={2} />
+        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
       </span>
     );
   }
@@ -208,19 +267,43 @@ export default function FolderDetailPage({
     mutationFn: ({
       files,
       visibility,
+      teamIds,
+      projectIds,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
-    }) => uploadKnowledgeFiles(folderId, files, visibility),
-    onSuccess: (uploaded) => {
+      teamIds: string[];
+      projectIds: string[];
+    }) =>
+      uploadKnowledgeFiles(folderId, files, visibility, teamIds, projectIds),
+    onSuccess: ({ uploaded, duplicates }) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success(`Uploaded ${uploaded.length} file(s).`);
+      // Same three-outcome shape as the root KC page: mixed batches
+      // fire both toasts (one success for what got saved, one info
+      // for what was skipped) so the user always knows the exact
+      // result of their drop.
+      if (uploaded.length > 0) {
+        toast.success(`Uploaded ${uploaded.length} file(s).`);
+      }
+      if (duplicates.length > 0) {
+        toast.info(
+          duplicates.length === 1
+            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
+          {
+            description: duplicates
+              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .join("\n"),
+          },
+        );
+      }
     },
-    onError: () => toast.error("Failed to upload files."),
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to upload files."),
   });
 
   // Single-file re-train. Mirror of the root /knowledge-core page;
@@ -237,6 +320,23 @@ export default function FolderDetailPage({
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to re-train this file."),
+  });
+
+  // Inverse of Retrain — drops the file's embeddings so chat RAG
+  // ignores it, but keeps the row + disk copy. See the root page's
+  // mutation comment for the BE-side semantics.
+  const untrainMutation = useMutation({
+    mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["knowledge-folder", folderId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      toast.success("File untrained — embeddings removed.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to untrain this file."),
   });
 
   // Admin-only PATCH to flip visibility post-upload. BE rejects
@@ -308,10 +408,24 @@ export default function FolderDetailPage({
 
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
   // Per-batch visibility staging. Same lifecycle as on the root
-  // /knowledge-core page: admin-only select, reset to 'all' after
-  // each confirmed upload so the choice doesn't leak across batches.
+  // /knowledge-core page: select is open to all users, reset to
+  // 'all' after each confirmed upload so the choice doesn't leak
+  // across batches. Team / project IDs reset alongside visibility.
   const [stagedVisibility, setStagedVisibility] =
     useState<KnowledgeFileVisibility>("all");
+  const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
+  const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+
+  // Same user-teams list the root page renders. Cached by react-query
+  // key 'teams' so navigating between KC pages reuses one fetch.
+  const { data: userTeams = [] } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+  });
+  const { data: userProjects = [] } = useQuery({
+    queryKey: ["projects", "kc-upload"],
+    queryFn: () => fetchProjects("all"),
+  });
 
   // Multi-select state for the bulk action bar. Set<string> over
   // the current folder's file ids; resets when the user navigates
@@ -430,6 +544,15 @@ export default function FolderDetailPage({
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
 
+  // Same pattern as on the root /knowledge-core page — full
+  // visibility editor lives in a shared dialog, opened per file by
+  // the dropdown menu item.
+  const [editingVisibilityFileId, setEditingVisibilityFileId] = useState<
+    string | null
+  >(null);
+  const editingVisibilityFile =
+    folder?.files.find((f) => f.id === editingVisibilityFileId) ?? null;
+
   const handleBrowse = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (files.length > 0) setStagedFiles(files);
@@ -437,14 +560,25 @@ export default function FolderDetailPage({
   };
 
   const confirmUpload = () => {
-    if (stagedFiles.length > 0) {
-      uploadMutation.mutate({
-        files: stagedFiles,
-        visibility: stagedVisibility,
-      });
+    if (stagedFiles.length === 0) return;
+    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
+      toast.error("Pick at least one team for Teams visibility.");
+      return;
     }
+    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
+      toast.error("Pick at least one project for Project visibility.");
+      return;
+    }
+    uploadMutation.mutate({
+      files: stagedFiles,
+      visibility: stagedVisibility,
+      teamIds: stagedTeamIds,
+      projectIds: stagedProjectIds,
+    });
     setStagedFiles([]);
     setStagedVisibility("all");
+    setStagedTeamIds([]);
+    setStagedProjectIds([]);
   };
 
   const removeStagedFile = (idx: number) =>
@@ -684,7 +818,11 @@ export default function FolderDetailPage({
                         status={f.ingestionStatus}
                         error={f.ingestionError}
                       />
-                      <VisibilityBadge visibility={f.visibility} />
+                      <VisibilityBadge
+                        visibility={f.visibility}
+                        teams={f.teams}
+                        projects={f.projects}
+                      />
                     </div>
                   </td>
                   <td className="px-5 py-4">
@@ -743,6 +881,17 @@ export default function FolderDetailPage({
                           <RotateCw className="mr-2 h-3.5 w-3.5" />
                           Retrain
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => untrainMutation.mutate(f.id)}
+                          disabled={
+                            f.ingestionStatus === "processing" ||
+                            f.ingestionStatus === "untrained" ||
+                            untrainMutation.isPending
+                          }
+                        >
+                          <Unplug className="mr-2 h-3.5 w-3.5" />
+                          Untrain
+                        </DropdownMenuItem>
                         {isAdmin && (
                           <DropdownMenuItem
                             onSelect={() =>
@@ -766,6 +915,16 @@ export default function FolderDetailPage({
                             )}
                           </DropdownMenuItem>
                         )}
+                        {/* Open to file owners too; folder detail
+                            requires folder ownership to load, so the
+                            caller is always the uploader (or admin). */}
+                        <DropdownMenuItem
+                          onSelect={() => setEditingVisibilityFileId(f.id)}
+                          disabled={f.ingestionStatus === "processing"}
+                        >
+                          <Settings2 className="mr-2 h-3.5 w-3.5" />
+                          Change visibility…
+                        </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
                           onSelect={() => handleDelete(f.id)}
@@ -822,7 +981,11 @@ export default function FolderDetailPage({
                     status={f.ingestionStatus}
                     error={f.ingestionError}
                   />
-                  <VisibilityBadge visibility={f.visibility} />
+                  <VisibilityBadge
+                        visibility={f.visibility}
+                        teams={f.teams}
+                        projects={f.projects}
+                      />
                 </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
@@ -859,6 +1022,17 @@ export default function FolderDetailPage({
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
                     Retrain
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => untrainMutation.mutate(f.id)}
+                    disabled={
+                      f.ingestionStatus === "processing" ||
+                      f.ingestionStatus === "untrained" ||
+                      untrainMutation.isPending
+                    }
+                  >
+                    <Unplug className="mr-2 h-3.5 w-3.5" />
+                    Untrain
+                  </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
                       onSelect={() =>
@@ -882,6 +1056,13 @@ export default function FolderDetailPage({
                       )}
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem
+                    onSelect={() => setEditingVisibilityFileId(f.id)}
+                    disabled={f.ingestionStatus === "processing"}
+                  >
+                    <Settings2 className="mr-2 h-3.5 w-3.5" />
+                    Change visibility…
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => handleDelete(f.id)}
@@ -994,42 +1175,142 @@ export default function FolderDetailPage({
             ))}
           </div>
 
-          {/* Admin-only visibility select — same UX as the root
-              /knowledge-core upload dialog. Hidden for non-admins so
-              their uploads quietly ship as 'all' (BE forces this
-              regardless). */}
-          {isAdmin && (
-            <div className="flex flex-col gap-1.5 pt-1">
-              <label className="text-[12px] font-medium text-text-1">
-                Visibility
-              </label>
-              <Select
-                value={stagedVisibility}
-                onValueChange={(v) =>
-                  setStagedVisibility(v as KnowledgeFileVisibility)
-                }
-                disabled={uploadMutation.isPending}
-              >
-                <SelectTrigger className="h-10 w-full cursor-pointer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Everyone in the company</SelectItem>
+          {/* Visibility picker — same UX as the root /knowledge-core
+              upload dialog. Open to all users; 'admins' is filtered
+              out for non-admin callers (BE rejects it too). Team
+              checkbox panel below appears when 'teams' is active. */}
+          <div className="flex flex-col gap-1.5 pt-1">
+            <label className="text-[12px] font-medium text-text-1">
+              Visibility
+            </label>
+            <Select
+              value={stagedVisibility}
+              onValueChange={(v) =>
+                setStagedVisibility(v as KnowledgeFileVisibility)
+              }
+              disabled={uploadMutation.isPending}
+            >
+              <SelectTrigger className="h-10 w-full cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Everyone in the company</SelectItem>
+                {isAdmin && (
                   <SelectItem value="admins">Admins only</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-text-3">
-                {stagedVisibility === "admins"
-                  ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
-                  : "Every user in the company can see these files in chat / arena."}
-              </p>
+                )}
+                <SelectItem value="teams">Specific teams…</SelectItem>
+                <SelectItem value="project">Specific project…</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-text-3">
+              {stagedVisibility === "admins"
+                ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                : stagedVisibility === "teams"
+                  ? "Only members of the teams you pick below will see these files in chat / arena."
+                  : stagedVisibility === "project"
+                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
+                    : "Every user in the company can see these files in chat / arena."}
+            </p>
+          </div>
+
+          {stagedVisibility === "teams" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Teams with access
+              </label>
+              {userTeams.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You aren&rsquo;t a member of any team yet — create or
+                  join a team first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userTeams.map((t) => {
+                    const checked = stagedTeamIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploadMutation.isPending}
+                          onChange={() => {
+                            setStagedTeamIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== t.id)
+                                : [...prev, t.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{t.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {stagedVisibility === "project" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Projects with access
+              </label>
+              {userProjects.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You don&rsquo;t have access to any projects yet — create
+                  one first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userProjects.map((p) => {
+                    const checked = stagedProjectIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploadMutation.isPending}
+                          onChange={() => {
+                            setStagedProjectIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== p.id)
+                                : [...prev, p.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">
+                          {p.name}
+                          {p.teamName ? (
+                            <span className="ml-1 text-text-3">
+                              · {p.teamName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setStagedFiles([])}
+              onClick={() => {
+                setStagedFiles([]);
+                setStagedVisibility("all");
+                setStagedTeamIds([]);
+                setStagedProjectIds([]);
+              }}
               disabled={uploadMutation.isPending}
               className="cursor-pointer"
             >
@@ -1124,6 +1405,24 @@ export default function FolderDetailPage({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full visibility editor — same shared dialog the root KC
+          page uses; opened per file via the dropdown menu. */}
+      <ChangeFileVisibilityDialog
+        file={editingVisibilityFile}
+        open={editingVisibilityFile !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingVisibilityFileId(null);
+        }}
+        isAdmin={isAdmin}
+        onSuccess={() => {
+          queryClient.invalidateQueries({
+            queryKey: ["knowledge-folder", folderId],
+          });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+        }}
+      />
     </div>
   );
 }

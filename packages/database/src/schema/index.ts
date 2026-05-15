@@ -469,18 +469,89 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // uploader-only; company accounts → org-wide. Set from the
   // uploader's profileType at upload time.
   scope: text("scope").notNull().default("personal"),
-  // Within company-scope, a second layer of gating: 'all' lets every
-  // company user (regardless of role) pull these chunks at chat /
-  // arena time; 'admins' restricts them to role='admin'. The choice
-  // is exposed to admins at upload time and is editable post-upload
-  // via PATCH /knowledge-core/files/:id/visibility. Default 'all'
-  // matches the pre-feature behaviour so legacy rows keep working
-  // without a backfill. Irrelevant for scope='personal' (owner-only
-  // already), kept on every row for shape uniformity + search filter
-  // simplicity.
+  // Within company-scope, a second layer of gating:
+  //   - 'all'    : every company user can pull these chunks at chat /
+  //                arena time (default; matches pre-feature behaviour).
+  //   - 'admins' : restricted to role='admin' (admin-only privilege).
+  //   - 'teams'  : restricted to members of the team set in
+  //                `knowledge_file_teams`. Empty link set === no one
+  //                can read; the upload path validates non-empty.
+  // The choice is exposed at upload time and is editable post-upload
+  // via PATCH /knowledge-core/files/:id/visibility. Irrelevant for
+  // scope='personal' (owner-only already), kept on every row for
+  // shape uniformity + search-filter simplicity.
   visibility: text("visibility").notNull().default("all"),
+  // Content hash (hex SHA-256) of the uploaded bytes. Used by the
+  // upload path to skip files the same uploader already has elsewhere
+  // in their Knowledge Core — we surface them as duplicates on the FE
+  // instead of inserting another row. Nullable for legacy rows
+  // uploaded before this column existed; those simply opt out of
+  // duplicate detection until they're re-uploaded.
+  contentSha256: text("content_sha256"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  // Fast lookup for the upload-path dupe check: given an uploader and
+  // a set of candidate hashes, find any pre-existing row. Two-column
+  // index so the per-user scope is enforced in the same probe.
+  index("knowledge_files_owner_hash_idx").on(
+    table.uploadedById,
+    table.contentSha256,
+  ),
+]);
+
+// Many-to-many link between `projects` and `knowledge_files`. Lets
+// a project "attach" KC files so the chat RAG for that project
+// pulls those chunks in addition to its own `documents` rows.
+// Replaces the old per-project upload destination — uploads from
+// Manage Context now land in KC and get linked here.
+//
+// Cascade on both sides so a deleted project / file auto-cleans
+// the link rows. (project_id, file_id) composite PK keeps the link
+// inherently idempotent under repeat-attach attempts.
+export const projectKnowledgeFiles = pgTable(
+  "project_knowledge_files",
+  {
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    attachedBy: uuid("attached_by").references(() => users.id),
+    attachedAt: timestamp("attached_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.fileId] }),
+    // Reverse lookup: "which projects reference this KC file?" —
+    // useful for detach-on-file-delete UIs and audit.
+    index("project_knowledge_files_file_idx").on(table.fileId),
+  ],
+);
+
+// Many-to-many link between `knowledge_files` and `teams` for the
+// `visibility = 'teams'` mode. Each row grants one team read access
+// to the file at chat / arena time. Empty link set === no team can
+// read the file; the upload path validates the array is non-empty
+// when visibility='teams'. Cascade on both sides so deleting a file
+// or a team auto-cleans the links — no orphans, no broken RAG.
+export const knowledgeFileTeams = pgTable(
+  "knowledge_file_teams",
+  {
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.fileId, table.teamId] }),
+    // Reverse lookup: "which files does team X get to see?" — used by
+    // the team detail page and the chat-time membership check.
+    index("knowledge_file_teams_team_idx").on(table.teamId),
+  ],
+);
 
 export const shortcuts = pgTable("shortcuts", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -494,6 +565,55 @@ export const shortcuts = pgTable("shortcuts", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+// In-app notification inbox. Mirrors the actionable subset of what
+// the mail service sends (team / org invitations) plus auto-emitted
+// info-only alerts (budget thresholds). Email stays as a parallel
+// channel for now — both fire so we don't drop invites for users
+// who never open the app.
+//
+// `type` is a loose-typed discriminator; `data` carries per-type
+// payload (e.g. team_invite has { teamId, teamName, inviterName,
+// invitationToken, memberId } so the FE can render Accept/Decline
+// without an extra round-trip). Keeping the schema generic means
+// future types (file_failed, guardrail_blocked, …) drop in without
+// migrations.
+//
+// `status` lifecycle:
+//   - 'pending'   : surfaced in the panel with action buttons live
+//   - 'acted'     : user accepted/declined (or the row is otherwise
+//                   resolved); keep the row visible for ~24h then
+//                   age out of the default list
+//   - 'dismissed' : user X'd the row, no action needed
+export const notifications = pgTable(
+  "notifications",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    type: text("type").notNull(),
+    title: text("title").notNull(),
+    body: text("body"),
+    data: jsonb("data").notNull().default({}),
+    status: text("status").notNull().default("pending"),
+    readAt: timestamp("read_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Default list query: pending + acted for this user, newest
+    // first. Covering for the common bell-popover fetch.
+    index("notifications_user_status_idx").on(
+      table.userId,
+      table.status,
+      table.createdAt,
+    ),
+    // Unread badge probe — partial would be tighter but a regular
+    // index on read_at suffices since the user_id filter narrows
+    // the scan first.
+    index("notifications_user_read_idx").on(table.userId, table.readAt),
+  ],
+);
 
 export const prompts = pgTable("prompts", {
   id: uuid("id").primaryKey().defaultRandom(),

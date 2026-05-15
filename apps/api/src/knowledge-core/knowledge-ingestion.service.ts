@@ -1,16 +1,19 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, cosineDistance, desc, eq, or, sql } from 'drizzle-orm';
+import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import OpenAI from 'openai';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   knowledgeChunks,
   knowledgeFiles,
+  knowledgeFileTeams,
   knowledgeFolders,
+  teamMembers,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
@@ -74,6 +77,7 @@ export class KnowledgeIngestionService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
     private readonly keyResolver: KeyResolverService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -168,6 +172,12 @@ export class KnowledgeIngestionService {
             ingestionCompletedAt: new Date(),
           })
           .where(eq(knowledgeFiles.id, file.id));
+        await this.notifyIngestionFailure(
+          userId,
+          file.id,
+          file.name,
+          'No extractable text',
+        );
         return;
       }
 
@@ -207,6 +217,32 @@ export class KnowledgeIngestionService {
           ingestionCompletedAt: new Date(),
         })
         .where(eq(knowledgeFiles.id, file.id));
+      await this.notifyIngestionFailure(userId, file.id, file.name, message);
+    }
+  }
+
+  /**
+   * Notify the uploader that one of their Knowledge Core files
+   * didn't make it through ingestion. Best-effort — alert failures
+   * never bubble up; the worker keeps going on the remaining
+   * `pending` rows.
+   */
+  private async notifyIngestionFailure(
+    uploaderId: string,
+    fileId: string,
+    fileName: string,
+    reason: string,
+  ): Promise<void> {
+    try {
+      await this.notifications.create({
+        userId: uploaderId,
+        type: 'file_ingestion_failed',
+        title: `"${fileName}" couldn't be added to Knowledge Core`,
+        body: reason.slice(0, 200),
+        data: { fileId, fileName, reason: reason.slice(0, 500) },
+      });
+    } catch {
+      // swallow — this is fire-and-forget audit
     }
   }
 
@@ -294,15 +330,42 @@ export class KnowledgeIngestionService {
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
-    // Company-scope filter: 'all' is universally readable; 'admins'
-    // is only readable when the caller is admin. Building the
-    // company branch as a sub-AND keeps the personal branch alone
-    // when the caller isn't admin AND the chunk is admin-only.
+    // Company-scope filter — four-state:
+    //   - 'all'     : every company user including admin
+    //   - 'admins'  : admin caller only
+    //   - 'teams'   : admin OR accepted member of one of the linked
+    //                 teams
+    //   - 'project' : NEVER reached by this org-wide path; project-
+    //                 only chunks are surfaced exclusively via
+    //                 searchProjectAttachedChunks inside that
+    //                 project's chat. Excluded even for admin.
+    //
+    // The teams branch probes via EXISTS against the join table.
+    // Indexes on knowledge_file_teams (file_id) and team_members
+    // (user_id, status) keep this sub-millisecond per chunk.
     const companyBranch = isAdmin
-      ? eq(knowledgeChunks.scope, 'company')
-      : and(
+      ? and(
           eq(knowledgeChunks.scope, 'company'),
-          eq(knowledgeChunks.visibility, 'all'),
+          sql`${knowledgeChunks.visibility} <> 'project'`,
+        )
+      : or(
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'all'),
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'teams'),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${knowledgeFileTeams} kft
+              INNER JOIN ${teamMembers} tm
+                ON tm.team_id = kft.team_id
+              WHERE kft.file_id = ${knowledgeChunks.fileId}
+                AND tm.user_id = ${userId}
+                AND tm.status = 'accepted'
+            )`,
+          ),
         );
 
     return this.db
@@ -320,6 +383,96 @@ export class KnowledgeIngestionService {
             eq(knowledgeChunks.scope, 'personal'),
           ),
           companyBranch,
+        ),
+      )
+      .orderBy(desc(similarity))
+      .limit(limit);
+  }
+
+  /**
+   * Cosine-similarity search restricted to KC files explicitly
+   * attached to a project. Applies the SAME visibility scopes as
+   * `searchAccessibleChunks` so flipping a file to 'admins' / 'teams'
+   * also restricts its content inside any project it's attached to.
+   * Attaching is a discoverability signal, not a privilege override —
+   * the file owner's visibility choice is authoritative.
+   *
+   * The `fileIds` set is pre-resolved by the chat path (project's
+   * project_knowledge_files rows); this service then enforces who's
+   * allowed to read each one's chunks.
+   */
+  async searchProjectAttachedChunks(
+    userId: string,
+    fileIds: string[],
+    query: string,
+    limit = 5,
+  ) {
+    if (fileIds.length === 0) return [];
+
+    const [caller] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, userId));
+    const isAdmin = caller?.role === 'admin';
+
+    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+
+    // Visibility filter constrained to the attached fileIds:
+    //   - admin: any company chunk (admins-only / teams / project all
+    //     OK; project files are by definition attached or wouldn't
+    //     be in fileIds)
+    //   - non-admin: visibility='all'; OR visibility='teams' AND
+    //     member of a linked team; OR visibility='project' (no
+    //     further check — being in fileIds means the file is in
+    //     project_knowledge_files, which is the access grant for
+    //     project visibility). 'admins'-visibility stays off-limits.
+    const companyBranch = isAdmin
+      ? eq(knowledgeChunks.scope, 'company')
+      : or(
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'all'),
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'teams'),
+            sql`EXISTS (
+              SELECT 1
+              FROM ${knowledgeFileTeams} kft
+              INNER JOIN ${teamMembers} tm
+                ON tm.team_id = kft.team_id
+              WHERE kft.file_id = ${knowledgeChunks.fileId}
+                AND tm.user_id = ${userId}
+                AND tm.status = 'accepted'
+            )`,
+          ),
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'project'),
+          ),
+        );
+
+    return this.db
+      .select({
+        id: knowledgeChunks.id,
+        fileId: knowledgeChunks.fileId,
+        content: knowledgeChunks.content,
+        similarity,
+      })
+      .from(knowledgeChunks)
+      .where(
+        and(
+          inArray(knowledgeChunks.fileId, fileIds),
+          or(
+            // Personal-scope files attached to a project are still
+            // owner-only — attaching doesn't escalate read access.
+            and(
+              eq(knowledgeChunks.userId, userId),
+              eq(knowledgeChunks.scope, 'personal'),
+            ),
+            companyBranch,
+          ),
         ),
       )
       .orderBy(desc(similarity))

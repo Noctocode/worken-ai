@@ -1,8 +1,26 @@
 "use client";
 
-import { MoreVertical, Eye, Trash2, Bot, KeySquare, Globe } from "lucide-react";
+import { useState } from "react";
+import {
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Bot,
+  KeySquare,
+  Globe,
+  Loader2,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,6 +34,7 @@ import {
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
+import { AddModelDialog } from "@/components/add-model-dialog";
 
 function providerOf(modelId: string): string | null {
   const idx = modelId.indexOf("/");
@@ -24,6 +43,12 @@ function providerOf(modelId: string): string | null {
 
 export function ModelRow({ model }: { model: ModelConfig }) {
   const queryClient = useQueryClient();
+
+  // Edit + delete-confirm dialogs are owned per row so opening one
+  // row's editor doesn't bleed into another. Both stay closed by
+  // default; the dropdown items flip them open.
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const toggleMutation = useMutation({
     mutationFn: () => updateModel(model.id, { isActive: !model.isActive }),
@@ -36,7 +61,11 @@ export function ModelRow({ model }: { model: ModelConfig }) {
     mutationFn: () => deleteModel(model.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["models"] });
+      setDeleteConfirmOpen(false);
+      toast.success(`Deleted "${model.customName}".`);
     },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to delete model."),
   });
 
   const fallbacks = (model.fallbackModels ?? []) as string[];
@@ -140,20 +169,79 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem className="gap-2">
-              <Eye className="h-4 w-4" />
+            <DropdownMenuItem
+              className="gap-2"
+              onClick={() => setEditOpen(true)}
+            >
+              <Pencil className="h-4 w-4" />
               Edit model
             </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
-              disabled={deleteMutation.isPending}
-              onClick={() => deleteMutation.mutate()}
+              onClick={() => setDeleteConfirmOpen(true)}
             >
               <Trash2 className="h-4 w-4" />
               Delete model
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Edit dialog shares the AddModelDialog component in
+            controlled / existing-model mode so the alias, fallback
+            order, and integration binding stay in one source of
+            truth. */}
+        <AddModelDialog
+          existingModel={model}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+
+        {/* Delete confirmation — destructive and irreversible, so a
+            full dialog (not an inline toggle) makes the consequences
+            harder to skip. Matches the KC delete-file pattern. */}
+        <Dialog
+          open={deleteConfirmOpen}
+          onOpenChange={(open) =>
+            !deleteMutation.isPending && setDeleteConfirmOpen(open)
+          }
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete model</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete{" "}
+                <strong>{model.customName}</strong>? This action cannot be
+                undone. Projects routed to this alias will fall back to the
+                WorkenAI default.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteConfirmOpen(false)}
+                disabled={deleteMutation.isPending}
+                className="cursor-pointer"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="cursor-pointer"
+              >
+                {deleteMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Deleting…
+                  </>
+                ) : (
+                  "Delete"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </td>
     </tr>
   );

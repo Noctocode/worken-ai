@@ -298,7 +298,7 @@ export default function UserDetailPage({
     }: {
       teamId: string;
       memberId: string;
-      role: "editor" | "viewer";
+      role: "admin" | "manager" | "editor" | "viewer";
     }) => updateMemberRole(teamId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
@@ -642,7 +642,23 @@ export default function UserDetailPage({
           <div className="space-y-3">
             <div className="flex items-center gap-3">
               <p className="text-[18px] font-bold text-text-1">Projected</p>
-              <Info className="h-3.5 w-3.5 text-text-3" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="What does Projected mean?"
+                    className="flex items-center justify-center text-text-3 hover:text-text-1"
+                  >
+                    <Info className="h-3.5 w-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-center">
+                  Linear forecast of this user&rsquo;s total spend by
+                  month-end, extrapolated from the daily run-rate so
+                  far. Early in the month it can swing widely, then
+                  stabilizes.
+                </TooltipContent>
+              </Tooltip>
             </div>
             <div className="flex items-center gap-2.5 h-[56px]">
               <span className="text-[16px] text-text-1">{formatCurrency(projected)}</span>
@@ -693,7 +709,11 @@ export default function UserDetailPage({
                             teamRoleMutation.mutate({
                               teamId: t.id,
                               memberId: t.memberId,
-                              role: value as "editor" | "viewer",
+                              role: value as
+                                | "admin"
+                                | "manager"
+                                | "editor"
+                                | "viewer",
                             })
                           }
                         >
@@ -701,6 +721,15 @@ export default function UserDetailPage({
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            {/* 'Admin' and 'Manager' are gated by
+                                the BE — promoting to / from those
+                                tiers requires owner-level rights.
+                                Options stay visible so the Select
+                                renders the current value even when
+                                read-only; the 403 surfaces as a
+                                toast for editors who try. */}
+                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
                             <SelectItem value="viewer">Viewer</SelectItem>
                           </SelectContent>

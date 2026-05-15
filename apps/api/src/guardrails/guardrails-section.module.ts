@@ -2,10 +2,11 @@ import { Module } from '@nestjs/common';
 import { GuardrailEvaluatorService } from './guardrail-evaluator.service.js';
 import { GuardrailsSectionController } from './guardrails-section.controller.js';
 import { GuardrailsSectionService } from './guardrails-section.service.js';
+import { NotificationsModule } from '../notifications/notifications.module.js';
 import { TeamsModule } from '../teams/teams.module.js';
 
 @Module({
-  imports: [TeamsModule],
+  imports: [TeamsModule, NotificationsModule],
   controllers: [GuardrailsSectionController],
   providers: [GuardrailsSectionService, GuardrailEvaluatorService],
   // Evaluator is consumed by ChatModule + CompareModelsModule, so

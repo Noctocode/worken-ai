@@ -20,6 +20,7 @@ import { eq } from 'drizzle-orm';
 import { users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 
 @Controller('users')
@@ -30,6 +31,7 @@ export class UsersController {
     private readonly teamsService: TeamsService,
     private readonly mailService: MailService,
     private readonly observabilityService: ObservabilityService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   @Get()
@@ -167,6 +169,22 @@ export class UsersController {
       if (Object.keys(patch).length > 0) {
         await this.db.update(users).set(patch).where(eq(users.id, existing.id));
       }
+      // Existing user re-invited / role updated — surface it in
+      // their inbox so they know what changed. Info-only; no
+      // Accept/Decline since the role flip already happened.
+      await this.notifications.create({
+        userId: existing.id,
+        type: 'org_invite',
+        title: `${inviterName} updated your access to ${
+          inviterCompany ?? 'the workspace'
+        }`,
+        body: `Your role is now ${body.role}.`,
+        data: {
+          role: body.role,
+          companyName: inviterCompany ?? null,
+          inviterName,
+        },
+      });
       return { status: 'updated', email, role: body.role };
     }
 
@@ -217,7 +235,62 @@ export class UsersController {
         'Only admins can change another user\'s monthly budget. Company-profile basic users wait for admin approval; everyone else can self-update.',
       );
     }
-    return this.usersService.updateBudget(id, body.budgetUsd);
+    // Snapshot previous budget so the notif can render "$X → $Y".
+    const [prev] = await this.db
+      .select({ monthlyBudgetCents: users.monthlyBudgetCents })
+      .from(users)
+      .where(eq(users.id, id));
+    const result = await this.usersService.updateBudget(id, body.budgetUsd);
+    // Fire on every actual value change — including self-updates,
+    // so the inbox doubles as an audit trail of who set what when.
+    // The actor / target relationship is preserved in the notif body
+    // ("Set by <actorName>") so a self-update reads naturally too.
+    if (prev && prev.monthlyBudgetCents !== result.monthlyBudgetCents) {
+      await this.notifyAccountBudgetChange(
+        id,
+        prev.monthlyBudgetCents,
+        result.monthlyBudgetCents,
+        caller.id,
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Drop a 'account_budget_changed' notification for the affected
+   * user after an admin-driven budget patch. Resolves the actor's
+   * display name in one round-trip. Best-effort.
+   */
+  private async notifyAccountBudgetChange(
+    targetUserId: string,
+    previousCents: number | null,
+    nextCents: number | null,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'An admin';
+      const fmt = (c: number | null) =>
+        c == null ? '$0.00' : `$${(c / 100).toFixed(2)}`;
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'account_budget_changed',
+        title: `Your monthly AI budget was set to ${fmt(nextCents)}`,
+        body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+        data: {
+          previousCents,
+          nextCents,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch {
+      // swallow — notif failures must not unwind the budget update
+    }
   }
 
   @Patch(':id/role')
@@ -246,7 +319,53 @@ export class UsersController {
         'You cannot change your own role. Ask another admin to do it.',
       );
     }
-    return this.usersService.updateRole(id, body.role);
+    const [prev] = await this.db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, id));
+    const result = await this.usersService.updateRole(id, body.role);
+    if (prev && prev.role !== result.role) {
+      await this.notifyAccountRoleChange(id, prev.role, result.role, caller.id);
+    }
+    return result;
+  }
+
+  /**
+   * Drop a 'account_role_changed' notification for the affected
+   * user after an admin-driven org-role patch. Cheap one-row
+   * insert; best-effort so a notif failure doesn't unwind the
+   * role update.
+   */
+  private async notifyAccountRoleChange(
+    targetUserId: string,
+    previousRole: string,
+    nextRole: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'An admin';
+      const nice = (r: string) =>
+        r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'account_role_changed',
+        title: `Your organization role was changed to ${nice(nextRole)}`,
+        body: `${nice(previousRole)} → ${nice(nextRole)}. Set by ${actorName}.`,
+        data: {
+          previousRole,
+          nextRole,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch {
+      // swallow — notif failures never abort the role patch
+    }
   }
 
   @Delete(':id')

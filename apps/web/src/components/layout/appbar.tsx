@@ -92,7 +92,12 @@ export const Appbar = () => {
         m.userId === currentUser.id &&
         m.status === "accepted",
     );
-    return me?.role === "owner" || me?.role === "editor";
+    return (
+      me?.role === "owner" ||
+      me?.role === "admin" ||
+      me?.role === "manager" ||
+      me?.role === "editor"
+    );
   })();
 
   /* ── Team detail appbar ──────────────────────────────────────────────── */

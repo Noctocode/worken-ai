@@ -176,6 +176,17 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       {} as any,
 
       {} as any,
+
+      // NotificationsService stub — budget-alert fanout is fire-
+      // and-forget here, only `getTeamBudgetRecipients` /
+      // `getOrgBudgetRecipients` would matter and both default to
+      // empty (no recipients → no rows enqueued).
+      {
+        getTeamBudgetRecipients: async () => [] as string[],
+        getOrgBudgetRecipients: async () => [] as string[],
+        createIfNotExists: async () => null,
+        create: async () => null,
+      } as any,
     );
   }
 
@@ -307,6 +318,17 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
       {} as any,
 
       {} as any,
+
+      // NotificationsService stub — budget-alert fanout is fire-
+      // and-forget here, only `getTeamBudgetRecipients` /
+      // `getOrgBudgetRecipients` would matter and both default to
+      // empty (no recipients → no rows enqueued).
+      {
+        getTeamBudgetRecipients: async () => [] as string[],
+        getOrgBudgetRecipients: async () => [] as string[],
+        createIfNotExists: async () => null,
+        create: async () => null,
+      } as any,
     );
   }
 
@@ -367,7 +389,17 @@ describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
 
   function makeService(rowSets: unknown[][]) {
     const db = makeChainableDb(rowSets);
-    return new ChatTransportService(db as never, {} as never, {} as never);
+    return new ChatTransportService(
+      db as never,
+      {} as never,
+      {} as never,
+      {
+        getTeamBudgetRecipients: async () => [] as string[],
+        getOrgBudgetRecipients: async () => [] as string[],
+        createIfNotExists: async () => null,
+        create: async () => null,
+      } as never,
+    );
   }
 
   it('skips when no team is in scope (personal chat)', async () => {

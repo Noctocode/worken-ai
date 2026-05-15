@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  Bell,
   BookOpen,
   ChevronsLeft,
   ChevronsRight,
@@ -35,6 +36,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { NotificationsPopover } from "@/components/notifications-popover";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { logout } from "@/lib/api";
 
@@ -256,6 +258,56 @@ export const SidebarContent = ({
 
       {/* User Profile */}
       <div className={`mt-auto ${collapsed ? "flex flex-col items-center gap-3" : "flex flex-col items-center gap-3"}`}>
+        {/* Notifications + dark-mode share a tighter sub-cluster.
+            Both are quick-action toggles, so visually they read as
+            a pair — keeping them at `gap-1` distinguishes them from
+            the heavier `gap-3` between the cluster and the user
+            avatar row below. Wrapper is `w-full` in expanded mode so
+            the buttons keep filling the sidebar width. */}
+        <div
+          className={`flex flex-col items-center gap-1 ${
+            collapsed ? "" : "w-full"
+          }`}
+        >
+          <NotificationsPopover>
+          {({ unreadCount }) =>
+            collapsed ? (
+              <Button
+                variant="ghost"
+                aria-label="Notifications"
+                title="Notifications"
+                className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
+              >
+                <span className="relative">
+                  <Bell className="size-5 text-text-3" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-5 px-1 text-[10px] font-semibold leading-none text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
+              </Button>
+            ) : (
+              <Button
+                variant="ghost"
+                size="nav"
+                aria-label="Notifications"
+                title="Notifications"
+                className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
+              >
+                <span className="relative">
+                  <Bell className="size-5 shrink-0 text-text-3" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -right-1.5 -top-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-danger-5 px-1 text-[10px] font-semibold leading-none text-white">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </span>
+                <span>Notifications</span>
+              </Button>
+            )
+          }
+        </NotificationsPopover>
         {/* Dark mode toggle */}
         {collapsed ? (
           <Button
@@ -280,6 +332,7 @@ export const SidebarContent = ({
             <span>{themeButtonText}</span>
           </Button>
         )}
+        </div>
         <div
           className={`group flex items-center rounded-lg ${collapsed ? "justify-center" : "w-full gap-3"}`}
         >

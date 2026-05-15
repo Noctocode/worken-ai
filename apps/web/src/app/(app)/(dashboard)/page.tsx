@@ -8,9 +8,6 @@ import {
   MoreVertical,
   Trash2,
   ArrowRight,
-  Clock,
-  DollarSign,
-  TrendingUp,
   Calendar,
   Loader2,
   FileText,
@@ -41,7 +38,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { useAuth } from "@/components/providers";
-import { fetchProjects, deleteProject, type Project } from "@/lib/api";
+import {
+  fetchProjects,
+  deleteProject,
+  fetchArenaRuns,
+  type Project,
+  type ArenaRunSummary,
+} from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 
 function formatDate(dateStr: string) {
@@ -50,6 +53,44 @@ function formatDate(dateStr: string) {
     day: "numeric",
     year: "numeric",
   });
+}
+
+/**
+ * Relative time string for arena history cards. Falls back to a
+ * formatted date once the row is older than a week.
+ */
+function relativeShort(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60_000);
+  if (min < 1) return "Just now";
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return "Yesterday";
+  if (day < 7) return `${day}d ago`;
+  return formatDate(iso);
+}
+
+/**
+ * 2-character avatar derived from a model identifier. Matches the
+ * hardcoded "G4 / C3 / L3" style of the original mock: take the
+ * model family (after the slash) and grab the first letter + first
+ * digit if present, else the first two letters.
+ *
+ * Examples:
+ *  - "anthropic/claude-3-opus" → "C3"
+ *  - "openai/gpt-4o"           → "G4"
+ *  - "meta-llama/llama-3-70b"  → "L3"
+ *  - "mistralai/mistral-large" → "MI"
+ */
+function modelAvatar(modelId: string): string {
+  const tail = modelId.split("/").pop() ?? modelId;
+  const compact = tail.replace(/[^a-zA-Z0-9]/g, "");
+  const firstLetter = compact.match(/[a-zA-Z]/)?.[0] ?? "?";
+  const firstDigit = compact.match(/\d/)?.[0];
+  if (firstDigit) return (firstLetter + firstDigit).toUpperCase();
+  return compact.slice(0, 2).toUpperCase() || "??";
 }
 
 function ProjectCard({ project }: { project: Project }) {
@@ -195,6 +236,15 @@ export default function WorkenDashboard() {
   const canCreateProject = user?.canCreateProject;
   const allLoading = activeTab === "all" ? (teamLoading || personalLoading) : isLoading;
 
+  // Recent arena runs power the comparisons section below. Capped
+  // to a small batch — the dashboard only renders the top 3 cards,
+  // and the full history lives on /compare-models.
+  const { data: arenaRuns = [], isLoading: arenaRunsLoading } = useQuery({
+    queryKey: ["arena-runs"],
+    queryFn: fetchArenaRuns,
+  });
+  const recentRuns = arenaRuns.slice(0, 3);
+
   return (
     <div className="space-y-6 pt-4">
       {/* All tab: two-column layout */}
@@ -317,91 +367,124 @@ export default function WorkenDashboard() {
       )}
 
       {/* Comparisons Section */}
-      <div className="border-t border-border-2 pt-8">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold tracking-tight text-text-1">
-            Recent Model Comparisons
-          </h2>
+      <RecentComparisons runs={recentRuns} loading={arenaRunsLoading} />
+    </div>
+  );
+}
+
+/**
+ * Recent model-arena history strip. Renders up to three of the
+ * user's last comparison runs as cards with model avatars +
+ * question excerpt + relative time. Cards link straight back to
+ * /compare-models — once that page supports a `?run=<id>` query
+ * param this can deep-link directly to a loaded run.
+ *
+ * Loading + empty states match the rest of the dashboard so the
+ * section doesn't visually pop when there's no data yet.
+ */
+function RecentComparisons({
+  runs,
+  loading,
+}: {
+  runs: ArenaRunSummary[];
+  loading: boolean;
+}) {
+  return (
+    <div className="border-t border-border-2 pt-8">
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-lg font-semibold tracking-tight text-text-1">
+          Recent Model Comparisons
+        </h2>
+        <Link
+          href="/compare-models"
+          className="flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
+        >
+          View all
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center rounded-xl border border-border-2 bg-bg-white py-10 shadow-sm">
+          <Loader2 className="h-5 w-5 animate-spin text-text-3" />
+        </div>
+      ) : runs.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-border-2 bg-bg-white py-10 text-center shadow-sm">
+          <p className="text-sm text-text-3">
+            No comparisons yet. Run one in the Arena to compare
+            models side-by-side.
+          </p>
           <Link
-            href="#"
-            className="flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
+            href="/compare-models"
+            className="inline-flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
           >
-            View all
+            Open Arena
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
-
+      ) : (
         <div className="overflow-hidden rounded-xl border border-border-2 bg-bg-white shadow-sm">
-          <div className="grid grid-cols-1 divide-y divide-border-2 md:grid-cols-3 md:divide-x md:divide-y-0">
-            {/* Comparison Item 1 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex -space-x-1.5">
-                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
-                    G4
-                  </div>
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
-                    C3
-                  </div>
+          {/* Stretch one card to full width when there's just 1 run,
+              two columns at 2 runs, three at 3+. Keeps the grid
+              visually balanced regardless of count. */}
+          <div
+            className={`grid grid-cols-1 divide-y divide-border-2 md:divide-x md:divide-y-0 ${
+              runs.length === 1
+                ? "md:grid-cols-1"
+                : runs.length === 2
+                  ? "md:grid-cols-2"
+                  : "md:grid-cols-3"
+            }`}
+          >
+            {runs.map((run) => (
+              <Link
+                key={run.id}
+                href={`/compare-models?run=${run.id}`}
+                className="group block cursor-pointer p-4 transition-colors hover:bg-bg-1"
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  {run.models.length > 0 && (
+                    <div className="flex -space-x-1.5">
+                      {run.models.slice(0, 3).map((m, idx) => (
+                        <div
+                          key={m}
+                          title={m}
+                          style={{ zIndex: 10 - idx }}
+                          className="relative flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm"
+                        >
+                          {modelAvatar(m)}
+                        </div>
+                      ))}
+                      {run.models.length > 3 && (
+                        <div
+                          title={run.models.slice(3).join(", ")}
+                          className="relative flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-1 text-[8px] font-bold text-text-2 shadow-sm"
+                        >
+                          +{run.models.length - 3}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <span className="text-xs font-medium text-text-2">
+                    {run.models.length === 1
+                      ? "1 model"
+                      : `${run.models.length} models`}
+                  </span>
                 </div>
-                <span className="text-xs font-medium text-text-2">
-                  vs. Baseline
-                </span>
-              </div>
-              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
-                Legal Contract Summary
-              </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> 0.4s faster
-                </span>
-                <span className="flex items-center gap-1">
-                  <DollarSign className="h-3 w-3" /> $0.02 saved
-                </span>
-              </div>
-            </div>
-
-            {/* Comparison Item 2 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex -space-x-1.5">
-                  <div className="z-10 flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
-                    L3
-                  </div>
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full border border-border-2 bg-bg-white text-[8px] font-bold text-text-1 shadow-sm">
-                    M
-                  </div>
+                <h4 className="line-clamp-2 text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
+                  {run.question}
+                </h4>
+                <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
+                  <span className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />
+                    {relativeShort(run.createdAt)}
+                  </span>
                 </div>
-              </div>
-              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
-                Python Code Gen Accuracy
-              </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
-                <span className="flex items-center gap-1 text-success-7">
-                  <TrendingUp className="h-3 w-3" /> 12% better
-                </span>
-              </div>
-            </div>
-
-            {/* Comparison Item 3 */}
-            <div className="group cursor-pointer p-4 transition-colors hover:bg-bg-1">
-              <div className="mb-2 flex items-center gap-2">
-                <span className="text-xs font-medium text-text-3">
-                  Benchmark Test
-                </span>
-              </div>
-              <h4 className="text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
-                Customer Sentiment Analysis
-              </h4>
-              <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
-                <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Yesterday
-                </span>
-              </div>
-            </div>
+              </Link>
+            ))}
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

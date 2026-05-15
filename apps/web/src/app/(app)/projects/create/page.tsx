@@ -30,6 +30,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   createProject,
   fetchTeams,
   // Kept for the (commented-out) "invite members on project create" flow.
@@ -277,7 +282,17 @@ export default function CreateProjectPage() {
                 }`}
               >
                 Personal
-                <Info className="h-[18px] w-[18px] opacity-60" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center">
+                      <Info className="h-[18px] w-[18px] opacity-60" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-center">
+                    A private workspace only you can access. Spend
+                    counts against your personal monthly budget.
+                  </TooltipContent>
+                </Tooltip>
               </button>
               <button
                 onClick={() => setProjectType("team")}
@@ -288,7 +303,18 @@ export default function CreateProjectPage() {
                 }`}
               >
                 Team
-                <Info className="h-[18px] w-[18px] opacity-60" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="inline-flex items-center">
+                      <Info className="h-[18px] w-[18px] opacity-60" />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs text-center">
+                    A shared workspace for a team. Spend counts against
+                    the chosen team&rsquo;s monthly budget and members
+                    can collaborate on prompts and chatbots.
+                  </TooltipContent>
+                </Tooltip>
               </button>
             </div>
 

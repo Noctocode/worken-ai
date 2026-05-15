@@ -94,6 +94,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideNotifications: true,
     appbarType: "observability",
   },
+  "/notifications": {
+    bg: "bg-bg-1",
+    title: "Notifications",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/compare-models": {
     bg: "bg-bg-1",
     title: "Model Arena",

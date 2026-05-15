@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type Role = "editor" | "viewer";
+type Role = "admin" | "manager" | "editor" | "viewer";
 
 type Mode =
   | { kind: "fixed"; teamId: string }
@@ -147,12 +147,25 @@ export function TeamInviteForm({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
+            <SelectItem value="admin">
+              Admin — Owner-equivalent (manage budget, invites, roles)
+            </SelectItem>
+            <SelectItem value="manager">
+              Manager — Owner-equivalent, operational lead
+            </SelectItem>
             <SelectItem value="editor">Editor — Can edit projects and content</SelectItem>
             <SelectItem value="viewer">
               Viewer — Read-only access
             </SelectItem>
           </SelectContent>
         </Select>
+        {(role === "admin" || role === "manager") && (
+          <p className="text-[11px] text-text-3">
+            Only the team owner, admin, or manager can seed another
+            admin or manager. Editors trying to send this invite
+            will see an error.
+          </p>
+        )}
       </div>
 
       <Button

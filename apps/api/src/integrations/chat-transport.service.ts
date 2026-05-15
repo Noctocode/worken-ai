@@ -11,6 +11,7 @@ import {
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
@@ -156,7 +157,48 @@ export class ChatTransportService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryptionService: EncryptionService,
     private readonly keyResolverService: KeyResolverService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  /**
+   * Synthetic threshold-key carried in the notification `data`
+   * payload so `NotificationsService.createIfNotExists` can dedupe
+   * within a calendar month. Crossing 80% in May 2026 generates one
+   * row regardless of how many chat calls also cross it; June
+   * resets via a different key.
+   */
+  private periodKey(): string {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${yyyy}-${mm}`;
+  }
+
+  /**
+   * Fan out a budget-threshold notification to a set of recipients.
+   * Failures are logged but never thrown — alerts are advisory,
+   * they must not break the chat path.
+   */
+  private async fanoutBudgetAlert(
+    recipients: string[],
+    type: 'budget_alert',
+    thresholdKey: string,
+    title: string,
+    body: string,
+    data: Record<string, unknown>,
+  ): Promise<void> {
+    await Promise.allSettled(
+      recipients.map((userId) =>
+        this.notifications.createIfNotExists({
+          userId,
+          type,
+          title,
+          body,
+          data: { ...data, thresholdKey },
+        }),
+      ),
+    );
+  }
 
   async resolve(input: {
     userId: string;
@@ -624,7 +666,64 @@ export class ChatTransportService {
 
     const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
     const projectedCents = spentCents + estimateCents;
+
+    // 80% threshold alert: fire once per month the first time the
+    // team's projected spend crosses 0.8 * budget. The dedupe in
+    // NotificationsService.createIfNotExists ensures we don't spam
+    // even if a hundred chat calls in a row all sit past 80%.
+    // Recipients = team owner + every team admin. Failures here
+    // can never abort the chat call (Promise.allSettled +
+    // try/catch inside service).
+    const eightyPct = Math.floor(team.budget * 0.8);
+    if (
+      team.budget > 0 &&
+      spentCents < eightyPct &&
+      projectedCents >= eightyPct
+    ) {
+      const recipients = await this.notifications.getTeamBudgetRecipients(
+        teamId,
+      );
+      await this.fanoutBudgetAlert(
+        recipients,
+        'budget_alert',
+        `${this.periodKey()}:team:${teamId}:80`,
+        `Team "${team.name}" has used 80% of its monthly budget`,
+        `Spent ~$${(projectedCents / 100).toFixed(2)} of $${(team.budget / 100).toFixed(2)}.`,
+        {
+          scope: 'team',
+          teamId,
+          teamName: team.name,
+          threshold: 80,
+          budgetCents: team.budget,
+          spentCents: projectedCents,
+        },
+      );
+    }
+
     if (projectedCents < team.budget) return;
+
+    // 100% threshold alert: fire the moment a call brings the team
+    // to / past its full budget. Same dedupe + fanout as above.
+    if (spentCents < team.budget) {
+      const recipients = await this.notifications.getTeamBudgetRecipients(
+        teamId,
+      );
+      await this.fanoutBudgetAlert(
+        recipients,
+        'budget_alert',
+        `${this.periodKey()}:team:${teamId}:100`,
+        `Team "${team.name}" has hit its monthly budget`,
+        `Spent ~$${(projectedCents / 100).toFixed(2)} of $${(team.budget / 100).toFixed(2)}. Chat is blocked until you raise the cap or next month resets.`,
+        {
+          scope: 'team',
+          teamId,
+          teamName: team.name,
+          threshold: 100,
+          budgetCents: team.budget,
+          spentCents: projectedCents,
+        },
+      );
+    }
 
     const capUsd = (team.budget / 100).toFixed(2);
     const spentUsdStr = (spentCents / 100).toFixed(2);
@@ -667,6 +766,13 @@ export class ChatTransportService {
        * skip the pre-flight branch.
        */
       estimatedCostCents?: number;
+      /**
+       * Caller's user id. Optional for back-compat with tests that
+       * exercise the gate without a user context. When set, lets us
+       * resolve company-scoped admin recipients for the budget-
+       * threshold notification fanout.
+       */
+      callerUserId?: string;
     } = {},
   ): Promise<void> {
     const [settings] = await this.db
@@ -703,7 +809,58 @@ export class ChatTransportService {
 
     const estimateCents = Math.max(options.estimatedCostCents ?? 0, 0);
     const projectedCents = spentCents + estimateCents;
+
+    // 80% / 100% threshold alerts — same shape as the team-budget
+    // gate above. Recipients = every admin sharing the caller's
+    // company_name. Skipped when callerUserId is absent (test
+    // call path) or the user has no company (personal profile).
+    const eightyPct = Math.floor(targetCents * 0.8);
+    if (
+      options.callerUserId &&
+      spentCents < eightyPct &&
+      projectedCents >= eightyPct
+    ) {
+      const recipients = await this.notifications.getOrgBudgetRecipients(
+        options.callerUserId,
+      );
+      await this.fanoutBudgetAlert(
+        recipients,
+        'budget_alert',
+        `${this.periodKey()}:org:80`,
+        `Your company has used 80% of its monthly AI budget`,
+        `Spent ~$${(projectedCents / 100).toFixed(2)} of $${(targetCents / 100).toFixed(2)}.`,
+        {
+          scope: 'org',
+          threshold: 80,
+          budgetCents: targetCents,
+          spentCents: projectedCents,
+        },
+      );
+    }
+
     if (projectedCents < targetCents) return;
+
+    if (
+      options.callerUserId &&
+      spentCents < targetCents
+    ) {
+      const recipients = await this.notifications.getOrgBudgetRecipients(
+        options.callerUserId,
+      );
+      await this.fanoutBudgetAlert(
+        recipients,
+        'budget_alert',
+        `${this.periodKey()}:org:100`,
+        `Your company has hit its monthly AI budget`,
+        `Spent ~$${(projectedCents / 100).toFixed(2)} of $${(targetCents / 100).toFixed(2)}. Org-wide chat is blocked until the cap is raised or next month resets.`,
+        {
+          scope: 'org',
+          threshold: 100,
+          budgetCents: targetCents,
+          spentCents: projectedCents,
+        },
+      );
+    }
 
     const targetUsd = (targetCents / 100).toFixed(2);
     const spentUsdStr = (spentCents / 100).toFixed(2);

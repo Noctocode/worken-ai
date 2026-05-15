@@ -44,6 +44,6 @@ export class OrgSettingsController {
         'Only admins can change the company monthly budget.',
       );
     }
-    return this.orgSettings.update(body);
+    return this.orgSettings.update(body, caller.id);
   }
 }

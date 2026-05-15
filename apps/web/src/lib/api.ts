@@ -318,6 +318,124 @@ export async function uploadDocumentFile(
   return res.json();
 }
 
+// ─── Project ↔ Knowledge Core attachments ─────────────────────────
+//
+// Manage Context routes file uploads through Knowledge Core now —
+// see ProjectKnowledgeService on the BE. The legacy
+// `uploadDocumentFile` above stays for paste-text snippets and
+// existing data; the helpers below replace the project-scoped
+// upload path with KC linking + KC upload (auto-attach).
+
+export interface ProjectKnowledgeFile {
+  fileId: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  folderId: string;
+  folderName: string;
+  visibility: KnowledgeFileVisibility;
+  ingestionStatus: IngestionDocStatus;
+  ingestionError: string | null;
+  teams: KnowledgeFileTeamRef[];
+  attachedAt: string;
+}
+
+export interface ProjectKnowledgeUploadDefaults {
+  folderId: string;
+  folderName: string;
+  visibility: "all" | "teams";
+  teamIds: string[];
+}
+
+export async function fetchProjectKnowledgeFiles(
+  projectId: string,
+): Promise<ProjectKnowledgeFile[]> {
+  const res = await apiFetch(`/projects/${projectId}/knowledge-files`);
+  if (!res.ok) throw new Error("Failed to fetch project knowledge files");
+  return res.json();
+}
+
+export async function fetchProjectKnowledgeUploadDefaults(
+  projectId: string,
+): Promise<ProjectKnowledgeUploadDefaults> {
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/upload-defaults`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch upload defaults");
+  return res.json();
+}
+
+export async function attachKnowledgeFiles(
+  projectId: string,
+  fileIds: string[],
+): Promise<{ attached: string[] }> {
+  const res = await apiFetch(`/projects/${projectId}/knowledge-files`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fileIds }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to attach files");
+  }
+  return res.json();
+}
+
+export async function detachKnowledgeFile(
+  projectId: string,
+  fileId: string,
+): Promise<{ ok: true }> {
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/${fileId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to detach file");
+  return res.json();
+}
+
+export interface ProjectKnowledgeUploadResult {
+  uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
+  duplicates: KnowledgeUploadDuplicate[];
+}
+
+/**
+ * Upload one or more files from the Manage Context dialog. Routes
+ * through the BE which writes to KC + auto-attaches to the
+ * project. `folderId` / `visibility` / `teamIds` are optional —
+ * omit them to use the smart-default ("Projects" folder, scope-
+ * aware visibility).
+ */
+export async function uploadProjectKnowledgeFiles(
+  projectId: string,
+  files: File[],
+  options: {
+    folderId?: string;
+    visibility?: KnowledgeFileVisibility;
+    teamIds?: string[];
+    projectIds?: string[];
+  } = {},
+): Promise<ProjectKnowledgeUploadResult> {
+  const form = new FormData();
+  files.forEach((f) => form.append("files", f));
+  if (options.folderId) form.append("folderId", options.folderId);
+  if (options.visibility) form.append("visibility", options.visibility);
+  if (options.visibility === "teams" && options.teamIds) {
+    options.teamIds.forEach((id) => form.append("teamIds", id));
+  }
+  if (options.visibility === "project" && options.projectIds) {
+    options.projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/upload`,
+    { method: "POST", body: form },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to upload files");
+  }
+  return res.json();
+}
+
 // Teams
 
 export interface Team {
@@ -341,7 +459,14 @@ export interface TeamListItem extends Team {
 export interface TeamMember {
   id: string;
   email: string;
-  role: "owner" | "editor" | "viewer";
+  // 'admin' and 'manager' are owner-equivalent: same permissions as
+  // the team owner (budget, invites, role changes, integrations)
+  // except they aren't the literal team owner so they can't be
+  // removed as such. Only an owner, admin, or manager can promote /
+  // demote into these tiers. 'editor' can create team projects,
+  // edit content, and invite editors/viewers but can't touch
+  // admin/manager rows.
+  role: "owner" | "admin" | "manager" | "editor" | "viewer";
   status: "pending" | "accepted";
   createdAt: string;
   userId: string | null;
@@ -446,7 +571,7 @@ export async function inviteUser(
 export async function inviteTeamMember(
   teamId: string,
   email: string,
-  role: "editor" | "viewer",
+  role: "admin" | "manager" | "editor" | "viewer",
   monthlyCapCents?: number | null,
 ): Promise<InviteTeamMemberResult> {
   const res = await apiFetch(`/teams/${teamId}/members`, {
@@ -492,14 +617,17 @@ export async function revokeInvitation(memberId: string): Promise<void> {
 export async function updateMemberRole(
   teamId: string,
   memberId: string,
-  role: "editor" | "viewer",
+  role: "admin" | "manager" | "editor" | "viewer",
 ): Promise<TeamMember> {
   const res = await apiFetch(`/teams/${teamId}/members/${memberId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role }),
   });
-  if (!res.ok) throw new Error("Failed to update member role");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update member role");
+  }
   return res.json();
 }
 
@@ -1318,6 +1446,10 @@ export async function* streamCompareModels(
 export interface ArenaRunSummary {
   id: string;
   question: string;
+  /** Model identifiers the run was executed against. The dashboard
+   *  card stack and the sidebar history list both render avatars
+   *  from these without a second round-trip to /runs/:id. */
+  models: string[];
   createdAt: string;
 }
 
@@ -1686,7 +1818,31 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
-export type KnowledgeFileVisibility = "all" | "admins";
+export type KnowledgeFileVisibility =
+  | "all"
+  | "admins"
+  | "teams"
+  | "project";
+
+/**
+ * Compact representation of a team link on a knowledge file. Carries
+ * just enough to render the row badge ("Teams: HR, Sales") without
+ * the FE having to lookup names from a separate query.
+ */
+export interface KnowledgeFileTeamRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * Same shape as KnowledgeFileTeamRef but for the project visibility
+ * tier — the row badge can resolve project names without a second
+ * round-trip.
+ */
+export interface KnowledgeFileProjectRef {
+  id: string;
+  name: string;
+}
 
 export interface KnowledgeFile {
   id: string;
@@ -1701,11 +1857,18 @@ export interface KnowledgeFile {
   // this file. Surfaced as a badge on the folder detail page.
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
-  // Secondary visibility within company scope: 'all' is readable
-  // by every company user, 'admins' restricts to role='admin'.
-  // Default 'all'. Admins toggle via the action menu / upload
-  // dialog; basic users see this read-only.
+  // Secondary visibility within company scope:
+  //   - 'all'     : every company user
+  //   - 'admins'  : role='admin' only
+  //   - 'teams'   : members of the linked team set
+  //   - 'project' : visible only in the chat of linked project(s);
+  //                 NEVER in the org-wide RAG.
   visibility: KnowledgeFileVisibility;
+  // Populated only when visibility='teams' / 'project'; empty array
+  // otherwise. Drives the row badge that names the teams / projects
+  // with access.
+  teams: KnowledgeFileTeamRef[];
+  projects: KnowledgeFileProjectRef[];
   createdAt: string;
 }
 
@@ -1728,6 +1891,8 @@ export interface KnowledgeRecentFile {
   ingestionStatus: IngestionDocStatus;
   ingestionError: string | null;
   visibility: KnowledgeFileVisibility;
+  teams: KnowledgeFileTeamRef[];
+  projects: KnowledgeFileProjectRef[];
   createdAt: string;
 }
 
@@ -1764,22 +1929,59 @@ export async function deleteKnowledgeFolder(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete folder");
 }
 
+/**
+ * Per-file duplicate descriptor returned by the upload endpoint when
+ * the same SHA-256 content is already in the uploader's Knowledge
+ * Core. `existing.id` is null when the duplicate is detected against
+ * another file in the same upload batch (no row to link to yet —
+ * only the first occurrence got inserted).
+ */
+export interface KnowledgeUploadDuplicate {
+  name: string;
+  existing: {
+    id: string | null;
+    name: string;
+    folderId: string;
+    folderName: string;
+  };
+}
+
+export interface KnowledgeUploadResult {
+  uploaded: Omit<KnowledgeFile, "uploadedByName">[];
+  duplicates: KnowledgeUploadDuplicate[];
+}
+
 export async function uploadKnowledgeFiles(
   folderId: string,
   files: File[],
   visibility: KnowledgeFileVisibility = "all",
-): Promise<Omit<KnowledgeFile, "uploadedByName">[]> {
+  teamIds: string[] = [],
+  projectIds: string[] = [],
+): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only
-  // admins can set 'admins'; for non-admin callers any value other
-  // than 'all' is rejected, so the caller MUST omit it / pass 'all'.
+  // admins can set 'admins'; non-admin callers can pick 'all',
+  // 'teams', or 'project'. 'teams' requires teamIds non-empty;
+  // 'project' requires projectIds non-empty.
   form.append("visibility", visibility);
+  // Append each id as a repeated field — multer parses repeats into
+  // an array on the body, matching the controller's expected
+  // `string | string[]` shape.
+  if (visibility === "teams") {
+    teamIds.forEach((id) => form.append("teamIds", id));
+  }
+  if (visibility === "project") {
+    projectIds.forEach((id) => form.append("projectIds", id));
+  }
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
     body: form,
   });
-  if (!res.ok) throw new Error("Failed to upload files");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to upload files");
+  }
   return res.json();
 }
 
@@ -1790,13 +1992,28 @@ export async function uploadKnowledgeFiles(
 export async function updateKnowledgeFileVisibility(
   fileId: string,
   visibility: KnowledgeFileVisibility,
-): Promise<{ id: string; visibility: KnowledgeFileVisibility }> {
+  teamIds: string[] = [],
+  projectIds: string[] = [],
+): Promise<{
+  id: string;
+  visibility: KnowledgeFileVisibility;
+  teamIds: string[];
+  projectIds: string[];
+}> {
   const res = await apiFetch(
     `/knowledge-core/files/${fileId}/visibility`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ visibility }),
+      // Only ship the id array that matches the chosen visibility —
+      // for 'all' / 'admins' the BE clears any prior links anyway.
+      body: JSON.stringify(
+        visibility === "teams"
+          ? { visibility, teamIds }
+          : visibility === "project"
+            ? { visibility, projectIds }
+            : { visibility },
+      ),
     },
   );
   if (!res.ok) {
@@ -1825,14 +2042,37 @@ export async function reingestKnowledgeFile(
 }
 
 /**
+ * Wipe a file's embeddings without deleting the upload. Inverse of
+ * `reingestKnowledgeFile` — chunks go away, the file row stays so
+ * download still works, and chat-time RAG stops surfacing it until
+ * the owner triggers Retrain.
+ */
+export async function untrainKnowledgeFile(
+  fileId: string,
+): Promise<{ id: string; ingestionStatus: "untrained" }> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/untrain`, {
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to untrain this file");
+  }
+  return res.json();
+}
+
+/**
  * Bulk visibility flip — one round-trip, single BE transaction.
  * Admin-only at the BE. Used by the multi-select action bar.
  */
 export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
+  teamIds: string[] = [],
+  projectIds: string[] = [],
 ): Promise<{
   visibility: KnowledgeFileVisibility;
+  teamIds: string[];
+  projectIds: string[];
   affectedIds: string[];
   /** Files skipped because they were mid-ingestion at the time of the
    *  call — BE refuses to flip during processing to avoid leaving
@@ -1843,7 +2083,13 @@ export async function updateKnowledgeFilesVisibilityBulk(
   const res = await apiFetch(`/knowledge-core/files/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ fileIds, visibility }),
+    body: JSON.stringify(
+      visibility === "teams"
+        ? { fileIds, visibility, teamIds }
+        : visibility === "project"
+          ? { fileIds, visibility, projectIds }
+          : { fileIds, visibility },
+    ),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -2281,7 +2527,8 @@ export type IngestionDocStatus =
   | "pending"
   | "processing"
   | "done"
-  | "failed";
+  | "failed"
+  | "untrained";
 
 export interface IngestionStatusResponse {
   total: number;
@@ -2708,5 +2955,97 @@ export async function revokeApiKey(id: string): Promise<void> {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message || "Failed to revoke API key");
   }
+}
+
+// ─── Notifications ───────────────────────────────────────────────────
+
+/**
+ * Discriminated `type` values the BE emits. Loose-typed string at
+ * the wire so a new type added on the BE doesn't break the FE; the
+ * union covers the renderer-aware ones.
+ */
+export type NotificationType =
+  | "team_invite"
+  | "org_invite"
+  | "budget_alert"
+  | "budget_changed"
+  | "team_renamed"
+  | "team_role_changed"
+  | "team_member_added"
+  | "team_member_removed"
+  | "team_deleted"
+  | "account_role_changed"
+  | "account_budget_changed"
+  | "member_cap_changed"
+  | "file_ingestion_failed"
+  | "project_created"
+  | "project_deleted"
+  | "guardrail_added"
+  | (string & {});
+
+export type NotificationStatus = "pending" | "acted" | "dismissed";
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  /** Discriminated payload — schema depends on `type`. Renderers
+   *  cast within their branch. */
+  data: Record<string, unknown>;
+  status: NotificationStatus;
+  readAt: string | null;
+  createdAt: string;
+}
+
+export async function fetchNotifications(): Promise<Notification[]> {
+  const res = await apiFetch("/notifications");
+  if (!res.ok) throw new Error("Failed to fetch notifications");
+  return res.json();
+}
+
+export async function fetchNotificationsUnreadCount(): Promise<{ count: number }> {
+  const res = await apiFetch("/notifications/unread-count");
+  if (!res.ok) throw new Error("Failed to fetch unread count");
+  return res.json();
+}
+
+export async function markNotificationRead(id: string): Promise<Notification> {
+  const res = await apiFetch(`/notifications/${id}/read`, { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark notification read");
+  return res.json();
+}
+
+export async function markAllNotificationsRead(): Promise<{ markedCount: number }> {
+  const res = await apiFetch("/notifications/read-all", { method: "PATCH" });
+  if (!res.ok) throw new Error("Failed to mark all read");
+  return res.json();
+}
+
+export async function acceptNotification(id: string): Promise<{
+  type: NotificationType;
+  teamId?: string;
+}> {
+  const res = await apiFetch(`/notifications/${id}/accept`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to accept");
+  }
+  return res.json();
+}
+
+export async function declineNotification(id: string): Promise<{ ok: true }> {
+  const res = await apiFetch(`/notifications/${id}/decline`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to decline");
+  }
+  return res.json();
+}
+
+export async function dismissNotification(id: string): Promise<{ id: string }> {
+  const res = await apiFetch(`/notifications/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to dismiss notification");
+  return res.json();
 }
 

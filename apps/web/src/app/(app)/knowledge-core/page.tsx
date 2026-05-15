@@ -12,8 +12,10 @@ import {
   Download,
   RotateCw,
   Search,
+  Settings2,
   Shield,
   Trash2,
+  Unplug,
   Upload,
   Users,
   X,
@@ -24,12 +26,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   fetchKnowledgeFolders,
+  fetchProjects,
   fetchRecentKnowledgeFiles,
+  fetchTeams,
   createKnowledgeFolder,
   deleteKnowledgeFolder,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
   reingestKnowledgeFile,
+  untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFolder,
@@ -61,6 +66,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -97,7 +103,7 @@ function IngestionStatusBadge({
   status,
   error,
 }: {
-  status: "pending" | "processing" | "done" | "failed";
+  status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
   if (status === "done") {
@@ -119,6 +125,17 @@ function IngestionStatusBadge({
       </span>
     );
   }
+  if (status === "untrained") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title="Embeddings removed — Retrain to make this file searchable again."
+      >
+        <Unplug className="h-3 w-3" strokeWidth={2} />
+        Untrained
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
@@ -134,7 +151,15 @@ function IngestionStatusBadge({
  * scream a designation that's the unremarkable default. Kept inline
  * (not a shared component) for the same reason as IngestionStatusBadge.
  */
-function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }) {
+function VisibilityBadge({
+  visibility,
+  teams = [],
+  projects = [],
+}: {
+  visibility: KnowledgeFileVisibility;
+  teams?: { id: string; name: string }[];
+  projects?: { id: string; name: string }[];
+}) {
   if (visibility === "admins") {
     return (
       <span
@@ -143,6 +168,38 @@ function VisibilityBadge({ visibility }: { visibility: KnowledgeFileVisibility }
       >
         <Shield className="h-3 w-3" strokeWidth={2} />
         Admins only
+      </span>
+    );
+  }
+  if (visibility === "teams") {
+    const names = teams.map((t) => t.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Only members of these teams can see this file in chat / arena: ${names}.`
+            : "Visibility is set to specific teams, but no team is linked yet — no one can see this file."
+        }
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+      </span>
+    );
+  }
+  if (visibility === "project") {
+    const names = projects.map((p) => p.name).join(", ");
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={
+          names.length > 0
+            ? `Surfaced only in the chat of these projects: ${names}.`
+            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+        }
+      >
+        <Folder className="h-3 w-3" strokeWidth={2} />
+        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
       </span>
     );
   }
@@ -271,6 +328,22 @@ export default function KnowledgeCorePage() {
       toast.error(err.message || "Failed to re-train this file."),
   });
 
+  // Inverse of Retrain: drop the file's embeddings so chat RAG stops
+  // surfacing it, but keep the row + disk copy so Download / Retrain
+  // still work. BE gates on owner + mid-ingestion same way Retrain
+  // does, so we share the same disabled rule on the menu item.
+  const untrainMutation = useMutation({
+    mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+      toast.success("File untrained — embeddings removed.");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || "Failed to untrain this file."),
+  });
+
   // Admin-only PATCH to flip a file's visibility between 'all' and
   // 'admins'. The BE rejects non-admin callers with 403; we hide the
   // menu item entirely below so it's never offered, but the mutation
@@ -302,6 +375,16 @@ export default function KnowledgeCorePage() {
   const deleteFileName =
     recentFiles.find((f) => f.id === deleteFileId)?.name ?? "";
 
+  // Currently-edited file for the full visibility dialog. Stays
+  // separate from the inline binary toggle so admins can keep using
+  // the one-click admin-only flip for hot rows and reach for the
+  // dialog only when they need teams / project tiers.
+  const [editingVisibilityFileId, setEditingVisibilityFileId] = useState<
+    string | null
+  >(null);
+  const editingVisibilityFile =
+    recentFiles.find((f) => f.id === editingVisibilityFileId) ?? null;
+
   const handleDeleteFolder = (id: string) => {
     setDeleteFolderId(id);
   };
@@ -328,23 +411,80 @@ export default function KnowledgeCorePage() {
   // across batches.
   const [stagedVisibility, setStagedVisibility] =
     useState<KnowledgeFileVisibility>("all");
+  // Selected team / project IDs for 'teams' / 'project' visibility.
+  // Both reset alongside `stagedVisibility` so a previous batch's
+  // selection doesn't leak into the next one.
+  const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
+  const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+
+  // Pull the user's team list once; only meaningful for company
+  // profiles, but we render it lazily anyway (the picker only appears
+  // when 'teams' is the chosen visibility).
+  const { data: userTeams = [] } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+  });
+  // Same lazy pattern for projects — only the 'project' visibility
+  // branch reads this. fetchProjects('all') returns every project
+  // the caller can access (personal + team).
+  const { data: userProjects = [] } = useQuery({
+    queryKey: ["projects", "kc-upload"],
+    queryFn: () => fetchProjects("all"),
+  });
 
   const confirmUpload = async () => {
     if (stagedFiles.length === 0) return;
+    // Block submit when the chosen visibility requires a non-empty
+    // selection but the picker is empty — the BE rejects this too,
+    // but a client guard keeps the dialog from collapsing on a 400
+    // with stale staged files.
+    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
+      toast.error("Pick at least one team for Teams visibility.");
+      return;
+    }
+    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
+      toast.error("Pick at least one project for Project visibility.");
+      return;
+    }
     setUploading(true);
     try {
       const folderId = await getAllFilesFolderId();
-      await uploadKnowledgeFiles(folderId, stagedFiles, stagedVisibility);
+      const { uploaded, duplicates } = await uploadKnowledgeFiles(
+        folderId,
+        stagedFiles,
+        stagedVisibility,
+        stagedTeamIds,
+        stagedProjectIds,
+      );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-recent"] }),
         queryClient.refetchQueries({ queryKey: ["knowledge-folder", folderId] }),
       ]);
-      toast.success(`Uploaded ${stagedFiles.length} file(s) to All Files.`);
+      // Three outcomes: all-new, mixed, all-duplicates. The mixed
+      // case fires both toasts so the user sees what was actually
+      // saved AND why a few were skipped.
+      if (uploaded.length > 0) {
+        toast.success(`Uploaded ${uploaded.length} file(s) to All Files.`);
+      }
+      if (duplicates.length > 0) {
+        toast.info(
+          duplicates.length === 1
+            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
+          {
+            description: duplicates
+              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .join("\n"),
+          },
+        );
+      }
       setStagedFiles([]);
       setStagedVisibility("all");
-    } catch {
-      toast.error("Failed to upload files.");
+      setStagedTeamIds([]);
+      setStagedProjectIds([]);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload files.");
     } finally {
       setUploading(false);
     }
@@ -527,7 +667,11 @@ export default function KnowledgeCorePage() {
                     status={file.ingestionStatus}
                     error={file.ingestionError}
                   />
-                  <VisibilityBadge visibility={file.visibility} />
+                  <VisibilityBadge
+                    visibility={file.visibility}
+                    teams={file.teams}
+                    projects={file.projects}
+                  />
                 </div>
                 <span className="truncate text-[13px] text-text-3">
                   {file.folderName} • {formatBytes(file.sizeBytes)} •
@@ -576,6 +720,17 @@ export default function KnowledgeCorePage() {
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
                     Retrain
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => untrainMutation.mutate(file.id)}
+                    disabled={
+                      file.ingestionStatus === "processing" ||
+                      file.ingestionStatus === "untrained" ||
+                      untrainMutation.isPending
+                    }
+                  >
+                    <Unplug className="mr-2 h-3.5 w-3.5" />
+                    Untrain
+                  </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
                       onSelect={() =>
@@ -599,6 +754,17 @@ export default function KnowledgeCorePage() {
                       )}
                     </DropdownMenuItem>
                   )}
+                  {/* Open to file owners too — /knowledge-core lists
+                      only the caller's own folders, so anyone seeing
+                      this menu is the file's uploader (or admin).
+                      BE rejects 'admins' for non-admin owners. */}
+                  <DropdownMenuItem
+                    onSelect={() => setEditingVisibilityFileId(file.id)}
+                    disabled={file.ingestionStatus === "processing"}
+                  >
+                    <Settings2 className="mr-2 h-3.5 w-3.5" />
+                    Change visibility…
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onSelect={() => setDeleteFileId(file.id)}
@@ -773,41 +939,151 @@ export default function KnowledgeCorePage() {
             ))}
           </div>
 
-          {/* Admin-only visibility select. Hidden for non-admins so
-              the only thing they see is the upload list — their
-              uploads ship with the default 'all' visibility (BE
-              forces 'all' anyway for non-admin callers). */}
-          {isAdmin && (
-            <div className="flex flex-col gap-1.5 pt-1">
-              <label className="text-[12px] font-medium text-text-1">
-                Visibility
-              </label>
-              <Select
-                value={stagedVisibility}
-                onValueChange={(v) =>
-                  setStagedVisibility(v as KnowledgeFileVisibility)
-                }
-                disabled={uploading}
-              >
-                <SelectTrigger className="h-10 w-full cursor-pointer">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Everyone in the company</SelectItem>
+          {/* Visibility picker. All users see this now — 'all' and
+              'teams' are open to everyone, 'admins' is admin-only.
+              The team-checkbox panel appears below when 'teams' is
+              the active choice; nothing else changes the layout. */}
+          <div className="flex flex-col gap-1.5 pt-1">
+            <label className="text-[12px] font-medium text-text-1">
+              Visibility
+            </label>
+            <Select
+              value={stagedVisibility}
+              onValueChange={(v) =>
+                setStagedVisibility(v as KnowledgeFileVisibility)
+              }
+              disabled={uploading}
+            >
+              <SelectTrigger className="h-10 w-full cursor-pointer">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Everyone in the company</SelectItem>
+                {isAdmin && (
                   <SelectItem value="admins">Admins only</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-[11px] text-text-3">
-                {stagedVisibility === "admins"
-                  ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
-                  : "Every user in the company can see these files in chat / arena."}
-              </p>
+                )}
+                <SelectItem value="teams">Specific teams…</SelectItem>
+                <SelectItem value="project">Specific project…</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-text-3">
+              {stagedVisibility === "admins"
+                ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                : stagedVisibility === "teams"
+                  ? "Only members of the teams you pick below will see these files in chat / arena."
+                  : stagedVisibility === "project"
+                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
+                    : "Every user in the company can see these files in chat / arena."}
+            </p>
+          </div>
+
+          {/* Team checkbox panel — shown only when visibility='teams'.
+              Lists the user's teams (owned + accepted membership);
+              the BE rejects assignments to teams the user isn't in
+              for non-admins, so listing them here would just route
+              users to a 403. Empty state has its own copy. */}
+          {stagedVisibility === "teams" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Teams with access
+              </label>
+              {userTeams.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You aren&rsquo;t a member of any team yet — create or
+                  join a team first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userTeams.map((t) => {
+                    const checked = stagedTeamIds.includes(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploading}
+                          onChange={() => {
+                            setStagedTeamIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== t.id)
+                                : [...prev, t.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{t.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Project checkbox panel — shown only when
+              visibility='project'. Same shape as the teams panel.
+              Lists every project the caller can access (their own
+              + team projects). Empty state mirrors the teams case
+              so the dialog stays consistent. */}
+          {stagedVisibility === "project" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                Projects with access
+              </label>
+              {userProjects.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  You don&rsquo;t have access to any projects yet — create
+                  one first to use this visibility option.
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userProjects.map((p) => {
+                    const checked = stagedProjectIds.includes(p.id);
+                    return (
+                      <label
+                        key={p.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploading}
+                          onChange={() => {
+                            setStagedProjectIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== p.id)
+                                : [...prev, p.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">
+                          {p.name}
+                          {p.teamName ? (
+                            <span className="ml-1 text-text-3">
+                              · {p.teamName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
-              onClick={() => setStagedFiles([])}
+              onClick={() => {
+                setStagedFiles([]);
+                setStagedVisibility("all");
+                setStagedTeamIds([]);
+                setStagedProjectIds([]);
+              }}
               disabled={uploading}
               className="cursor-pointer"
             >
@@ -861,6 +1137,22 @@ export default function KnowledgeCorePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full visibility editor — covers all four tiers including
+          teams / project, beyond what the inline admin toggle does. */}
+      <ChangeFileVisibilityDialog
+        file={editingVisibilityFile}
+        open={editingVisibilityFile !== null}
+        onOpenChange={(open) => {
+          if (!open) setEditingVisibilityFileId(null);
+        }}
+        isAdmin={isAdmin}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+          queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
+        }}
+      />
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { Sidebar, Appbar } from "@/components/layout";
+import { Sidebar, Appbar, Footer } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/components/providers";
 import { SidebarProvider } from "@/hooks/use-sidebar";
 import { getRouteConfig } from "@/lib/route-config";
@@ -56,8 +56,14 @@ export default function AppLayout({
             <main className="flex min-w-0 flex-1 flex-col">
               <Appbar />
               <div className="min-h-0 flex-1 overflow-auto">
-                <div className="flex min-h-full flex-col px-6 pb-6">
+                {/* `min-h-full flex-col` + `mt-auto` on Footer makes
+                    the copyright row stick to the viewport bottom on
+                    short pages and yield naturally on long ones.
+                    Bottom padding lives on the Footer now, so we
+                    don't double-pad below the copyright line. */}
+                <div className="flex min-h-full flex-col px-6 pb-2">
                   {children}
+                  <Footer />
                 </div>
               </div>
             </main>

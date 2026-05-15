@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  forwardRef,
   ForbiddenException,
   Inject,
   Injectable,
@@ -26,6 +27,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 import {
@@ -43,6 +45,10 @@ export class TeamsService {
     private readonly mailService: MailService,
     private readonly provisioningService: OpenRouterProvisioningService,
     private readonly encryptionService: EncryptionService,
+    // forwardRef matches the module-level cycle break — see
+    // TeamsModule for the matching forwardRef on NotificationsModule.
+    @Inject(forwardRef(() => NotificationsService))
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(
@@ -57,9 +63,14 @@ export class TeamsService {
     // editors of the parent can create children.
     if (parentTeamId) {
       const parentRole = await this.getUserTeamRole(parentTeamId, userId);
-      if (parentRole !== 'owner' && parentRole !== 'editor') {
+      if (
+        parentRole !== 'owner' &&
+        parentRole !== 'admin' &&
+        parentRole !== 'manager' &&
+        parentRole !== 'editor'
+      ) {
         throw new ForbiddenException(
-          'Only team owners or editors can add subteams',
+          'Only team owners, admins, managers, or editors can add subteams',
         );
       }
     }
@@ -137,9 +148,14 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const updateCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (updateCallerRole !== 'owner' && updateCallerRole !== 'editor') {
+    if (
+      updateCallerRole !== 'owner' &&
+      updateCallerRole !== 'admin' &&
+      updateCallerRole !== 'manager' &&
+      updateCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can update the team',
+        'Only team owners, admins, managers, or editors can update the team',
       );
     }
 
@@ -158,7 +174,114 @@ export class TeamsService {
       .where(eq(teams.id, teamId))
       .returning();
 
+    // Info-only rename announcement to every accepted member +
+    // owner, minus the caller. Fires only when the name actually
+    // changed (typing `name` into the patch with the same value
+    // shouldn't ping the team). Best-effort — alert failures must
+    // not abort the team update.
+    if (
+      data.name !== undefined &&
+      data.name !== team.name &&
+      data.name.trim().length > 0
+    ) {
+      await this.announceTeamRename(
+        teamId,
+        team.name,
+        data.name,
+        userId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Fan out a 'team_renamed' info-only notification to every
+   * accepted member + owner of the team, minus the caller who
+   * made the change. Best-effort, never throws.
+   */
+  private async announceTeamRename(
+    teamId: string,
+    previousName: string,
+    nextName: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== callerUserId);
+      if (recipients.length === 0) return;
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_renamed',
+            title: `Team "${previousName}" was renamed to "${nextName}"`,
+            body: `Renamed by ${actorName}.`,
+            data: {
+              teamId,
+              previousName,
+              nextName,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team rename for ${teamId}: ${msg}`,
+      );
+    }
+  }
+
+  /**
+   * Fan out a 'team_deleted' notification to a pre-resolved list
+   * of former members. Caller is expected to snapshot the recipient
+   * list BEFORE deleting the team_members rows, since they're gone
+   * after the cascade. Best-effort, never throws.
+   */
+  private async announceTeamDeleted(
+    teamName: string,
+    callerUserId: string,
+    recipients: string[],
+  ): Promise<void> {
+    if (recipients.length === 0) return;
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_deleted',
+            title: `Team "${teamName}" was deleted`,
+            body: `Deleted by ${actorName}.`,
+            data: {
+              teamName,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team deletion for "${teamName}": ${msg}`,
+      );
+    }
   }
 
   async deleteTeam(teamId: string, userId: string) {
@@ -169,11 +292,23 @@ export class TeamsService {
 
     if (!team) throw new NotFoundException('Team not found');
     const deleteCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (deleteCallerRole !== 'owner' && deleteCallerRole !== 'editor') {
+    if (
+      deleteCallerRole !== 'owner' &&
+      deleteCallerRole !== 'admin' &&
+      deleteCallerRole !== 'manager' &&
+      deleteCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can delete the team',
+        'Only team owners, admins, managers, or editors can delete the team',
       );
     }
+
+    // Snapshot the member set BEFORE the cascade — once teamMembers
+    // rows are gone we can't resolve recipients anymore. Excludes
+    // the caller (they pressed Delete).
+    const recipientsToNotify = (
+      await this.notifications.getTeamMembers(teamId)
+    ).filter((id) => id !== userId);
 
     // Remove all members first (cascade should handle this, but be explicit)
     await this.db
@@ -181,6 +316,11 @@ export class TeamsService {
       .where(eq(teamMembers.teamId, teamId));
 
     await this.db.delete(teams).where(eq(teams.id, teamId));
+
+    // Tell every former member their team is gone so a stale UI
+    // refetch doesn't read as "membership disappeared, must be a
+    // bug". Best-effort.
+    await this.announceTeamDeleted(team.name, userId, recipientsToNotify);
 
     return { success: true };
   }
@@ -208,8 +348,11 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can update the budget');
+    const budgetCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (!this.hasOwnerRights(budgetCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can update the budget',
+      );
     }
 
     // Suspend semantic: budgetUsd === 0 means "block this team from
@@ -261,12 +404,182 @@ export class TeamsService {
     // the block. Owner can raise the budget later to enable.
 
     const budgetCents = Math.round(budgetUsd * 100);
+    const previousBudgetCents = team.monthlyBudgetCents;
     await this.db
       .update(teams)
       .set({ monthlyBudgetCents: budgetCents })
       .where(eq(teams.id, teamId));
 
+    // Proactive threshold check after admin-driven budget change.
+    // Mirrors the chat-transport gate's logic but triggers off the
+    // ADMIN ACTION instead of a chat call — handles the case where
+    // lowering the cap suddenly puts the team past 80% / 100%
+    // without anyone making a call. Fire-and-forget; alert failures
+    // never abort the budget update.
+    if (budgetCents > 0) {
+      await this.checkAndAlertTeamBudgetThresholds(
+        teamId,
+        team.name,
+        budgetCents,
+      );
+    }
+
+    // Info-only "budget changed" announcement for owner + admins
+    // (minus the caller — they pressed Save, no need to notify them
+    // about their own action). Independent of threshold alerts:
+    // every actual value change drops a row so the inbox doubles as
+    // a lightweight audit trail. Skipped when the new value equals
+    // the old (no-op patch).
+    if (previousBudgetCents !== budgetCents) {
+      await this.announceTeamBudgetChange(
+        teamId,
+        team.name,
+        previousBudgetCents,
+        budgetCents,
+        userId,
+      );
+    }
+
     return { monthlyBudgetCents: budgetCents };
+  }
+
+  /**
+   * Fan out a 'budget_changed' info-only notification when the team
+   * budget actually moves. Recipients = team owner + admins minus
+   * the caller. Best-effort, never throws.
+   */
+  private async announceTeamBudgetChange(
+    teamId: string,
+    teamName: string,
+    previousCents: number,
+    nextCents: number,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const recipients = (
+        await this.notifications.getTeamBudgetRecipients(teamId)
+      ).filter((id) => id !== callerUserId);
+      if (recipients.length === 0) return;
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'An admin';
+      const fmt = (c: number) => `$${(c / 100).toFixed(2)}`;
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'budget_changed',
+            title: `Team "${teamName}"'s monthly budget was changed`,
+            body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+            data: {
+              scope: 'team',
+              teamId,
+              teamName,
+              previousCents,
+              nextCents,
+              actorId: callerUserId,
+              actorName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce team-budget change for ${teamId}: ${msg}`,
+      );
+    }
+  }
+
+  /**
+   * After a team-budget patch lands, compute the team's current-month
+   * spend and enqueue 80% / 100% notifications if the NEW cap puts
+   * the team at or past those thresholds. Idempotent via the
+   * thresholdKey carried in `data` — re-running for the same
+   * (team, threshold, month) is a no-op.
+   *
+   * Kept private + best-effort: any failure here logs but never
+   * throws, so a flaky notification path can't break the budget
+   * update itself.
+   */
+  private async checkAndAlertTeamBudgetThresholds(
+    teamId: string,
+    teamName: string,
+    budgetCents: number,
+  ): Promise<void> {
+    try {
+      const [agg] = await this.db
+        .select({
+          total: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+        })
+        .from(observabilityEvents)
+        .where(
+          and(
+            eq(observabilityEvents.teamId, teamId),
+            eq(observabilityEvents.success, true),
+            gte(observabilityEvents.createdAt, sql`date_trunc('month', now())`),
+          ),
+        );
+      const spentUsd = agg ? parseFloat(agg.total) : 0;
+      const spentCents = Math.round(spentUsd * 100);
+      const eightyPct = Math.floor(budgetCents * 0.8);
+
+      const now = new Date();
+      const periodKey = `${now.getUTCFullYear()}-${String(
+        now.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
+
+      const recipients = await this.notifications.getTeamBudgetRecipients(
+        teamId,
+      );
+      const fanout = async (
+        threshold: 80 | 100,
+        title: string,
+        body: string,
+      ) => {
+        await Promise.allSettled(
+          recipients.map((userId) =>
+            this.notifications.createIfNotExists({
+              userId,
+              type: 'budget_alert',
+              title,
+              body,
+              data: {
+                scope: 'team',
+                teamId,
+                teamName,
+                threshold,
+                budgetCents,
+                spentCents,
+                thresholdKey: `${periodKey}:team:${teamId}:${threshold}`,
+              },
+            }),
+          ),
+        );
+      };
+
+      if (spentCents >= budgetCents) {
+        await fanout(
+          100,
+          `Team "${teamName}" is over its monthly budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}. The new cap is already exceeded — chat is blocked until you raise it or next month resets.`,
+        );
+      } else if (spentCents >= eightyPct) {
+        await fanout(
+          80,
+          `Team "${teamName}" has used 80% of its monthly budget`,
+          `Spent ~$${(spentCents / 100).toFixed(2)} of $${(budgetCents / 100).toFixed(2)}.`,
+        );
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to evaluate budget-threshold alerts for team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async findAllForUser(userId: string) {
@@ -366,9 +679,14 @@ export class TeamsService {
         members: membersMap.get(t.id) ?? [],
         spentCents: usage?.spentCents ?? 0,
         projectedCents: usage?.projectedCents ?? 0,
-        // Matches the backend gate for edit/delete/invite/etc: owner or
-        // advanced member. Everyone else sees read-only controls.
-        canManage: isOwner || myRole === 'editor',
+        // Matches the backend gate for edit/delete/invite/etc:
+        // owner, admin, manager, or editor member. Everyone else
+        // sees read-only controls.
+        canManage:
+          isOwner ||
+          myRole === 'admin' ||
+          myRole === 'manager' ||
+          myRole === 'editor',
       };
     });
   }
@@ -449,14 +767,37 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'editor') {
+    if (
+      callerRole !== 'owner' &&
+      callerRole !== 'admin' &&
+      callerRole !== 'manager' &&
+      callerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can invite users',
+        'Only team owners, admins, managers, or editors can invite users',
       );
     }
 
-    if (role !== 'editor' && role !== 'viewer') {
-      throw new BadRequestException('Role must be editor or viewer');
+    if (
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor' &&
+      role !== 'viewer'
+    ) {
+      throw new BadRequestException(
+        'Role must be admin, manager, editor, or viewer',
+      );
+    }
+    // Promoting an invitee straight to 'admin' / 'manager' is an
+    // owner-level action — editors can invite editors / viewers but
+    // can't seed someone with their own privilege ceiling.
+    if (
+      (role === 'admin' || role === 'manager') &&
+      !this.hasOwnerRights(callerRole)
+    ) {
+      throw new ForbiddenException(
+        'Only the team owner, admin, or manager can invite someone as admin or manager',
+      );
     }
 
     if (
@@ -547,6 +888,26 @@ export class TeamsService {
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.error(`Failed to resend invitation email: ${msg}`);
+      }
+
+      // In-app companion to the email, only for invitees who already
+      // have an account (new users can't see the inbox until they
+      // sign up — they get the email link instead).
+      if (existingUser) {
+        await this.notifications.create({
+          userId: existingUser.id,
+          type: 'team_invite',
+          title: `You're invited to ${team.name}`,
+          body: `${inviterName} invited you as ${role}.`,
+          data: {
+            teamId,
+            teamName: team.name,
+            inviterName,
+            role,
+            invitationToken: token,
+            memberId: refreshed.id,
+          },
+        });
       }
 
       return { ...refreshed, resent: true };
@@ -644,6 +1005,26 @@ export class TeamsService {
       this.logger.error(`Failed to send invitation email: ${msg}`);
     }
 
+    // Mirror the email with an in-app notification, but only for
+    // invitees who already have an account — new-user invitees
+    // can't see the bell yet, they get the email link only.
+    if (existingUser) {
+      await this.notifications.create({
+        userId: existingUser.id,
+        type: 'team_invite',
+        title: `You're invited to ${team.name}`,
+        body: `${inviterName} invited you as ${role}.`,
+        data: {
+          teamId,
+          teamName: team.name,
+          inviterName,
+          role,
+          invitationToken: token,
+          memberId: member.id,
+        },
+      });
+    }
+
     return { ...member, resent: false };
   }
 
@@ -653,8 +1034,11 @@ export class TeamsService {
       .from(teams)
       .where(eq(teams.id, teamId));
     if (!team) throw new NotFoundException('Team not found');
-    if (team.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can list invitations');
+    const listCallerRole = await this.getUserTeamRole(teamId, userId);
+    if (!this.hasOwnerRights(listCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can list invitations',
+      );
     }
 
     const rows = await this.db
@@ -701,8 +1085,11 @@ export class TeamsService {
       .where(eq(teamMembers.id, memberId));
 
     if (!row) throw new NotFoundException('Invitation not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Only the team owner can revoke invitations');
+    const revokeCallerRole = await this.getUserTeamRole(row.teamId, userId);
+    if (!this.hasOwnerRights(revokeCallerRole)) {
+      throw new ForbiddenException(
+        'Only the team owner or a team admin can revoke invitations',
+      );
     }
     if (row.status === 'accepted') {
       throw new BadRequestException(
@@ -737,16 +1124,73 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundException('Team not found');
     }
-    // Owners and editors can update roles; viewers/non-members can't.
+    // Owners, admins, managers, and editors can update roles;
+    // viewers / non-members can't. Promoting someone to / from
+    // 'admin' or 'manager' is owner-level only, enforced below.
     const callerRole = await this.getUserTeamRole(teamId, userId);
-    if (callerRole !== 'owner' && callerRole !== 'editor') {
+    if (
+      callerRole !== 'owner' &&
+      callerRole !== 'admin' &&
+      callerRole !== 'manager' &&
+      callerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can update member roles',
+        'Only team owners, admins, managers, or editors can update member roles',
       );
     }
 
-    if (role !== 'editor' && role !== 'viewer') {
-      throw new BadRequestException('Role must be editor or viewer');
+    if (
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor' &&
+      role !== 'viewer'
+    ) {
+      throw new BadRequestException(
+        'Role must be admin, manager, editor, or viewer',
+      );
+    }
+    if (
+      (role === 'admin' || role === 'manager') &&
+      !this.hasOwnerRights(callerRole)
+    ) {
+      throw new ForbiddenException(
+        'Only the team owner, admin, or manager can promote someone to admin or manager',
+      );
+    }
+
+    // Always look up the target so we can apply the owner-row guard
+    // below — and so the demote-admin/manager gate has the role to
+    // inspect. Cheap: one indexed PK probe.
+    const [target] = await this.db
+      .select({ userId: teamMembers.userId, role: teamMembers.role })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      );
+
+    // Owner row is pinned to `team.ownerId`; demoting it would leave
+    // a team with a member row whose role contradicts `teams.owner_id`.
+    // Mirror the removeMember guard so any caller, owner included,
+    // has to transfer ownership before fiddling with this row.
+    if (target?.userId && target.userId === team.ownerId) {
+      throw new BadRequestException(
+        'Cannot change the team owner\'s role. Transfer ownership first.',
+      );
+    }
+
+    // Symmetric guard: demoting an existing admin / manager is also
+    // owner-level — keeps editors from kicking admins/managers down
+    // a tier.
+    if (
+      (target?.role === 'admin' || target?.role === 'manager') &&
+      !this.hasOwnerRights(callerRole)
+    ) {
+      throw new ForbiddenException(
+        'Only the team owner, admin, or manager can change another admin or manager\'s role',
+      );
     }
 
     const [updated] = await this.db
@@ -759,7 +1203,74 @@ export class TeamsService {
       throw new NotFoundException('Member not found');
     }
 
+    // Tell the affected user their role moved. Skip:
+    //   - rows still on a pending invite (target.userId is null —
+    //     they don't have an account / inbox yet, the email-link
+    //     flow will surface their final role when they accept)
+    //   - self-edits (caller demoting themselves) since they
+    //     pressed Save and already know
+    //   - no-op patches (role unchanged) — would be confusing
+    if (
+      target?.userId &&
+      target.userId !== userId &&
+      target.role !== role
+    ) {
+      await this.announceRoleChange(
+        target.userId,
+        teamId,
+        team.name,
+        target.role,
+        role,
+        userId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Notify a single team member that their role on a given team
+   * changed. Best-effort — alert failures must not unwind the role
+   * patch above. Used by updateMemberRole; not generalised to
+   * batch since role updates are one row at a time.
+   */
+  private async announceRoleChange(
+    targetUserId: string,
+    teamId: string,
+    teamName: string,
+    previousRole: string,
+    nextRole: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const niceRole = (r: string) =>
+        r.charAt(0).toUpperCase() + r.slice(1).toLowerCase();
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'team_role_changed',
+        title: `Your role in "${teamName}" was changed to ${niceRole(nextRole)}`,
+        body: `${niceRole(previousRole)} → ${niceRole(nextRole)}. Set by ${actorName}.`,
+        data: {
+          teamId,
+          teamName,
+          previousRole,
+          nextRole,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce role change for user ${targetUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async removeMember(teamId: string, memberId: string, userId: string) {
@@ -772,9 +1283,14 @@ export class TeamsService {
       throw new NotFoundException('Team not found');
     }
     const removeCallerRole = await this.getUserTeamRole(teamId, userId);
-    if (removeCallerRole !== 'owner' && removeCallerRole !== 'editor') {
+    if (
+      removeCallerRole !== 'owner' &&
+      removeCallerRole !== 'admin' &&
+      removeCallerRole !== 'manager' &&
+      removeCallerRole !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can remove members',
+        'Only team owners, admins, managers, or editors can remove members',
       );
     }
 
@@ -786,6 +1302,18 @@ export class TeamsService {
 
     if (!member) {
       throw new NotFoundException('Member not found');
+    }
+
+    // Mirror of the demote-admin/manager guard in updateMemberRole:
+    // an editor can't kick an admin or manager out, since both are
+    // owner-equivalent.
+    if (
+      (member.role === 'admin' || member.role === 'manager') &&
+      !this.hasOwnerRights(removeCallerRole)
+    ) {
+      throw new ForbiddenException(
+        'Only the team owner, admin, or manager can remove another admin or manager',
+      );
     }
 
     if (member.userId === userId) {
@@ -804,13 +1332,99 @@ export class TeamsService {
       .delete(teamMembers)
       .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
+    // Announce the removal. Affected user (the one we just kicked)
+    // gets a direct notif; remaining team members get a heads-up
+    // so they're not surprised when a familiar name disappears.
+    // Skip pending invites (no account-having user to notify) and
+    // self-removal (already blocked above anyway).
+    if (member.userId && member.userId !== userId) {
+      await this.announceMemberRemoved(
+        member.userId,
+        teamId,
+        team.name,
+        userId,
+      );
+    }
+
     return { success: true };
+  }
+
+  /**
+   * Notify the removed user (direct, "you were removed") and the
+   * remaining team members (broadcast, "X was removed from team")
+   * after a successful membership delete. Best-effort, never throws.
+   */
+  private async announceMemberRemoved(
+    removedUserId: string,
+    teamId: string,
+    teamName: string,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const [removed] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, removedUserId))
+        .limit(1);
+      const removedName = removed?.name || removed?.email || 'A team member';
+
+      // 1) Direct notif to the removed user.
+      await this.notifications.create({
+        userId: removedUserId,
+        type: 'team_member_removed',
+        title: `You were removed from "${teamName}"`,
+        body: `Removed by ${actorName}.`,
+        data: {
+          teamId,
+          teamName,
+          actorId: callerUserId,
+          actorName,
+          self: true,
+        },
+      });
+
+      // 2) Broadcast to remaining team members (minus the actor +
+      //    the just-removed user). One row per recipient.
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== callerUserId && id !== removedUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_member_removed',
+            title: `${removedName} was removed from "${teamName}"`,
+            body: `Removed by ${actorName}.`,
+            data: {
+              teamId,
+              teamName,
+              removedUserId,
+              removedName,
+              actorId: callerUserId,
+              actorName,
+              self: false,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce removal of ${removedUserId} from team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async getUserTeamRole(
     teamId: string,
     userId: string,
-  ): Promise<'owner' | 'editor' | 'viewer' | null> {
+  ): Promise<'owner' | 'admin' | 'manager' | 'editor' | 'viewer' | null> {
     const [team] = await this.db
       .select()
       .from(teams)
@@ -831,14 +1445,39 @@ export class TeamsService {
       );
 
     if (!member) return null;
-    const roleMap: Record<string, 'owner' | 'editor' | 'viewer'> = {
+    // `admin` and `manager` are both owner-equivalent member roles —
+    // `manager` was added so admins can delegate operational tasks
+    // without conflating with the higher "admin" connotation in copy.
+    // Legacy `advanced` / `basic` map for back-compat with older
+    // rows that haven't been migrated.
+    const roleMap: Record<
+      string,
+      'owner' | 'admin' | 'manager' | 'editor' | 'viewer'
+    > = {
       owner: 'owner',
+      admin: 'admin',
+      manager: 'manager',
       advanced: 'editor',
       editor: 'editor',
       basic: 'viewer',
       viewer: 'viewer',
     };
     return roleMap[member.role] ?? 'viewer';
+  }
+
+  /**
+   * Owner-level rights: real team owner OR member with role='admin'
+   * or role='manager' (both treated as owner-equivalent per product
+   * decision — manager is a label distinction, not a rights one).
+   * Used for paths previously gated by `team.ownerId !== userId` —
+   * budget, invitations, role promotions. None of these roles can
+   * be the literal team owner row; that one is pinned to
+   * `teams.owner_id` and must be transferred to change.
+   */
+  private hasOwnerRights(
+    role: 'owner' | 'admin' | 'manager' | 'editor' | 'viewer' | null,
+  ): boolean {
+    return role === 'owner' || role === 'admin' || role === 'manager';
   }
 
   async getUserTeamIds(userId: string): Promise<string[]> {
@@ -987,7 +1626,62 @@ export class TeamsService {
       .where(eq(teamMembers.id, member.id))
       .returning();
 
+    // Announce the new join to every other existing member so the
+    // team sees who joined. The accepter themselves doesn't need
+    // a notif — they pressed Accept and already know.
+    await this.announceMemberAdded(userId, member.teamId);
+
     return updated;
+  }
+
+  /**
+   * Fan out a 'team_member_added' notification to every existing
+   * accepted team member except the joiner. Resolves the joiner's
+   * display name in one round-trip so the title reads naturally.
+   * Best-effort, never throws.
+   */
+  private async announceMemberAdded(
+    joinerUserId: string,
+    teamId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      if (!team) return;
+      const [joiner] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, joinerUserId))
+        .limit(1);
+      const joinerName = joiner?.name || joiner?.email || 'A new member';
+      const recipients = (
+        await this.notifications.getTeamMembers(teamId)
+      ).filter((id) => id !== joinerUserId);
+      await Promise.allSettled(
+        recipients.map((userId) =>
+          this.notifications.create({
+            userId,
+            type: 'team_member_added',
+            title: `${joinerName} joined "${team.name}"`,
+            body: null,
+            data: {
+              teamId,
+              teamName: team.name,
+              joinerUserId,
+              joinerName,
+            },
+          }),
+        ),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce member added for ${joinerUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   async findSubteams(parentTeamId: string) {
@@ -1373,9 +2067,14 @@ export class TeamsService {
     },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, managers, or editors can manage team integrations',
       );
     }
     const isCustom = input.providerId === 'custom';
@@ -1513,9 +2212,14 @@ export class TeamsService {
     },
   ): Promise<IntegrationView> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, managers, or editors can manage team integrations',
       );
     }
     const [row] = await this.db
@@ -1599,9 +2303,14 @@ export class TeamsService {
     integrationId: string,
   ): Promise<{ success: true }> {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can manage team integrations',
+        'Only team owners, admins, managers, or editors can manage team integrations',
       );
     }
     const [row] = await this.db
@@ -1652,9 +2361,14 @@ export class TeamsService {
     callerId: string,
   ) {
     const role = await this.getUserTeamRole(teamId, callerId);
-    if (role !== 'owner' && role !== 'editor') {
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
       throw new ForbiddenException(
-        'Only team owners or editors can set member caps',
+        'Only team owners, admins, managers, or editors can set member caps',
       );
     }
     if (
@@ -1667,6 +2381,21 @@ export class TeamsService {
         'monthlyCapCents must be null or a non-negative integer (cents).',
       );
     }
+    // Snapshot target's previous cap + user id so the notification
+    // can render "$X → $Y" and we know who to ping.
+    const [target] = await this.db
+      .select({
+        userId: teamMembers.userId,
+        monthlyCapCents: teamMembers.monthlyCapCents,
+      })
+      .from(teamMembers)
+      .where(
+        and(
+          eq(teamMembers.id, memberId),
+          eq(teamMembers.teamId, teamId),
+        ),
+      );
+
     const [updated] = await this.db
       .update(teamMembers)
       .set({ monthlyCapCents })
@@ -1683,7 +2412,73 @@ export class TeamsService {
     if (!updated) {
       throw new NotFoundException('Member not found');
     }
+
+    // Notify the affected user about their new cap. Skip:
+    //   - Pending invites (no account)
+    //   - Self-edits (caller adjusted their own cap)
+    //   - No-op (same value)
+    if (
+      target?.userId &&
+      target.userId !== callerId &&
+      target.monthlyCapCents !== monthlyCapCents
+    ) {
+      await this.announceMemberCapChange(
+        target.userId,
+        teamId,
+        target.monthlyCapCents,
+        monthlyCapCents,
+        callerId,
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Notify the affected user when an admin moves their per-member
+   * monthly cap on a team. Best-effort, never throws.
+   */
+  private async announceMemberCapChange(
+    targetUserId: string,
+    teamId: string,
+    previousCents: number | null,
+    nextCents: number | null,
+    callerUserId: string,
+  ): Promise<void> {
+    try {
+      const [team] = await this.db
+        .select({ name: teams.name })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      const [actor] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerUserId))
+        .limit(1);
+      const actorName = actor?.name || actor?.email || 'A team manager';
+      const fmt = (c: number | null) =>
+        c == null ? 'No cap' : `$${(c / 100).toFixed(2)}/mo`;
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'member_cap_changed',
+        title: `Your cap on "${team?.name ?? 'team'}" was set to ${fmt(nextCents)}`,
+        body: `${fmt(previousCents)} → ${fmt(nextCents)}. Set by ${actorName}.`,
+        data: {
+          teamId,
+          teamName: team?.name ?? null,
+          previousCents,
+          nextCents,
+          actorId: callerUserId,
+          actorName,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to announce member cap change for ${targetUserId} on team ${teamId}: ${msg}`,
+      );
+    }
   }
 
   /**
