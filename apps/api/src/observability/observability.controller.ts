@@ -164,6 +164,39 @@ export class ObservabilityController {
     return { range: key, ...result };
   }
 
+  /**
+   * Un-paginated variant of `/events` used by the CSV export. Same
+   * filter contract as the paginated route, minus page/pageSize —
+   * the service caps the result at 10k rows and the response carries
+   * a `truncated` flag the FE surfaces as a toast when the cap was
+   * hit. Kept separate from `/events` so the table fetch can't
+   * accidentally request a huge unpaginated payload by passing a
+   * gigantic `pageSize`.
+   */
+  @Get('events/export')
+  async exportEvents(
+    @CurrentUser() caller: AuthenticatedUser,
+    @Query('range') range?: string,
+    @Query('search') search?: string,
+    @Query('user') userId?: string,
+    @Query('team') teamId?: string,
+    @Query('model') model?: string,
+    @Query('eventType') eventType?: string,
+  ) {
+    await this.assertAdmin(caller);
+    const { key, from, to } = parseRange(range);
+    const result = await this.observabilityService.exportEvents({
+      from,
+      to,
+      search: search ?? null,
+      userId: userId ?? null,
+      teamId: teamId ?? null,
+      model: model ?? null,
+      eventType: eventType ?? null,
+    });
+    return { range: key, ...result };
+  }
+
   @Get('guardrail-activity')
   async guardrailActivity(
     @CurrentUser() caller: AuthenticatedUser,

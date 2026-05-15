@@ -695,7 +695,7 @@ export default function CompareModelsPage() {
   // and silently rendering an empty rail looks broken.
   if (!modelsLoading && availableModels.length < MIN_MODELS) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center pb-6">
+      <div className="flex h-0 min-h-0 flex-1 items-center justify-center pb-6">
         <div className="flex max-w-[480px] flex-col items-center gap-4 rounded-[20px] bg-bg-white p-8 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-1">
             <LayoutGrid className="h-6 w-6 text-primary-7" />
@@ -721,15 +721,32 @@ export default function CompareModelsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 pb-6">
+    // `flex-1 h-0` (not `h-full`) — the app shell wraps pages in a
+    // `min-h-full flex-col` container, which is *min-height*, not
+    // height. That means `h-full` here resolves to auto and the row
+    // below grows with whatever the right rail contains, dragging
+    // the white card with it (so expanding History made the card
+    // visibly "jump"). Using flex-grow against `h-0` forces this
+    // wrapper to claim the remaining definite height of the shell,
+    // which gives the row a fixed height and lets the aside scroll
+    // its history list internally instead of pushing the layout.
+    <div className="flex h-0 min-h-0 flex-1 flex-col gap-6 pb-6">
       {/* Body shell: main column + optional right rail */}
       <div className="flex min-h-0 flex-1 gap-6">
-        {/* Main column — white card per Figma */}
+        {/* Main column — white card per Figma. Layout is intentionally
+            *static*: scrollable area always takes the remaining height
+            and the composer stays pinned at the bottom, regardless of
+            whether a comparison is loaded, history is expanded, or the
+            rail is open. Keeps the white card visually stable across
+            state transitions. */}
         <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden rounded-[20px] bg-bg-white p-6">
-          {/* Scrollable content area (prompt + responses) */}
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             {!hasResults && !loading && !submittedQuestion && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+              // `my-auto` keeps the placeholder vertically centred inside
+              // the scrollable area without changing the area's flex
+              // sizing — so the composer below it stays put and the
+              // white card never reflows when state changes.
+              <div className="mx-auto my-auto flex w-full max-w-[480px] flex-col items-center gap-2 py-10 text-center">
                 <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <h3 className="text-[16px] font-semibold text-text-1">
                   Compare models side by side
@@ -1338,13 +1355,17 @@ function Composer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-grow the question textarea to fit its content. Runs on every value
-  // change (typing, pasting, programmatic inserts from shortcuts/library).
+  // Auto-grow the question textarea to fit its content, capped so a
+  // pasted novel can't push the composer to fill the page. Past the
+  // cap the textarea scrolls internally.
   useEffect(() => {
     const ta = questionRef.current;
     if (!ta) return;
+    const MAX = 200;
     ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
+    const next = Math.min(ta.scrollHeight, MAX);
+    ta.style.height = `${next}px`;
+    ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
   }, [question]);
 
   function handleInsertShortcut(shortcut: Shortcut) {

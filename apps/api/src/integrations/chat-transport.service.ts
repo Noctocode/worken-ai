@@ -6,6 +6,7 @@ import {
   observabilityEvents,
   orgSettings,
   projects,
+  teamIntegrationLinks,
   teamMembers,
   teams,
   users,
@@ -302,21 +303,38 @@ export class ChatTransportService {
 
       if (teamScopeId) {
         // Predefined providers only — apiUrl IS NULL filter mirrors
-        // the partial unique index that backs the table for team-
-        // scoped BYOK. Custom LLMs aren't supported at team scope yet.
+        // the partial unique index that backs personal predef rows.
+        // We resolve through team_integration_links (the new picker
+        // model): the admin's personal key is linked into the team
+        // and members get to use it via the link. Both the link's
+        // is_enabled (per-team pause) and the underlying
+        // integration's is_enabled (master switch on the personal
+        // tab) must be true; either flag off and we fall through to
+        // the user's own BYOK.
         const [teamByok] = await this.db
-          .select()
-          .from(integrations)
+          .select({
+            apiKeyEncrypted: integrations.apiKeyEncrypted,
+          })
+          .from(teamIntegrationLinks)
+          .innerJoin(
+            integrations,
+            eq(integrations.id, teamIntegrationLinks.integrationId),
+          )
           .where(
             and(
-              eq(integrations.teamId, teamScopeId),
+              eq(teamIntegrationLinks.teamId, teamScopeId),
+              eq(teamIntegrationLinks.isEnabled, true),
               eq(integrations.providerId, provider),
               eq(integrations.isEnabled, true),
               isNull(integrations.apiUrl),
             ),
           )
           .limit(1);
-        if (teamByok?.apiKeyEncrypted) byokRow = teamByok;
+        if (teamByok?.apiKeyEncrypted) {
+          byokRow = {
+            apiKeyEncrypted: teamByok.apiKeyEncrypted,
+          } as typeof integrations.$inferSelect;
+        }
       }
 
       if (!byokRow) {

@@ -56,7 +56,7 @@ export class OnboardingController {
   }
 
   /**
-   * Drives the step-6 "Training your AI…" progress screen. The FE
+   * Drives the step-6 "Setting up your AI…" progress screen. The FE
    * polls this until `inProgress` is false, then redirects.
    * Cheap query (single SELECT with COUNT-by-status server-side
    * folding), so polling at 1-2s cadence is fine.

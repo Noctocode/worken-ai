@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -62,9 +62,13 @@ import {
   moveKnowledgeFile,
   deleteKnowledgeFile,
   type KnowledgeFileVisibility,
+  type KnowledgeUploadNameConflict,
+  type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
+import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
+import { Pagination } from "@/components/ui/pagination";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -108,8 +112,10 @@ function formatDateTime(d: string): string {
  * row. Mirrors the same four states the step-6 progress UI uses so
  * the user gets consistent vocabulary across both upload paths.
  *
- *   pending / processing → Loader2 spinner, neutral copy
- *   done                 → success check, "Trained"
+ *   pending / processing → Loader2 spinner, "Queued" / "Adding"
+ *   done                 → success check, "In context"
+ *   untrained            → unplug glyph, "Excluded" — embeddings
+ *                          dropped, file row still on disk
  *   failed               → warning triangle, "Skipped" + tooltip with
  *                          the underlying error so unsupported types
  *                          don't look broken
@@ -125,7 +131,7 @@ function IngestionStatusBadge({
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
         <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-        Trained
+        In context
       </span>
     );
   }
@@ -144,17 +150,17 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Embeddings removed — Retrain to make this file searchable again."
+        title="Excluded from context — Include in context to make this file searchable again."
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
-        Untrained
+        Excluded
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-      {status === "processing" ? "Training" : "Queued"}
+      {status === "processing" ? "Adding" : "Queued"}
     </span>
   );
 }
@@ -247,7 +253,7 @@ export default function FolderDetailPage({
     queryFn: () => fetchKnowledgeFolder(folderId),
     enabled: !!folderId,
     // Auto-poll while ingestion is still in flight so the status
-    // badge transitions Queued → Processing → Trained without the
+    // badge transitions Queued → Adding → In context without the
     // user having to refresh. Stops polling once every file lands
     // in a terminal state (done / failed) — avoids needless DB
     // round-trips for static folders.
@@ -263,20 +269,43 @@ export default function FolderDetailPage({
     },
   });
 
+  // Same-name-different-content conflicts surfaced by the BE on the
+  // last upload call. Held in state so the resolution dialog can
+  // re-trigger an upload of *only* the conflicting files once the
+  // user picks per-name actions. `pendingFiles` is the original
+  // File[] from the first call so we don't ask the user to re-pick
+  // them in the OS file dialog.
+  const [pendingConflicts, setPendingConflicts] = useState<{
+    conflicts: KnowledgeUploadNameConflict[];
+    files: File[];
+    visibility: KnowledgeFileVisibility;
+    teamIds: string[];
+    projectIds: string[];
+  } | null>(null);
+
   const uploadMutation = useMutation({
     mutationFn: ({
       files,
       visibility,
       teamIds,
       projectIds,
+      nameConflictActions,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
       teamIds: string[];
       projectIds: string[];
+      nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
-      uploadKnowledgeFiles(folderId, files, visibility, teamIds, projectIds),
-    onSuccess: ({ uploaded, duplicates }) => {
+      uploadKnowledgeFiles(
+        folderId,
+        files,
+        visibility,
+        teamIds,
+        projectIds,
+        nameConflictActions,
+      ),
+    onSuccess: ({ uploaded, duplicates, nameConflicts }, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
       });
@@ -301,13 +330,69 @@ export default function FolderDetailPage({
           },
         );
       }
+      // Name conflicts kick off a separate resolution dialog. If we
+      // get here with conflicts AFTER the user already picked
+      // actions in the prior pass, treat it as a no-op + a warning
+      // — re-opening the dialog would loop on 'skip' picks.
+      if (nameConflicts.length > 0) {
+        if (variables.nameConflictActions) {
+          toast.info(
+            `${nameConflicts.length} file(s) were skipped.`,
+            {
+              description: nameConflicts
+                .map((c) => `"${c.name}"`)
+                .join("\n"),
+            },
+          );
+          return;
+        }
+        setPendingConflicts({
+          conflicts: nameConflicts,
+          files: variables.files,
+          visibility: variables.visibility,
+          teamIds: variables.teamIds,
+          projectIds: variables.projectIds,
+        });
+      }
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to upload files."),
   });
 
-  // Single-file re-train. Mirror of the root /knowledge-core page;
-  // see its comment for details.
+  const resolveNameConflicts = (
+    actions: Record<string, NameConflictAction>,
+  ) => {
+    if (!pendingConflicts) return;
+    // Re-upload only the files the user *actually* wants to act on
+    // — anything left as 'skip' is dropped client-side so we don't
+    // round-trip just to have the BE bounce it back unchanged.
+    const conflictNames = new Set(
+      pendingConflicts.conflicts.map((c) => c.name),
+    );
+    const filesToResend = pendingConflicts.files.filter(
+      (f) => conflictNames.has(f.name) && actions[f.name] !== "skip",
+    );
+    const skippedCount = pendingConflicts.conflicts.filter(
+      (c) => (actions[c.name] ?? "skip") === "skip",
+    ).length;
+    setPendingConflicts(null);
+    if (filesToResend.length === 0) {
+      if (skippedCount > 0) {
+        toast.info(`Skipped ${skippedCount} file(s).`);
+      }
+      return;
+    }
+    uploadMutation.mutate({
+      files: filesToResend,
+      visibility: pendingConflicts.visibility,
+      teamIds: pendingConflicts.teamIds,
+      projectIds: pendingConflicts.projectIds,
+      nameConflictActions: actions,
+    });
+  };
+
+  // Single-file include-in-context. Mirror of the root /knowledge-
+  // core page; see its comment for details.
   const reingestMutation = useMutation({
     mutationFn: (fileId: string) => reingestKnowledgeFile(fileId),
     onSuccess: () => {
@@ -316,15 +401,17 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("Re-training started.");
+      toast.success("Adding to context.");
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to re-train this file."),
+      toast.error(
+        err.message || "Failed to include this file in context.",
+      ),
   });
 
-  // Inverse of Retrain — drops the file's embeddings so chat RAG
-  // ignores it, but keeps the row + disk copy. See the root page's
-  // mutation comment for the BE-side semantics.
+  // Inverse — drops the file's embeddings so chat RAG ignores it,
+  // but keeps the row + disk copy. See the root page's mutation
+  // comment for the BE-side semantics.
   const untrainMutation = useMutation({
     mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
     onSuccess: () => {
@@ -333,10 +420,12 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("File untrained — embeddings removed.");
+      toast.success("Excluded from context.");
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to untrain this file."),
+      toast.error(
+        err.message || "Failed to exclude this file from context.",
+      ),
   });
 
   // Admin-only PATCH to flip visibility post-upload. BE rejects
@@ -466,11 +555,11 @@ export default function FolderDetailPage({
         toast.success(updatedCopy);
       } else if (res.affectedIds.length === 0) {
         toast.warning(
-          `All ${res.skippedIds.length} selected file(s) are still being trained. Try again once they finish.`,
+          `All ${res.skippedIds.length} selected file(s) are still being added to context. Try again once they finish.`,
         );
       } else {
         toast.warning(
-          `${updatedCopy} ${res.skippedIds.length} file(s) were skipped because they're still being trained — try those again in a moment.`,
+          `${updatedCopy} ${res.skippedIds.length} file(s) were skipped because they're still being added to context — try those again in a moment.`,
         );
       }
       clearSelection();
@@ -479,9 +568,9 @@ export default function FolderDetailPage({
       toast.error(err.message || "Failed to update visibility."),
   });
 
-  // Bulk retrain + delete fan out to the existing per-file
+  // Bulk include + delete fan out to the existing per-file
   // endpoints via Promise.allSettled — same per-row gates (owner
-  // check, status='processing' block for retrain) apply, just
+  // check, status='processing' block for include) apply, just
   // accumulated. Aggregated toast at the end so a single failure
   // doesn't drown out the successes.
   const bulkRetrainMutation = useMutation({
@@ -500,12 +589,14 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       if (rejected === 0) {
-        toast.success(`Re-training started for ${fulfilled} file(s).`);
+        toast.success(`Adding ${fulfilled} file(s) to context.`);
       } else if (fulfilled === 0) {
-        toast.error(`Re-train failed for all ${rejected} file(s).`);
+        toast.error(
+          `Couldn't add any of the ${rejected} file(s) to context.`,
+        );
       } else {
         toast.warning(
-          `Re-trained ${fulfilled} file(s); ${rejected} failed (likely already mid-training).`,
+          `Added ${fulfilled} file(s); ${rejected} couldn't be added (likely already being added).`,
         );
       }
       clearSelection();
@@ -599,6 +690,31 @@ export default function FolderDetailPage({
         (f.fileType ?? "").toLowerCase().includes(q),
     );
   }, [query, folder]);
+
+  // Page state for the folder's file list. 10 rows/page; resets on
+  // search change so the user lands on a populated page when the
+  // result set shrinks. Both the desktop table and the mobile card
+  // grid read `pagedFiles` so they paginate in lockstep.
+  const FILES_PAGE_SIZE = 10;
+  const [filesPage, setFilesPage] = useState(1);
+  useEffect(() => {
+    setFilesPage(1);
+  }, [query]);
+  const filesTotalPages = Math.max(
+    1,
+    Math.ceil(filtered.length / FILES_PAGE_SIZE),
+  );
+  const pagedFiles = useMemo(
+    () =>
+      filtered.slice(
+        (filesPage - 1) * FILES_PAGE_SIZE,
+        filesPage * FILES_PAGE_SIZE,
+      ),
+    [filtered, filesPage],
+  );
+  useEffect(() => {
+    if (filesPage > filesTotalPages) setFilesPage(filesTotalPages);
+  }, [filesPage, filesTotalPages]);
 
   // Tri-state for the select-all header checkbox over the *currently
   // visible* rows (post-search-filter). Selection itself is folder-
@@ -702,7 +818,7 @@ export default function FolderDetailPage({
 
       {/* Bulk action bar. Renders sticky above the table whenever the
           user has at least one row selected. Visibility buttons are
-          admin-only — matches the per-file action menu gate; retrain
+          admin-only — matches the per-file action menu gate; include
           and delete are owner-only (BE filters anyway, FE just lets
           the user fire it). */}
       {selectedIds.size > 0 && (
@@ -744,7 +860,7 @@ export default function FolderDetailPage({
               className="cursor-pointer gap-1.5"
             >
               <RotateCw className="h-3.5 w-3.5" />
-              Retrain
+              Include in context
             </Button>
             <Button
               variant="outline"
@@ -793,7 +909,7 @@ export default function FolderDetailPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((f) => (
+              {pagedFiles.map((f) => (
                 <tr
                   key={f.id}
                   className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${
@@ -879,7 +995,7 @@ export default function FolderDetailPage({
                           }
                         >
                           <RotateCw className="mr-2 h-3.5 w-3.5" />
-                          Retrain
+                          Include in context
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => untrainMutation.mutate(f.id)}
@@ -890,7 +1006,7 @@ export default function FolderDetailPage({
                           }
                         >
                           <Unplug className="mr-2 h-3.5 w-3.5" />
-                          Untrain
+                          Exclude from context
                         </DropdownMenuItem>
                         {isAdmin && (
                           <DropdownMenuItem
@@ -956,7 +1072,7 @@ export default function FolderDetailPage({
 
         {/* Mobile cards */}
         <div className="flex flex-col md:hidden">
-          {filtered.map((f, idx) => (
+          {pagedFiles.map((f, idx) => (
             <div
               key={f.id}
               className={`flex items-center gap-3 px-4 py-4 ${idx > 0 ? "border-t border-border-2" : ""} ${
@@ -1020,7 +1136,7 @@ export default function FolderDetailPage({
                     }
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
-                    Retrain
+                    Include in context
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => untrainMutation.mutate(f.id)}
@@ -1031,7 +1147,7 @@ export default function FolderDetailPage({
                     }
                   >
                     <Unplug className="mr-2 h-3.5 w-3.5" />
-                    Untrain
+                    Exclude from context
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
@@ -1083,6 +1199,13 @@ export default function FolderDetailPage({
             </p>
           )}
         </div>
+
+        <Pagination
+          page={filesPage}
+          totalPages={filesTotalPages}
+          onPageChange={setFilesPage}
+          className="px-4"
+        />
       </div>
 
       {/* Move file dialog */}
@@ -1422,6 +1545,17 @@ export default function FolderDetailPage({
           queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
           queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
         }}
+      />
+
+      {/* Same-name resolution. Only fires when the BE flagged at
+          least one file as conflicting in this folder under the
+          same uploader; user picks overwrite / keep both / skip
+          per file (or in bulk) and we re-upload accordingly. */}
+      <KnowledgeNameConflictDialog
+        open={pendingConflicts !== null}
+        conflicts={pendingConflicts?.conflicts ?? []}
+        onResolve={resolveNameConflicts}
+        onCancel={() => setPendingConflicts(null)}
       />
     </div>
   );

@@ -24,17 +24,14 @@ import {
   integrations,
   modelConfigs,
   observabilityEvents,
+  teamIntegrationLinks,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
-import {
-  PREDEFINED_PROVIDERS,
-  isPredefinedProvider,
-} from '../integrations/predefined-providers.js';
-import type { IntegrationView } from '../integrations/integrations.service.js';
+import { PREDEFINED_PROVIDERS } from '../integrations/predefined-providers.js';
 
 @Injectable()
 export class TeamsService {
@@ -1854,496 +1851,6 @@ export class TeamsService {
     ];
   }
 
-  /**
-   * Team-scoped integrations. Mirrors the personal Integration tab
-   * but the configured key is shared across every team member: when
-   * one of them chats with a model from this provider, chat-transport
-   * routes through this team key first, before falling back to their
-   * personal BYOK or the WorkenAI default.
-   *
-   * Returns both:
-   *   - Predefined providers (Anthropic, OpenAI, …) — at most one row
-   *     per (team, provider). Untouched providers appear with id=null.
-   *   - Team-scoped Custom LLM rows — each is its own card; the bound
-   *     model_configs alias is auto-created at upsert time so members
-   *     see the endpoint in their picker without admin touching
-   *     /catalog separately.
-   */
-  async listIntegrations(
-    teamId: string,
-    userId: string,
-  ): Promise<IntegrationView[]> {
-    const role = await this.getUserTeamRole(teamId, userId);
-    if (!role) {
-      throw new ForbiddenException('You are not a member of this team');
-    }
-
-    const rows = await this.db
-      .select()
-      .from(integrations)
-      .where(eq(integrations.teamId, teamId));
-
-    // Aggregate observability scoped to this team. Same shape as
-    // IntegrationsService.listForUser but the filter is teamId rather
-    // than userId, so cards reflect what the *whole team* spent
-    // through that provider — not whoever last opened the page.
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const statsRows = await this.db
-      .select({
-        provider: observabilityEvents.provider,
-        successCount: sql<number>`count(*) filter (where ${observabilityEvents.success}=true)::int`,
-        totalCount: sql<number>`count(*)::int`,
-        thisMonth: sql<number>`count(*) filter (where ${observabilityEvents.createdAt} >= date_trunc('month', now()))::int`,
-      })
-      .from(observabilityEvents)
-      .where(
-        and(
-          eq(observabilityEvents.teamId, teamId),
-          gte(observabilityEvents.createdAt, since),
-        ),
-      )
-      .groupBy(observabilityEvents.provider);
-
-    const peakRows = await this.db.execute<{
-      provider: string;
-      peak: number;
-    }>(sql`
-      SELECT provider, MAX(daily_count)::int AS peak
-      FROM (
-        SELECT
-          ${observabilityEvents.provider} AS provider,
-          DATE_TRUNC('day', ${observabilityEvents.createdAt}) AS day,
-          COUNT(*) AS daily_count
-        FROM ${observabilityEvents}
-        WHERE
-          ${observabilityEvents.teamId} = ${teamId}
-          AND ${observabilityEvents.createdAt} >= ${since}
-          AND ${observabilityEvents.provider} IS NOT NULL
-        GROUP BY provider, day
-      ) AS daily
-      GROUP BY provider
-    `);
-
-    const statsByProvider = new Map<
-      string,
-      {
-        successCount: number;
-        totalCount: number;
-        thisMonth: number;
-        peakDaily: number;
-      }
-    >();
-    for (const r of statsRows) {
-      if (!r.provider) continue;
-      statsByProvider.set(r.provider, {
-        successCount: Number(r.successCount ?? 0),
-        totalCount: Number(r.totalCount ?? 0),
-        thisMonth: Number(r.thisMonth ?? 0),
-        peakDaily: 0,
-      });
-    }
-    const peakRowList =
-      (peakRows as { rows?: unknown[] }).rows ?? peakRows;
-    if (Array.isArray(peakRowList)) {
-      for (const r of peakRowList as {
-        provider: string;
-        peak: number;
-      }[]) {
-        if (!r.provider) continue;
-        const existing = statsByProvider.get(r.provider) ?? {
-          successCount: 0,
-          totalCount: 0,
-          thisMonth: 0,
-          peakDaily: 0,
-        };
-        existing.peakDaily = Number(r.peak ?? 0);
-        statsByProvider.set(r.provider, existing);
-      }
-    }
-
-    const buildStats = (providerId: string) => {
-      const s = statsByProvider.get(providerId);
-      const successRate =
-        s && s.totalCount > 0 ? s.successCount / s.totalCount : 0;
-      return {
-        successRate,
-        apiCalls: s?.thisMonth ?? 0,
-        peakDailyCalls: s?.peakDaily ?? 0,
-      };
-    };
-
-    const out: IntegrationView[] = PREDEFINED_PROVIDERS.map((p) => {
-      const row = rows.find(
-        (r) => r.providerId === p.id && r.apiUrl === null,
-      );
-      return {
-        id: row?.id ?? null,
-        providerId: p.id,
-        displayName: p.displayName,
-        description: p.description,
-        iconHint: p.iconHint,
-        apiUrl: null,
-        hasApiKey: !!row?.apiKeyEncrypted,
-        isEnabled: row?.isEnabled ?? false,
-        isCustom: false,
-        openAICompatible: p.openAICompatible,
-        byokSupported: p.byokSupported,
-        boundAliasCount: 0,
-        stats: buildStats(p.id),
-        createdAt: row?.createdAt?.toISOString() ?? null,
-        updatedAt: row?.updatedAt?.toISOString() ?? null,
-      };
-    });
-
-    // Custom LLM rows after predefined, sorted by createdAt asc so
-    // the FE order is stable. Each custom row is its own card —
-    // (teamId, providerId='custom') intentionally not unique.
-    const customs = rows
-      .filter((r) => r.providerId === 'custom' && r.apiUrl !== null)
-      .sort(
-        (a, b) =>
-          new Date(a.createdAt).getTime() -
-          new Date(b.createdAt).getTime(),
-      );
-    if (customs.length > 0) {
-      // For each custom row, surface the bound alias's customName so
-      // admin sees "Local Llama" rather than just the URL hostname.
-      const customIds = customs.map((c) => c.id);
-      const aliasRows = await this.db
-        .select({
-          integrationId: modelConfigs.integrationId,
-          customName: modelConfigs.customName,
-        })
-        .from(modelConfigs)
-        .where(
-          and(
-            eq(modelConfigs.teamId, teamId),
-            inArray(modelConfigs.integrationId, customIds),
-          ),
-        );
-      const aliasNameByIntegration = new Map<string, string>();
-      for (const a of aliasRows) {
-        if (a.integrationId) {
-          aliasNameByIntegration.set(a.integrationId, a.customName);
-        }
-      }
-      for (const r of customs) {
-        const aliasName = aliasNameByIntegration.get(r.id);
-        out.push({
-          id: r.id,
-          providerId: 'custom',
-          displayName: aliasName ?? deriveCustomDisplayName(r.apiUrl ?? ''),
-          description: r.apiUrl ?? '',
-          iconHint: 'custom',
-          apiUrl: r.apiUrl,
-          hasApiKey: !!r.apiKeyEncrypted,
-          isEnabled: r.isEnabled,
-          isCustom: true,
-          openAICompatible: true,
-          byokSupported: true,
-          boundAliasCount: aliasName ? 1 : 0,
-          stats: buildStats('custom'),
-          createdAt: r.createdAt.toISOString(),
-          updatedAt: r.updatedAt.toISOString(),
-        });
-      }
-    }
-    return out;
-  }
-
-  async upsertIntegration(
-    teamId: string,
-    callerId: string,
-    input: {
-      providerId: string;
-      apiUrl?: string | null;
-      apiKey?: string | null;
-      isEnabled?: boolean;
-      // Required for providerId='custom'. Used as the alias's display
-      // name AND model identifier — members will pick this in the
-      // model dropdown and chat-transport routes the call through the
-      // bound integration.
-      customName?: string | null;
-    },
-  ): Promise<IntegrationView> {
-    const role = await this.getUserTeamRole(teamId, callerId);
-    if (
-      role !== 'owner' &&
-      role !== 'admin' &&
-      role !== 'manager' &&
-      role !== 'editor'
-    ) {
-      throw new ForbiddenException(
-        'Only team owners, admins, managers, or editors can manage team integrations',
-      );
-    }
-    const isCustom = input.providerId === 'custom';
-    if (!isCustom && !isPredefinedProvider(input.providerId)) {
-      throw new BadRequestException(
-        `Unknown provider: ${input.providerId}`,
-      );
-    }
-
-    const apiKeyEncrypted = input.apiKey?.trim()
-      ? this.encryptionService.encrypt(input.apiKey.trim())
-      : null;
-
-    // Custom LLMs at team scope: every Add creates a new (integration,
-    // alias) pair — admin can register many endpoints (Ollama, vLLM,
-    // Together, …) per team. The alias is what members see in their
-    // model dropdown; chat-transport's team-scoped lookup routes
-    // through the bound integration.
-    if (isCustom) {
-      if (!input.apiUrl?.trim()) {
-        throw new BadRequestException('Custom LLM requires apiUrl');
-      }
-      try {
-        new URL(input.apiUrl);
-      } catch {
-        throw new BadRequestException('apiUrl is not a valid URL');
-      }
-      const customName = input.customName?.trim();
-      if (!customName) {
-        throw new BadRequestException(
-          'Custom LLM requires a name members will see in the model picker',
-        );
-      }
-      const modelIdentifier = teamCustomModelIdentifier(teamId, customName);
-
-      // Reject collisions on (teamId, modelIdentifier) up-front rather
-      // than letting the DB explode at insert time — gives a clean
-      // error message instead of a 500.
-      const [existing] = await this.db
-        .select({ id: modelConfigs.id })
-        .from(modelConfigs)
-        .where(
-          and(
-            eq(modelConfigs.teamId, teamId),
-            eq(modelConfigs.modelIdentifier, modelIdentifier),
-          ),
-        )
-        .limit(1);
-      if (existing) {
-        throw new BadRequestException(
-          `A Custom LLM named "${customName}" already exists for this team. Pick a different name.`,
-        );
-      }
-
-      const [integration] = await this.db
-        .insert(integrations)
-        .values({
-          ownerId: callerId,
-          teamId,
-          providerId: 'custom',
-          apiUrl: input.apiUrl,
-          apiKeyEncrypted,
-          isEnabled: input.isEnabled ?? true,
-        })
-        .returning();
-      // Auto-create the alias so members can immediately pick the
-      // Custom LLM from their model dropdown without admin needing to
-      // touch /catalog separately.
-      await this.db.insert(modelConfigs).values({
-        ownerId: callerId,
-        teamId,
-        customName,
-        modelIdentifier,
-        integrationId: integration.id,
-        isActive: true,
-      });
-
-      const all = await this.listIntegrations(teamId, callerId);
-      const view = all.find((v) => v.id === integration.id);
-      if (!view) {
-        throw new NotFoundException('Custom integration not found after insert');
-      }
-      return view;
-    }
-
-    // Predefined providers: upsert against the team-scoped partial
-    // unique index — at most one row per (team, providerId).
-    const conflictUpdates: Record<string, unknown> = {
-      updatedAt: new Date(),
-    };
-    if (input.isEnabled !== undefined) {
-      conflictUpdates.isEnabled = input.isEnabled;
-    }
-    if (input.apiKey !== undefined) {
-      conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
-    }
-
-    await this.db
-      .insert(integrations)
-      .values({
-        ownerId: callerId,
-        teamId,
-        providerId: input.providerId,
-        apiUrl: null,
-        apiKeyEncrypted,
-        isEnabled: input.isEnabled ?? true,
-      })
-      .onConflictDoUpdate({
-        target: [integrations.teamId, integrations.providerId],
-        targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NOT NULL`,
-        set: conflictUpdates,
-      });
-
-    const all = await this.listIntegrations(teamId, callerId);
-    const view = all.find((v) => v.providerId === input.providerId);
-    if (!view) {
-      throw new NotFoundException('Integration not found after upsert');
-    }
-    return view;
-  }
-
-  async updateIntegration(
-    teamId: string,
-    callerId: string,
-    integrationId: string,
-    input: {
-      isEnabled?: boolean;
-      apiKey?: string | null;
-      /** Custom rows only — new endpoint URL. Validated as URL. */
-      apiUrl?: string;
-      /** Custom rows only — display name in the model picker. The
-       *  underlying modelIdentifier stays stable so ongoing chats
-       *  bound to the alias don't break. */
-      customName?: string;
-    },
-  ): Promise<IntegrationView> {
-    const role = await this.getUserTeamRole(teamId, callerId);
-    if (
-      role !== 'owner' &&
-      role !== 'admin' &&
-      role !== 'manager' &&
-      role !== 'editor'
-    ) {
-      throw new ForbiddenException(
-        'Only team owners, admins, managers, or editors can manage team integrations',
-      );
-    }
-    const [row] = await this.db
-      .select()
-      .from(integrations)
-      .where(eq(integrations.id, integrationId));
-    if (!row) throw new NotFoundException('Integration not found');
-    if (row.teamId !== teamId) {
-      throw new BadRequestException(
-        'Integration does not belong to this team',
-      );
-    }
-
-    // Custom-only fields (apiUrl, customName) are nonsense on
-    // predefined rows — reject up-front so admins don't accidentally
-    // think they renamed Anthropic.
-    const isCustom = row.providerId === 'custom';
-    if (!isCustom && (input.apiUrl !== undefined || input.customName !== undefined)) {
-      throw new BadRequestException(
-        'apiUrl and customName can only be set on Custom LLM integrations.',
-      );
-    }
-
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
-    if (input.isEnabled !== undefined) updates.isEnabled = input.isEnabled;
-    if (input.apiKey !== undefined) {
-      updates.apiKeyEncrypted = input.apiKey
-        ? this.encryptionService.encrypt(input.apiKey)
-        : null;
-    }
-    if (input.apiUrl !== undefined) {
-      const trimmed = input.apiUrl.trim();
-      if (!trimmed) {
-        throw new BadRequestException('apiUrl cannot be empty.');
-      }
-      try {
-        new URL(trimmed);
-      } catch {
-        throw new BadRequestException('apiUrl is not a valid URL.');
-      }
-      updates.apiUrl = trimmed;
-    }
-    await this.db
-      .update(integrations)
-      .set(updates)
-      .where(eq(integrations.id, integrationId));
-
-    // Custom name lives on the bound alias (model_configs.custom_name),
-    // not on the integration row. Update it there. modelIdentifier
-    // stays untouched on purpose: it's the stable handle members'
-    // chats / conversations are bound to.
-    if (isCustom && input.customName !== undefined) {
-      const trimmedName = input.customName.trim();
-      if (!trimmedName) {
-        throw new BadRequestException('customName cannot be empty.');
-      }
-      await this.db
-        .update(modelConfigs)
-        .set({ customName: trimmedName, updatedAt: new Date() })
-        .where(
-          and(
-            eq(modelConfigs.teamId, teamId),
-            eq(modelConfigs.integrationId, integrationId),
-          ),
-        );
-    }
-
-    const all = await this.listIntegrations(teamId, callerId);
-    const view = isCustom
-      ? all.find((v) => v.id === integrationId)
-      : all.find((v) => v.providerId === row.providerId);
-    if (!view) {
-      throw new NotFoundException('Integration not found after update');
-    }
-    return view;
-  }
-
-  async removeIntegration(
-    teamId: string,
-    callerId: string,
-    integrationId: string,
-  ): Promise<{ success: true }> {
-    const role = await this.getUserTeamRole(teamId, callerId);
-    if (
-      role !== 'owner' &&
-      role !== 'admin' &&
-      role !== 'manager' &&
-      role !== 'editor'
-    ) {
-      throw new ForbiddenException(
-        'Only team owners, admins, managers, or editors can manage team integrations',
-      );
-    }
-    const [row] = await this.db
-      .select()
-      .from(integrations)
-      .where(eq(integrations.id, integrationId));
-    if (!row) throw new NotFoundException('Integration not found');
-    if (row.teamId !== teamId) {
-      throw new BadRequestException(
-        'Integration does not belong to this team',
-      );
-    }
-    // Custom team integrations have a paired team-scoped alias in
-    // model_configs that's auto-created at upsert time. The FK is
-    // ON DELETE SET NULL — without explicit cleanup the alias would
-    // survive as an orphan with integrationId=null AND a
-    // `team:xxx:slug` modelIdentifier that no provider can serve,
-    // showing up in members' pickers as a dead entry. Drop it.
-    if (row.providerId === 'custom') {
-      await this.db
-        .delete(modelConfigs)
-        .where(
-          and(
-            eq(modelConfigs.teamId, teamId),
-            eq(modelConfigs.integrationId, integrationId),
-          ),
-        );
-    }
-    await this.db
-      .delete(integrations)
-      .where(eq(integrations.id, integrationId));
-    return { success: true };
-  }
 
   /**
    * Set the per-member monthly spend cap inside this team. The cap
@@ -2540,6 +2047,464 @@ export class TeamsService {
       usage.set(row.teamId, { spentCents, projectedCents });
     }
     return usage;
+  }
+
+  /* ─── team_integration_links: new picker model ──────────────────
+     Replaces the old "duplicate the encrypted key into a separate
+     team_id-scoped integrations row" pattern with a many-to-many
+     link table. Admins configure their personal BYOK keys once on
+     /teams?tab=integration (IntegrationsService), then come here to
+     activate them per team. Key rotation only has to happen on the
+     personal row — every linked team picks it up automatically. */
+
+  /**
+   * Caller-visible view of one row that is currently linked to a team.
+   * Shape mirrors `IntegrationLinkView` on the FE; small enough that
+   * we don't bother with a separate types file.
+   */
+  // (Type is structurally defined in the return shape of
+  // `listIntegrationLinks` — keeping it inline so FE + BE evolve
+  // together. If the shape grows we'll pull it into a named type.)
+
+  /**
+   * List the integrations currently linked into a team. Returns the
+   * underlying `integrations` row + the link's `isEnabled` flag, so
+   * the picker can render both the master switch (the integration is
+   * on/off in the admin's personal tab) and the per-team toggle.
+   * Read-gated on team membership: any member sees the list. Writes
+   * are gated separately in the mutation methods below.
+   */
+  async listIntegrationLinks(teamId: string, callerId: string) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (!role) {
+      throw new ForbiddenException('You are not a member of this team');
+    }
+    const rows = await this.db
+      .select({
+        integrationId: integrations.id,
+        ownerId: integrations.ownerId,
+        ownerName: users.name,
+        providerId: integrations.providerId,
+        apiUrl: integrations.apiUrl,
+        hasApiKey: sql<boolean>`${integrations.apiKeyEncrypted} IS NOT NULL`,
+        integrationEnabled: integrations.isEnabled,
+        linkEnabled: teamIntegrationLinks.isEnabled,
+        linkedAt: teamIntegrationLinks.linkedAt,
+        linkedBy: teamIntegrationLinks.linkedBy,
+      })
+      .from(teamIntegrationLinks)
+      .innerJoin(
+        integrations,
+        eq(integrations.id, teamIntegrationLinks.integrationId),
+      )
+      .leftJoin(users, eq(users.id, integrations.ownerId))
+      .where(eq(teamIntegrationLinks.teamId, teamId))
+      .orderBy(teamIntegrationLinks.linkedAt);
+
+    return rows.map((r) => ({
+      integrationId: r.integrationId,
+      // Owner identity is surfaced so the FE picker can distinguish
+      // "my key" (caller-editable checkbox) from "another admin's
+      // key" (read-only with a per-team toggle). Without ownerId
+      // the FE would have to cross-reference linkable + linked.
+      ownerId: r.ownerId,
+      ownerName: r.ownerName,
+      providerId: r.providerId,
+      isCustom: r.providerId === 'custom',
+      displayName:
+        r.providerId === 'custom'
+          ? deriveCustomDisplayName(r.apiUrl ?? '')
+          : (PREDEFINED_PROVIDERS.find((p) => p.id === r.providerId)
+              ?.displayName ?? r.providerId),
+      apiUrl: r.apiUrl,
+      hasApiKey: Boolean(r.hasApiKey),
+      linkEnabled: r.linkEnabled,
+      integrationEnabled: r.integrationEnabled,
+      linkedAt: r.linkedAt.toISOString(),
+      linkedBy: r.linkedBy,
+    }));
+  }
+
+  /**
+   * List the *caller's* personal integrations + whether each is
+   * currently linked into this team. Powers the "pick which keys to
+   * activate" UI on team details. Empty list → FE shows the CTA
+   * pointing to /teams?tab=integration where personal keys are
+   * created.
+   */
+  async listLinkableIntegrations(teamId: string, callerId: string) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (!role) {
+      throw new ForbiddenException('You are not a member of this team');
+    }
+    const myIntegrations = await this.db
+      .select({
+        id: integrations.id,
+        providerId: integrations.providerId,
+        apiUrl: integrations.apiUrl,
+        hasApiKey: sql<boolean>`${integrations.apiKeyEncrypted} IS NOT NULL`,
+        isEnabled: integrations.isEnabled,
+      })
+      .from(integrations)
+      .where(
+        and(
+          eq(integrations.ownerId, callerId),
+          // Only personal rows are linkable — legacy team-scoped rows
+          // (if any survived the backfill) are intentionally invisible
+          // so they age out of the UX entirely.
+          sql`${integrations.teamId} IS NULL`,
+          // Only integrations the user actually has active on their
+          // Integration tab can be linked from here. A disabled key
+          // can't be picked anyway (it'd be a no-op at chat time), so
+          // showing it just clutters the team picker. To manage a
+          // disabled key, the admin re-enables it on the Integration
+          // tab first.
+          eq(integrations.isEnabled, true),
+        ),
+      );
+
+    const linkedRows = await this.db
+      .select({
+        integrationId: teamIntegrationLinks.integrationId,
+        providerId: integrations.providerId,
+      })
+      .from(teamIntegrationLinks)
+      .innerJoin(
+        integrations,
+        eq(integrations.id, teamIntegrationLinks.integrationId),
+      )
+      .where(eq(teamIntegrationLinks.teamId, teamId));
+
+    // Per-team-per-provider uniqueness for predefined providers: if a
+    // *different* personal integration of the caller's already
+    // occupies that providerId slot on this team, we still surface
+    // the caller's other personal predef for that provider but mark
+    // it `blockedByProvider: true` so the FE can render a disabled
+    // pill explaining why it can't be linked.
+    const linkedIntegrationIds = new Set(linkedRows.map((r) => r.integrationId));
+    const occupiedPredefProviders = new Set(
+      linkedRows
+        .filter((r) => r.providerId !== 'custom')
+        .map((r) => r.providerId),
+    );
+
+    return myIntegrations.map((r) => ({
+      integrationId: r.id,
+      providerId: r.providerId,
+      isCustom: r.providerId === 'custom',
+      displayName:
+        r.providerId === 'custom'
+          ? deriveCustomDisplayName(r.apiUrl ?? '')
+          : (PREDEFINED_PROVIDERS.find((p) => p.id === r.providerId)
+              ?.displayName ?? r.providerId),
+      apiUrl: r.apiUrl,
+      hasApiKey: Boolean(r.hasApiKey),
+      integrationEnabled: r.isEnabled,
+      alreadyLinked: linkedIntegrationIds.has(r.id),
+      // Predef-only: another personal integration of the caller's
+      // (or someone else's) already holds this provider slot on the
+      // team. The FE disables the checkbox + explains in tooltip.
+      blockedByProvider:
+        r.providerId !== 'custom' &&
+        !linkedIntegrationIds.has(r.id) &&
+        occupiedPredefProviders.has(r.providerId),
+    }));
+  }
+
+  /**
+   * Atomic replace of the team's link set. Computes the delta vs
+   * what's currently linked: inserts new links, deletes removed
+   * ones, leaves untouched links alone (so their per-link
+   * `is_enabled` toggle survives a save). Authz: owner / admin /
+   * manager / editor only.
+   *
+   * Validates:
+   *   - every input id exists and is a personal (team_id IS NULL)
+   *     integration the caller can see (defense in depth — the FE
+   *     should only ever submit caller's own ids, but the BE is the
+   *     trust boundary)
+   *   - no two input ids resolve to the same predefined providerId
+   *     (one-Anthropic-per-team rule)
+   *
+   * Side effect for custom LLMs: when a new link lands, we also
+   * provision a team-scoped model_configs alias so the model picker
+   * for team members surfaces the URL. On unlink we drop the alias
+   * so removed integrations stop appearing in pickers.
+   */
+  async setIntegrationLinks(
+    teamId: string,
+    callerId: string,
+    integrationIds: string[],
+  ) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
+      throw new ForbiddenException(
+        'Only team owners, admins, managers, or editors can manage team integrations',
+      );
+    }
+
+    const uniqueIds = Array.from(new Set(integrationIds));
+
+    // Empty input is a valid "clear all my own links" — short-circuit
+    // and do the deletes in one shot. Links owned by *other* admins
+    // stay untouched so a save here can't nuke someone else's setup.
+    if (uniqueIds.length === 0) {
+      const removed = await this.db
+        .select({
+          integrationId: teamIntegrationLinks.integrationId,
+          providerId: integrations.providerId,
+        })
+        .from(teamIntegrationLinks)
+        .innerJoin(
+          integrations,
+          eq(integrations.id, teamIntegrationLinks.integrationId),
+        )
+        .where(
+          and(
+            eq(teamIntegrationLinks.teamId, teamId),
+            eq(integrations.ownerId, callerId),
+          ),
+        );
+      if (removed.length > 0) {
+        await this.db
+          .delete(teamIntegrationLinks)
+          .where(
+            and(
+              eq(teamIntegrationLinks.teamId, teamId),
+              inArray(
+                teamIntegrationLinks.integrationId,
+                removed.map((r) => r.integrationId),
+              ),
+            ),
+          );
+        // Drop team-scoped custom aliases bound to any removed
+        // integration so chat-time pickers stop surfacing them.
+        const customIds = removed
+          .filter((r) => r.providerId === 'custom')
+          .map((r) => r.integrationId);
+        if (customIds.length > 0) {
+          await this.db
+            .delete(modelConfigs)
+            .where(
+              and(
+                eq(modelConfigs.teamId, teamId),
+                inArray(modelConfigs.integrationId, customIds),
+              ),
+            );
+        }
+      }
+      return this.listIntegrationLinks(teamId, callerId);
+    }
+
+    // Resolve the requested integrations + sanity-check ownership /
+    // scope. Pulling the full set in one query keeps the BE round-
+    // trip count predictable regardless of input size.
+    const requested = await this.db
+      .select({
+        id: integrations.id,
+        ownerId: integrations.ownerId,
+        teamId: integrations.teamId,
+        providerId: integrations.providerId,
+        apiUrl: integrations.apiUrl,
+      })
+      .from(integrations)
+      .where(inArray(integrations.id, uniqueIds));
+
+    if (requested.length !== uniqueIds.length) {
+      throw new BadRequestException(
+        'One or more integrations were not found.',
+      );
+    }
+    for (const r of requested) {
+      if (r.teamId !== null) {
+        throw new BadRequestException(
+          'Cannot link a team-scoped integration. Only personal integrations from /teams?tab=integration can be linked.',
+        );
+      }
+      if (r.ownerId !== callerId) {
+        throw new ForbiddenException(
+          'You can only link integrations you own. Ask the integration owner to link it to this team.',
+        );
+      }
+    }
+
+    // One-predef-per-team-per-provider rule. Custom LLMs are exempt
+    // — admin may legitimately want multiple Ollama / vLLM endpoints
+    // for the same team.
+    const predefByProvider = new Map<string, string>();
+    for (const r of requested) {
+      if (r.providerId === 'custom') continue;
+      const seen = predefByProvider.get(r.providerId);
+      if (seen) {
+        throw new BadRequestException(
+          `Two ${r.providerId} integrations were selected. Pick one per provider.`,
+        );
+      }
+      predefByProvider.set(r.providerId, r.id);
+    }
+
+    // Scope the delta to the caller's own integrations: a save here
+    // must never delete a link another admin set up. We compute the
+    // existing set by joining through integrations.owner_id = caller,
+    // and the toInsert/toDelete diffs only over that subset.
+    const existing = await this.db
+      .select({ integrationId: teamIntegrationLinks.integrationId })
+      .from(teamIntegrationLinks)
+      .innerJoin(
+        integrations,
+        eq(integrations.id, teamIntegrationLinks.integrationId),
+      )
+      .where(
+        and(
+          eq(teamIntegrationLinks.teamId, teamId),
+          eq(integrations.ownerId, callerId),
+        ),
+      );
+    const existingSet = new Set(existing.map((e) => e.integrationId));
+    const targetSet = new Set(uniqueIds);
+
+    const toInsert = uniqueIds.filter((id) => !existingSet.has(id));
+    const toDelete = Array.from(existingSet).filter((id) => !targetSet.has(id));
+
+    await this.db.transaction(async (tx) => {
+      if (toDelete.length > 0) {
+        await tx
+          .delete(teamIntegrationLinks)
+          .where(
+            and(
+              eq(teamIntegrationLinks.teamId, teamId),
+              inArray(teamIntegrationLinks.integrationId, toDelete),
+            ),
+          );
+        // Custom alias cleanup — mirror image of the create branch
+        // below; only drops rows we own (team-scoped) referencing a
+        // removed integration.
+        const removedCustoms = await tx
+          .select({ id: integrations.id })
+          .from(integrations)
+          .where(
+            and(
+              inArray(integrations.id, toDelete),
+              eq(integrations.providerId, 'custom'),
+            ),
+          );
+        if (removedCustoms.length > 0) {
+          await tx
+            .delete(modelConfigs)
+            .where(
+              and(
+                eq(modelConfigs.teamId, teamId),
+                inArray(
+                  modelConfigs.integrationId,
+                  removedCustoms.map((r) => r.id),
+                ),
+              ),
+            );
+        }
+      }
+      if (toInsert.length > 0) {
+        await tx.insert(teamIntegrationLinks).values(
+          toInsert.map((integrationId) => ({
+            teamId,
+            integrationId,
+            linkedBy: callerId,
+          })),
+        );
+
+        // Custom alias provision — for each newly-linked custom
+        // integration, surface it in the team's model picker via a
+        // team-scoped model_configs row. Name derived from the
+        // personal alias if one exists, else from the URL hostname.
+        const insertedCustoms = requested.filter(
+          (r) => toInsert.includes(r.id) && r.providerId === 'custom',
+        );
+        if (insertedCustoms.length > 0) {
+          const personalAliasByIntegration = new Map<string, string>();
+          const aliasRows = await tx
+            .select({
+              integrationId: modelConfigs.integrationId,
+              customName: modelConfigs.customName,
+            })
+            .from(modelConfigs)
+            .where(
+              and(
+                eq(modelConfigs.ownerId, callerId),
+                sql`${modelConfigs.teamId} IS NULL`,
+                inArray(
+                  modelConfigs.integrationId,
+                  insertedCustoms.map((c) => c.id),
+                ),
+              ),
+            );
+          for (const a of aliasRows) {
+            if (a.integrationId) {
+              personalAliasByIntegration.set(a.integrationId, a.customName);
+            }
+          }
+          for (const c of insertedCustoms) {
+            const customName =
+              personalAliasByIntegration.get(c.id) ??
+              deriveCustomDisplayName(c.apiUrl ?? '');
+            await tx.insert(modelConfigs).values({
+              ownerId: callerId,
+              teamId,
+              integrationId: c.id,
+              customName,
+              modelIdentifier: teamCustomModelIdentifier(teamId, customName),
+              isActive: true,
+            });
+          }
+        }
+      }
+    });
+
+    return this.listIntegrationLinks(teamId, callerId);
+  }
+
+  /**
+   * Per-link enable / disable toggle. Distinct from the master
+   * `integrations.isEnabled` switch on /teams?tab=integration: that
+   * flag turns the key off everywhere (chat layer skips it for the
+   * owner *and* every linked team); this one only pauses use on a
+   * single team while leaving the underlying key intact. Authz
+   * mirrors `setIntegrationLinks`.
+   */
+  async setIntegrationLinkEnabled(
+    teamId: string,
+    callerId: string,
+    integrationId: string,
+    isEnabled: boolean,
+  ) {
+    const role = await this.getUserTeamRole(teamId, callerId);
+    if (
+      role !== 'owner' &&
+      role !== 'admin' &&
+      role !== 'manager' &&
+      role !== 'editor'
+    ) {
+      throw new ForbiddenException(
+        'Only team owners, admins, managers, or editors can manage team integrations',
+      );
+    }
+    const updated = await this.db
+      .update(teamIntegrationLinks)
+      .set({ isEnabled, updatedAt: new Date() })
+      .where(
+        and(
+          eq(teamIntegrationLinks.teamId, teamId),
+          eq(teamIntegrationLinks.integrationId, integrationId),
+        ),
+      )
+      .returning({ teamId: teamIntegrationLinks.teamId });
+    if (updated.length === 0) {
+      throw new NotFoundException('Integration is not linked to this team.');
+    }
+    return this.listIntegrationLinks(teamId, callerId);
   }
 }
 

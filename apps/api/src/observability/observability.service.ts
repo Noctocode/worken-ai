@@ -250,7 +250,13 @@ export class ObservabilityService {
     }));
   }
 
-  async listEvents(opts: {
+  /**
+   * Shared WHERE-clause builder for the events table. Extracted so the
+   * paginated table view (`listEvents`) and the CSV export
+   * (`exportEvents`) stay byte-for-byte aligned on filtering — adding
+   * a new filter only needs to land in one place.
+   */
+  private buildEventsWhere(opts: {
     from: Date;
     to: Date;
     search?: string | null;
@@ -258,8 +264,6 @@ export class ObservabilityService {
     teamId?: string | null;
     model?: string | null;
     eventType?: string | null;
-    page: number;
-    pageSize: number;
   }) {
     const conditions = [
       gte(observabilityEvents.createdAt, opts.from),
@@ -280,8 +284,21 @@ export class ObservabilityService {
       );
       if (searchClause) conditions.push(searchClause);
     }
+    return and(...conditions);
+  }
 
-    const where = and(...conditions);
+  async listEvents(opts: {
+    from: Date;
+    to: Date;
+    search?: string | null;
+    userId?: string | null;
+    teamId?: string | null;
+    model?: string | null;
+    eventType?: string | null;
+    page: number;
+    pageSize: number;
+  }) {
+    const where = this.buildEventsWhere(opts);
     const limit = Math.max(1, Math.min(opts.pageSize, 200));
     const offset = Math.max(0, (opts.page - 1) * limit);
 
@@ -322,6 +339,69 @@ export class ObservabilityService {
       total: Number(total ?? 0),
       page: opts.page,
       pageSize: limit,
+      events: rows.map((r) => ({
+        ...r,
+        costUsd: r.costUsd === null ? null : Number(r.costUsd),
+      })),
+    };
+  }
+
+  /**
+   * Un-paginated event fetch used by the CSV export path. Same shape
+   * + same WHERE as `listEvents`, just no `limit`/`offset` pagination
+   * — instead we cap at `MAX_EXPORT_ROWS` so a careless export over a
+   * wide range can't OOM the server. The FE shows a toast warning if
+   * the cap was hit so the admin knows they need to narrow the
+   * filter before re-exporting.
+   */
+  async exportEvents(opts: {
+    from: Date;
+    to: Date;
+    search?: string | null;
+    userId?: string | null;
+    teamId?: string | null;
+    model?: string | null;
+    eventType?: string | null;
+  }) {
+    const MAX_EXPORT_ROWS = 10_000;
+    const where = this.buildEventsWhere(opts);
+
+    const [{ total }] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(observabilityEvents)
+      .leftJoin(users, eq(users.id, observabilityEvents.userId))
+      .where(where);
+
+    const rows = await this.db
+      .select({
+        id: observabilityEvents.id,
+        createdAt: observabilityEvents.createdAt,
+        eventType: observabilityEvents.eventType,
+        model: observabilityEvents.model,
+        provider: observabilityEvents.provider,
+        totalTokens: observabilityEvents.totalTokens,
+        costUsd: sql<string>`${observabilityEvents.costUsd}::text`,
+        latencyMs: observabilityEvents.latencyMs,
+        success: observabilityEvents.success,
+        errorMessage: observabilityEvents.errorMessage,
+        promptPreview: observabilityEvents.promptPreview,
+        userId: observabilityEvents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        teamId: observabilityEvents.teamId,
+        teamName: teams.name,
+      })
+      .from(observabilityEvents)
+      .leftJoin(users, eq(users.id, observabilityEvents.userId))
+      .leftJoin(teams, eq(teams.id, observabilityEvents.teamId))
+      .where(where)
+      .orderBy(desc(observabilityEvents.createdAt))
+      .limit(MAX_EXPORT_ROWS);
+
+    return {
+      total: Number(total ?? 0),
+      truncated: Number(total ?? 0) > MAX_EXPORT_ROWS,
+      maxRows: MAX_EXPORT_ROWS,
       events: rows.map((r) => ({
         ...r,
         costUsd: r.costUsd === null ? null : Number(r.costUsd),

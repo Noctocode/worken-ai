@@ -26,6 +26,7 @@ import {
 } from "recharts";
 
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   PageTabs,
   PageTabsContent,
@@ -42,6 +43,7 @@ import {
 import {
   fetchObservabilityCostByProvider,
   fetchObservabilityEvents,
+  fetchObservabilityEventsExport,
   fetchObservabilityGuardrailActivity,
   fetchObservabilitySummary,
   fetchObservabilityTeamAnalytics,
@@ -173,6 +175,9 @@ export default function ObservabilityPage() {
   const [search, setSearch] = useState("");
   const [eventType, setEventType] = useState<string>("all");
   const [page, setPage] = useState(1);
+  // Separate page state for the Team Analytics drilldown so paging
+  // the event log doesn't reset the team table and vice versa.
+  const [teamsPage, setTeamsPage] = useState(1);
 
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null);
   const [tokenUsage, setTokenUsage] = useState<ObservabilityTokenUsage | null>(null);
@@ -277,29 +282,115 @@ export default function ObservabilityPage() {
     };
   }, [range, search, eventType, page, forbidden]);
 
-  const handleExport = () => {
-    if (!events?.events?.length) {
-      toast.error("Nothing to export.");
-      return;
+  const [exporting, setExporting] = useState(false);
+
+  // Tell the appbar Export CSV button whether there's anything to
+  // export. Tracks `events.total` (the BE-reported full count for the
+  // current filters) — not `events.events.length`, which is only the
+  // current page. Re-fires on every state change so the appbar stays
+  // in sync with filters / pagination / refetches.
+  useEffect(() => {
+    const hasRows = (events?.total ?? 0) > 0;
+    window.dispatchEvent(
+      new CustomEvent("observability:export-enabled", { detail: hasRows }),
+    );
+  }, [events]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("observability:export-busy", { detail: exporting }),
+    );
+  }, [exporting]);
+
+  /**
+   * CSV export fetches the *un-paginated* event set from the BE so
+   * the resulting file covers every row matching the current filters
+   * — not just the 25 rendered on the current page of the table.
+   * Capped server-side at 10k rows; if the cap was hit the toast
+   * tells the admin to narrow the range so they don't end up with a
+   * silently-truncated CSV.
+   */
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    const exportToastId = toast.loading("Preparing CSV…");
+    try {
+      const data = await fetchObservabilityEventsExport({
+        range,
+        search: search.trim() || undefined,
+        eventType: eventType === "all" ? undefined : eventType,
+      });
+      if (data.events.length === 0) {
+        toast.error("Nothing to export with these filters.", {
+          id: exportToastId,
+        });
+        return;
+      }
+      const csv = eventsToCsv(data.events);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadCsv(`observability-${range}-${ts}.csv`, csv);
+      if (data.truncated) {
+        toast.warning(
+          `Exported ${data.events.length.toLocaleString()} of ${data.total.toLocaleString()} rows. Narrow the range or filters to get the rest.`,
+          { id: exportToastId },
+        );
+      } else {
+        toast.success(
+          `Exported ${data.events.length.toLocaleString()} row${data.events.length === 1 ? "" : "s"}.`,
+          { id: exportToastId },
+        );
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Couldn't export events.",
+        { id: exportToastId },
+      );
+    } finally {
+      setExporting(false);
     }
-    const csv = eventsToCsv(events.events);
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    downloadCsv(`observability-${range}-${ts}.csv`, csv);
   };
 
   // Appbar's Export CSV button dispatches this event.
   useEffect(() => {
-    const onExport = () => handleExport();
+    const onExport = () => {
+      void handleExport();
+    };
     window.addEventListener("observability:export", onExport);
     return () => window.removeEventListener("observability:export", onExport);
-    // handleExport closes over `events` and `range`; re-bind when they change.
+    // handleExport closes over `range`/`search`/`eventType`/`exporting`;
+    // re-bind on each change so the latest filters reach the BE.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, range]);
+  }, [range, search, eventType, exporting]);
 
   const totalPages = useMemo(() => {
     if (!events) return 1;
     return Math.max(1, Math.ceil(events.total / events.pageSize));
   }, [events]);
+
+  // Team Analytics pagination: typical org has <20 teams, so the
+  // bar only ever fires for very large companies — but the
+  // Pagination component auto-hides on a single page, so wiring it
+  // is essentially free.
+  const TEAMS_PAGE_SIZE = 10;
+  const teamRows = teamAnalytics?.teams ?? [];
+  const teamsTotalPages = Math.max(
+    1,
+    Math.ceil(teamRows.length / TEAMS_PAGE_SIZE),
+  );
+  const pagedTeamRows = useMemo(
+    () =>
+      teamRows.slice(
+        (teamsPage - 1) * TEAMS_PAGE_SIZE,
+        teamsPage * TEAMS_PAGE_SIZE,
+      ),
+    [teamRows, teamsPage],
+  );
+  useEffect(() => {
+    setTeamsPage(1);
+  }, [range]);
+  useEffect(() => {
+    if (teamsPage > teamsTotalPages) setTeamsPage(teamsTotalPages);
+  }, [teamsPage, teamsTotalPages]);
 
   if (forbidden) {
     return (
@@ -467,7 +558,7 @@ export default function ObservabilityPage() {
                 </tr>
               </thead>
               <tbody>
-                {teamAnalytics.teams.map((t, i) => (
+                {pagedTeamRows.map((t, i) => (
                   <tr
                     key={`${t.teamId ?? "personal"}-${i}`}
                     className="border-b border-border-2 last:border-b-0 hover:bg-bg-1/40"
@@ -494,6 +585,11 @@ export default function ObservabilityPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={teamsPage}
+              totalPages={teamsTotalPages}
+              onPageChange={setTeamsPage}
+            />
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-border-2 bg-bg-1/40 px-4 py-6 text-center text-[13px] text-text-3">
@@ -565,31 +661,12 @@ export default function ObservabilityPage() {
           </table>
         </div>
 
-        {events && events.total > events.pageSize && (
-          <div className="flex items-center justify-between border-t border-border-2 pt-3 text-[12px] text-text-2">
-            <span>
-              {(events.page - 1) * events.pageSize + 1}–
-              {Math.min(events.page * events.pageSize, events.total)} of {events.total}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="h-8 cursor-pointer rounded border border-border-2 px-3 text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="h-8 cursor-pointer rounded border border-border-2 px-3 text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+        {events && (
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={(next) => setPage(next)}
+          />
         )}
       </section>
 

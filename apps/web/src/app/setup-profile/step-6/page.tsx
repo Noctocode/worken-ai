@@ -57,13 +57,14 @@ function hasAllowedExtension(name: string) {
 
 /**
  * Phases of the step-6 submit flow:
- *  - `idle`     — user is choosing files, primary CTA visible
- *  - `training` — onboarding API succeeded, ingestion is running in
- *                 the background, FE is polling /ingestion-status
- *  - `done`     — ingestion finished (or had nothing to ingest); we
- *                 redirect on this transition
+ *  - `idle`      — user is choosing files, primary CTA visible
+ *  - `preparing` — onboarding API succeeded, ingestion (chunking +
+ *                  embedding into the RAG index) is running in the
+ *                  background, FE is polling /ingestion-status
+ *  - `done`      — ingestion finished (or had nothing to ingest);
+ *                  we redirect on this transition
  */
-type SubmitPhase = "idle" | "training" | "done";
+type SubmitPhase = "idle" | "preparing" | "done";
 
 export default function SetupProfileStep6Page() {
   const router = useRouter();
@@ -170,9 +171,10 @@ export default function SetupProfileStep6Page() {
         // redirect right away so the path stays as fast as it was.
         finishAndRedirect();
       } else {
-        // Switch to the "Training your AI…" screen; the polling query
-        // below transitions us to `done` once ingestion finishes.
-        setPhase("training");
+        // Switch to the "Setting up your AI…" screen; the polling
+        // query below transitions us to `done` once ingestion
+        // finishes.
+        setPhase("preparing");
       }
     },
     onError: (err: Error) => {
@@ -191,13 +193,13 @@ export default function SetupProfileStep6Page() {
     window.location.href = target;
   };
 
-  // Poll ingestion status only while the user is on the training
+  // Poll ingestion status only while the user is on the preparing
   // screen. `refetchInterval` returns false on terminal state to
   // stop hammering the API.
   const ingestionQuery = useQuery<IngestionStatusResponse>({
     queryKey: ["onboarding", "ingestion-status"],
     queryFn: getOnboardingIngestionStatus,
-    enabled: phase === "training",
+    enabled: phase === "preparing",
     refetchInterval: (query) =>
       query.state.data && !query.state.data.inProgress ? false : 1500,
   });
@@ -205,7 +207,7 @@ export default function SetupProfileStep6Page() {
   // Two-phase transition so the "Your AI is ready" copy actually
   // gets a chance to render before we navigate away.
   //
-  // Pass 1: flip phase training → done as soon as the poll reports
+  // Pass 1: flip phase preparing → done as soon as the poll reports
   //   inProgress=false. No timer scheduled here.
   // Pass 2: once phase is `done`, schedule the redirect. The
   //   previous single-effect version returned the setTimeout's
@@ -213,7 +215,7 @@ export default function SetupProfileStep6Page() {
   //   clearing the timer right after we set it and leaving the
   //   user stranded on "Your AI is ready" with no redirect.
   useEffect(() => {
-    if (phase !== "training") return;
+    if (phase !== "preparing") return;
     const data = ingestionQuery.data;
     if (data && !data.inProgress) {
       setPhase("done");
@@ -226,7 +228,7 @@ export default function SetupProfileStep6Page() {
     return () => clearTimeout(t);
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (phase === "training" || phase === "done") {
+  if (phase === "preparing" || phase === "done") {
     const data = ingestionQuery.data;
     const total = data?.total ?? filesAtSubmitRef.current;
     const completed = (data?.done ?? 0) + (data?.failed ?? 0);
@@ -259,12 +261,12 @@ export default function SetupProfileStep6Page() {
 
           <div className="flex flex-col gap-2 text-center">
             <h1 className="text-[28px] font-bold leading-tight text-text-1">
-              {allDone ? "Your AI is ready" : "Training your AI…"}
+              {allDone ? "Your AI is ready" : "Setting up your AI…"}
             </h1>
             <p className="text-[15px] font-normal leading-snug text-text-2">
               {allDone
                 ? "Knowledge Core is initialized. Redirecting to your workspace."
-                : "We're chunking and embedding your uploads so the assistant can draw on them. This usually takes under a minute."}
+                : "We're adding your documents to your AI's context so the assistant can draw on them. This usually takes under a minute."}
             </p>
           </div>
 
@@ -311,11 +313,11 @@ export default function SetupProfileStep6Page() {
                   </span>
                   <span className="text-[11px] uppercase tracking-wide text-text-3">
                     {doc.status === "done"
-                      ? "Trained"
+                      ? "Added"
                       : doc.status === "failed"
                         ? "Skipped"
                         : doc.status === "processing"
-                          ? "Processing"
+                          ? "Adding"
                           : "Queued"}
                   </span>
                 </li>
@@ -357,8 +359,8 @@ export default function SetupProfileStep6Page() {
               Initialize your Knowledge Core
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Upload documents to train your enterprise AI on your internal
-              expertise and institutional knowledge.
+              Upload documents so your enterprise AI can answer using
+              your internal expertise and institutional knowledge.
             </p>
           </div>
 

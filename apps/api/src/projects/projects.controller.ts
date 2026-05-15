@@ -162,6 +162,10 @@ export class ProjectsController {
       visibility?: string;
       teamIds?: string | string[];
       projectIds?: string | string[];
+      // JSON-encoded `{ [filename]: 'overwrite' | 'keep_both' |
+      // 'skip' }`. See `knowledge-core.controller.uploadFiles` for
+      // the format — same parsing rules apply here.
+      nameConflictActions?: string;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -175,11 +179,38 @@ export class ProjectsController {
       : body?.projectIds
         ? [body.projectIds]
         : [];
+    let nameConflictActions:
+      | Record<string, 'overwrite' | 'keep_both' | 'skip'>
+      | undefined;
+    if (body?.nameConflictActions) {
+      try {
+        const parsed: unknown = JSON.parse(body.nameConflictActions);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          nameConflictActions = {};
+          for (const [key, value] of Object.entries(
+            parsed as Record<string, unknown>,
+          )) {
+            if (
+              typeof key === 'string' &&
+              (value === 'overwrite' ||
+                value === 'keep_both' ||
+                value === 'skip')
+            ) {
+              nameConflictActions[key] = value;
+            }
+          }
+        }
+      } catch {
+        // Malformed JSON → undefined → BE treats every name
+        // conflict as 'skip' and bounces them back to the FE.
+      }
+    }
     return this.projectKnowledge.uploadAndAttach(id, user.id, files, {
       folderId: body?.folderId,
       visibility: body?.visibility,
       teamIds,
       projectIds,
+      nameConflictActions,
     });
   }
 }

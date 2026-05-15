@@ -396,6 +396,7 @@ export async function detachKnowledgeFile(
 export interface ProjectKnowledgeUploadResult {
   uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
   duplicates: KnowledgeUploadDuplicate[];
+  nameConflicts: KnowledgeUploadNameConflict[];
 }
 
 /**
@@ -404,6 +405,11 @@ export interface ProjectKnowledgeUploadResult {
  * project. `folderId` / `visibility` / `teamIds` are optional —
  * omit them to use the smart-default ("Projects" folder, scope-
  * aware visibility).
+ *
+ * `nameConflictActions` (optional) carries the user's resolution for
+ * same-name-different-content collisions surfaced by a prior call.
+ * See `uploadKnowledgeFiles` for the semantics; the BE routes both
+ * uploads through the same service so behaviour is identical.
  */
 export async function uploadProjectKnowledgeFiles(
   projectId: string,
@@ -413,6 +419,7 @@ export async function uploadProjectKnowledgeFiles(
     visibility?: KnowledgeFileVisibility;
     teamIds?: string[];
     projectIds?: string[];
+    nameConflictActions?: Record<string, NameConflictAction>;
   } = {},
 ): Promise<ProjectKnowledgeUploadResult> {
   const form = new FormData();
@@ -424,6 +431,15 @@ export async function uploadProjectKnowledgeFiles(
   }
   if (options.visibility === "project" && options.projectIds) {
     options.projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (
+    options.nameConflictActions &&
+    Object.keys(options.nameConflictActions).length > 0
+  ) {
+    form.append(
+      "nameConflictActions",
+      JSON.stringify(options.nameConflictActions),
+    );
   }
   const res = await apiFetch(
     `/projects/${projectId}/knowledge-files/upload`,
@@ -1946,9 +1962,24 @@ export interface KnowledgeUploadDuplicate {
   };
 }
 
+/**
+ * Surfaced by the BE when an upload hits a same-name-different-bytes
+ * row in the *same folder*, under the same uploader. Content-hash
+ * duplicates land in `duplicates` instead — these are the cases
+ * where the user is plausibly uploading a new revision of a doc and
+ * needs to pick what happens to the prior copy.
+ */
+export interface KnowledgeUploadNameConflict {
+  name: string;
+  existing: { id: string };
+}
+
+export type NameConflictAction = "overwrite" | "keep_both" | "skip";
+
 export interface KnowledgeUploadResult {
   uploaded: Omit<KnowledgeFile, "uploadedByName">[];
   duplicates: KnowledgeUploadDuplicate[];
+  nameConflicts: KnowledgeUploadNameConflict[];
 }
 
 export async function uploadKnowledgeFiles(
@@ -1957,6 +1988,13 @@ export async function uploadKnowledgeFiles(
   visibility: KnowledgeFileVisibility = "all",
   teamIds: string[] = [],
   projectIds: string[] = [],
+  // Per-name decisions the user picked on the resolution dialog.
+  // Keys are the original `File.name` values; values are the action
+  // the BE should take for that specific file. Missing entries are
+  // treated as 'skip' BE-side, so the safe default is "no map → no
+  // overwrite", and the BE will simply bounce conflicts back to the
+  // FE again.
+  nameConflictActions?: Record<string, NameConflictAction>,
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
@@ -1973,6 +2011,11 @@ export async function uploadKnowledgeFiles(
   }
   if (visibility === "project") {
     projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (nameConflictActions && Object.keys(nameConflictActions).length > 0) {
+    // Multipart can't carry an object natively; serialise to JSON.
+    // The controller parses + validates.
+    form.append("nameConflictActions", JSON.stringify(nameConflictActions));
   }
   const res = await apiFetch(`/knowledge-core/folders/${folderId}/files`, {
     method: "POST",
@@ -2024,9 +2067,13 @@ export async function updateKnowledgeFileVisibility(
 }
 
 /**
- * Force a fresh chunk + embed pass on a single file. Owner-only at
- * the BE; FE just kicks the request and refetches to surface the
- * new "Queued" / "Training" badge.
+ * Re-run chunk + embed on a single file so it's available to chat /
+ * arena again. Owner-only at the BE; FE just kicks the request and
+ * refetches to surface the new "Queued" / "Adding" badge.
+ *
+ * The endpoint path is still `/reingest` (and the in-memory function
+ * keeps that name) — only the user-visible copy was renamed; user
+ * surfaces always talk about adding the file to context now.
  */
 export async function reingestKnowledgeFile(
   fileId: string,
@@ -2036,7 +2083,7 @@ export async function reingestKnowledgeFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Failed to re-train this file");
+    throw new Error(body?.message || "Failed to include this file in context");
   }
   return res.json();
 }
@@ -2045,7 +2092,11 @@ export async function reingestKnowledgeFile(
  * Wipe a file's embeddings without deleting the upload. Inverse of
  * `reingestKnowledgeFile` — chunks go away, the file row stays so
  * download still works, and chat-time RAG stops surfacing it until
- * the owner triggers Retrain.
+ * the owner re-includes it.
+ *
+ * The endpoint path is still `/untrain` (legacy name kept on the BE
+ * to avoid a coordinated rename) — user-visible copy now says
+ * "Exclude from context".
  */
 export async function untrainKnowledgeFile(
   fileId: string,
@@ -2055,7 +2106,7 @@ export async function untrainKnowledgeFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Failed to untrain this file");
+    throw new Error(body?.message || "Failed to exclude this file from context");
   }
   return res.json();
 }
@@ -2705,6 +2756,38 @@ export function fetchObservabilityEvents(
   return fetchObservability(`/observability/events?${params.toString()}`);
 }
 
+/**
+ * Un-paginated event fetch used by the CSV export button. Same
+ * filter shape as `fetchObservabilityEvents` minus pagination — the
+ * BE caps the result at `maxRows` (currently 10k) and sets
+ * `truncated=true` when the cap was hit so the FE can warn the user
+ * to narrow the filter before re-exporting.
+ */
+export interface ObservabilityEventsExport {
+  range: ObservabilityRange;
+  total: number;
+  truncated: boolean;
+  maxRows: number;
+  events: ObservabilityEvent[];
+}
+
+export interface ObservabilityEventsExportQuery {
+  range: ObservabilityRange;
+  search?: string;
+  eventType?: string;
+}
+
+export function fetchObservabilityEventsExport(
+  query: ObservabilityEventsExportQuery,
+): Promise<ObservabilityEventsExport> {
+  const params = new URLSearchParams({ range: query.range });
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.eventType) params.set("eventType", query.eventType);
+  return fetchObservability(
+    `/observability/events/export?${params.toString()}`,
+  );
+}
+
 export interface ObservabilityGuardrailTrigger {
   guardrailId: string | null;
   guardrailName: string | null;
@@ -2828,85 +2911,116 @@ export async function deleteIntegration(id: string): Promise<void> {
 
 // ─── Team-scoped integrations (BYOK keys shared across team members) ──────
 
-export async function fetchTeamIntegrations(
+// ── Integration links (new picker model) ──────────────────────────
+//
+// Replaces the legacy team-scoped integrations endpoints above:
+// admins manage their personal BYOK keys on /teams?tab=integration,
+// then link them into one or more teams via these endpoints. The
+// FE picker on team-details only uses these — the legacy helpers
+// above are kept for the transition.
+
+export interface TeamIntegrationLink {
+  integrationId: string;
+  // Identity of the integration owner — lets the FE picker tell
+  // "my key" (editable checkbox + trash) apart from "someone else's
+  // key" (read-only with per-team toggle only). Pair with the
+  // caller's user id from the auth store.
+  ownerId: string;
+  ownerName: string | null;
+  providerId: string;
+  isCustom: boolean;
+  displayName: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  // Per-team toggle. False ⇒ chat-time routing for this team skips
+  // this key even if the underlying integration is on.
+  linkEnabled: boolean;
+  // Master switch on the integration owner's personal /teams?tab=
+  // integration tab. False ⇒ key is off everywhere; team toggle
+  // becomes a no-op until the owner re-enables it.
+  integrationEnabled: boolean;
+  linkedAt: string;
+  linkedBy: string | null;
+}
+
+export interface LinkableIntegration {
+  integrationId: string;
+  providerId: string;
+  isCustom: boolean;
+  displayName: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  integrationEnabled: boolean;
+  alreadyLinked: boolean;
+  // Predefined-provider-only: another integration already occupies
+  // this provider slot for the team. FE disables the checkbox +
+  // explains in tooltip ("One Anthropic key per team").
+  blockedByProvider: boolean;
+}
+
+export async function fetchTeamIntegrationLinks(
   teamId: string,
-): Promise<IntegrationCard[]> {
-  const res = await apiFetch(`/teams/${teamId}/integrations`);
+): Promise<TeamIntegrationLink[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to fetch team integrations");
+    throw new Error(body.message || "Failed to fetch team integration links");
   }
   return res.json();
 }
 
-export async function upsertTeamIntegration(
+export async function fetchLinkableIntegrations(
   teamId: string,
-  input: {
-    providerId: string;
-    /** Required when providerId === "custom": the OpenAI-compatible
-     *  endpoint URL (Ollama / vLLM / Together / …). */
-    apiUrl?: string | null;
-    apiKey?: string | null;
-    isEnabled?: boolean;
-    /** Required when providerId === "custom": the friendly name
-     *  members see in the model picker. The BE auto-creates a
-     *  team-scoped model_configs alias bound to this integration so
-     *  members can use it without admin touching /catalog. */
-    customName?: string | null;
-  },
-): Promise<IntegrationCard> {
-  const res = await apiFetch(`/teams/${teamId}/integrations`, {
-    method: "POST",
+): Promise<LinkableIntegration[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links/linkable`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch linkable integrations");
+  }
+  return res.json();
+}
+
+/**
+ * Replace the team's link set atomically. Pass the complete list of
+ * integrationIds that should be linked after the save; the BE
+ * computes the delta and adds/removes accordingly. Returns the new
+ * link list so the caller can update local state without a second
+ * round-trip.
+ */
+export async function setTeamIntegrationLinks(
+  teamId: string,
+  integrationIds: string[],
+): Promise<TeamIntegrationLink[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ integrationIds }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to save team integration");
+    throw new Error(body.message || "Failed to save integration links");
   }
   return res.json();
 }
 
-export async function updateTeamIntegration(
+export async function setTeamIntegrationLinkEnabled(
   teamId: string,
   integrationId: string,
-  input: {
-    isEnabled?: boolean;
-    apiKey?: string | null;
-    /** Custom LLM rows only — new endpoint URL. */
-    apiUrl?: string;
-    /** Custom LLM rows only — new display name. The underlying
-     *  modelIdentifier stays stable so ongoing chats keep working. */
-    customName?: string;
-  },
-): Promise<IntegrationCard> {
+  isEnabled: boolean,
+): Promise<TeamIntegrationLink[]> {
   const res = await apiFetch(
-    `/teams/${teamId}/integrations/${integrationId}`,
+    `/teams/${teamId}/integration-links/${integrationId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ isEnabled }),
     },
   );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to update team integration");
+    throw new Error(body.message || "Failed to toggle integration link");
   }
   return res.json();
-}
-
-export async function deleteTeamIntegration(
-  teamId: string,
-  integrationId: string,
-): Promise<void> {
-  const res = await apiFetch(
-    `/teams/${teamId}/integrations/${integrationId}`,
-    { method: "DELETE" },
-  );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to delete team integration");
-  }
 }
 
 // ───── API keys (programmatic access tokens) ──────────────────────────

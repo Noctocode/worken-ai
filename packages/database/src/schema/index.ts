@@ -772,6 +772,57 @@ export const integrations = pgTable(
   ],
 );
 
+// Many-to-many link between `teams` and `integrations`. Lets an admin
+// configure a BYOK key once in their personal Integration tab and then
+// link it into one or more teams, instead of duplicating the encrypted
+// key into a separate team-scoped `integrations` row per team.
+//
+// `isEnabled` is per-link so an admin can temporarily disable a key's
+// use on a single team without affecting other teams that share the
+// same underlying integration. The underlying `integrations.isEnabled`
+// is the "is the personal key on at all" master switch; both must be
+// true for chat-time routing to surface this key for a team.
+//
+// The link table replaces the legacy pattern of putting `team_id` on
+// `integrations` directly. Existing team-scoped rows still work for
+// reads during the transition, but new ones are not created — the
+// picker on the team-details page now writes to this table instead.
+export const teamIntegrationLinks = pgTable(
+  "team_integration_links",
+  {
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    integrationId: uuid("integration_id")
+      .references(() => integrations.id, { onDelete: "cascade" })
+      .notNull(),
+    // Per-link enable flag — distinct from `integrations.isEnabled` so
+    // pausing one team's access to a shared key doesn't take the key
+    // off for the admin's personal use or for other teams.
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    // Audit only — who added this link. Set to null on the actor's
+    // user delete so we don't cascade-remove the link itself; the link
+    // outlives the actor.
+    linkedBy: uuid("linked_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    linkedAt: timestamp("linked_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.teamId, table.integrationId] }),
+    // Reverse lookup: "which teams link this integration?" — used when
+    // the admin updates / disables an integration so we can flag
+    // affected teams in the UI.
+    index("team_integration_links_integration_idx").on(table.integrationId),
+    // Per-team-per-provider uniqueness is enforced in service code
+    // (TeamsService.setIntegrationLinks) rather than at the DB level:
+    // the constraint depends on the JOINed integrations.provider_id,
+    // which can't be expressed in a single partial index. Service-side
+    // it's a select-then-throw inside the link-set transaction.
+  ],
+);
+
 // Org-level singleton settings. The Company tab on the FE renders a
 // "Company Monthly Budget" target the admin sets here; future org-wide
 // flags (logo URL, default infraChoice, branding overrides…) will land

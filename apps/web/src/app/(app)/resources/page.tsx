@@ -144,7 +144,7 @@ export default function ResourcesPage() {
         </div>
 
         <p className="max-w-[672px] text-[15px] leading-[1.5]">
-          Access enterprise-grade tools and training to build, optimize, and
+          Access enterprise-grade tools and resources to build, optimize, and
           master AI prompts for procurement workflows. Designed specifically
           for Fortune 500 teams.
         </p>
