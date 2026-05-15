@@ -2911,85 +2911,116 @@ export async function deleteIntegration(id: string): Promise<void> {
 
 // ─── Team-scoped integrations (BYOK keys shared across team members) ──────
 
-export async function fetchTeamIntegrations(
+// ── Integration links (new picker model) ──────────────────────────
+//
+// Replaces the legacy team-scoped integrations endpoints above:
+// admins manage their personal BYOK keys on /teams?tab=integration,
+// then link them into one or more teams via these endpoints. The
+// FE picker on team-details only uses these — the legacy helpers
+// above are kept for the transition.
+
+export interface TeamIntegrationLink {
+  integrationId: string;
+  // Identity of the integration owner — lets the FE picker tell
+  // "my key" (editable checkbox + trash) apart from "someone else's
+  // key" (read-only with per-team toggle only). Pair with the
+  // caller's user id from the auth store.
+  ownerId: string;
+  ownerName: string | null;
+  providerId: string;
+  isCustom: boolean;
+  displayName: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  // Per-team toggle. False ⇒ chat-time routing for this team skips
+  // this key even if the underlying integration is on.
+  linkEnabled: boolean;
+  // Master switch on the integration owner's personal /teams?tab=
+  // integration tab. False ⇒ key is off everywhere; team toggle
+  // becomes a no-op until the owner re-enables it.
+  integrationEnabled: boolean;
+  linkedAt: string;
+  linkedBy: string | null;
+}
+
+export interface LinkableIntegration {
+  integrationId: string;
+  providerId: string;
+  isCustom: boolean;
+  displayName: string;
+  apiUrl: string | null;
+  hasApiKey: boolean;
+  integrationEnabled: boolean;
+  alreadyLinked: boolean;
+  // Predefined-provider-only: another integration already occupies
+  // this provider slot for the team. FE disables the checkbox +
+  // explains in tooltip ("One Anthropic key per team").
+  blockedByProvider: boolean;
+}
+
+export async function fetchTeamIntegrationLinks(
   teamId: string,
-): Promise<IntegrationCard[]> {
-  const res = await apiFetch(`/teams/${teamId}/integrations`);
+): Promise<TeamIntegrationLink[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links`);
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to fetch team integrations");
+    throw new Error(body.message || "Failed to fetch team integration links");
   }
   return res.json();
 }
 
-export async function upsertTeamIntegration(
+export async function fetchLinkableIntegrations(
   teamId: string,
-  input: {
-    providerId: string;
-    /** Required when providerId === "custom": the OpenAI-compatible
-     *  endpoint URL (Ollama / vLLM / Together / …). */
-    apiUrl?: string | null;
-    apiKey?: string | null;
-    isEnabled?: boolean;
-    /** Required when providerId === "custom": the friendly name
-     *  members see in the model picker. The BE auto-creates a
-     *  team-scoped model_configs alias bound to this integration so
-     *  members can use it without admin touching /catalog. */
-    customName?: string | null;
-  },
-): Promise<IntegrationCard> {
-  const res = await apiFetch(`/teams/${teamId}/integrations`, {
-    method: "POST",
+): Promise<LinkableIntegration[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links/linkable`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch linkable integrations");
+  }
+  return res.json();
+}
+
+/**
+ * Replace the team's link set atomically. Pass the complete list of
+ * integrationIds that should be linked after the save; the BE
+ * computes the delta and adds/removes accordingly. Returns the new
+ * link list so the caller can update local state without a second
+ * round-trip.
+ */
+export async function setTeamIntegrationLinks(
+  teamId: string,
+  integrationIds: string[],
+): Promise<TeamIntegrationLink[]> {
+  const res = await apiFetch(`/teams/${teamId}/integration-links`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({ integrationIds }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to save team integration");
+    throw new Error(body.message || "Failed to save integration links");
   }
   return res.json();
 }
 
-export async function updateTeamIntegration(
+export async function setTeamIntegrationLinkEnabled(
   teamId: string,
   integrationId: string,
-  input: {
-    isEnabled?: boolean;
-    apiKey?: string | null;
-    /** Custom LLM rows only — new endpoint URL. */
-    apiUrl?: string;
-    /** Custom LLM rows only — new display name. The underlying
-     *  modelIdentifier stays stable so ongoing chats keep working. */
-    customName?: string;
-  },
-): Promise<IntegrationCard> {
+  isEnabled: boolean,
+): Promise<TeamIntegrationLink[]> {
   const res = await apiFetch(
-    `/teams/${teamId}/integrations/${integrationId}`,
+    `/teams/${teamId}/integration-links/${integrationId}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({ isEnabled }),
     },
   );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to update team integration");
+    throw new Error(body.message || "Failed to toggle integration link");
   }
   return res.json();
-}
-
-export async function deleteTeamIntegration(
-  teamId: string,
-  integrationId: string,
-): Promise<void> {
-  const res = await apiFetch(
-    `/teams/${teamId}/integrations/${integrationId}`,
-    { method: "DELETE" },
-  );
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.message || "Failed to delete team integration");
-  }
 }
 
 // ───── API keys (programmatic access tokens) ──────────────────────────

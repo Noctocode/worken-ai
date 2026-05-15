@@ -9,6 +9,7 @@ import {
   enabledModels,
   integrations,
   modelConfigs,
+  teamIntegrationLinks,
   teamMembers,
   teams,
   users,
@@ -240,14 +241,25 @@ export class ModelsService {
           eq(integrations.isEnabled, true),
         ),
       );
+    // Team enabled providers come through the link table now: an
+    // admin's personal integration linked to one of the caller's
+    // teams counts only if both the link's is_enabled and the
+    // integration's is_enabled are true. Mirrors the chat-transport
+    // BYOK lookup so this surface stays in sync with what chat
+    // would actually use at request time.
     const teamEnabledRows =
       teamIds.length > 0
         ? await this.db
             .select({ providerId: integrations.providerId })
-            .from(integrations)
+            .from(teamIntegrationLinks)
+            .innerJoin(
+              integrations,
+              eq(integrations.id, teamIntegrationLinks.integrationId),
+            )
             .where(
               and(
-                inArray(integrations.teamId, teamIds),
+                inArray(teamIntegrationLinks.teamId, teamIds),
+                eq(teamIntegrationLinks.isEnabled, true),
                 eq(integrations.isEnabled, true),
               ),
             )
