@@ -3,7 +3,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
-import { createModel, fetchIntegrations } from "@/lib/api";
+import {
+  createModel,
+  fetchIntegrations,
+  updateModel,
+  type ModelConfig,
+} from "@/lib/api";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -134,16 +139,39 @@ const selectItemClass =
 
 export function AddModelDialog({
   children,
+  existingModel,
+  open: openProp,
+  onOpenChange,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  /** When passed, the dialog runs in edit mode: prefilled from the
+   *  model, applies via updateModel, and the title/CTA copy flip. */
+  existingModel?: ModelConfig | null;
+  /** Controlled-open hooks. When both are provided (typical for the
+   *  edit flow opened from ModelRow), parent owns the open state.
+   *  When omitted, the dialog falls back to its internal useState +
+   *  the `children` trigger span (the Add flow). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const isEdit = !!existingModel;
+  const [internalOpen, setInternalOpen] = useState(false);
+  // Controlled when both props are provided; otherwise fall back to
+  // the legacy internal-state pattern with the child trigger span.
+  const isControlled = openProp !== undefined && onOpenChange !== undefined;
+  const open = isControlled ? openProp : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (isControlled) onOpenChange!(next);
+    else setInternalOpen(next);
+  };
   const [customName, setCustomName] = useState("");
   // Tracks whether the user has manually typed into the Custom name
   // field. While false, the field auto-syncs to the picked model's
   // display label so the user doesn't stare at "Model 1" by default.
   // Flips true on the first user edit so a later model swap doesn't
-  // clobber their typed-in alias.
+  // clobber their typed-in alias. Edit flow starts touched so the
+  // prefilled custom name doesn't get clobbered by the model auto-
+  // fill effect.
   const [customNameTouched, setCustomNameTouched] = useState(false);
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
@@ -152,6 +180,18 @@ export function AddModelDialog({
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
     useAvailableModels();
+
+  // Prefill from the existing model on edit open. Re-runs when the
+  // dialog opens for a different file so the form always reflects
+  // the row the user clicked, not the last edit.
+  useEffect(() => {
+    if (!open || !existingModel) return;
+    setCustomName(existingModel.customName);
+    setCustomNameTouched(true);
+    setModelId(existingModel.modelIdentifier);
+    setFallbacks(existingModel.fallbackModels ?? []);
+    setIntegrationId(existingModel.integrationId ?? "");
+  }, [open, existingModel]);
 
   // Auto-fill the alias as soon as a model is picked, unless the
   // user has already typed something themselves. Runs after the
@@ -176,7 +216,15 @@ export function AddModelDialog({
     integrations?.filter((i) => i.isCustom && i.isEnabled) ?? [];
 
   const mutation = useMutation({
-    mutationFn: createModel,
+    mutationFn: (payload: {
+      customName: string;
+      modelIdentifier: string;
+      fallbackModels: string[];
+      integrationId: string | null;
+    }) =>
+      existingModel
+        ? updateModel(existingModel.id, payload)
+        : createModel(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["models"] });
       setCustomName("");
@@ -268,19 +316,27 @@ export function AddModelDialog({
 
   return (
     <>
-      <span onClick={() => setOpen(true)} className="contents">
-        {children}
-      </span>
+      {!isControlled && (
+        <span onClick={() => setOpen(true)} className="contents">
+          {children}
+        </span>
+      )}
 
       {open && (
         <SettingsDialog
           open={open}
           onClose={handleClose}
           onApply={handleApply}
-          applyLabel={mutation.isPending ? "Saving…" : "Apply"}
+          applyLabel={
+            mutation.isPending ? "Saving…" : isEdit ? "Save" : "Apply"
+          }
           applyPending={mutation.isPending}
-          title="Add model"
-          description="Configure a model to make it available across your workspace."
+          title={isEdit ? "Edit model" : "Add model"}
+          description={
+            isEdit
+              ? "Update this model's configuration."
+              : "Configure a model to make it available across your workspace."
+          }
         >
           <div className="space-y-4">
             {/* Selected model */}
