@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -12,9 +12,7 @@ import {
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { useAuth } from "@/components/providers";
 import {
   fetchLinkableIntegrations,
   fetchTeamIntegrationLinks,
@@ -100,14 +98,16 @@ function iconForProvider(providerId: string): React.ReactNode {
  *   - Keys are not entered here. The banner steers admins back to the
  *     Integration tab as the single place to add / rotate / delete a
  *     personal BYOK row.
- *   - "Active for this team" lists everything currently linked, with
- *     a per-team Switch and (for caller-owned rows) an Unlink action.
- *     Rows linked by other admins are visible read-only; only their
- *     owner can remove the link, but anyone with team-edit rights
- *     can flip the per-team toggle.
- *   - "Your integrations" surfaces every caller-owned personal
- *     integration as a save-staged checkbox — pre-checked when
- *     already linked. Save commits the diff in a single round-trip.
+ *   - "Your AI Provider Keys" surfaces every caller-owned personal
+ *     integration as a Switch — default off (= not linked). Flipping
+ *     it on immediately links + activates the key for this team; off
+ *     unlinks. No save button: the toggle IS the commit, so a brand-
+ *     new team shows every available key idle until the admin opts
+ *     in per row.
+ *   - "Active for this team" surfaces links added by *other* admins
+ *     so the caller knows what's available beyond their own. A
+ *     per-team Switch pauses use without unlinking; only the link
+ *     owner can fully remove it.
  */
 export function TeamIntegrationsSection({
   teamId,
@@ -117,8 +117,6 @@ export function TeamIntegrationsSection({
   canManage: boolean;
 }) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
-  const callerId = user?.id ?? null;
 
   const linksKey = ["team-integration-links", teamId] as const;
   const linkableKey = ["team-linkable-integrations", teamId] as const;
@@ -132,55 +130,65 @@ export function TeamIntegrationsSection({
     queryFn: () => fetchLinkableIntegrations(teamId),
   });
 
-  // Save-staged picker state. Seeded from `linkable.alreadyLinked` so
-  // the first paint reflects the current backend set; re-seeded any
-  // time the linkable query refetches with a fresh server state so
-  // an outside change (another tab, another admin) doesn't leave the
-  // user staring at a phantom "unsaved" badge.
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const initialPickedKey = useMemo(
-    () =>
-      linkable
+  // Per-row link toggle for caller's own integrations. Each toggle
+  // is its own immediate commit — no staged save / discard buttons —
+  // so a brand-new team can be configured by flipping the Switches
+  // one at a time without an extra "Save" click. Optimistic updates
+  // flip both caches (links + linkable) ahead of the request, rolling
+  // back on error so the Switch never enters its disabled state mid-
+  // flight.
+  //
+  // The full-set PUT endpoint is reused: we read the caller's current
+  // linked-ids from `linkable.alreadyLinked`, build the next set with
+  // the target id added or removed, and ship it. Other admins' links
+  // are *not* in this set and won't be touched (the BE scopes the
+  // delta to caller-owned rows defensively, but staying out of those
+  // ids in the request keeps the contract obvious).
+  const linkToggleMutation = useMutation({
+    mutationFn: ({
+      integrationId,
+      next,
+    }: {
+      integrationId: string;
+      next: boolean;
+    }) => {
+      const currentMineLinked = linkable
         .filter((l) => l.alreadyLinked)
-        .map((l) => l.integrationId)
-        .sort()
-        .join(","),
-    [linkable],
-  );
-  useEffect(() => {
-    setPicked(
-      new Set(
-        linkable
-          .filter((l) => l.alreadyLinked)
-          .map((l) => l.integrationId),
-      ),
-    );
-  }, [initialPickedKey, linkable]);
-
-  const initialPickedSet = useMemo(() => {
-    return new Set(
-      linkable
-        .filter((l) => l.alreadyLinked)
-        .map((l) => l.integrationId),
-    );
-  }, [linkable]);
-
-  const hasUnsavedChanges = useMemo(() => {
-    if (picked.size !== initialPickedSet.size) return true;
-    for (const id of picked) if (!initialPickedSet.has(id)) return true;
-    return false;
-  }, [picked, initialPickedSet]);
-
-  const saveMutation = useMutation({
-    mutationFn: () =>
-      setTeamIntegrationLinks(teamId, Array.from(picked)),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: linksKey });
-      queryClient.invalidateQueries({ queryKey: linkableKey });
-      toast.success("Team integrations updated.");
+        .map((l) => l.integrationId);
+      const target = next
+        ? Array.from(new Set([...currentMineLinked, integrationId]))
+        : currentMineLinked.filter((id) => id !== integrationId);
+      return setTeamIntegrationLinks(teamId, target);
     },
-    onError: (err: Error) =>
-      toast.error(err.message ?? "Couldn't save team integrations."),
+    onMutate: async ({ integrationId, next }) => {
+      await queryClient.cancelQueries({ queryKey: linkableKey });
+      await queryClient.cancelQueries({ queryKey: linksKey });
+      const prevLinkable =
+        queryClient.getQueryData<LinkableIntegration[]>(linkableKey);
+      const prevLinks =
+        queryClient.getQueryData<TeamIntegrationLink[]>(linksKey);
+      queryClient.setQueryData<LinkableIntegration[]>(linkableKey, (old) =>
+        old?.map((l) =>
+          l.integrationId === integrationId
+            ? { ...l, alreadyLinked: next }
+            : l,
+        ),
+      );
+      return { prevLinkable, prevLinks };
+    },
+    onError: (err: Error, _vars, ctx) => {
+      if (ctx?.prevLinkable) {
+        queryClient.setQueryData(linkableKey, ctx.prevLinkable);
+      }
+      if (ctx?.prevLinks) {
+        queryClient.setQueryData(linksKey, ctx.prevLinks);
+      }
+      toast.error(err.message ?? "Couldn't update team integrations.");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: linkableKey });
+      queryClient.invalidateQueries({ queryKey: linksKey });
+    },
   });
 
   // Per-link enabled toggle. Optimistic update so the Switch never
@@ -281,145 +289,105 @@ export function TeamIntegrationsSection({
         <EmptyStateCta />
       ) : (
         <>
-          {/* Active for this team — current link set, including links
-              owned by other admins. Read-only checkbox state for
-              those; per-team Switch always works for any team
-              manager. */}
-          {links.length > 0 && (
-            <section className="flex flex-col gap-2">
-              <h3 className="text-[13px] font-semibold text-text-1">
-                Active for this team
-              </h3>
-              <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
-                {[...myLinks, ...othersLinks].map((link) => {
-                  const mine = link.ownerId === callerId;
-                  return (
-                    <li
-                      key={link.integrationId}
-                      className="flex items-center gap-3 px-4 py-3"
-                    >
-                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg-1">
-                        {iconForProvider(link.providerId)}
-                      </span>
-                      <div className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[14px] font-medium text-text-1">
-                          {link.displayName}
-                          {link.isCustom && link.apiUrl ? (
-                            <span className="ml-2 text-[12px] font-normal text-text-3">
-                              {link.apiUrl}
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="text-[12px] text-text-3">
-                          {mine
-                            ? "Your key"
-                            : `by ${link.ownerName ?? "another admin"}`}
-                          {!link.hasApiKey && " · no API key set"}
-                          {!link.integrationEnabled &&
-                            " · disabled in Integration tab"}
-                        </span>
-                      </div>
-                      {canManage ? (
-                        <div className="flex shrink-0 items-center gap-3">
-                          <Switch
-                            checked={link.linkEnabled}
-                            onCheckedChange={(next) =>
-                              toggleMutation.mutate({
-                                integrationId: link.integrationId,
-                                next,
-                              })
-                            }
-                            aria-label={
-                              link.linkEnabled
-                                ? "Pause use on this team"
-                                : "Resume use on this team"
-                            }
-                          />
-                          <span className="w-12 text-right text-[12px] text-text-3">
-                            {link.linkEnabled ? "Active" : "Paused"}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="shrink-0 text-[12px] text-text-3">
-                          {link.linkEnabled ? "Active" : "Paused"}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </section>
-          )}
-
-          {/* Picker for caller's own integrations. Save-staged so
-              admin can untick three at once and commit in one
-              round-trip — important when each commit could rotate
-              chat routing for every team member. */}
+          {/* Picker for caller's own integrations. Each Switch is an
+              immediate commit — flipping it links / unlinks the key
+              for this team without a save step. Default off so a
+              brand-new team starts every key idle and the admin opts
+              in deliberately per provider. */}
           {canManage && linkable.length > 0 && (
             <section className="flex flex-col gap-2">
-              <div className="flex items-end justify-between gap-3">
-                <h3 className="text-[13px] font-semibold text-text-1">
-                  Your AI Provider Keys
-                </h3>
-                {hasUnsavedChanges && (
-                  <span className="text-[12px] text-text-3">
-                    Unsaved changes
-                  </span>
-                )}
-              </div>
+              <h3 className="text-[13px] font-semibold text-text-1">
+                Your AI Provider Keys
+              </h3>
               <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
                 {linkable.map((row) => (
                   <PickerRow
                     key={row.integrationId}
                     row={row}
-                    checked={picked.has(row.integrationId)}
-                    onToggle={(next) => {
-                      setPicked((prev) => {
-                        const out = new Set(prev);
-                        if (next) out.add(row.integrationId);
-                        else out.delete(row.integrationId);
-                        return out;
-                      });
-                    }}
+                    onToggle={(next) =>
+                      linkToggleMutation.mutate({
+                        integrationId: row.integrationId,
+                        next,
+                      })
+                    }
                   />
                 ))}
               </ul>
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="cursor-pointer"
-                  disabled={!hasUnsavedChanges || saveMutation.isPending}
-                  onClick={() => setPicked(new Set(initialPickedSet))}
-                >
-                  Discard
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="cursor-pointer bg-primary-6 hover:bg-primary-7"
-                  disabled={!hasUnsavedChanges || saveMutation.isPending}
-                  onClick={() => saveMutation.mutate()}
-                >
-                  {saveMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                      Saving…
-                    </>
-                  ) : (
-                    "Save changes"
-                  )}
-                </Button>
-              </div>
             </section>
           )}
 
-          {canManage && noPersonalKeys && links.length === 0 && (
+          {/* Active for this team — only links added by OTHER admins.
+              Caller's own links live in the picker above with a
+              single Switch; surfacing them again here would just
+              create two Switches doing different things. The
+              per-team Switch on these rows pauses use without
+              touching the underlying key. */}
+          {othersLinks.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h3 className="text-[13px] font-semibold text-text-1">
+                Linked by other admins
+              </h3>
+              <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
+                {othersLinks.map((link) => (
+                  <li
+                    key={link.integrationId}
+                    className="flex items-center gap-3 px-4 py-3"
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg-1">
+                      {iconForProvider(link.providerId)}
+                    </span>
+                    <div className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate text-[14px] font-medium text-text-1">
+                        {link.displayName}
+                        {link.isCustom && link.apiUrl ? (
+                          <span className="ml-2 text-[12px] font-normal text-text-3">
+                            {link.apiUrl}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="text-[12px] text-text-3">
+                        by {link.ownerName ?? "another admin"}
+                        {!link.hasApiKey && " · no API key set"}
+                        {!link.integrationEnabled &&
+                          " · disabled in Integration tab"}
+                      </span>
+                    </div>
+                    {canManage ? (
+                      <div className="flex shrink-0 items-center gap-3">
+                        <Switch
+                          checked={link.linkEnabled}
+                          onCheckedChange={(next) =>
+                            toggleMutation.mutate({
+                              integrationId: link.integrationId,
+                              next,
+                            })
+                          }
+                          aria-label={
+                            link.linkEnabled
+                              ? "Pause use on this team"
+                              : "Resume use on this team"
+                          }
+                        />
+                        <span className="w-12 text-right text-[12px] text-text-3">
+                          {link.linkEnabled ? "Active" : "Paused"}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-[12px] text-text-3">
+                        {link.linkEnabled ? "Active" : "Paused"}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {canManage && noPersonalKeys && othersLinks.length === 0 && (
             <EmptyStateCta />
           )}
 
-          {canManage && noPersonalKeys && links.length > 0 && (
+          {canManage && noPersonalKeys && othersLinks.length > 0 && (
             <div className="flex items-start gap-3 rounded-lg border border-border-2 bg-bg-1/60 px-4 py-3 text-[13px] text-text-2">
               <PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
               <div>
@@ -447,34 +415,30 @@ export function TeamIntegrationsSection({
 
 function PickerRow({
   row,
-  checked,
   onToggle,
 }: {
   row: LinkableIntegration;
-  checked: boolean;
   onToggle: (next: boolean) => void;
 }) {
-  // Disable + explain why when:
-  //   - the integration is master-off on the Integration tab, or
-  //   - another personal predef already holds this team's slot.
+  // Switch state mirrors the BE truth: `alreadyLinked` flips on a
+  // successful link / unlink (optimistically in onMutate, server-
+  // confirmed onSettled). No local component state — the row stays
+  // in sync with the cache even across refetches / cross-tab edits.
+  const checked = row.alreadyLinked;
+  // Disable + explain why when another personal predef of the
+  // caller's already holds this team's slot. (The master-off case is
+  // filtered out BE-side so we never see disabled integrations
+  // here — keep the guard anyway as defense in depth.)
   const masterOff = !row.integrationEnabled;
   const blocked = row.blockedByProvider;
   const disabled = (masterOff && !checked) || blocked;
   const reason = blocked
-    ? `Another ${row.providerId} key is already linked to this team. Unlink it first.`
+    ? `Another ${row.providerId} key is already linked to this team. Turn it off first.`
     : masterOff
-      ? "This integration is disabled on the Integration tab. Re-enable it there to link."
+      ? "Disabled on the Integration tab. Re-enable it there to use here."
       : null;
   return (
     <li className="flex items-center gap-3 px-4 py-3">
-      <input
-        type="checkbox"
-        className="h-4 w-4 cursor-pointer accent-primary-6 disabled:cursor-not-allowed"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onToggle(e.target.checked)}
-        aria-label={`Link ${row.displayName} to this team`}
-      />
       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-bg-1">
         {iconForProvider(row.providerId)}
       </span>
@@ -489,8 +453,22 @@ function PickerRow({
         </span>
         <span className="text-[12px] text-text-3">
           {row.hasApiKey ? "Personal key" : "No API key set"}
-          {!row.integrationEnabled && " · disabled on Integration tab"}
           {reason && ` · ${reason}`}
+        </span>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <Switch
+          checked={checked}
+          disabled={disabled}
+          onCheckedChange={(next) => onToggle(next)}
+          aria-label={
+            checked
+              ? `Unlink ${row.displayName} from this team`
+              : `Link ${row.displayName} to this team`
+          }
+        />
+        <span className="w-12 text-right text-[12px] text-text-3">
+          {checked ? "Active" : "Inactive"}
         </span>
       </div>
     </li>
