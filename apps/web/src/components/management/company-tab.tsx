@@ -38,6 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Pagination } from "@/components/ui/pagination";
 import { useAuth } from "@/components/providers";
 import {
   deleteCompanyProfile,
@@ -326,6 +327,23 @@ export function CompanyTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile]);
 
+  // Page the participants table — admins is usually small enough to
+  // skip. State must live above the loading / error / non-company
+  // early returns to satisfy the Rules of Hooks; the slice operates
+  // on an empty array until orgUsers resolves and is harmless.
+  const PARTICIPANTS_PAGE_SIZE = 10;
+  const [participantsPage, setParticipantsPage] = useState(1);
+  const participantsCount = orgUsers.filter((u) => u.role !== "admin").length;
+  const participantsTotalPages = Math.max(
+    1,
+    Math.ceil(participantsCount / PARTICIPANTS_PAGE_SIZE),
+  );
+  useEffect(() => {
+    if (participantsPage > participantsTotalPages) {
+      setParticipantsPage(participantsTotalPages);
+    }
+  }, [participantsPage, participantsTotalPages]);
+
   if (profileLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -392,6 +410,10 @@ export function CompanyTab() {
   // Everyone who isn't an admin — basic + advanced both land here.
   // They can view company-wide screens but not mutate org settings.
   const participants = orgUsers.filter((u) => u.role !== "admin");
+  const pagedParticipants = participants.slice(
+    (participantsPage - 1) * PARTICIPANTS_PAGE_SIZE,
+    participantsPage * PARTICIPANTS_PAGE_SIZE,
+  );
   const companyDisplay = profile.companyName?.trim() || "Unnamed company";
 
   return (
@@ -841,7 +863,7 @@ export function CompanyTab() {
                 </tr>
               </thead>
               <tbody>
-                {participants.map((u) => {
+                {pagedParticipants.map((u) => {
                   const display = u.name ?? u.email;
                   const badgeClass =
                     u.role === "advanced"
@@ -924,6 +946,12 @@ export function CompanyTab() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={participantsPage}
+            totalPages={participantsTotalPages}
+            onPageChange={setParticipantsPage}
+            className="px-4"
+          />
         </div>
       </div>
 

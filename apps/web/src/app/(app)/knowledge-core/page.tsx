@@ -45,6 +45,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
+import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -633,6 +634,30 @@ export default function KnowledgeCorePage() {
     );
   }, [query, recentFiles]);
 
+  // Client-side pagination over the filtered recent-files list.
+  // 10 rows/page matches the Figma comp; resets to 1 on any filter
+  // change so the user always lands on a populated first page.
+  const FILES_PAGE_SIZE = 10;
+  const [filesPage, setFilesPage] = useState(1);
+  useEffect(() => {
+    setFilesPage(1);
+  }, [query]);
+  const filesTotalPages = Math.max(
+    1,
+    Math.ceil(filteredFiles.length / FILES_PAGE_SIZE),
+  );
+  const pagedFiles = useMemo(
+    () =>
+      filteredFiles.slice(
+        (filesPage - 1) * FILES_PAGE_SIZE,
+        filesPage * FILES_PAGE_SIZE,
+      ),
+    [filteredFiles, filesPage],
+  );
+  useEffect(() => {
+    if (filesPage > filesTotalPages) setFilesPage(filesTotalPages);
+  }, [filesPage, filesTotalPages]);
+
   if (foldersLoading || filesLoading) {
     return (
       <div className="flex flex-1 items-center justify-center py-20">
@@ -760,7 +785,7 @@ export default function KnowledgeCorePage() {
       <section className="flex flex-col gap-6">
         <h2 className="text-[18px] font-bold text-text-1">Recent Files</h2>
         <div className="flex flex-col gap-3">
-          {filteredFiles.map((file) => (
+          {pagedFiles.map((file) => (
             <div
               key={file.id}
               className="flex items-center gap-4 rounded border border-border-2 bg-bg-white px-4 py-3 transition-colors hover:bg-primary-1"
@@ -894,6 +919,11 @@ export default function KnowledgeCorePage() {
             </p>
           )}
         </div>
+        <Pagination
+          page={filesPage}
+          totalPages={filesTotalPages}
+          onPageChange={setFilesPage}
+        />
       </section>
 
       {/* New Folder Dialog */}

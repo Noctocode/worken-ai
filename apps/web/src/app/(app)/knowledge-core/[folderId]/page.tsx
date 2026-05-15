@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -68,6 +68,7 @@ import {
 import { useAuth } from "@/components/providers";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
+import { Pagination } from "@/components/ui/pagination";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -690,6 +691,31 @@ export default function FolderDetailPage({
     );
   }, [query, folder]);
 
+  // Page state for the folder's file list. 10 rows/page; resets on
+  // search change so the user lands on a populated page when the
+  // result set shrinks. Both the desktop table and the mobile card
+  // grid read `pagedFiles` so they paginate in lockstep.
+  const FILES_PAGE_SIZE = 10;
+  const [filesPage, setFilesPage] = useState(1);
+  useEffect(() => {
+    setFilesPage(1);
+  }, [query]);
+  const filesTotalPages = Math.max(
+    1,
+    Math.ceil(filtered.length / FILES_PAGE_SIZE),
+  );
+  const pagedFiles = useMemo(
+    () =>
+      filtered.slice(
+        (filesPage - 1) * FILES_PAGE_SIZE,
+        filesPage * FILES_PAGE_SIZE,
+      ),
+    [filtered, filesPage],
+  );
+  useEffect(() => {
+    if (filesPage > filesTotalPages) setFilesPage(filesTotalPages);
+  }, [filesPage, filesTotalPages]);
+
   // Tri-state for the select-all header checkbox over the *currently
   // visible* rows (post-search-filter). Selection itself is folder-
   // wide — toggling search filter doesn't drop existing selection.
@@ -883,7 +909,7 @@ export default function FolderDetailPage({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((f) => (
+              {pagedFiles.map((f) => (
                 <tr
                   key={f.id}
                   className={`border-b border-border-2 last:border-b-0 transition-colors hover:bg-bg-1 ${
@@ -1046,7 +1072,7 @@ export default function FolderDetailPage({
 
         {/* Mobile cards */}
         <div className="flex flex-col md:hidden">
-          {filtered.map((f, idx) => (
+          {pagedFiles.map((f, idx) => (
             <div
               key={f.id}
               className={`flex items-center gap-3 px-4 py-4 ${idx > 0 ? "border-t border-border-2" : ""} ${
@@ -1173,6 +1199,13 @@ export default function FolderDetailPage({
             </p>
           )}
         </div>
+
+        <Pagination
+          page={filesPage}
+          totalPages={filesTotalPages}
+          onPageChange={setFilesPage}
+          className="px-4"
+        />
       </div>
 
       {/* Move file dialog */}

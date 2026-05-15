@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Pagination } from "@/components/ui/pagination";
 
 function getProvider(modelId: string): string {
   const idx = modelId.indexOf("/");
@@ -87,6 +88,30 @@ export function CatalogTab() {
       );
     });
   }, [catalog, search, provider]);
+
+  // Catalog can return 100s–1000s of models — pagination is necessary
+  // here, not just nice-to-have. Reset to page 1 whenever the filter
+  // set changes so the user always lands on populated rows.
+  const CATALOG_PAGE_SIZE = 25;
+  const [catalogPage, setCatalogPage] = useState(1);
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [search, provider]);
+  const catalogTotalPages = Math.max(
+    1,
+    Math.ceil(filtered.length / CATALOG_PAGE_SIZE),
+  );
+  const pagedCatalog = useMemo(
+    () =>
+      filtered.slice(
+        (catalogPage - 1) * CATALOG_PAGE_SIZE,
+        catalogPage * CATALOG_PAGE_SIZE,
+      ),
+    [filtered, catalogPage],
+  );
+  useEffect(() => {
+    if (catalogPage > catalogTotalPages) setCatalogPage(catalogTotalPages);
+  }, [catalogPage, catalogTotalPages]);
 
   // Drop selections that are no longer visible (e.g. after the user
   // tightens search/provider filter). Avoids confusing "5 selected" while
@@ -296,7 +321,7 @@ export function CatalogTab() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border-2">
-            {filtered.map((m) => (
+            {pagedCatalog.map((m) => (
               <CatalogRow
                 key={m.id}
                 model={m}
@@ -320,6 +345,12 @@ export function CatalogTab() {
             )}
           </tbody>
         </table>
+        <Pagination
+          page={catalogPage}
+          totalPages={catalogTotalPages}
+          onPageChange={setCatalogPage}
+          className="px-4"
+        />
       </div>
     </div>
   );

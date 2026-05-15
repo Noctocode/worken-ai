@@ -6,8 +6,6 @@ import {
   AlertTriangle,
   Check,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   Loader2,
   Pencil,
@@ -30,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -457,47 +456,12 @@ function OverviewTab({
           </tbody>
         </table>
 
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border-2 px-6 py-3">
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-1.5 text-[13px]"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Previous
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPage(p)}
-                    className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded text-[13px] transition-colors ${
-                      p === page
-                        ? "bg-primary-6 font-semibold text-white"
-                        : "text-text-2 hover:bg-bg-1"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ),
-              )}
-            </div>
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-1.5 text-[13px]"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          onPageChange={setPage}
+          className="px-6"
+        />
       </div>
 
       {/* Delete dialog */}

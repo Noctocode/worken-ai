@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Pagination } from "@/components/ui/pagination";
 import Link from "next/link";
 import {
   fetchTeam,
@@ -467,6 +468,66 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     };
   }, [team]);
 
+  // Client-side pagination for the three team-details tables. State
+  // lives ABOVE the loading/error early returns so the Rules of Hooks
+  // hold across render branches; the slices themselves operate on
+  // empty arrays until `team` resolves and are harmless. PAGE_SIZE
+  // matches the Figma pagination comp (`Centered page numbers/
+  // Desktop`) — 10 rows per page.
+  const PAGE_SIZE = 10;
+  const [subteamsPage, setSubteamsPage] = useState(1);
+  const [membersPage, setMembersPage] = useState(1);
+  const [guardrailsPage, setGuardrailsPage] = useState(1);
+
+  const subteamsTotalPages = Math.max(
+    1,
+    Math.ceil(subteams.length / PAGE_SIZE),
+  );
+  const pagedSubteams = useMemo(
+    () =>
+      subteams.slice(
+        (subteamsPage - 1) * PAGE_SIZE,
+        subteamsPage * PAGE_SIZE,
+      ),
+    [subteams, subteamsPage],
+  );
+  useEffect(() => {
+    if (subteamsPage > subteamsTotalPages) setSubteamsPage(subteamsTotalPages);
+  }, [subteamsPage, subteamsTotalPages]);
+
+  const members = team?.members ?? [];
+  const membersTotalPages = Math.max(
+    1,
+    Math.ceil(members.length / PAGE_SIZE),
+  );
+  const pagedMembers = useMemo(
+    () =>
+      members.slice(
+        (membersPage - 1) * PAGE_SIZE,
+        membersPage * PAGE_SIZE,
+      ),
+    [members, membersPage],
+  );
+  useEffect(() => {
+    if (membersPage > membersTotalPages) setMembersPage(membersTotalPages);
+  }, [membersPage, membersTotalPages]);
+
+  const guardrailsTotalPages = Math.max(
+    1,
+    Math.ceil(guardrails.length / PAGE_SIZE),
+  );
+  const pagedGuardrails = useMemo(
+    () =>
+      guardrails.slice(
+        (guardrailsPage - 1) * PAGE_SIZE,
+        guardrailsPage * PAGE_SIZE,
+      ),
+    [guardrails, guardrailsPage],
+  );
+  useEffect(() => {
+    if (guardrailsPage > guardrailsTotalPages) setGuardrailsPage(guardrailsTotalPages);
+  }, [guardrailsPage, guardrailsTotalPages]);
+
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
   if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
 
@@ -777,7 +838,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 </tr>
               </thead>
               <tbody>
-                {subteams.map((sub) => {
+                {pagedSubteams.map((sub) => {
                   const subBudget = sub.monthlyBudgetCents / 100;
                   const subSpent = sub.spentCents / 100;
                   const subRemaining = subBudget - subSpent;
@@ -886,6 +947,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={subteamsPage}
+              totalPages={subteamsTotalPages}
+              onPageChange={setSubteamsPage}
+              className="px-4"
+            />
           </div>
         )}
       </div>
@@ -943,7 +1010,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 </tr>
               </thead>
               <tbody>
-                {team.members.map((m) => {
+                {pagedMembers.map((m) => {
                   const capLabel =
                     m.monthlyCapCents == null
                       ? "No cap"
@@ -1094,6 +1161,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={membersPage}
+            totalPages={membersTotalPages}
+            onPageChange={setMembersPage}
+            className="bg-bg-white px-4"
+          />
         </div>
       </div>
 
@@ -1137,7 +1210,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   </tr>
                 </thead>
                 <tbody>
-                  {guardrails.map((g) => (
+                  {pagedGuardrails.map((g) => (
                     <tr key={g.id} className="h-14 border-b border-bg-1">
                       <td className="px-4 align-middle">
                         <div className="flex items-center gap-2">
@@ -1234,6 +1307,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 </tbody>
               </table>
             </div>
+            <Pagination
+              page={guardrailsPage}
+              totalPages={guardrailsTotalPages}
+              onPageChange={setGuardrailsPage}
+              className="px-4"
+            />
           </div>
         )}
       </div>

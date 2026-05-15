@@ -26,6 +26,7 @@ import {
 } from "recharts";
 
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   PageTabs,
   PageTabsContent,
@@ -174,6 +175,9 @@ export default function ObservabilityPage() {
   const [search, setSearch] = useState("");
   const [eventType, setEventType] = useState<string>("all");
   const [page, setPage] = useState(1);
+  // Separate page state for the Team Analytics drilldown so paging
+  // the event log doesn't reset the team table and vice versa.
+  const [teamsPage, setTeamsPage] = useState(1);
 
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null);
   const [tokenUsage, setTokenUsage] = useState<ObservabilityTokenUsage | null>(null);
@@ -363,6 +367,31 @@ export default function ObservabilityPage() {
     return Math.max(1, Math.ceil(events.total / events.pageSize));
   }, [events]);
 
+  // Team Analytics pagination: typical org has <20 teams, so the
+  // bar only ever fires for very large companies — but the
+  // Pagination component auto-hides on a single page, so wiring it
+  // is essentially free.
+  const TEAMS_PAGE_SIZE = 10;
+  const teamRows = teamAnalytics?.teams ?? [];
+  const teamsTotalPages = Math.max(
+    1,
+    Math.ceil(teamRows.length / TEAMS_PAGE_SIZE),
+  );
+  const pagedTeamRows = useMemo(
+    () =>
+      teamRows.slice(
+        (teamsPage - 1) * TEAMS_PAGE_SIZE,
+        teamsPage * TEAMS_PAGE_SIZE,
+      ),
+    [teamRows, teamsPage],
+  );
+  useEffect(() => {
+    setTeamsPage(1);
+  }, [range]);
+  useEffect(() => {
+    if (teamsPage > teamsTotalPages) setTeamsPage(teamsTotalPages);
+  }, [teamsPage, teamsTotalPages]);
+
   if (forbidden) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border-2 bg-bg-white px-6 py-16 text-center">
@@ -529,7 +558,7 @@ export default function ObservabilityPage() {
                 </tr>
               </thead>
               <tbody>
-                {teamAnalytics.teams.map((t, i) => (
+                {pagedTeamRows.map((t, i) => (
                   <tr
                     key={`${t.teamId ?? "personal"}-${i}`}
                     className="border-b border-border-2 last:border-b-0 hover:bg-bg-1/40"
@@ -556,6 +585,11 @@ export default function ObservabilityPage() {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={teamsPage}
+              totalPages={teamsTotalPages}
+              onPageChange={setTeamsPage}
+            />
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-border-2 bg-bg-1/40 px-4 py-6 text-center text-[13px] text-text-3">
@@ -628,30 +662,11 @@ export default function ObservabilityPage() {
         </div>
 
         {events && events.total > events.pageSize && (
-          <div className="flex items-center justify-between border-t border-border-2 pt-3 text-[12px] text-text-2">
-            <span>
-              {(events.page - 1) * events.pageSize + 1}–
-              {Math.min(events.page * events.pageSize, events.total)} of {events.total}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="h-8 cursor-pointer rounded border border-border-2 px-3 text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Previous
-              </button>
-              <button
-                type="button"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => p + 1)}
-                className="h-8 cursor-pointer rounded border border-border-2 px-3 text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination
+            page={page}
+            totalPages={totalPages}
+            onPageChange={(next) => setPage(next)}
+          />
         )}
       </section>
 
