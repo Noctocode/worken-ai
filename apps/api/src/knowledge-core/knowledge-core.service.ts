@@ -124,7 +124,7 @@ export class KnowledgeCoreService {
         uploadedById: knowledgeFiles.uploadedById,
         uploadedByName: users.name,
         // Surface ingestion status so the FE can render the per-file
-        // training badge without a second round-trip.
+        // context-availability badge without a second round-trip.
         ingestionStatus: knowledgeFiles.ingestionStatus,
         ingestionError: knowledgeFiles.ingestionError,
         // Surfaced so the row UI can render the 'Admin only' badge
@@ -959,7 +959,7 @@ export class KnowledgeCoreService {
     }
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is already being trained. Try again once the current run finishes.',
+        'This file is already being added to context. Try again once the current run finishes.',
       );
     }
 
@@ -1027,7 +1027,7 @@ export class KnowledgeCoreService {
     }
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is being trained right now. Try again once the current run finishes.',
+        'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 
@@ -1125,7 +1125,7 @@ export class KnowledgeCoreService {
     // same guard reingestFile uses; the admin retries in a second.
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is being trained right now. Try again once the current run finishes.',
+        'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 

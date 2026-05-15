@@ -2067,9 +2067,13 @@ export async function updateKnowledgeFileVisibility(
 }
 
 /**
- * Force a fresh chunk + embed pass on a single file. Owner-only at
- * the BE; FE just kicks the request and refetches to surface the
- * new "Queued" / "Training" badge.
+ * Re-run chunk + embed on a single file so it's available to chat /
+ * arena again. Owner-only at the BE; FE just kicks the request and
+ * refetches to surface the new "Queued" / "Adding" badge.
+ *
+ * The endpoint path is still `/reingest` (and the in-memory function
+ * keeps that name) — only the user-visible copy was renamed; user
+ * surfaces always talk about adding the file to context now.
  */
 export async function reingestKnowledgeFile(
   fileId: string,
@@ -2079,7 +2083,7 @@ export async function reingestKnowledgeFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Failed to re-train this file");
+    throw new Error(body?.message || "Failed to include this file in context");
   }
   return res.json();
 }
@@ -2088,7 +2092,11 @@ export async function reingestKnowledgeFile(
  * Wipe a file's embeddings without deleting the upload. Inverse of
  * `reingestKnowledgeFile` — chunks go away, the file row stays so
  * download still works, and chat-time RAG stops surfacing it until
- * the owner triggers Retrain.
+ * the owner re-includes it.
+ *
+ * The endpoint path is still `/untrain` (legacy name kept on the BE
+ * to avoid a coordinated rename) — user-visible copy now says
+ * "Exclude from context".
  */
 export async function untrainKnowledgeFile(
   fileId: string,
@@ -2098,7 +2106,7 @@ export async function untrainKnowledgeFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body?.message || "Failed to untrain this file");
+    throw new Error(body?.message || "Failed to exclude this file from context");
   }
   return res.json();
 }

@@ -99,17 +99,17 @@ function IngestionBadge({ status }: { status: string }) {
   if (status === "done") {
     return (
       <span
-        title="Indexed for chat search"
+        title="Included in this project's context"
         className="inline-flex items-center gap-1 text-[11px] text-success-7"
       >
-        <CheckCircle2 className="h-3 w-3" /> Indexed
+        <CheckCircle2 className="h-3 w-3" /> In context
       </span>
     );
   }
   if (status === "failed") {
     return (
       <span
-        title="Couldn't be indexed"
+        title="Couldn't be added to context"
         className="inline-flex items-center gap-1 text-[11px] text-warning-7"
       >
         <AlertTriangle className="h-3 w-3" /> Skipped
@@ -119,16 +119,16 @@ function IngestionBadge({ status }: { status: string }) {
   if (status === "untrained") {
     return (
       <span
-        title="Embeddings removed — chat RAG ignores this file until the owner re-trains it."
+        title="Excluded from context — chat ignores this file until the owner includes it again from Knowledge Core."
         className="inline-flex items-center gap-1 text-[11px] text-text-3"
       >
-        <Unplug className="h-3 w-3" /> Untrained
+        <Unplug className="h-3 w-3" /> Excluded
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-[11px] text-text-3">
-      <Loader2 className="h-3 w-3 animate-spin" /> Indexing…
+      <Loader2 className="h-3 w-3 animate-spin" /> Adding…
     </span>
   );
 }
@@ -188,9 +188,9 @@ export function AddDocumentDialog({
   });
 
   // KC files attached to this project. Poll while any attached
-  // file is mid-ingestion so the "Indexing…" badge flips to
-  // "Indexed" (or "Skipped") on its own — the user shouldn't have
-  // to close + reopen the dialog to see the worker finish.
+  // file is mid-ingestion so the "Adding…" badge flips to
+  // "In context" (or "Skipped") on its own — the user shouldn't
+  // have to close + reopen the dialog to see the worker finish.
   const { data: attachedFiles = [], isLoading: attachedLoading } = useQuery({
     queryKey: ["project-knowledge-files", projectId],
     queryFn: () => fetchProjectKnowledgeFiles(projectId),

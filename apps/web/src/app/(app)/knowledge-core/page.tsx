@@ -98,9 +98,12 @@ function formatDateTime(d: string): string {
 }
 
 /**
- * Ingestion lifecycle pill — same vocabulary as the folder detail
- * page. Inline-duplicated rather than imported because the two
- * pages currently don't share a components file for this domain.
+ * Context-availability pill — same vocabulary as the folder detail
+ * page. Wording is intentionally about "context" (what chat / arena
+ * can pull from at answer time); no model weights are actually
+ * updated by ingestion — embeddings get added to or removed from
+ * the RAG index. Inline-duplicated rather than imported because the
+ * two pages currently don't share a components file for this domain.
  */
 function IngestionStatusBadge({
   status,
@@ -113,7 +116,7 @@ function IngestionStatusBadge({
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
         <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-        Trained
+        In context
       </span>
     );
   }
@@ -132,17 +135,17 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Embeddings removed — Retrain to make this file searchable again."
+        title="Excluded from context — Include in context to make this file searchable again."
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
-        Untrained
+        Excluded
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-      {status === "processing" ? "Training" : "Queued"}
+      {status === "processing" ? "Adding" : "Queued"}
     </span>
   );
 }
@@ -314,37 +317,38 @@ export default function KnowledgeCorePage() {
     onError: () => toast.error("Failed to delete file."),
   });
 
-  // Force a fresh chunk + embed pass on a single file. Available to
-  // any owner — the BE blocks the call if the file is mid-ingestion
-  // (status='processing') so we don't race the worker. After the
-  // POST returns, the polling refetchInterval picks up the new
-  // 'Queued'/'Training' badge automatically.
+  // Re-run chunk + embed on a single file so it's available to chat /
+  // arena again. Available to any owner — the BE blocks the call if
+  // the file is mid-ingestion (status='processing') so we don't race
+  // the worker. After the POST returns, the polling refetchInterval
+  // picks up the new 'Queued'/'Adding' badge automatically.
   const reingestMutation = useMutation({
     mutationFn: (fileId: string) => reingestKnowledgeFile(fileId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("Re-training started.");
+      toast.success("Adding to context.");
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to re-train this file."),
+      toast.error(err.message || "Failed to include this file in context."),
   });
 
-  // Inverse of Retrain: drop the file's embeddings so chat RAG stops
-  // surfacing it, but keep the row + disk copy so Download / Retrain
-  // still work. BE gates on owner + mid-ingestion same way Retrain
-  // does, so we share the same disabled rule on the menu item.
+  // Inverse of "Include in context": drop the file's embeddings so
+  // chat RAG stops surfacing it, but keep the row + disk copy so
+  // Download and re-include still work. BE gates on owner + mid-
+  // ingestion the same way the include path does, so we share the
+  // same disabled rule on the menu item.
   const untrainMutation = useMutation({
     mutationFn: (fileId: string) => untrainKnowledgeFile(fileId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("File untrained — embeddings removed.");
+      toast.success("Excluded from context.");
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to untrain this file."),
+      toast.error(err.message || "Failed to exclude this file from context."),
   });
 
   // Admin-only PATCH to flip a file's visibility between 'all' and
@@ -825,7 +829,7 @@ export default function KnowledgeCorePage() {
                     }
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
-                    Retrain
+                    Include in context
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => untrainMutation.mutate(file.id)}
@@ -836,7 +840,7 @@ export default function KnowledgeCorePage() {
                     }
                   >
                     <Unplug className="mr-2 h-3.5 w-3.5" />
-                    Untrain
+                    Exclude from context
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
