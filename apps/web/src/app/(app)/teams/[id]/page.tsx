@@ -593,7 +593,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     <div className="space-y-6">
       {/* ── Description + Budget card ──────────────────────────────── */}
       <div className="bg-bg-white rounded p-4 space-y-[30px]">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full overflow-hidden">
               <svg viewBox="0 0 80 80" className="h-full w-full">
@@ -633,7 +633,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               they're contextual to the form state. The "enter edit
               mode" pencil lives up in the appbar. */}
           {editing && (
-            <div className="flex items-center gap-2 shrink-0 mt-1">
+            <div className="flex flex-wrap items-center gap-2 shrink-0 self-end sm:mt-1">
               <Button
                 variant="outline"
                 className="h-10 gap-2 border-border-2"
@@ -742,7 +742,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* ── Subteams ──────────────────────────────────────────────── */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[18px] font-bold text-text-1">Subteams</p>
           {canManageTeam ? (
             <AddSubteamDialog parentTeamId={id}>
@@ -764,15 +764,15 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No subteams yet.</div></div>
         ) : (
           <div className="overflow-x-auto bg-bg-white rounded">
-            <table className="w-full min-w-[800px]">
+            <table className="w-full min-w-[480px] md:min-w-[640px] lg:min-w-[800px]">
               <thead>
                 <tr className="h-[33px] border-b border-bg-1">
                   <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Team</th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Description</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">Description</th>
                   <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Monthly Budget</th>
                   <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Spent / Remaining</th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Projected</th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Members</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Projected</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">Members</th>
                   <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">Actions</th>
                 </tr>
               </thead>
@@ -787,7 +787,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                   return (
                     <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
                       <td className="px-4 align-middle text-base text-text-1 whitespace-nowrap">{sub.name}</td>
-                      <td className="px-4 align-middle text-sm text-text-2 whitespace-nowrap">{sub.description ?? "—"}</td>
+                      <td className="hidden px-4 align-middle text-sm text-text-2 whitespace-nowrap md:table-cell">{sub.description ?? "—"}</td>
                       <td className="px-4 align-middle text-sm text-text-1 whitespace-nowrap">
                         {subBudget > 0 ? formatCurrency(subBudget) : "—"}
                       </td>
@@ -810,7 +810,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <span className="text-sm text-text-1">—</span>
                         )}
                       </td>
-                      <td className="px-4 align-middle whitespace-nowrap">
+                      <td className="hidden px-4 align-middle whitespace-nowrap lg:table-cell">
                         {subBudget > 0 ? (
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm text-text-1">{formatCurrency(subProjected)}</span>
@@ -822,7 +822,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <span className="text-sm text-text-1">—</span>
                         )}
                       </td>
-                      <td className="px-4 align-middle">
+                      <td className="hidden px-4 align-middle sm:table-cell">
                         {sub.members.length > 0 ? (
                           <div className="flex items-center">
                             <div className="flex -space-x-2">
@@ -912,7 +912,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
             </p>
           </div>
         )}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[18px] font-bold text-text-1">Users</p>
           {canManageTeam ? (
             <InviteMemberDialog teamId={id}>
@@ -932,13 +932,13 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px]">
+            <table className="w-full min-w-[420px] md:min-w-[640px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Name</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Email</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] sm:w-[260px] lg:w-[300px]">Name</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">Email</th>
                   <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Role</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px]">Monthly Cap</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] lg:table-cell">Monthly Cap</th>
                   <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                 </tr>
               </thead>
@@ -958,7 +958,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         : "text-text-3";
                   return (
                     <tr key={m.id} className="h-14 border-b border-border-2">
-                      <td className="bg-bg-white px-4 align-middle w-[300px]">
+                      <td className="bg-bg-white px-4 align-middle w-[180px] sm:w-[260px] lg:w-[300px]">
                         <div className="flex items-center gap-2.5">
                           <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
                           <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
@@ -982,7 +982,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           </span>
                         </div>
                       </td>
-                      <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">{m.email}</td>
+                      <td className="hidden bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap sm:table-cell">{m.email}</td>
                       <td className="bg-bg-white px-4 align-middle">
                         {m.role === "owner" ? (
                           <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
@@ -1038,7 +1038,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           </Select>
                         )}
                       </td>
-                      <td className="bg-bg-white px-4 align-middle w-[180px]">
+                      <td className="hidden bg-bg-white px-4 align-middle w-[180px] lg:table-cell">
                         <span
                           className={`text-[14px] ${capTone}`}
                           title="Use Actions → Change monthly cap to edit"
@@ -1102,7 +1102,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-[18px] font-bold text-text-1">Guardrails</p>
           {canManageTeam ? (
             <AddGuardrailDialog teamId={id}>
@@ -1125,13 +1125,13 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         ) : (
           <div className="bg-bg-white rounded overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px]">
+              <table className="w-full min-w-[420px] md:min-w-[560px] lg:min-w-[700px]">
                 <thead>
                   <tr>
                     <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Name</th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Type</th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Severity</th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Triggers</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">Type</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Severity</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Triggers</th>
                     <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">Status</th>
                     <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
                   </tr>
@@ -1152,8 +1152,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           )}
                         </div>
                       </td>
-                      <td className="px-4 align-middle">
-                        <div className="flex gap-2.5">
+                      <td className="hidden px-4 align-middle md:table-cell">
+                        <div className="flex flex-wrap gap-2.5">
                           {g.type.split(",").map((t) => (
                             <span key={t} className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">
                               {t.trim()}
@@ -1161,10 +1161,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 align-middle">
+                      <td className="hidden px-4 align-middle lg:table-cell">
                         <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{g.severity}</span>
                       </td>
-                      <td className="px-4 align-middle text-[16px] text-text-1">
+                      <td className="hidden px-4 align-middle text-[16px] text-text-1 lg:table-cell">
                         {g.triggers.toLocaleString()}
                       </td>
                       <td className="px-4 align-middle w-[167px]">
