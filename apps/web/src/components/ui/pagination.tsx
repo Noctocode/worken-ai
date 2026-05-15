@@ -91,7 +91,13 @@ export function Pagination({
   return (
     <nav
       aria-label="Pagination"
-      className={`flex h-14 w-full items-stretch justify-between border-t border-border-2 ${className ?? ""}`}
+      // No top divider on the bar itself — the table card already
+      // has its own bottom edge, and the 2px primary-blue accent on
+      // the current page is the only horizontal line that should
+      // read at a glance. Stacking a continuous 1px gray *under*
+      // that accent (as the literal Figma export does) made the
+      // edge look heavy.
+      className={`flex h-14 w-full items-stretch justify-between ${className ?? ""}`}
     >
       <StepLink
         direction="prev"
