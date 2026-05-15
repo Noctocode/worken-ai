@@ -890,9 +890,6 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         )}
       </div>
 
-      {/* ── AI Provider Keys (team-scoped BYOK) ───────────────────── */}
-      <TeamIntegrationsSection teamId={id} canManage={canManageTeam} />
-
       {/* ── Users ─────────────────────────────────────────────────── */}
       <div className="space-y-3">
         {/* Over-allocation soft warning. Soft because chat-time gate
@@ -1099,6 +1096,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       </div>
+
+      {/* ── AI Provider Keys ──────────────────────────────────────── */}
+      <TeamIntegrationsSection teamId={id} canManage={canManageTeam} />
 
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="space-y-2">
