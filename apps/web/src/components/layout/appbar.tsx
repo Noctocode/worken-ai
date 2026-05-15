@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
@@ -743,6 +743,28 @@ const OBSERVABILITY_RANGES = [
 
 function ObservabilityAppbarSlot() {
   const [range, setRange] = useState<string>("7d");
+  // Page → appbar signal: enables / disables Export CSV based on
+  // whether the current filter set has any rows on the BE. Default
+  // disabled until the page reports a non-empty result, so the button
+  // can't be clicked before the first events fetch resolves.
+  const [exportEnabled, setExportEnabled] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    const onEnabled = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      setExportEnabled(Boolean(detail));
+    };
+    const onExporting = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      setExporting(Boolean(detail));
+    };
+    window.addEventListener("observability:export-enabled", onEnabled);
+    window.addEventListener("observability:export-busy", onExporting);
+    return () => {
+      window.removeEventListener("observability:export-enabled", onEnabled);
+      window.removeEventListener("observability:export-busy", onExporting);
+    };
+  }, []);
   return (
     <>
       <Select
@@ -782,16 +804,24 @@ function ObservabilityAppbarSlot() {
       </Select>
       <Button
         variant="outline"
+        disabled={!exportEnabled || exporting}
         onClick={() =>
           window.dispatchEvent(new CustomEvent("observability:export"))
+        }
+        title={
+          exporting
+            ? "Preparing CSV…"
+            : exportEnabled
+              ? "Export the currently filtered events as CSV"
+              : "No events match the current filters"
         }
         // Project Button defaults to h-12 (size=default in this fork), so
         // the Time Range Select at h-9 looked shorter. Pin h-9 + matching
         // px-3 / text-sm so the two controls read as a pair.
-        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1"
+        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Download className="h-4 w-4" />
-        Export CSV
+        {exporting ? "Exporting…" : "Export CSV"}
       </Button>
     </>
   );

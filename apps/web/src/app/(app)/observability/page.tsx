@@ -42,6 +42,7 @@ import {
 import {
   fetchObservabilityCostByProvider,
   fetchObservabilityEvents,
+  fetchObservabilityEventsExport,
   fetchObservabilityGuardrailActivity,
   fetchObservabilitySummary,
   fetchObservabilityTeamAnalytics,
@@ -277,24 +278,85 @@ export default function ObservabilityPage() {
     };
   }, [range, search, eventType, page, forbidden]);
 
-  const handleExport = () => {
-    if (!events?.events?.length) {
-      toast.error("Nothing to export.");
-      return;
+  const [exporting, setExporting] = useState(false);
+
+  // Tell the appbar Export CSV button whether there's anything to
+  // export. Tracks `events.total` (the BE-reported full count for the
+  // current filters) — not `events.events.length`, which is only the
+  // current page. Re-fires on every state change so the appbar stays
+  // in sync with filters / pagination / refetches.
+  useEffect(() => {
+    const hasRows = (events?.total ?? 0) > 0;
+    window.dispatchEvent(
+      new CustomEvent("observability:export-enabled", { detail: hasRows }),
+    );
+  }, [events]);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("observability:export-busy", { detail: exporting }),
+    );
+  }, [exporting]);
+
+  /**
+   * CSV export fetches the *un-paginated* event set from the BE so
+   * the resulting file covers every row matching the current filters
+   * — not just the 25 rendered on the current page of the table.
+   * Capped server-side at 10k rows; if the cap was hit the toast
+   * tells the admin to narrow the range so they don't end up with a
+   * silently-truncated CSV.
+   */
+  const handleExport = async () => {
+    if (exporting) return;
+    setExporting(true);
+    const exportToastId = toast.loading("Preparing CSV…");
+    try {
+      const data = await fetchObservabilityEventsExport({
+        range,
+        search: search.trim() || undefined,
+        eventType: eventType === "all" ? undefined : eventType,
+      });
+      if (data.events.length === 0) {
+        toast.error("Nothing to export with these filters.", {
+          id: exportToastId,
+        });
+        return;
+      }
+      const csv = eventsToCsv(data.events);
+      const ts = new Date().toISOString().replace(/[:.]/g, "-");
+      downloadCsv(`observability-${range}-${ts}.csv`, csv);
+      if (data.truncated) {
+        toast.warning(
+          `Exported ${data.events.length.toLocaleString()} of ${data.total.toLocaleString()} rows. Narrow the range or filters to get the rest.`,
+          { id: exportToastId },
+        );
+      } else {
+        toast.success(
+          `Exported ${data.events.length.toLocaleString()} row${data.events.length === 1 ? "" : "s"}.`,
+          { id: exportToastId },
+        );
+      }
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Couldn't export events.",
+        { id: exportToastId },
+      );
+    } finally {
+      setExporting(false);
     }
-    const csv = eventsToCsv(events.events);
-    const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    downloadCsv(`observability-${range}-${ts}.csv`, csv);
   };
 
   // Appbar's Export CSV button dispatches this event.
   useEffect(() => {
-    const onExport = () => handleExport();
+    const onExport = () => {
+      void handleExport();
+    };
     window.addEventListener("observability:export", onExport);
     return () => window.removeEventListener("observability:export", onExport);
-    // handleExport closes over `events` and `range`; re-bind when they change.
+    // handleExport closes over `range`/`search`/`eventType`/`exporting`;
+    // re-bind on each change so the latest filters reach the BE.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, range]);
+  }, [range, search, eventType, exporting]);
 
   const totalPages = useMemo(() => {
     if (!events) return 1;

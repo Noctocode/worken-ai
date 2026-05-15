@@ -2756,6 +2756,38 @@ export function fetchObservabilityEvents(
   return fetchObservability(`/observability/events?${params.toString()}`);
 }
 
+/**
+ * Un-paginated event fetch used by the CSV export button. Same
+ * filter shape as `fetchObservabilityEvents` minus pagination — the
+ * BE caps the result at `maxRows` (currently 10k) and sets
+ * `truncated=true` when the cap was hit so the FE can warn the user
+ * to narrow the filter before re-exporting.
+ */
+export interface ObservabilityEventsExport {
+  range: ObservabilityRange;
+  total: number;
+  truncated: boolean;
+  maxRows: number;
+  events: ObservabilityEvent[];
+}
+
+export interface ObservabilityEventsExportQuery {
+  range: ObservabilityRange;
+  search?: string;
+  eventType?: string;
+}
+
+export function fetchObservabilityEventsExport(
+  query: ObservabilityEventsExportQuery,
+): Promise<ObservabilityEventsExport> {
+  const params = new URLSearchParams({ range: query.range });
+  if (query.search?.trim()) params.set("search", query.search.trim());
+  if (query.eventType) params.set("eventType", query.eventType);
+  return fetchObservability(
+    `/observability/events/export?${params.toString()}`,
+  );
+}
+
 export interface ObservabilityGuardrailTrigger {
   guardrailId: string | null;
   guardrailName: string | null;
