@@ -23,6 +23,7 @@ import { TeamCard } from "@/components/management/team-card";
 import { UserRow } from "@/components/management/user-row";
 import { UserCard } from "@/components/management/user-card";
 import { ModelRow } from "@/components/management/model-row";
+import { ModelCard } from "@/components/management/model-card";
 import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
@@ -417,24 +418,59 @@ export default function TeamsPage() {
 
       {/* ── Models ───────────────────────────────────────────────────────────── */}
       <PageTabsContent value="models">
-        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
-          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
-            Models
-          </span>
+        {/* Same filter pattern as Teams + Users: title and primary CTA
+            share the top row on mobile, search fills the second row.
+            Desktop collapses back to a single row via lg:contents. */}
+        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
+          <div className="flex items-center justify-between gap-3 lg:contents">
+            <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
+              Models
+            </span>
+            <AddModelDialog>
+              <Button variant="plusAction" className="lg:order-last">
+                <Plus className="h-4 w-4 text-white" />
+                Add New Model
+              </Button>
+            </AddModelDialog>
+          </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search"
+            placeholder="Search models..."
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
           />
-          <AddModelDialog>
-            <Button variant="plusAction" className="w-full sm:w-auto">
-              <Plus className="h-4 w-4 text-white" />
-              Add New Model
-            </Button>
-          </AddModelDialog>
         </div>
-        <div className="overflow-x-auto bg-bg-white rounded-lg">
+
+        {/* Mobile card list (<lg) — the 5-col table doesn't survive
+            once a model identifier + BYOK badge + fallback chips stack
+            up at 375px wide. */}
+        <div className="lg:hidden flex flex-col gap-2.5">
+          {modelsLoading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+            </div>
+          )}
+          {modelsError && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
+              Failed to load models. Is the API running?
+            </div>
+          )}
+          {!modelsLoading && !modelsError && filteredModels.length === 0 && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-12 text-center">
+              <Bot className="mx-auto h-10 w-10 text-text-3" />
+              <p className="mt-3 text-sm text-text-2">
+                {modelSearch
+                  ? "No models match your search."
+                  : "No models configured yet. Add one to get started."}
+              </p>
+            </div>
+          )}
+          {filteredModels.map((model) => (
+            <ModelCard key={model.id} model={model} />
+          ))}
+        </div>
+
+        <div className="hidden lg:block overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
