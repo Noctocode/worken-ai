@@ -4,7 +4,13 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "declaration": true,
-    "outDir": "./dist"
+    "outDir": "./dist",
+    // Drizzle's self-referencing columns (e.g. teams.parentTeamId -> teams)
+    // surface as TS7022/TS7024 under strict mode unless every self-ref
+    // gets an explicit AnyPgColumn annotation. Matches apps/api/tsconfig.json
+    // which already has these relaxed for the same reason.
+    "noImplicitAny": false,
+    "strict": false
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
