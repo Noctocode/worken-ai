@@ -41,10 +41,7 @@ export class KnowledgeCoreController {
   }
 
   @Get('folders/:id')
-  findFolder(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  findFolder(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findFolder(id, user.id);
   }
 
@@ -93,7 +90,12 @@ export class KnowledgeCoreController {
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
         ) {
-          cb(new BadRequestException(`Unsupported file type: ${file.originalname}`), false);
+          cb(
+            new BadRequestException(
+              `Unsupported file type: ${file.originalname}`,
+            ),
+            false,
+          );
           return;
         }
         cb(null, true);
@@ -216,10 +218,7 @@ export class KnowledgeCoreController {
    * the owner triggers Retrain.
    */
   @Post('files/:id/untrain')
-  untrainFile(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  untrainFile(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.untrainFile(id, user.id);
   }
 
@@ -273,10 +272,7 @@ export class KnowledgeCoreController {
   }
 
   @Delete('files/:id')
-  deleteFile(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  deleteFile(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.deleteFile(id, user.id);
   }
 

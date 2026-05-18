@@ -65,10 +65,7 @@ export class AuthController {
     // Team-invite acceptance is explicit via the /invite page, not a
     // silent login sweep — otherwise we'd accept invites behind the
     // user's back.
-    const tokens = await this.authService.generateTokens(
-      user.id,
-      user.email,
-    );
+    const tokens = await this.authService.generateTokens(user.id, user.email);
 
     setSessionCookies(res, tokens);
 
@@ -147,13 +144,14 @@ export class AuthController {
       }
     }
 
-    const { user, verificationToken } = await this.authService.signupWithPassword({
-      email,
-      password: body.password,
-      name: body.name,
-      // Invite token is proof of email ownership — skip the verification email.
-      autoVerify: !!body.token,
-    });
+    const { user, verificationToken } =
+      await this.authService.signupWithPassword({
+        email,
+        password: body.password,
+        name: body.name,
+        // Invite token is proof of email ownership — skip the verification email.
+        autoVerify: !!body.token,
+      });
 
     if (body.token) {
       // Invited flow: accept the invite, issue a session right away, return
@@ -169,10 +167,7 @@ export class AuthController {
       }
       await this.authService.processTeamInvitations(user.id, user.email);
 
-      const tokens = await this.authService.generateTokens(
-        user.id,
-        user.email,
-      );
+      const tokens = await this.authService.generateTokens(user.id, user.email);
       setSessionCookies(res, tokens);
 
       res.json({
@@ -211,12 +206,8 @@ export class AuthController {
 
   @Public()
   @Get('verify')
-  async verifyEmail(
-    @Query('token') token: string,
-    @Response() res: Res,
-  ) {
-    const frontendUrl =
-      process.env.FRONTEND_URL || 'http://localhost:3000';
+  async verifyEmail(@Query('token') token: string, @Response() res: Res) {
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
 
     try {
       const user = await this.authService.verifyEmailToken(token);
@@ -224,15 +215,11 @@ export class AuthController {
       // If they've already picked a profile type (rare: they clicked an old
       // link after finishing setup), the frontend guard will pass them
       // straight through to the dashboard.
-      const tokens = await this.authService.generateTokens(
-        user.id,
-        user.email,
-      );
+      const tokens = await this.authService.generateTokens(user.id, user.email);
       setSessionCookies(res, tokens);
       res.redirect(`${frontendUrl}/setup-profile`);
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message.toLowerCase() : '';
+      const message = err instanceof Error ? err.message.toLowerCase() : '';
       const code = message.includes('expired')
         ? 'expired'
         : message.includes('used') || message.includes('invalid')
@@ -244,9 +231,7 @@ export class AuthController {
 
   @Public()
   @Post('resend-verification')
-  async resendVerification(
-    @Body() body: { email?: string },
-  ) {
+  async resendVerification(@Body() body: { email?: string }) {
     if (body?.email) {
       const result = await this.authService.issueVerificationToken(body.email);
       if (result) {
@@ -287,16 +272,13 @@ export class AuthController {
     }
     // Always 200 — don't leak whether the account exists.
     return {
-      message:
-        "If that account exists, we've sent a password reset link.",
+      message: "If that account exists, we've sent a password reset link.",
     };
   }
 
   @Public()
   @Post('reset-password')
-  async resetPassword(
-    @Body() body: { token?: string; password?: string },
-  ) {
+  async resetPassword(@Body() body: { token?: string; password?: string }) {
     if (!body?.token || !body?.password) {
       throw new BadRequestException('token and password are required');
     }
@@ -323,10 +305,7 @@ export class AuthController {
     // once the user reaches the page — don't sweep pending invites on
     // login, or the invite token gets consumed before the page loads.
 
-    const tokens = await this.authService.generateTokens(
-      user.id,
-      user.email,
-    );
+    const tokens = await this.authService.generateTokens(user.id, user.email);
     setSessionCookies(res, tokens);
 
     res.json({

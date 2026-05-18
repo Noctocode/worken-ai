@@ -49,7 +49,12 @@ export class OpenRouterCatalogService {
     const json = (await res.json()) as { data?: CatalogModel[] };
     const data = json.data ?? [];
 
-    await this.redis.set(CACHE_KEY, JSON.stringify(data), 'EX', CACHE_TTL_SECONDS);
+    await this.redis.set(
+      CACHE_KEY,
+      JSON.stringify(data),
+      'EX',
+      CACHE_TTL_SECONDS,
+    );
     return data;
   }
 

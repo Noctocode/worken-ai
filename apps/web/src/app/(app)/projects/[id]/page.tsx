@@ -18,17 +18,26 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchProject,
   fetchConversation,
   createConversation,
   streamChatMessage,
+  updateProject,
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { useAuth } from "@/components/providers";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { humanizeChatError } from "@/lib/chat-errors";
 
 interface LocalMessage {
@@ -87,6 +96,43 @@ export default function ProjectChatPage() {
   } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => fetchProject(projectId),
+  });
+
+  // Effective model list for the picker in the project header.
+  // Same source as the arena — aliases the user owns plus any BYOK-
+  // unlocked catalog models — so what they see here matches what
+  // chat can actually route. `effective` carries the per-entry
+  // routing so we can tag picker items with "(BYOK)" / "(Custom)"
+  // — lets the user tell whose tokens get billed for each pick.
+  const { effective: effectiveModels, getLabel: getModelLabel } =
+    useUserModels();
+
+  // Append a routing marker to the model label so the user can tell
+  // at a glance whether a pick will hit their BYOK key, a Custom LLM
+  // endpoint, or our default WorkenAI / OpenRouter route. No marker
+  // for the WorkenAI route — that's the default and the empty state.
+  const labelWithRouting = (id: string): string => {
+    const m = effectiveModels.find((x) => x.id === id);
+    const base = m?.name ?? getModelLabel(id);
+    if (!m) return base;
+    if (m.routing === "byok") return `${base} (BYOK)`;
+    if (m.routing === "custom") return `${base} (Custom)`;
+    return base;
+  };
+
+  const updateModelMutation = useMutation({
+    mutationFn: (model: string) => updateProject(projectId, { model }),
+    onSuccess: (updated) => {
+      // Refetch so the cached project (and `project.model` used by
+      // streamChatMessage on the next send) reflects the switch
+      // before the user types again.
+      queryClient.setQueryData(["project", projectId], updated);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to change model",
+      );
+    },
   });
 
   const [activeConversationId, setActiveConversationId] = useState<
@@ -506,13 +552,48 @@ export default function ProjectChatPage() {
               {project.name}
             </h1>
           </div>
-          <Badge
-            variant="secondary"
-            className="gap-1 border border-border-2 bg-bg-1 text-xs font-medium text-text-2"
+          {/* Model picker — swap the model the project chats with.
+              Optimistic feel via setQueryData on success so the next
+              send picks up the new id without waiting on a refetch. */}
+          <Select
+            value={project.model}
+            onValueChange={(next) => {
+              if (next && next !== project.model) {
+                updateModelMutation.mutate(next);
+              }
+            }}
+            disabled={updateModelMutation.isPending}
           >
-            <Sparkles className="h-3 w-3" />
-            {project.model}
-          </Badge>
+            <SelectTrigger
+              aria-label="Change project model"
+              className="h-8 w-auto gap-1 border-border-2 bg-bg-1 px-2.5 text-xs font-medium text-text-2 hover:text-text-1 focus:ring-0 focus:ring-offset-0"
+            >
+              <Sparkles className="h-3 w-3" />
+              <SelectValue>{labelWithRouting(project.model)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end" className="max-h-[320px]">
+              {/* If the project's current model is not in the effective
+                  list (stale slug, e.g. an old default that no longer
+                  resolves), surface it at the top with an "(unavailable)"
+                  marker so the picker still reflects the stored value
+                  and the user can switch off it. */}
+              {!effectiveModels.some((m) => m.id === project.model) && (
+                <SelectItem value={project.model} disabled>
+                  {project.model} (unavailable)
+                </SelectItem>
+              )}
+              {effectiveModels.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {labelWithRouting(m.id)}
+                </SelectItem>
+              ))}
+              {effectiveModels.length === 0 && (
+                <div className="px-3 py-2 text-xs text-text-3">
+                  No models available yet.
+                </div>
+              )}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Messages Area */}

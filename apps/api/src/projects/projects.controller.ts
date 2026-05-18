@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFiles,
@@ -17,7 +18,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from './projects.service.js';
-import type { CreateProjectDto } from './projects.service.js';
+import type {
+  CreateProjectDto,
+  UpdateProjectDto,
+} from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -57,6 +61,15 @@ export class ProjectsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.projectsService.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateProjectDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.update(id, user.id, dto);
   }
 
   @Delete(':id')

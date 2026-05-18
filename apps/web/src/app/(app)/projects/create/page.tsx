@@ -4,18 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Briefcase,
-  Code,
-  HeadphonesIcon,
-  Megaphone,
-  Shield,
-  TrendingUp,
-  Users,
-  Search,
-  PenTool,
-  Settings,
-  Scale,
-  Bot,
   Info,
   X,
   ChevronDown,
@@ -46,39 +34,8 @@ import {
   // type OrgUser,
 } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
-
-/**
- * Each agent maps to a sensible default OpenRouter model. The mapping is
- * advisory: if the admin hasn't enabled the agent's preferred model in
- * the Catalog, we fall back to the first enabled model so project
- * creation never blocks. Tweak freely — these are starting points.
- */
-const AGENTS = [
-  { id: "general-assistant", label: "General Assistant", icon: Bot,
-    model: "anthropic/claude-opus-4.6-fast" },
-  { id: "business-development", label: "Business Development Specialist", icon: Briefcase,
-    model: "openai/gpt-5.5" },
-  { id: "marketing-strategist", label: "Marketing Strategist", icon: Megaphone,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "customer-support", label: "Customer Support", icon: HeadphonesIcon,
-    model: "openai/gpt-5.4-mini" },
-  { id: "code-engineer", label: "Code Engineer", icon: Code,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "security-advisor", label: "Security Advisor", icon: Shield,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "sales-rep", label: "Sales Rep", icon: TrendingUp,
-    model: "openai/gpt-5.5" },
-  { id: "hr", label: "HR", icon: Users,
-    model: "anthropic/claude-opus-4.6-fast" },
-  { id: "seo-specialist", label: "SEO Specialist", icon: Search,
-    model: "openai/gpt-5.5" },
-  { id: "copywriter", label: "Copywriter", icon: PenTool,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "automation-engineer", label: "Automation Engineer", icon: Settings,
-    model: "deepseek/deepseek-v4-pro" },
-  { id: "lawyer", label: "Lawyer", icon: Scale,
-    model: "anthropic/claude-opus-4.7" },
-] as const;
+import { AGENTS } from "@/lib/agents";
+import { AgentGrid } from "@/components/agent-grid";
 
 /* ─── Member picker (DISABLED) ────────────────────────────────────────────
  * Replaced by the Team selector below: instead of inviting individual members
@@ -229,16 +186,16 @@ export default function CreateProjectPage() {
     const agent = AGENTS.find((a) => a.id === selectedAgent);
     if (!agent) return;
     if (availableModels.length === 0) {
-      // Admin hasn't enabled any models yet — surface a clear error rather
+      // No models in the catalog response — surface a clear error rather
       // than silently submitting with an empty model id.
       setNameError(false);
       alert(
-        "No models are enabled in this workspace. Ask an admin to enable at least one model in Models → Catalog.",
+        "No models are available right now. Try again in a moment, or contact support if it persists.",
       );
       return;
     }
-    // Prefer the model recommended for this agent. If the admin hasn't
-    // enabled it in the Catalog, fall back to the first enabled model so
+    // Prefer the model recommended for this agent; if it isn't in the
+    // catalog response, fall back to the first available model so
     // project creation never blocks on missing config.
     const preferredModel = availableModels.find((m) => m.id === agent.model);
     const model = preferredModel?.id ?? availableModels[0].id;
@@ -380,52 +337,10 @@ export default function CreateProjectPage() {
           {/* Select Agent */}
           <div className="flex flex-col items-center gap-4 w-full">
             <h2 className="text-[23px] font-bold text-text-1">Select Agent</h2>
-
-            <div className="flex flex-wrap gap-2.5 justify-center w-full max-w-[900px]">
-              {AGENTS.map((agent) => {
-                const Icon = agent.icon;
-                const isSelected = selectedAgent === agent.id;
-                const resolvedModel =
-                  availableModels.find((m) => m.id === agent.model) ??
-                  availableModels[0];
-                const willFallback =
-                  resolvedModel != null && resolvedModel.id !== agent.model;
-                return (
-                  <button
-                    key={agent.id}
-                    onClick={() => setSelectedAgent(agent.id)}
-                    title={
-                      resolvedModel
-                        ? willFallback
-                          ? `Preferred ${agent.model} not enabled — will use ${resolvedModel.name}`
-                          : `Uses ${resolvedModel.name}`
-                        : agent.model
-                    }
-                    className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-primary-1 border border-primary-6"
-                        : "bg-bg-1 border border-transparent hover:border-border-3"
-                    }`}
-                  >
-                    <div className="flex h-[60px] w-[60px] items-center justify-center rounded-xl bg-[rgba(60,126,255,0.2)]">
-                      <Icon className="h-10 w-10 text-primary-6" />
-                    </div>
-                    <span className="text-[13px] text-text-2 whitespace-nowrap">{agent.label}</span>
-                    {resolvedModel && (
-                      <span
-                        className={`text-[11px] truncate max-w-full ${
-                          willFallback ? "text-warning-6" : "text-text-3"
-                        }`}
-                      >
-                        {willFallback
-                          ? `↳ ${resolvedModel.name} (fallback)`
-                          : resolvedModel.name}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <AgentGrid
+              selectedAgentId={selectedAgent}
+              onSelect={(agent) => setSelectedAgent(agent.id)}
+            />
           </div>
         </div>
 

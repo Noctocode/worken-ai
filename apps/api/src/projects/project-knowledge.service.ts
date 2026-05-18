@@ -243,16 +243,18 @@ export class ProjectKnowledgeService {
       visibility?: string;
       teamIds?: string[];
       projectIds?: string[];
-      nameConflictActions?: Record<
-        string,
-        'overwrite' | 'keep_both' | 'skip'
-      >;
+      nameConflictActions?: Record<string, 'overwrite' | 'keep_both' | 'skip'>;
     },
   ): Promise<{
     uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
     duplicates: Array<{
       name: string;
-      existing: { id: string | null; name: string; folderId: string; folderName: string };
+      existing: {
+        id: string | null;
+        name: string;
+        folderId: string;
+        folderName: string;
+      };
     }>;
     nameConflicts: Array<{ name: string; existing: { id: string } }>;
   }> {
@@ -262,8 +264,7 @@ export class ProjectKnowledgeService {
     }
 
     const folderId =
-      options.folderId ??
-      (await this.ensureDefaultProjectsFolder(callerId));
+      options.folderId ?? (await this.ensureDefaultProjectsFolder(callerId));
 
     const result = await this.knowledgeCore.uploadFiles(
       folderId,
@@ -424,4 +425,3 @@ export class ProjectKnowledgeService {
     return rows.map((r) => r.fileId);
   }
 }
-

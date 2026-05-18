@@ -163,7 +163,7 @@ export function humanizeChatError(err: unknown): string {
 
   if (/no endpoints found/i.test(raw)) {
     return withModel(
-      (m) => `${m} is no longer available in the catalog. Pick a different model in the project header.`,
+      (m) => `${m} is no longer available. Pick a different model in the project header.`,
     );
   }
 
@@ -220,7 +220,7 @@ export function humanizeChatError(err: unknown): string {
 
   if (/\b404\b/.test(raw) || /model not found/i.test(raw)) {
     return withModel(
-      (m) => `${m} can't be reached. Make sure the model is enabled in Models → Catalog.`,
+      (m) => `${m} can't be reached. Pick a different model in the project header.`,
     );
   }
 

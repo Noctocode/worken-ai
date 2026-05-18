@@ -37,11 +37,7 @@ const IMAGE_MIMETYPES = new Set([
 ]);
 const NO_TEXT_MARKER = 'NO_TEXT_FOUND';
 
-export type IngestionStatus =
-  | 'pending'
-  | 'processing'
-  | 'done'
-  | 'failed';
+export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
   total: number;

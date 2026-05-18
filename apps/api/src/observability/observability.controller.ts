@@ -23,7 +23,11 @@ const RANGE_TO_MS: Record<RangeKey, number> = {
   '90d': 90 * 24 * 60 * 60 * 1000,
 };
 
-function parseRange(raw: string | undefined): { key: RangeKey; from: Date; to: Date } {
+function parseRange(raw: string | undefined): {
+  key: RangeKey;
+  from: Date;
+  to: Date;
+} {
   const key = (raw ?? '7d') as RangeKey;
   if (!(key in RANGE_TO_MS)) {
     throw new BadRequestException(
@@ -69,9 +73,7 @@ export class ObservabilityController {
       .from(users)
       .where(eq(users.id, caller.id));
     if (!row || row.role !== 'admin') {
-      throw new ForbiddenException(
-        'Observability dashboard is admin-only.',
-      );
+      throw new ForbiddenException('Observability dashboard is admin-only.');
     }
   }
 

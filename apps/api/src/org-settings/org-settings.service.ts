@@ -1,6 +1,15 @@
-import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { and, asc, eq, gte, sql } from 'drizzle-orm';
-import { observabilityEvents, orgSettings, users } from '@worken/database/schema';
+import {
+  observabilityEvents,
+  orgSettings,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
@@ -157,9 +166,7 @@ export class OrgSettingsService {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Failed to announce org-budget change: ${msg}`,
-      );
+      this.logger.error(`Failed to announce org-budget change: ${msg}`);
     }
   }
 

@@ -143,7 +143,6 @@ export class CompareModelsController {
     });
   }
 
-
   /**
    * Streaming arena endpoint. Fans the question out to N models in
    * parallel and pipes their token deltas to the FE over SSE — each
@@ -325,9 +324,7 @@ export class CompareModelsController {
             4096,
           );
           const estimatedCostCents =
-            estimatedCostUsd != null
-              ? Math.ceil(estimatedCostUsd * 100)
-              : 0;
+            estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
           await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
             teamId,
             estimatedCostCents,
@@ -370,8 +367,7 @@ export class CompareModelsController {
         let totalTokens: number | undefined;
         let costUsd: number | undefined;
         let modelErrored = false;
-        let errorPayload: { message: string; status?: number } | null =
-          null;
+        let errorPayload: { message: string; status?: number } | null = null;
 
         try {
           for await (const event of this.chatService.sendMessageStream(
@@ -568,8 +564,7 @@ export class CompareModelsController {
           try {
             comparisonItems = this.parseComparisonContent(lastRawContent);
           } catch (err) {
-            lastParseError =
-              err instanceof Error ? err.message : String(err);
+            lastParseError = err instanceof Error ? err.message : String(err);
             comparisonItems = [];
           }
           if (comparisonItems.length > 0) break;

@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
-import type {
-  ChatStreamEvent,
-  StreamOptions,
-} from '../chat/chat.service.js';
+import type { ChatStreamEvent, StreamOptions } from '../chat/chat.service.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -48,6 +45,43 @@ function toAnthropicModelId(modelId: string): string {
   return modelId.replace(/\./g, '-');
 }
 
+/**
+ * Whether an OpenRouter "anthropic/..." slug maps to a real model on
+ * Anthropic's native Messages API. Caller may pass either the full
+ * OpenRouter slug ("anthropic/claude-opus-4.6-fast") or the bare form
+ * ("claude-opus-4.6-fast") — we normalize.
+ *
+ * Reason: OpenRouter carries some slugs that only exist on their own
+ * routing infra:
+ *   - `-fast` variants (Anthropic doesn't expose a -fast tier natively).
+ *   - Bare family ids without minor version ("claude-opus-4") —
+ *     Anthropic native ids always include the minor (4-7, 4-6, ...).
+ *   - Opus 4.6 — Anthropic skipped this for Opus (only Sonnet 4.6
+ *     exists natively, Opus jumped 4.5 → 4.7).
+ *
+ * Sending these to api.anthropic.com gets a 404. chat-transport uses
+ * this predicate to decide whether to honour a BYOK Anthropic key for
+ * a given slug or fall through to OpenRouter (where the slug still
+ * works). models.service uses the same helper so the picker's
+ * routing marker stays in sync with what chat-transport will actually
+ * do.
+ *
+ * Add new blocked patterns here as we discover them — pure function,
+ * easy to unit-test and audit.
+ */
+export function isAnthropicNativeSupported(modelId: string): boolean {
+  const slash = modelId.indexOf('/');
+  const bare = slash === -1 ? modelId : modelId.slice(slash + 1);
+  const translated = toAnthropicModelId(bare);
+
+  if (translated.endsWith('-fast')) return false;
+  // Bare family without minor version (e.g. "claude-opus-4").
+  if (/^claude-(opus|sonnet|haiku)-\d+$/.test(translated)) return false;
+  // Opus 4.6 never landed on Anthropic native.
+  if (translated.startsWith('claude-opus-4-6')) return false;
+  return true;
+}
+
 @Injectable()
 export class AnthropicClientService {
   async sendMessage(
@@ -74,10 +108,7 @@ export class AnthropicClientService {
     // (in practice this only fires if a future caller passes a stale
     // assistant-led history fragment).
     const filteredMessages = [...messages];
-    while (
-      filteredMessages.length > 0 &&
-      filteredMessages[0].role !== 'user'
-    ) {
+    while (filteredMessages.length > 0 && filteredMessages[0].role !== 'user') {
       filteredMessages.shift();
     }
 
@@ -148,10 +179,7 @@ export class AnthropicClientService {
 
     const systemPiece = context ?? null;
     const filteredMessages = [...messages];
-    while (
-      filteredMessages.length > 0 &&
-      filteredMessages[0].role !== 'user'
-    ) {
+    while (filteredMessages.length > 0 && filteredMessages[0].role !== 'user') {
       filteredMessages.shift();
     }
 

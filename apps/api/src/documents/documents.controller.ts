@@ -32,7 +32,12 @@ export class DocumentsController {
       projectId,
       user.id,
     );
-    return this.documentsService.create(projectId, body.content, apiKey, user.id);
+    return this.documentsService.create(
+      projectId,
+      body.content,
+      apiKey,
+      user.id,
+    );
   }
 
   @Post('projects/:projectId/documents/upload')

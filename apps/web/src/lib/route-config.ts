@@ -32,12 +32,6 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
-  "/catalog": {
-    bg: "bg-bg-1",
-    title: "Models Catalog",
-    hideSearch: true,
-    hideNotifications: true,
-  },
   "/docs/api": {
     bg: "bg-bg-1",
     title: "API Documentation",

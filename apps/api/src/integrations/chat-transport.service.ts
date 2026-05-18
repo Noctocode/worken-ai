@@ -15,6 +15,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
+import { isAnthropicNativeSupported } from './anthropic-client.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
 
 /**
@@ -377,7 +378,18 @@ export class ChatTransportService {
         // 2b. Providers we have a dedicated SDK shim for (currently
         // Anthropic). The chat layer recognises kind === 'anthropic-sdk'
         // and routes to AnthropicClientService instead of OpenAI SDK.
-        if (native?.nativeSdkAvailable) {
+        //
+        // Guard for Anthropic: some OpenRouter slugs (`-fast`, Opus 4.6,
+        // bare family ids) don't exist on Anthropic native — sending
+        // them to api.anthropic.com 404s. We skip native routing for
+        // those and fall through to OpenRouter (where the slug still
+        // works), so a BYOK Anthropic key doesn't break unrelated
+        // Claude variants the user might want to try.
+        if (
+          native?.nativeSdkAvailable &&
+          (provider !== 'anthropic' ||
+            isAnthropicNativeSupported(modelIdentifier))
+        ) {
           return {
             baseURL: native.baseURL, // unused by the SDK path
             apiKey,
@@ -386,6 +398,11 @@ export class ChatTransportService {
             source: 'byok',
             kind: 'anthropic-sdk',
           };
+        }
+        if (native?.nativeSdkAvailable && provider === 'anthropic') {
+          this.logger.warn(
+            `BYOK Anthropic key set but ${modelIdentifier} is not exposed on Anthropic native — falling back to OpenRouter for this call.`,
+          );
         }
 
         this.logger.warn(
@@ -698,9 +715,8 @@ export class ChatTransportService {
       spentCents < eightyPct &&
       projectedCents >= eightyPct
     ) {
-      const recipients = await this.notifications.getTeamBudgetRecipients(
-        teamId,
-      );
+      const recipients =
+        await this.notifications.getTeamBudgetRecipients(teamId);
       await this.fanoutBudgetAlert(
         recipients,
         'budget_alert',
@@ -723,9 +739,8 @@ export class ChatTransportService {
     // 100% threshold alert: fire the moment a call brings the team
     // to / past its full budget. Same dedupe + fanout as above.
     if (spentCents < team.budget) {
-      const recipients = await this.notifications.getTeamBudgetRecipients(
-        teamId,
-      );
+      const recipients =
+        await this.notifications.getTeamBudgetRecipients(teamId);
       await this.fanoutBudgetAlert(
         recipients,
         'budget_alert',
@@ -858,10 +873,7 @@ export class ChatTransportService {
 
     if (projectedCents < targetCents) return;
 
-    if (
-      options.callerUserId &&
-      spentCents < targetCents
-    ) {
+    if (options.callerUserId && spentCents < targetCents) {
       const recipients = await this.notifications.getOrgBudgetRecipients(
         options.callerUserId,
       );

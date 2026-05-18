@@ -17,10 +17,6 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
     ChatTransportService,
     AnthropicClientService,
   ],
-  exports: [
-    IntegrationsService,
-    ChatTransportService,
-    AnthropicClientService,
-  ],
+  exports: [IntegrationsService, ChatTransportService, AnthropicClientService],
 })
 export class IntegrationsModule {}

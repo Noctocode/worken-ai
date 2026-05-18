@@ -1,7 +1,4 @@
-import {
-  ChatService,
-  type ChatStreamEvent,
-} from './chat.service.js';
+import { ChatService, type ChatStreamEvent } from './chat.service.js';
 
 /**
  * Stream tests focus on `sendMessageStream` — the seam where SDK
@@ -102,9 +99,7 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
   it('passes reasoning + content from the same chunk through as two events', async () => {
     const svc = makeServiceWithChunks([
       {
-        choices: [
-          { delta: { reasoning: 'r', content: 'c' } },
-        ],
+        choices: [{ delta: { reasoning: 'r', content: 'c' } }],
       },
     ]);
     const events = await collect(

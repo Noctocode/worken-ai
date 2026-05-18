@@ -88,10 +88,7 @@ export class UsersService {
           // Filter them out so a company admin's user list doesn't
           // surface unrelated personal accounts.
           .where(
-            or(
-              eq(users.profileType, 'company'),
-              isNull(users.profileType),
-            ),
+            or(eq(users.profileType, 'company'), isNull(users.profileType)),
           )
       : await this.db
           .select(baseSelect)
@@ -122,10 +119,7 @@ export class UsersService {
       };
       entry.teams.push(m.teamName);
       // Promote role: admin > advanced > basic
-      if (
-        m.role === 'advanced' &&
-        entry.highestRole === 'basic'
-      ) {
+      if (m.role === 'advanced' && entry.highestRole === 'basic') {
         entry.highestRole = 'advanced';
       }
       if (m.status === 'accepted') {
@@ -260,7 +254,10 @@ export class UsersService {
       picture: user.picture,
       role: user.role,
       inviteStatus: user.inviteStatus,
-      tier: (user.role === 'admin' || user.role === 'advanced' ? 'advanced' : 'basic') as 'advanced' | 'basic',
+      tier:
+        user.role === 'admin' || user.role === 'advanced'
+          ? 'advanced'
+          : 'basic',
       monthlyBudgetCents: user.monthlyBudgetCents,
       spentCents,
       projectedCents,
@@ -406,11 +403,7 @@ export class UsersService {
         now.getUTCMonth() + 1,
       ).padStart(2, '0')}`;
 
-      const fire = async (
-        threshold: 80 | 100,
-        title: string,
-        body: string,
-      ) => {
+      const fire = async (threshold: 80 | 100, title: string, body: string) => {
         await this.notifications.createIfNotExists({
           userId,
           type: 'budget_alert',
@@ -504,14 +497,20 @@ export class UsersService {
           .update(projects)
           .set({ teamId: null })
           .where(inArray(projects.teamId, ownedTeamIds));
-        await tx.delete(teamMembers).where(inArray(teamMembers.teamId, ownedTeamIds));
+        await tx
+          .delete(teamMembers)
+          .where(inArray(teamMembers.teamId, ownedTeamIds));
         await tx.delete(teams).where(inArray(teams.id, ownedTeamIds));
       }
 
       await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
-      await tx.delete(tenderTeamMembers).where(eq(tenderTeamMembers.userId, userId));
+      await tx
+        .delete(tenderTeamMembers)
+        .where(eq(tenderTeamMembers.userId, userId));
       await tx.delete(tenders).where(eq(tenders.ownerId, userId));
-      await tx.delete(knowledgeFolders).where(eq(knowledgeFolders.ownerId, userId));
+      await tx
+        .delete(knowledgeFolders)
+        .where(eq(knowledgeFolders.ownerId, userId));
       await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
       // Personal/global guardrails owned by the user (team_id NULL) AND
       // any straggler guardrails the user owns on someone else's team —

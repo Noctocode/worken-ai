@@ -40,10 +40,7 @@ export class UsersController {
   }
 
   @Get(':id')
-  findOne(
-    @Param('id') id: string,
-    @CurrentUser() caller: AuthenticatedUser,
-  ) {
+  findOne(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
     return this.usersService.findOne(id, caller.id);
   }
 
@@ -71,9 +68,7 @@ export class UsersController {
       .where(eq(users.id, caller.id));
     const isAdmin = callerUser?.role === 'admin';
     if (!isAdmin && caller.id !== id) {
-      throw new ForbiddenException(
-        'You can only view your own activity log.',
-      );
+      throw new ForbiddenException('You can only view your own activity log.');
     }
     const page = Math.max(1, Number(pageRaw) || 1);
     const pageSize = Math.max(1, Math.min(Number(pageSizeRaw) || 50, 200));
@@ -96,8 +91,13 @@ export class UsersController {
       .select()
       .from(users)
       .where(eq(users.id, caller.id));
-    if (!callerUser || (callerUser.role !== 'admin' && callerUser.role !== 'advanced')) {
-      throw new ForbiddenException('Only admin or advanced users can invite users.');
+    if (
+      !callerUser ||
+      (callerUser.role !== 'admin' && callerUser.role !== 'advanced')
+    ) {
+      throw new ForbiddenException(
+        'Only admin or advanced users can invite users.',
+      );
     }
 
     const validRoles = ['basic', 'advanced'];
@@ -232,7 +232,7 @@ export class UsersController {
       caller.id === id && callerUser?.profileType !== 'company';
     if (!isAdmin && !isSelfManagedUpdate) {
       throw new ForbiddenException(
-        'Only admins can change another user\'s monthly budget. Company-profile basic users wait for admin approval; everyone else can self-update.',
+        "Only admins can change another user's monthly budget. Company-profile basic users wait for admin approval; everyone else can self-update.",
       );
     }
     // Snapshot previous budget so the notif can render "$X → $Y".
@@ -308,7 +308,7 @@ export class UsersController {
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role !== 'admin') {
       throw new ForbiddenException(
-        'Only admins can change a user\'s organization role.',
+        "Only admins can change a user's organization role.",
       );
     }
     // Block self-mutation: prevents an admin from accidentally

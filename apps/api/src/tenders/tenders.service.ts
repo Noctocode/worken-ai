@@ -41,7 +41,8 @@ interface UpdateTenderDto {
   status?: string;
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class TendersService {
@@ -76,14 +77,16 @@ export class TendersService {
       })
       .from(tenders)
       .leftJoin(users, eq(users.id, tenders.ownerId))
-      .where(sql`(
+      .where(
+        sql`(
         ${tenders.ownerId} = ${userId}
         OR EXISTS (
           SELECT 1 FROM tender_team_members
           WHERE tender_team_members.tender_id = ${tenders.id}
           AND tender_team_members.user_id = ${userId}
         )
-      )`)
+      )`,
+      )
       .orderBy(desc(tenders.createdAt));
 
     return rows.map((r) => ({
@@ -152,9 +155,7 @@ export class TendersService {
           organization: dto.organization?.trim() || null,
           description: dto.description?.trim() || null,
           category: dto.category?.trim() || null,
-          deadline: dto.deadline
-            ? new Date(`${dto.deadline}T12:00:00Z`)
-            : null,
+          deadline: dto.deadline ? new Date(`${dto.deadline}T12:00:00Z`) : null,
           value: dto.value?.trim() || null,
           status: 'Active',
           ownerId: userId,
@@ -174,9 +175,7 @@ export class TendersService {
       }
 
       if (dto.teamMemberIds?.length) {
-        const validIds = dto.teamMemberIds.filter((uid) =>
-          UUID_RE.test(uid),
-        );
+        const validIds = dto.teamMemberIds.filter((uid) => UUID_RE.test(uid));
         if (validIds.length > 0) {
           await tx.insert(tenderTeamMembers).values(
             validIds.map((uid) => ({

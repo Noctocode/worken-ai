@@ -125,9 +125,7 @@ export class ObservabilityService {
       // Defensive — if the lookup fails for any reason, never break the
       // user-facing call path. The event just gets a NULL team.
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `getPrimaryTeamId failed for user ${userId}: ${msg}`,
-      );
+      this.logger.warn(`getPrimaryTeamId failed for user ${userId}: ${msg}`);
       return null;
     }
   }
@@ -184,7 +182,10 @@ export class ObservabilityService {
       .orderBy(bucketSql);
 
     return rows.map((r) => ({
-      bucket: typeof r.bucket === 'string' ? r.bucket : new Date(r.bucket).toISOString(),
+      bucket:
+        typeof r.bucket === 'string'
+          ? r.bucket
+          : new Date(r.bucket).toISOString(),
       tokens: Number(r.tokens ?? 0),
       cost: Number(r.cost ?? 0),
       calls: Number(r.calls ?? 0),
@@ -241,7 +242,7 @@ export class ObservabilityService {
 
     return rows.map((r) => ({
       teamId: r.teamId,
-      teamName: r.teamName ?? (r.teamId ? "(unknown team)" : "Personal"),
+      teamName: r.teamName ?? (r.teamId ? '(unknown team)' : 'Personal'),
       cost: Number(r.cost ?? 0),
       tokens: Number(r.tokens ?? 0),
       avgLatencyMs: Number(r.avgLatencyMs ?? 0),
@@ -269,8 +270,10 @@ export class ObservabilityService {
       gte(observabilityEvents.createdAt, opts.from),
       lte(observabilityEvents.createdAt, opts.to),
     ];
-    if (opts.userId) conditions.push(eq(observabilityEvents.userId, opts.userId));
-    if (opts.teamId) conditions.push(eq(observabilityEvents.teamId, opts.teamId));
+    if (opts.userId)
+      conditions.push(eq(observabilityEvents.userId, opts.userId));
+    if (opts.teamId)
+      conditions.push(eq(observabilityEvents.teamId, opts.teamId));
     if (opts.model) conditions.push(eq(observabilityEvents.model, opts.model));
     if (opts.eventType)
       conditions.push(eq(observabilityEvents.eventType, opts.eventType));
@@ -412,9 +415,15 @@ export class ObservabilityService {
   async guardrailActivity(from: Date, to: Date) {
     const rows = await this.db
       .select({
-        guardrailId: sql<string | null>`${observabilityEvents.metadata} ->> 'guardrailId'`,
-        guardrailName: sql<string | null>`${observabilityEvents.metadata} ->> 'name'`,
-        severity: sql<string | null>`${observabilityEvents.metadata} ->> 'severity'`,
+        guardrailId: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'guardrailId'`,
+        guardrailName: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'name'`,
+        severity: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'severity'`,
         count: sql<number>`count(*)::int`,
         lastTriggeredAt: sql<Date>`max(${observabilityEvents.createdAt})`,
       })
@@ -433,7 +442,10 @@ export class ObservabilityService {
       )
       .orderBy(sql`count(*) desc`);
 
-    const totalTriggers = rows.reduce((sum, r) => sum + Number(r.count ?? 0), 0);
+    const totalTriggers = rows.reduce(
+      (sum, r) => sum + Number(r.count ?? 0),
+      0,
+    );
     return { totalTriggers, triggers: rows };
   }
 
@@ -449,7 +461,8 @@ export class ObservabilityService {
         eventType: input.eventType,
         model: input.model ?? null,
         provider:
-          input.provider ?? (input.model ? providerFromModel(input.model) : null),
+          input.provider ??
+          (input.model ? providerFromModel(input.model) : null),
         promptTokens: input.promptTokens ?? null,
         completionTokens: input.completionTokens ?? null,
         totalTokens: input.totalTokens ?? null,

@@ -73,7 +73,13 @@ export class TeamsService {
     }
 
     const budgetCents = monthlyBudgetCents ?? 1000;
-    const [team] = await this.db
+    // Self-referencing FK (parent_team_id → teams.id) breaks drizzle's
+    // .returning() type inference into a `QueryResult<never>` union that
+    // can't be destructured. Cast back to the inferred row type — the
+    // SQL semantics are unchanged, only the TS surface is being
+    // narrowed back to what drizzle would have inferred without the
+    // self-reference.
+    const insertedTeams = (await this.db
       .insert(teams)
       .values({
         name,
@@ -82,7 +88,8 @@ export class TeamsService {
         parentTeamId: parentTeamId ?? null,
         monthlyBudgetCents: budgetCents,
       })
-      .returning() as typeof teams.$inferSelect[];
+      .returning()) as Array<typeof teams.$inferSelect>;
+    const [team] = insertedTeams;
 
     // Auto-add owner as accepted member with owner role
     await this.db.insert(teamMembers).values({
@@ -181,12 +188,7 @@ export class TeamsService {
       data.name !== team.name &&
       data.name.trim().length > 0
     ) {
-      await this.announceTeamRename(
-        teamId,
-        team.name,
-        data.name,
-        userId,
-      );
+      await this.announceTeamRename(teamId, team.name, data.name, userId);
     }
 
     return updated;
@@ -233,9 +235,7 @@ export class TeamsService {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Failed to announce team rename for ${teamId}: ${msg}`,
-      );
+      this.logger.error(`Failed to announce team rename for ${teamId}: ${msg}`);
     }
   }
 
@@ -308,9 +308,7 @@ export class TeamsService {
     ).filter((id) => id !== userId);
 
     // Remove all members first (cascade should handle this, but be explicit)
-    await this.db
-      .delete(teamMembers)
-      .where(eq(teamMembers.teamId, teamId));
+    await this.db.delete(teamMembers).where(eq(teamMembers.teamId, teamId));
 
     await this.db.delete(teams).where(eq(teams.id, teamId));
 
@@ -529,9 +527,8 @@ export class TeamsService {
         now.getUTCMonth() + 1,
       ).padStart(2, '0')}`;
 
-      const recipients = await this.notifications.getTeamBudgetRecipients(
-        teamId,
-      );
+      const recipients =
+        await this.notifications.getTeamBudgetRecipients(teamId);
       const fanout = async (
         threshold: 80 | 100,
         title: string,
@@ -1050,10 +1047,7 @@ export class TeamsService {
       })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.status, 'pending'),
-        ),
+        and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'pending')),
       );
 
     // Surface lazy expiry to the caller without writing to the row here.
@@ -1065,7 +1059,7 @@ export class TeamsService {
         r.invitationExpiresAt &&
         r.invitationExpiresAt.getTime() < now
           ? 'expired'
-          : r.invitationStatus ?? 'pending',
+          : (r.invitationStatus ?? 'pending'),
     }));
   }
 
@@ -1161,12 +1155,7 @@ export class TeamsService {
     const [target] = await this.db
       .select({ userId: teamMembers.userId, role: teamMembers.role })
       .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      );
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
     // Owner row is pinned to `team.ownerId`; demoting it would leave
     // a team with a member row whose role contradicts `teams.owner_id`.
@@ -1174,7 +1163,7 @@ export class TeamsService {
     // has to transfer ownership before fiddling with this row.
     if (target?.userId && target.userId === team.ownerId) {
       throw new BadRequestException(
-        'Cannot change the team owner\'s role. Transfer ownership first.',
+        "Cannot change the team owner's role. Transfer ownership first.",
       );
     }
 
@@ -1186,7 +1175,7 @@ export class TeamsService {
       !this.hasOwnerRights(callerRole)
     ) {
       throw new ForbiddenException(
-        'Only the team owner, admin, or manager can change another admin or manager\'s role',
+        "Only the team owner, admin, or manager can change another admin or manager's role",
       );
     }
 
@@ -1207,11 +1196,7 @@ export class TeamsService {
     //   - self-edits (caller demoting themselves) since they
     //     pressed Save and already know
     //   - no-op patches (role unchanged) — would be confusing
-    if (
-      target?.userId &&
-      target.userId !== userId &&
-      target.role !== role
-    ) {
+    if (target?.userId && target.userId !== userId && target.role !== role) {
       await this.announceRoleChange(
         target.userId,
         teamId,
@@ -1500,8 +1485,6 @@ export class TeamsService {
     return [...ids];
   }
 
-
-
   async getInviteByToken(token: string) {
     const [member] = await this.db
       .select({
@@ -1786,10 +1769,7 @@ export class TeamsService {
         updatedAt: guardrails.updatedAt,
       })
       .from(guardrails)
-      .innerJoin(
-        guardrailTeams,
-        eq(guardrailTeams.guardrailId, guardrails.id),
-      )
+      .innerJoin(guardrailTeams, eq(guardrailTeams.guardrailId, guardrails.id))
       .where(eq(guardrailTeams.teamId, teamId));
 
     // Resolve the team's company via its owner. The team rows have
@@ -1851,7 +1831,6 @@ export class TeamsService {
     ];
   }
 
-
   /**
    * Set the per-member monthly spend cap inside this team. The cap
    * gates this user's chat calls against the team's spend, regardless
@@ -1896,22 +1875,12 @@ export class TeamsService {
         monthlyCapCents: teamMembers.monthlyCapCents,
       })
       .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      );
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)));
 
     const [updated] = await this.db
       .update(teamMembers)
       .set({ monthlyCapCents })
-      .where(
-        and(
-          eq(teamMembers.id, memberId),
-          eq(teamMembers.teamId, teamId),
-        ),
-      )
+      .where(and(eq(teamMembers.id, memberId), eq(teamMembers.teamId, teamId)))
       .returning({
         id: teamMembers.id,
         monthlyCapCents: teamMembers.monthlyCapCents,
@@ -2181,7 +2150,9 @@ export class TeamsService {
     // the caller's other personal predef for that provider but mark
     // it `blockedByProvider: true` so the FE can render a disabled
     // pill explaining why it can't be linked.
-    const linkedIntegrationIds = new Set(linkedRows.map((r) => r.integrationId));
+    const linkedIntegrationIds = new Set(
+      linkedRows.map((r) => r.integrationId),
+    );
     const occupiedPredefProviders = new Set(
       linkedRows
         .filter((r) => r.providerId !== 'custom')
@@ -2271,17 +2242,15 @@ export class TeamsService {
           ),
         );
       if (removed.length > 0) {
-        await this.db
-          .delete(teamIntegrationLinks)
-          .where(
-            and(
-              eq(teamIntegrationLinks.teamId, teamId),
-              inArray(
-                teamIntegrationLinks.integrationId,
-                removed.map((r) => r.integrationId),
-              ),
+        await this.db.delete(teamIntegrationLinks).where(
+          and(
+            eq(teamIntegrationLinks.teamId, teamId),
+            inArray(
+              teamIntegrationLinks.integrationId,
+              removed.map((r) => r.integrationId),
             ),
-          );
+          ),
+        );
         // Drop team-scoped custom aliases bound to any removed
         // integration so chat-time pickers stop surfacing them.
         const customIds = removed
@@ -2316,9 +2285,7 @@ export class TeamsService {
       .where(inArray(integrations.id, uniqueIds));
 
     if (requested.length !== uniqueIds.length) {
-      throw new BadRequestException(
-        'One or more integrations were not found.',
-      );
+      throw new BadRequestException('One or more integrations were not found.');
     }
     for (const r of requested) {
       if (r.teamId !== null) {
@@ -2394,17 +2361,15 @@ export class TeamsService {
             ),
           );
         if (removedCustoms.length > 0) {
-          await tx
-            .delete(modelConfigs)
-            .where(
-              and(
-                eq(modelConfigs.teamId, teamId),
-                inArray(
-                  modelConfigs.integrationId,
-                  removedCustoms.map((r) => r.id),
-                ),
+          await tx.delete(modelConfigs).where(
+            and(
+              eq(modelConfigs.teamId, teamId),
+              inArray(
+                modelConfigs.integrationId,
+                removedCustoms.map((r) => r.id),
               ),
-            );
+            ),
+          );
         }
       }
       if (toInsert.length > 0) {

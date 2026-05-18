@@ -53,9 +53,7 @@ export class PromptsController {
       .filter(Boolean);
   }
 
-  private sanitizeVariables(
-    variables: unknown,
-  ): PromptVariable[] | undefined {
+  private sanitizeVariables(variables: unknown): PromptVariable[] | undefined {
     if (variables === undefined) return undefined;
     if (!Array.isArray(variables)) {
       throw new BadRequestException('`variables` must be an array.');
@@ -72,11 +70,11 @@ export class PromptsController {
         name: name.trim(),
         description:
           typeof (v as { description?: unknown }).description === 'string'
-            ? ((v as { description: string }).description)
+            ? (v as { description: string }).description
             : undefined,
         default:
           typeof (v as { default?: unknown }).default === 'string'
-            ? ((v as { default: string }).default)
+            ? (v as { default: string }).default
             : undefined,
       };
     });

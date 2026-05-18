@@ -2128,7 +2128,7 @@ function AddModelDialog({
 
                 <p className="text-[13px] leading-[1.5] text-text-2">
                   {selected.description ??
-                    "Available in the WorkenAI catalog. Used to compare answers against other models in the arena."}
+                    "Available in WorkenAI. Used to compare answers against other models in the arena."}
                 </p>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -2149,8 +2149,7 @@ function AddModelDialog({
               </>
             ) : (
               <p className="text-[13px] text-text-3">
-                No models enabled yet. Ask an admin to enable models in
-                Models → Catalog.
+                No models found. Check back in a moment.
               </p>
             )}
           </div>

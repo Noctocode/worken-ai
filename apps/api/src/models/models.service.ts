@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
-  enabledModels,
   integrations,
   modelConfigs,
   teamIntegrationLinks,
@@ -15,6 +14,8 @@ import {
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { isAnthropicNativeSupported } from '../integrations/anthropic-client.service.js';
+import { providerOfModel } from '../integrations/native-endpoints.js';
 import {
   OpenRouterCatalogService,
   type CatalogModel,
@@ -34,17 +35,20 @@ export interface EffectiveModel {
    *  BYOK key on the model's provider; "custom" = bound to a Custom LLM
    *  integration (alias with integrationId set). */
   source: 'alias' | 'byok' | 'custom';
+  /** Where chat-transport will actually route a chat call for this
+   *  model. Independent of `source`: an alias on a provider the user
+   *  has BYOK for routes via 'byok', and a 'byok' catalog entry for
+   *  an Anthropic slug not supported on native routes via 'workenai'
+   *  (falls through to the OpenRouter default key). Drives the
+   *  "(BYOK)" / "(Custom)" marker in pickers so users can tell whose
+   *  tokens get billed. */
+  routing: 'workenai' | 'byok' | 'custom';
   /** Set when source === "alias" or "custom". Lets the FE deep-link to
    *  Models tab edit. */
   aliasId?: string;
   description?: string;
   context_length?: number;
   pricing?: { prompt?: string; completion?: string };
-}
-
-export interface CatalogEntry extends CatalogModel {
-  enabled: boolean;
-  enabledAt: Date | null;
 }
 
 @Injectable()
@@ -113,9 +117,7 @@ export class ModelsService {
       const companyOwners = await this.db
         .select({ id: users.id })
         .from(users)
-        .where(
-          or(eq(users.profileType, 'company'), isNull(users.profileType)),
-        );
+        .where(or(eq(users.profileType, 'company'), isNull(users.profileType)));
       const companyOwnerIds = companyOwners.map((u) => u.id);
       // Defensive: if for some reason no company owners are found
       // (shouldn't happen — the caller themselves is one), short-
@@ -203,10 +205,7 @@ export class ModelsService {
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.userId, userId),
-          eq(teamMembers.status, 'accepted'),
-        ),
+        and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
       );
     const ownedTeams = await this.db
       .select({ id: teams.id })
@@ -270,6 +269,29 @@ export class ModelsService {
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
 
+    // Mirror chat-transport's routing decision so the picker marker
+     // matches what a chat call will actually do. Returns:
+     //   - 'custom'   for aliases bound to a Custom LLM integration
+     //   - 'byok'     when chat-transport will honour the user's BYOK key
+     //   - 'workenai' for fallback to the OpenRouter default route
+     // The Anthropic native shim has a blocklist (-fast, Opus 4.6, bare
+     // family ids) that falls back to OpenRouter even with a BYOK key
+     // set — we apply isAnthropicNativeSupported here so the picker
+     // doesn't promise "(BYOK)" for slugs we'd actually route via
+     // OpenRouter.
+    const computeRouting = (
+      modelId: string,
+      hasCustomIntegration: boolean,
+    ): EffectiveModel['routing'] => {
+      if (hasCustomIntegration) return 'custom';
+      const provider = providerOfModel(modelId);
+      if (!provider || !enabledProviders.has(provider)) return 'workenai';
+      if (provider === 'anthropic' && !isAnthropicNativeSupported(modelId)) {
+        return 'workenai';
+      }
+      return 'byok';
+    };
+
     const out: EffectiveModel[] = [];
     const seen = new Set<string>();
 
@@ -280,6 +302,7 @@ export class ModelsService {
         id: a.modelIdentifier,
         name: a.customName,
         source: a.integrationId ? 'custom' : 'alias',
+        routing: computeRouting(a.modelIdentifier, !!a.integrationId),
         aliasId: a.id,
       });
     }
@@ -297,6 +320,7 @@ export class ModelsService {
           id: m.id,
           name: m.name,
           source: 'byok',
+          routing: computeRouting(m.id, false),
           description: m.description,
           context_length: m.context_length,
           pricing: m.pricing,
@@ -308,125 +332,12 @@ export class ModelsService {
   }
 
   /**
-   * Admin view: full OpenRouter catalog with `enabled` flag joined from our
-   * `enabled_models` table. Used to drive the admin toggle UI.
-   */
-  async listCatalog(callerId: string): Promise<CatalogEntry[]> {
-    await this.assertAdmin(callerId);
-    const [catalog, enabledRows] = await Promise.all([
-      this.catalogService.list(),
-      this.db.select().from(enabledModels),
-    ]);
-    const enabledMap = new Map(
-      enabledRows.map((r) => [r.modelIdentifier, r.enabledAt] as const),
-    );
-    return catalog.map((m) => ({
-      ...m,
-      enabled: enabledMap.has(m.id),
-      enabledAt: enabledMap.get(m.id) ?? null,
-    }));
-  }
-
-  /**
-   * End-user view: only the models the admin has enabled, intersected with
-   * the live catalog (so a model that disappears from OpenRouter stops
-   * showing up immediately). Returned in catalog order.
+   * End-user view: the full OpenRouter catalog. Drives the FE model
+   * pickers (AddModelDialog, arena, project create). No admin curation
+   * layer — every catalog entry is always selectable.
    */
   async listAvailable(): Promise<CatalogModel[]> {
-    const [catalog, enabledRows] = await Promise.all([
-      this.catalogService.list(),
-      this.db.select({ id: enabledModels.modelIdentifier }).from(enabledModels),
-    ]);
-    if (enabledRows.length === 0) return [];
-    const enabledIds = new Set(enabledRows.map((r) => r.id));
-    return catalog.filter((m) => enabledIds.has(m.id));
-  }
-
-  /** Toggle a single model on/off. Admin-only. */
-  async setEnabled(
-    callerId: string,
-    modelIdentifier: string,
-    enabled: boolean,
-  ): Promise<{ modelIdentifier: string; enabled: boolean }> {
-    await this.assertAdmin(callerId);
-
-    // Validate: the identifier must exist in the live catalog so we can't
-    // enable a typo that no model resolves to.
-    const catalog = await this.catalogService.list();
-    if (!catalog.some((m) => m.id === modelIdentifier)) {
-      throw new NotFoundException(
-        `Model "${modelIdentifier}" not found in the AI model catalog`,
-      );
-    }
-
-    if (enabled) {
-      await this.db
-        .insert(enabledModels)
-        .values({ modelIdentifier, enabledById: callerId })
-        .onConflictDoNothing();
-    } else {
-      await this.db
-        .delete(enabledModels)
-        .where(eq(enabledModels.modelIdentifier, modelIdentifier));
-    }
-
-    return { modelIdentifier, enabled };
-  }
-
-  /**
-   * Bulk additive/subtractive: set every listed identifier to the given
-   * enabled state, leave all other rows untouched. Used by the admin
-   * "select N, then Enable/Disable selected" flow.
-   */
-  async setEnabledBatch(
-    callerId: string,
-    modelIdentifiers: string[],
-    enabled: boolean,
-  ): Promise<{ updated: string[]; enabled: boolean }> {
-    await this.assertAdmin(callerId);
-
-    if (modelIdentifiers.length === 0) {
-      return { updated: [], enabled };
-    }
-
-    const catalog = await this.catalogService.list();
-    const valid = new Set(catalog.map((m) => m.id));
-    const unknown = modelIdentifiers.filter((id) => !valid.has(id));
-    if (unknown.length > 0) {
-      throw new NotFoundException(
-        `Unknown model identifier(s): ${unknown.join(', ')}`,
-      );
-    }
-
-    if (enabled) {
-      // ON_CONFLICT DO NOTHING so re-enabling something already enabled
-      // is a no-op rather than a constraint error.
-      await this.db
-        .insert(enabledModels)
-        .values(
-          modelIdentifiers.map((id) => ({
-            modelIdentifier: id,
-            enabledById: callerId,
-          })),
-        )
-        .onConflictDoNothing();
-    } else {
-      await this.db
-        .delete(enabledModels)
-        .where(inArray(enabledModels.modelIdentifier, modelIdentifiers));
-    }
-
-    return { updated: modelIdentifiers, enabled };
-  }
-
-  private async assertAdmin(userId: string): Promise<void> {
-    const [row] = await this.db
-      .select({ role: users.role })
-      .from(users)
-      .where(eq(users.id, userId));
-    if (!row || row.role !== 'admin') {
-      throw new ForbiddenException('Admin role required');
-    }
+    return this.catalogService.list();
   }
 
   async create(

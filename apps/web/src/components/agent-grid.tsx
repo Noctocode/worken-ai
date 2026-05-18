@@ -1,0 +1,93 @@
+"use client";
+
+import { AGENTS, type AgentPreset } from "@/lib/agents";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
+
+interface AgentGridProps {
+  /** Currently highlighted agent. Cards match on `agent.id`. */
+  selectedAgentId: string | null;
+  /** Fired when a card is clicked. Receives the full preset so the
+   *  parent can decide what to do with it (set state, mutate a
+   *  project, etc.) without each call site re-deriving the model. */
+  onSelect: (agent: AgentPreset) => void;
+}
+
+/**
+ * Agent picker — a flex-wrapped grid of preset cards with icon, agent
+ * label, and the resolved model name (with a `(BYOK)` / `(Custom)`
+ * routing suffix so the user can tell which agents bill their own
+ * provider key vs the WorkenAI default). Each card's preferred model
+ * is looked up in the live catalog; if the slug isn't surfaced, it
+ * falls back to the first available model with a "(fallback)" hint.
+ *
+ * Used by /projects/create (initial agent pick) and by the Change
+ * model dialog on the dashboard ProjectCard.
+ */
+export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
+  const { models: availableModels } = useAvailableModels();
+  const { effective: effectiveModels } = useUserModels();
+
+  // Routing-aware label suffix. Falls back to "workenai" (no marker)
+  // when the slug isn't in the user's effective list — i.e. routes
+  // through the WorkenAI default key, not BYOK / Custom.
+  const routingSuffix = (modelId: string): string => {
+    const m = effectiveModels.find((x) => x.id === modelId);
+    if (!m) return "";
+    if (m.routing === "byok") return " (BYOK)";
+    if (m.routing === "custom") return " (Custom)";
+    return "";
+  };
+
+  return (
+    <div className="flex flex-wrap gap-2.5 justify-center w-full max-w-[900px]">
+      {AGENTS.map((agent) => {
+        const Icon = agent.icon;
+        const isSelected = selectedAgentId === agent.id;
+        const resolvedModel =
+          availableModels.find((m) => m.id === agent.model) ??
+          availableModels[0];
+        const willFallback =
+          resolvedModel != null && resolvedModel.id !== agent.model;
+        const suffix = resolvedModel ? routingSuffix(resolvedModel.id) : "";
+        return (
+          <button
+            key={agent.id}
+            type="button"
+            onClick={() => onSelect(agent)}
+            title={
+              resolvedModel
+                ? willFallback
+                  ? `Preferred ${agent.model} not enabled — will use ${resolvedModel.name}${suffix}`
+                  : `Uses ${resolvedModel.name}${suffix}`
+                : agent.model
+            }
+            className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] cursor-pointer transition-colors ${
+              isSelected
+                ? "bg-primary-1 border border-primary-6"
+                : "bg-bg-1 border border-transparent hover:border-border-3"
+            }`}
+          >
+            <div className="flex h-[60px] w-[60px] items-center justify-center rounded-xl bg-[rgba(60,126,255,0.2)]">
+              <Icon className="h-10 w-10 text-primary-6" />
+            </div>
+            <span className="text-[13px] text-text-2 whitespace-nowrap">
+              {agent.label}
+            </span>
+            {resolvedModel && (
+              <span
+                className={`text-[11px] truncate max-w-full ${
+                  willFallback ? "text-warning-6" : "text-text-3"
+                }`}
+              >
+                {willFallback
+                  ? `↳ ${resolvedModel.name}${suffix} (fallback)`
+                  : `${resolvedModel.name}${suffix}`}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

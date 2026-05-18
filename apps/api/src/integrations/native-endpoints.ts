@@ -37,42 +37,42 @@ export function isByokSupported(providerId: string): boolean {
 
 export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
   openai: {
-    baseURL: "https://api.openai.com/v1",
+    baseURL: 'https://api.openai.com/v1',
     openAICompatible: true,
   },
   deepseek: {
-    baseURL: "https://api.deepseek.com/v1",
+    baseURL: 'https://api.deepseek.com/v1',
     openAICompatible: true,
   },
   mistralai: {
-    baseURL: "https://api.mistral.ai/v1",
+    baseURL: 'https://api.mistral.ai/v1',
     openAICompatible: true,
   },
   perplexity: {
-    baseURL: "https://api.perplexity.ai",
+    baseURL: 'https://api.perplexity.ai',
     openAICompatible: true,
   },
-  "x-ai": {
-    baseURL: "https://api.x.ai/v1",
+  'x-ai': {
+    baseURL: 'https://api.x.ai/v1',
     openAICompatible: true,
   },
   github: {
-    baseURL: "https://models.inference.ai.azure.com",
+    baseURL: 'https://models.inference.ai.azure.com',
     openAICompatible: true,
   },
   // Stored but not honored as direct BYOK — non-OpenAI-compatible.
   // Falls through to OpenRouter routing.
   anthropic: {
-    baseURL: "https://api.anthropic.com/v1",
+    baseURL: 'https://api.anthropic.com/v1',
     openAICompatible: false,
     nativeSdkAvailable: true,
   },
   google: {
-    baseURL: "https://generativelanguage.googleapis.com/v1beta",
+    baseURL: 'https://generativelanguage.googleapis.com/v1beta',
     openAICompatible: false,
   },
   qwen: {
-    baseURL: "https://dashscope.aliyuncs.com/api/v1",
+    baseURL: 'https://dashscope.aliyuncs.com/api/v1',
     openAICompatible: false,
   },
 };
@@ -85,7 +85,7 @@ export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
  * that lives at a Custom LLM endpoint).
  */
 export function providerOfModel(modelId: string): string | null {
-  const idx = modelId.indexOf("/");
+  const idx = modelId.indexOf('/');
   if (idx === -1) return null;
   return modelId.slice(0, idx);
 }

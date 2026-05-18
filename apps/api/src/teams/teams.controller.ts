@@ -85,12 +85,15 @@ export class TeamsController {
       .from(users)
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role === 'basic') {
-      throw new ForbiddenException('Only admin or advanced users can create teams.');
+      throw new ForbiddenException(
+        'Only admin or advanced users can create teams.',
+      );
     }
 
-    const budgetCents = body.monthlyBudget != null
-      ? Math.round(body.monthlyBudget * 100)
-      : undefined;
+    const budgetCents =
+      body.monthlyBudget != null
+        ? Math.round(body.monthlyBudget * 100)
+        : undefined;
     return this.teamsService.create(
       body.name,
       caller.id,
@@ -102,10 +105,7 @@ export class TeamsController {
   }
 
   @Delete(':id')
-  deleteTeam(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  deleteTeam(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.teamsService.deleteTeam(id, user.id);
   }
 

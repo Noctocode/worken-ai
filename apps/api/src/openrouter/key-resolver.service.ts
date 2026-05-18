@@ -48,7 +48,10 @@ export class KeyResolverService {
       .where(eq(projects.id, projectId));
 
     if (!project) {
-      return this.requireKey(this.fallbackKey, `project ${projectId} (not found)`);
+      return this.requireKey(
+        this.fallbackKey,
+        `project ${projectId} (not found)`,
+      );
     }
 
     if (project.teamId) {
@@ -132,9 +135,7 @@ export class KeyResolverService {
       return key;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(
-        `Lazy provisioning failed for user ${userId}: ${msg}`,
-      );
+      this.logger.error(`Lazy provisioning failed for user ${userId}: ${msg}`);
       if (this.fallbackKey) {
         this.logger.warn(
           `Using OPENROUTER_API_KEY fallback for user ${userId} because provisioning failed.`,

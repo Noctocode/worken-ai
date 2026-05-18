@@ -134,7 +134,7 @@ const ONBOARDING_FOLDER_NAME = 'Onboarding';
 // bytes + leading dots.
 function sanitizeFilename(raw: string): string {
   const lastSegment = raw.replace(/^.*[\\/]/, '');
-  // eslint-disable-next-line no-control-regex
+
   const cleaned = lastSegment
     .replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
     .replace(/^\.+/, '');
@@ -144,13 +144,8 @@ function sanitizeFilename(raw: string): string {
 // knowledge_files doesn't carry a mime_type column (KC uploads only
 // retain extension), so reconstruct one for downloads. Covers the
 // onboarding-allowed types plus a sensible default.
-function mimeFromExtension(
-  fileType: string | null,
-  filename: string,
-): string {
-  const ext = (
-    fileType ?? extname(filename).replace('.', '')
-  ).toLowerCase();
+function mimeFromExtension(fileType: string | null, filename: string): string {
+  const ext = (fileType ?? extname(filename).replace('.', '')).toLowerCase();
   switch (ext) {
     case 'pdf':
       return 'application/pdf';
@@ -296,10 +291,8 @@ export class OnboardingService {
               : current.name,
           companyName:
             payload.profileType === 'company' ? payload.companyName : null,
-          industry:
-            payload.profileType === 'company' ? payload.industry : null,
-          teamSize:
-            payload.profileType === 'company' ? payload.teamSize : null,
+          industry: payload.profileType === 'company' ? payload.industry : null,
+          teamSize: payload.profileType === 'company' ? payload.teamSize : null,
           infraChoice: payload.infraChoice,
           onboardingCompletedAt: new Date(),
           updatedAt: new Date(),
@@ -324,9 +317,7 @@ export class OnboardingService {
         for (const [provider, key] of Object.entries(payload.apiKeys)) {
           if (!key || !key.trim()) continue;
           if (!VALID_PROVIDERS.includes(provider as Provider)) continue;
-          if (
-            !SUPPORTED_FOR_INTEGRATION_TABLE.includes(provider as Provider)
-          ) {
+          if (!SUPPORTED_FOR_INTEGRATION_TABLE.includes(provider as Provider)) {
             this.logger.warn(
               `Onboarding step-5: ${provider} key supplied but no matching predefined provider — skipping. User ${userId} can finish setup in Management → Integration.`,
             );
@@ -515,10 +506,7 @@ export class OnboardingService {
   }
 
   async getProfile(userId: string) {
-    const [u] = await this.db
-      .select()
-      .from(users)
-      .where(eq(users.id, userId));
+    const [u] = await this.db.select().from(users).where(eq(users.id, userId));
     if (!u) throw new NotFoundException('User not found');
 
     // Connected providers shown on My Account. Read from `integrations`

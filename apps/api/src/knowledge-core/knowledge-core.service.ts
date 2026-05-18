@@ -78,9 +78,10 @@ export class KnowledgeCoreService {
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
         fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
-        totalBytes: sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
-          'total_bytes',
-        ),
+        totalBytes:
+          sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
+            'total_bytes',
+          ),
       })
       .from(knowledgeFolders)
       .leftJoin(
@@ -111,7 +112,8 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFolders.id, id));
 
     if (!folder) throw new NotFoundException('Folder not found');
-    if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
+    if (folder.ownerId !== userId)
+      throw new ForbiddenException('Access denied');
 
     const files = await this.db
       .select({
@@ -231,17 +233,13 @@ export class KnowledgeCoreService {
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.folderId, id));
 
-    await this.db
-      .delete(knowledgeFolders)
-      .where(eq(knowledgeFolders.id, id));
+    await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.id, id));
 
     await Promise.allSettled(
       fileRows.map(async ({ storagePath }) => {
         if (!storagePath) return;
         try {
-          await fs.promises.unlink(
-            path.resolve(process.cwd(), storagePath),
-          );
+          await fs.promises.unlink(path.resolve(process.cwd(), storagePath));
         } catch {
           // File may already be removed
         }
@@ -271,7 +269,8 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFolders.id, folderId));
 
     if (!folder) throw new NotFoundException('Folder not found');
-    if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
+    if (folder.ownerId !== userId)
+      throw new ForbiddenException('Access denied');
 
     // Visibility for chat-time RAG search: company-profile uploaders
     // make their files org-wide ('company'); personal-profile keep
@@ -282,8 +281,7 @@ export class KnowledgeCoreService {
       .select({ profileType: users.profileType, role: users.role })
       .from(users)
       .where(eq(users.id, userId));
-    const scope =
-      uploader?.profileType === 'company' ? 'company' : 'personal';
+    const scope = uploader?.profileType === 'company' ? 'company' : 'personal';
 
     // Secondary visibility within the scope. Default 'all' keeps
     // legacy behaviour. 'admins' is a privilege — only an admin can
@@ -432,9 +430,7 @@ export class KnowledgeCoreService {
     if (duplicates.length > 0) {
       await Promise.allSettled(
         hashed
-          .filter(
-            (h) => !toInsert.includes(h) && h.file.path,
-          )
+          .filter((h) => !toInsert.includes(h) && h.file.path)
           .map((h) => fs.promises.unlink(h.file.path)),
       );
     }
@@ -527,10 +523,7 @@ export class KnowledgeCoreService {
       }
       const action = nameConflictActions?.[name] ?? 'skip';
       if (action === 'overwrite') {
-        await this.deleteFileRowAndAssets(
-          conflict.id,
-          conflict.storagePath,
-        );
+        await this.deleteFileRowAndAssets(conflict.id, conflict.storagePath);
         // Also drop the cached name set entry if a prior 'keep_both'
         // already loaded it — the overwrite freed the slot in case a
         // later 'keep_both' in this same batch wants to reuse the
@@ -559,7 +552,10 @@ export class KnowledgeCoreService {
     }
 
     const values = toInsertResolved.map(({ file, hash, finalName }) => {
-      const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
+      const ext = path
+        .extname(file.originalname)
+        .replace('.', '')
+        .toUpperCase();
       const fileType = ext || 'FILE';
       return {
         folderId,
@@ -761,7 +757,9 @@ export class KnowledgeCoreService {
         '`teamIds` must be an array when visibility is "teams".',
       );
     }
-    const unique = Array.from(new Set(input.filter((s) => typeof s === 'string' && s.length > 0)));
+    const unique = Array.from(
+      new Set(input.filter((s) => typeof s === 'string' && s.length > 0)),
+    );
     if (unique.length === 0) {
       throw new BadRequestException(
         'Pick at least one team for "Teams" visibility.',
@@ -1101,7 +1099,7 @@ export class KnowledgeCoreService {
     }
     if (visibilityInput === 'admins' && !isAdmin) {
       throw new ForbiddenException(
-        "Only admins can mark a file as admin-only.",
+        'Only admins can mark a file as admin-only.',
       );
     }
     // Mirror the upload-path invariant: 'teams' / 'project' are only
@@ -1225,7 +1223,7 @@ export class KnowledgeCoreService {
     }
     if (visibilityInput === 'admins' && !isAdmin) {
       throw new ForbiddenException(
-        "Only admins can mark a file as admin-only.",
+        'Only admins can mark a file as admin-only.',
       );
     }
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
@@ -1329,11 +1327,13 @@ export class KnowledgeCoreService {
             .delete(projectKnowledgeFiles)
             .where(inArray(projectKnowledgeFiles.fileId, affectedIds));
           if (visibilityInput === 'teams' && teamIds.length > 0) {
-            await tx.insert(knowledgeFileTeams).values(
-              affectedIds.flatMap((fileId) =>
-                teamIds.map((teamId) => ({ fileId, teamId })),
-              ),
-            );
+            await tx
+              .insert(knowledgeFileTeams)
+              .values(
+                affectedIds.flatMap((fileId) =>
+                  teamIds.map((teamId) => ({ fileId, teamId })),
+                ),
+              );
           }
           if (visibilityInput === 'project' && projectIds.length > 0) {
             await tx.insert(projectKnowledgeFiles).values(
@@ -1351,7 +1351,7 @@ export class KnowledgeCoreService {
     }
 
     return {
-      visibility: visibilityInput as 'all' | 'admins' | 'teams' | 'project',
+      visibility: visibilityInput,
       teamIds,
       projectIds,
       affectedIds,

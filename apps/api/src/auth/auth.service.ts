@@ -272,14 +272,18 @@ export class AuthService {
       .where(eq(users.verificationTokenHash, providedHash));
 
     if (!user || !user.verificationTokenHash) {
-      throw new BadRequestException('Invalid or already-used verification link');
+      throw new BadRequestException(
+        'Invalid or already-used verification link',
+      );
     }
 
     // Constant-time defense-in-depth.
     const a = Buffer.from(providedHash, 'hex');
     const b = Buffer.from(user.verificationTokenHash, 'hex');
     if (a.length !== b.length || !timingSafeEqual(a, b)) {
-      throw new BadRequestException('Invalid or already-used verification link');
+      throw new BadRequestException(
+        'Invalid or already-used verification link',
+      );
     }
 
     // expires_at null = already consumed → re-click is idempotent.
@@ -507,7 +511,7 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
-    const userRole = (user.role as string) || 'basic';
+    const userRole = user.role || 'basic';
     // Personal-project creation is gated on the user's org-level
     // role (admin / advanced). Basic users can ALSO create projects
     // when they hold a manager-tier role on at least one team
@@ -652,14 +656,9 @@ export class AuthService {
           })
           .from(users)
           .where(
-            and(
-              eq(users.profileType, 'company'),
-              inArray(users.id, ownerIds),
-            ),
+            and(eq(users.profileType, 'company'), inArray(users.id, ownerIds)),
           );
-        const companyOwner = ownerProfiles.find(
-          (o) => !!o.companyName?.trim(),
-        );
+        const companyOwner = ownerProfiles.find((o) => !!o.companyName?.trim());
         if (companyOwner) {
           await this.db
             .update(users)

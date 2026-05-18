@@ -198,6 +198,17 @@ export async function loginWithPassword(
 
 // Projects
 
+/** Compact preview row for the avatar stack on a team project card.
+ *  `userId`/`userName`/`userPicture` may be null for invites that
+ *  haven't been claimed yet — we still show a placeholder avatar with
+ *  the row id as the React key. */
+export interface ProjectMemberPreview {
+  id: string;
+  userId: string | null;
+  userName: string | null;
+  userPicture: string | null;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -208,6 +219,12 @@ export interface Project {
   teamName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Populated only when `teamId` is set. Capped at 4 entries on the
+   *  BE; full team list lives at /teams/:id. */
+  teamMembers?: ProjectMemberPreview[];
+  /** Total count of accepted members on the project's team. Used to
+   *  render the "+N" indicator when teamMembers is truncated. */
+  teamMembersCount?: number;
 }
 
 export interface CreateProjectInput {
@@ -240,6 +257,25 @@ export async function createProject(
     body: JSON.stringify(input),
   });
   if (!res.ok) throw new Error("Failed to create project");
+  return res.json();
+}
+
+export interface UpdateProjectInput {
+  name?: string;
+  description?: string;
+  model?: string;
+}
+
+export async function updateProject(
+  id: string,
+  patch: UpdateProjectInput,
+): Promise<Project> {
+  const res = await apiFetch(`/projects/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error("Failed to update project");
   return res.json();
 }
 
@@ -1171,7 +1207,7 @@ export async function fetchModels(): Promise<ModelConfig[]> {
   return res.json();
 }
 
-// ─── Catalog (admin-curated subset of OpenRouter models) ───────────────────
+// ─── Models (full OpenRouter catalog, surfaced everywhere) ─────────────────
 
 export interface AvailableModel {
   id: string;
@@ -1179,11 +1215,6 @@ export interface AvailableModel {
   description?: string;
   context_length?: number;
   pricing?: { prompt?: string; completion?: string };
-}
-
-export interface CatalogModel extends AvailableModel {
-  enabled: boolean;
-  enabledAt: string | null;
 }
 
 export async function fetchAvailableModels(): Promise<AvailableModel[]> {
@@ -1194,6 +1225,10 @@ export async function fetchAvailableModels(): Promise<AvailableModel[]> {
 
 export interface EffectiveModel extends AvailableModel {
   source: "alias" | "byok" | "custom";
+  /** Where chat-transport will actually route a chat call. Drives the
+   *  "(BYOK)" / "(Custom)" marker in pickers so users can tell whose
+   *  tokens get billed. */
+  routing: "workenai" | "byok" | "custom";
   aliasId?: string;
 }
 
@@ -1205,38 +1240,6 @@ export interface EffectiveModel extends AvailableModel {
 export async function fetchEffectiveModels(): Promise<EffectiveModel[]> {
   const res = await apiFetch("/models/effective");
   if (!res.ok) throw new Error("Failed to fetch effective models");
-  return res.json();
-}
-
-export async function fetchModelsCatalog(): Promise<CatalogModel[]> {
-  const res = await apiFetch("/models/catalog");
-  if (!res.ok) throw new Error("Failed to fetch models catalog");
-  return res.json();
-}
-
-export async function setModelEnabled(
-  modelIdentifier: string,
-  enabled: boolean,
-): Promise<{ modelIdentifier: string; enabled: boolean }> {
-  const res = await apiFetch(`/models/catalog/enabled`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ modelIdentifier, enabled }),
-  });
-  if (!res.ok) throw new Error("Failed to update model");
-  return res.json();
-}
-
-export async function setModelsEnabledBatch(
-  modelIdentifiers: string[],
-  enabled: boolean,
-): Promise<{ updated: string[]; enabled: boolean }> {
-  const res = await apiFetch(`/models/catalog/enabled`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ modelIdentifiers, enabled }),
-  });
-  if (!res.ok) throw new Error("Failed to bulk-update models");
   return res.json();
 }
 

@@ -50,7 +50,6 @@ export class ChatController {
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
-
   /**
    * Token-streaming chat endpoint. Returns text/event-stream so the
    * FE renders tokens as they arrive. Pre-flight (auth, conversation
@@ -177,8 +176,9 @@ export class ChatController {
       // 'admins'-only file remains admins-only even when attached.
       // Resolve attached ids first; if none, skip the embedding
       // round-trip.
-      const attachedFileIds =
-        await this.projectKnowledge.getAttachedFileIds(body.projectId);
+      const attachedFileIds = await this.projectKnowledge.getAttachedFileIds(
+        body.projectId,
+      );
       if (attachedFileIds.length > 0) {
         const attachedChunks =
           await this.knowledgeIngestion.searchProjectAttachedChunks(
@@ -189,16 +189,13 @@ export class ChatController {
         for (const chunk of attachedChunks) contextChunks.push(chunk.content);
       }
     }
-    const userKnowledge =
-      await this.knowledgeIngestion.searchAccessibleChunks(
-        user.id,
-        safePrompt,
-      );
+    const userKnowledge = await this.knowledgeIngestion.searchAccessibleChunks(
+      user.id,
+      safePrompt,
+    );
     for (const chunk of userKnowledge) contextChunks.push(chunk.content);
     const context =
-      contextChunks.length > 0
-        ? contextChunks.join('\n\n---\n\n')
-        : undefined;
+      contextChunks.length > 0 ? contextChunks.join('\n\n---\n\n') : undefined;
 
     // ── SSE HEADERS — past this point, everything is an SSE event ───
     res.setHeader('Content-Type', 'text/event-stream');
@@ -246,8 +243,7 @@ export class ChatController {
     let usageTotalTokens: number | undefined;
     let usageCostUsd: number | undefined;
     let streamErrored = false;
-    let streamErrorPayload: { message: string; status?: number } | null =
-      null;
+    let streamErrorPayload: { message: string; status?: number } | null = null;
     let blockedDuringStream = false;
 
     try {
