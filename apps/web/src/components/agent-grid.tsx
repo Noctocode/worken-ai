@@ -62,7 +62,7 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
                   : `Uses ${resolvedModel.name}${suffix}`
                 : agent.model
             }
-            className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] cursor-pointer transition-colors ${
+            className={`flex flex-col items-center gap-2.5 p-4 cursor-pointer transition-colors rounded-lg w-[calc(50%-5px)] sm:w-auto sm:min-w-[200px] sm:flex-1 sm:max-w-[220px] ${
               isSelected
                 ? "bg-primary-1 border border-primary-6"
                 : "bg-bg-1 border border-transparent hover:border-border-3"
@@ -71,7 +71,7 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
             <div className="flex h-[60px] w-[60px] items-center justify-center rounded-xl bg-[rgba(60,126,255,0.2)]">
               <Icon className="h-10 w-10 text-primary-6" />
             </div>
-            <span className="text-[13px] text-text-2 whitespace-nowrap">
+            <span className="text-[13px] text-text-2 text-center leading-tight break-words w-full">
               {agent.label}
             </span>
             {resolvedModel && (

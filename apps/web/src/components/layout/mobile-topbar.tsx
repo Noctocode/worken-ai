@@ -2,10 +2,36 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
+
+/**
+ * Mobile menu glyph from Figma node 4750:32081 (icons/Menu). Differs
+ * from lucide's `Menu` in one beat: the bottom line is shorter and
+ * right-aligned — gives the icon a subtle "stacked content" feel that
+ * the brand specs. Stroke uses currentColor so the wrapping Button
+ * controls the colour state (default text-text-2, hover text-text-1).
+ */
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <path d="M3.5 6.5H21.5" />
+      <path d="M3.5 12.5H21.5" />
+      <path d="M9.5 18.5H21.5" />
+    </svg>
+  );
+}
 
 /**
  * Mobile-only sticky topbar — logo on the left, hamburger on the right.
@@ -37,7 +63,7 @@ export function MobileTopbar() {
             className="h-9 w-9 text-text-2 hover:bg-bg-1 hover:text-text-1"
             aria-label="Open menu"
           >
-            <Menu className="h-5 w-5" />
+            <MenuIcon className="h-6 w-6" />
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-[88px]">
