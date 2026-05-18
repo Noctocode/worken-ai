@@ -757,14 +757,14 @@ export default function CompareModelsPage() {
     // wrapper to claim the remaining definite height of the shell,
     // which gives the row a fixed height and lets the aside scroll
     // its history list internally instead of pushing the layout.
-    <div className="flex h-0 min-h-0 flex-1 flex-col gap-3 md:gap-6 pb-3 md:pb-6">
+    <div className="flex h-0 min-h-0 flex-1 flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
       {/* Mobile in-page header — the desktop appbar (default variant)
           renders the "Model Arena" title + the "New Comparison"
           appbarAction. At <md the appbar collapses to MobileTopbar
           (logo + hamburger only), so the page owns this slot itself
           per Figma frame 4659:70093 — back arrow, title, "New" button,
           and a placeholder 3-dot menu. */}
-      <div className="md:hidden -mx-6 flex items-center justify-between gap-3 border-b border-bg-1 bg-bg-white px-4 py-3">
+      <div className="lg:hidden -mx-6 flex items-center justify-between gap-3 border-b border-bg-1 bg-bg-white px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/"
@@ -798,15 +798,15 @@ export default function CompareModelsPage() {
       </div>
 
       {/* Body shell: main column + optional right rail */}
-      <div className="flex flex-col md:flex-row min-h-0 flex-1 gap-3 md:gap-6">
+      <div className="flex flex-col lg:flex-row min-h-0 flex-1 gap-3 lg:gap-6">
         {/* Main column — white card per Figma. Layout is intentionally
             *static*: scrollable area always takes the remaining height
             and the composer stays pinned at the bottom, regardless of
             whether a comparison is loaded, history is expanded, or the
             rail is open. Keeps the white card visually stable across
             state transitions. */}
-        <section className="flex min-w-0 flex-1 flex-col gap-3 md:gap-4 overflow-hidden rounded-xl md:rounded-[20px] bg-bg-white p-3 md:p-6">
-          <div className="flex min-h-0 flex-1 flex-col gap-3 md:gap-4 overflow-y-auto md:pr-1">
+        <section className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 overflow-hidden rounded-xl lg:rounded-[20px] bg-bg-white p-3 lg:p-6">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-1">
             {!hasResults && !loading && !submittedQuestion && (
               // `my-auto` keeps the placeholder vertically centred inside
               // the scrollable area without changing the area's flex
@@ -917,7 +917,7 @@ export default function CompareModelsPage() {
                     strip entirely; the single card carries enough
                     identity on its own via ResponseCard's header. */}
                 {activeModels.length > 1 && (
-                  <div className="md:hidden -mx-3 flex items-stretch overflow-x-auto border-b border-border-2">
+                  <div className="lg:hidden -mx-3 flex items-stretch overflow-x-auto border-b border-border-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                     {activeModels.map((id) => {
                       const isActive = mobileActiveModel === id;
                       return (
@@ -949,7 +949,7 @@ export default function CompareModelsPage() {
                     at the active count so they fill the row evenly
                     (full / half). */}
                 <div
-                  className="hidden md:grid gap-4"
+                  className="hidden lg:grid gap-4"
                   style={{
                     gridTemplateColumns: `repeat(${Math.min(
                       Math.max(activeModels.length, 1),
@@ -972,7 +972,7 @@ export default function CompareModelsPage() {
                 {/* Mobile single-card view — render only the active
                     tab's ResponseCard. Same component, same data, just
                     one at a time. */}
-                <div className="md:hidden flex flex-col gap-3">
+                <div className="lg:hidden flex flex-col gap-3">
                   {activeModels
                     .filter((id) =>
                       mobileActiveModel ? id === mobileActiveModel : true,
@@ -1016,7 +1016,7 @@ export default function CompareModelsPage() {
             Re-introduce as a slide-out Sheet in a follow-up if mobile
             users need history access without scrolling sideways. */}
         {railOpen ? (
-          <div className="hidden md:flex">
+          <div className="hidden lg:flex">
             <RightRail
               selectedModels={selectedModels}
               disabledModels={disabledModels}
@@ -1038,7 +1038,7 @@ export default function CompareModelsPage() {
           <button
             type="button"
             onClick={() => setRailOpen(true)}
-            className="hidden md:flex self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            className="hidden lg:flex self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
             title="Open Comparison Details"
             aria-label="Open Comparison Details"
           >
@@ -1056,7 +1056,7 @@ export default function CompareModelsPage() {
       <Sheet open={mobileRailOpen} onOpenChange={setMobileRailOpen}>
         <SheetContent
           side="right"
-          className="w-[320px] sm:w-[360px] p-5 md:hidden"
+          className="w-[320px] sm:w-[360px] p-5 lg:hidden"
         >
           {/* hideClose: Sheet ships its own X in the corner — the
               rail's local close button would stack on top of it. */}
@@ -1265,8 +1265,10 @@ function ResponseCard({
 
       {/* Body — driven by `status` so each lifecycle phase has its
           own visual treatment instead of conflating "no content
-          yet" with "no response will ever arrive". */}
-      <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1">
+          yet" with "no response will ever arrive". `break-words`
+          stops long unbreakable strings (URLs, code samples) from
+          forcing horizontal page scroll on narrow viewports. */}
+      <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1 break-words min-w-0">
         {status === "pending" ? (
           <span className="flex items-center gap-2 text-text-3">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
