@@ -12,6 +12,11 @@ import { SidebarContent } from "./sidebar";
  * right-aligned — gives the icon a subtle "stacked content" feel that
  * the brand specs. Stroke uses currentColor so the wrapping Button
  * controls the colour state (default text-text-2, hover text-text-1).
+ *
+ * 1.5px stroke (vs the Figma source's hairline 1px) gives the glyph
+ * enough visual weight to read at the larger render size used by
+ * MobileTopbar — without it the icon looks anaemic next to the brand
+ * logo on the left, even though the geometry is Figma-correct.
  */
 function MenuIcon({ className }: { className?: string }) {
   return (
@@ -21,14 +26,15 @@ function MenuIcon({ className }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
+      strokeWidth={1.5}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       className={className}
     >
-      <path d="M3.5 6.5H21.5" />
-      <path d="M3.5 12.5H21.5" />
-      <path d="M9.5 18.5H21.5" />
+      <path d="M3 6H21" />
+      <path d="M3 12H21" />
+      <path d="M9 18H21" />
     </svg>
   );
 }
@@ -60,10 +66,10 @@ export function MobileTopbar() {
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 text-text-2 hover:bg-bg-1 hover:text-text-1"
+            className="h-10 w-10 text-text-2 hover:bg-bg-1 hover:text-text-1"
             aria-label="Open menu"
           >
-            <MenuIcon className="h-6 w-6" />
+            <MenuIcon className="h-7 w-7" />
           </Button>
         </SheetTrigger>
         <SheetContent side="left" className="p-0 w-[88px]">
