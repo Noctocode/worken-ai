@@ -46,6 +46,12 @@ interface LocalMessage {
    *  whatever was buffered. Drives the "Stopped" badge so the
    *  conversation history reflects that the response was cut short. */
   partial?: boolean;
+  /** True when this bubble holds a client-only error message — i.e.
+   *  the request never reached the BE assistant-write step. The
+   *  sync-from-BE effect preserves trailing error bubbles so they
+   *  don't flash for a single frame and vanish on the post-error
+   *  conversation refetch. */
+  isError?: boolean;
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -121,43 +127,55 @@ export default function ProjectChatPage() {
     },
   );
 
-  // Sync fetched messages to local state
+  // Sync fetched messages to local state.
+  //
+  // Preserves a *trailing* client-only error bubble (`isError: true`)
+  // that the BE doesn't know about. Without this, an error message
+  // we just wrote into local state (e.g. budget gate 402, guardrail
+  // input block, network failure) gets clobbered by the post-error
+  // conversation refetch fired from the submit handler's finally
+  // block — the bubble appears for a single frame and vanishes. The
+  // length check makes sure we only re-attach the error when the BE
+  // genuinely has fewer messages (i.e. the assistant write never
+  // landed). On a successful retry the BE catches up, lengths align,
+  // and the stale error gets dropped naturally.
   useEffect(() => {
-    if (conversationData?.messages) {
-      setMessages(
-        conversationData.messages.map((m: ConversationMessage) => {
-          // Pull both reasoning_details and the partial flag out of
-          // the jsonb metadata blob in one go. Both are optional and
-          // typed as `unknown` on the wire, so narrow defensively.
-          const meta =
-            m.metadata && typeof m.metadata === "object"
-              ? (m.metadata as Record<string, unknown>)
-              : null;
-          return {
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.createdAt).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            }),
-            reasoning:
-              // BE persists thinking text under metadata.reasoning_details
-              // as a plain string (the stream accumulator stringifies
-              // every `reasoning` SSE delta into one buffer). Defensive
-              // narrowing covers legacy non-stream rows that may have
-              // stored a structured object instead.
-              typeof meta?.reasoning_details === "string"
-                ? (meta.reasoning_details as string)
-                : undefined,
-            partial: meta?.partial === true,
-            userId: m.userId,
-            userName: m.userName,
-            userPicture: m.userPicture,
-          };
-        }),
-      );
-    }
+    if (!conversationData?.messages) return;
+    const beMessages = conversationData.messages.map(
+      (m: ConversationMessage): LocalMessage => {
+        const meta =
+          m.metadata && typeof m.metadata === "object"
+            ? (m.metadata as Record<string, unknown>)
+            : null;
+        return {
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+          reasoning:
+            typeof meta?.reasoning_details === "string"
+              ? (meta.reasoning_details as string)
+              : undefined,
+          partial: meta?.partial === true,
+          userId: m.userId,
+          userName: m.userName,
+          userPicture: m.userPicture,
+        };
+      },
+    );
+    setMessages((prev) => {
+      const trailing = prev[prev.length - 1];
+      if (
+        trailing?.isError &&
+        beMessages.length < prev.length
+      ) {
+        return [...beMessages, trailing];
+      }
+      return beMessages;
+    });
   }, [conversationData]);
 
   useEffect(() => {
@@ -308,7 +326,7 @@ export default function ProjectChatPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
-                ? { ...m, content: blockedMessage }
+                ? { ...m, content: blockedMessage, isError: true }
                 : m,
             ),
           );
@@ -322,7 +340,9 @@ export default function ProjectChatPage() {
           );
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, content: errMessage } : m,
+              m.id === assistantId
+                ? { ...m, content: errMessage, isError: true }
+                : m,
             ),
           );
         } else if (event.type === "done") {
@@ -357,6 +377,7 @@ export default function ProjectChatPage() {
                   ...m,
                   content:
                     "No response from the AI gateway. The streaming endpoint may not be available — try refreshing the page, and if the problem persists, restart the API server.",
+                  isError: true,
                 }
               : m,
           ),
@@ -376,7 +397,7 @@ export default function ProjectChatPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: humanizeChatError(err) }
+              ? { ...m, content: humanizeChatError(err), isError: true }
               : m,
           ),
         );
