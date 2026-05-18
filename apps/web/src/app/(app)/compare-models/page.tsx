@@ -38,6 +38,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -274,6 +278,10 @@ export default function CompareModelsPage() {
 
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
+  // Separate state so the mobile drawer doesn't leak into the desktop
+  // inline rail when crossing the md breakpoint. The 3-dot button in
+  // the mobile header is the only path that flips it.
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [modelsExpanded, setModelsExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -780,7 +788,8 @@ export default function CompareModelsPage() {
           </button>
           <button
             type="button"
-            aria-label="More"
+            onClick={() => setMobileRailOpen(true)}
+            aria-label="Comparison details"
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
           >
             <MoreVertical className="h-4 w-4" />
@@ -1037,6 +1046,46 @@ export default function CompareModelsPage() {
           </button>
         )}
       </div>
+
+      {/* Mobile Comparison Details drawer — same RightRail content,
+          but slid in from the right via a Sheet at <md. Opened from
+          the 3-dot button in the page-level mobile header. Auto-close
+          on every callback so picking a history entry / adding a
+          model dismisses the drawer and returns the user to the
+          response view without an extra tap. */}
+      <Sheet open={mobileRailOpen} onOpenChange={setMobileRailOpen}>
+        <SheetContent
+          side="right"
+          className="w-[320px] sm:w-[360px] p-5 md:hidden"
+        >
+          {/* hideClose: Sheet ships its own X in the corner — the
+              rail's local close button would stack on top of it. */}
+          <RightRail
+            className="flex h-full flex-col gap-6 overflow-y-auto pr-1"
+            hideClose
+            selectedModels={selectedModels}
+            disabledModels={disabledModels}
+            onToggleModel={toggleModel}
+            onChangeModel={changeModel}
+            onRemoveModel={removeModel}
+            modelsExpanded={modelsExpanded}
+            setModelsExpanded={setModelsExpanded}
+            historyExpanded={historyExpanded}
+            setHistoryExpanded={setHistoryExpanded}
+            history={history}
+            onDeleteHistory={(runId) => setDeleteRunId(runId)}
+            onLoadHistory={(runId) => {
+              loadHistoryRun(runId);
+              setMobileRailOpen(false);
+            }}
+            onClose={() => setMobileRailOpen(false)}
+            onAddModel={() => {
+              setAddModelOpen(true);
+              setMobileRailOpen(false);
+            }}
+          />
+        </SheetContent>
+      </Sheet>
 
       <AddModelDialog
         open={addModelOpen}
@@ -1781,6 +1830,8 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
+  hideClose = false,
+  className,
 }: {
   selectedModels: string[];
   disabledModels: Set<string>;
@@ -1796,25 +1847,38 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
+  /** When the rail is embedded in a parent that already supplies a
+   *  close affordance (e.g. the mobile Sheet's built-in X), suppress
+   *  the local X in the header to avoid two stacked dismiss buttons. */
+  hideClose?: boolean;
+  /** Override the default desktop aside layout (fixed 300px wide). */
+  className?: string;
 }) {
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
+    <aside
+      className={
+        className ??
+        "flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto"
+      }
+    >
       <header className="flex items-center justify-between">
         <h2 className="text-[18px] font-bold leading-[1.3] text-text-2">
           Comparison Details
         </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-          title="Close"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {!hideClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Close"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </header>
 
       {/* Models section */}
