@@ -1,0 +1,32 @@
+# Reverse proxy with auto-HTTPS (Let's Encrypt) for app.workenai.com
+# and api.workenai.com.
+#
+# First deploy must be done with Cloudflare set to DNS-only (grey cloud)
+# so the HTTP-01 challenge can reach Caddy directly. After Caddy has
+# obtained certs, you can flip the proxy on (orange cloud) and set
+# SSL/TLS mode to Full (strict) in Cloudflare.
+
+{
+    # email tim@noctocode.com   # uncomment if you want LE expiry notices
+}
+
+# Web app.
+app.workenai.com {
+    encode zstd gzip {
+        # Don't gzip SSE — would force buffering and break chat streaming.
+        match {
+            not header Content-Type text/event-stream*
+        }
+    }
+    reverse_proxy web:3000
+}
+
+# API.
+api.workenai.com {
+    encode zstd gzip {
+        match {
+            not header Content-Type text/event-stream*
+        }
+    }
+    reverse_proxy api:3001
+}

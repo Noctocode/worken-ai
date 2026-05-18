@@ -1,0 +1,169 @@
+name: Deploy (production)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_API: ${{ github.repository_owner }}/worken-api
+  IMAGE_WEB: ${{ github.repository_owner }}/worken-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase owner
+        id: meta
+        run: |
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push API
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/worken-api:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/worken-api:latest
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,scope=api,mode=max
+
+      - name: Build & push Web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/worken-web:${{ steps.meta.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.meta.outputs.owner }}/worken-web:latest
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,scope=web,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase owner
+        id: meta
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      # Copy infra files (compose + Caddyfile) to the VPS. Idempotent.
+      - name: Sync infra files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_SSH_PORT || 22 }}
+          source: "docker-compose.prod.yml,docker/Caddyfile"
+          target: "/srv/worken"
+          strip_components: 0
+          overwrite: true
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          # ---- Server-side .env contents (sourced from GitHub env secrets) ----
+          # Anything referenced by the API at runtime must be listed here.
+          ENV_BLOB: |
+            POSTGRES_USER=${{ secrets.POSTGRES_USER }}
+            POSTGRES_PASSWORD=${{ secrets.POSTGRES_PASSWORD }}
+            POSTGRES_DB=${{ secrets.POSTGRES_DB }}
+            FRONTEND_URL=${{ vars.FRONTEND_URL }}
+            API_URL=${{ vars.API_URL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            GOOGLE_CALLBACK_URL=${{ vars.GOOGLE_CALLBACK_URL }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            OPENROUTER_PROVISIONING_KEY=${{ secrets.OPENROUTER_PROVISIONING_KEY }}
+            OPENROUTER_ENCRYPTION_KEY=${{ secrets.OPENROUTER_ENCRYPTION_KEY }}
+            MAIL_HOST=${{ secrets.MAIL_HOST }}
+            MAIL_USER=${{ secrets.MAIL_USER }}
+            MAIL_PASSWORD=${{ secrets.MAIL_PASSWORD }}
+            MAIL_FROM=${{ vars.MAIL_FROM }}
+            LINKEDIN_URL=${{ vars.LINKEDIN_URL }}
+            TWITTER_URL=${{ vars.TWITTER_URL }}
+          GH_OWNER: ${{ steps.meta.outputs.owner }}
+          IMAGE_TAG: sha-${{ github.sha }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.CONTABO_HOST }}
+          username: ${{ secrets.CONTABO_USER }}
+          key: ${{ secrets.CONTABO_SSH_KEY }}
+          port: ${{ secrets.CONTABO_SSH_PORT || 22 }}
+          envs: ENV_BLOB,GH_OWNER,IMAGE_TAG,GHCR_USER,GHCR_TOKEN
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /srv/worken
+
+            # Pin tag + owner for compose substitution (NOT secrets).
+            cat > .image_env <<EOF
+            GH_OWNER=${GH_OWNER}
+            IMAGE_TAG=sha-$(echo $GITHUB_SHA | cut -c1-12)
+            EOF
+            # We re-compute the short SHA inside the script as well; both halves match.
+            IMAGE_TAG=$(grep '^IMAGE_TAG=' .image_env | cut -d= -f2)
+            export GH_OWNER IMAGE_TAG
+
+            # Write the application .env atomically with restrictive perms.
+            umask 077
+            printf '%s\n' "$ENV_BLOB" > .env.new
+            mv .env.new .env
+
+            # Move the Caddyfile to the path compose expects.
+            mkdir -p caddy_data caddy_config pgdata redisdata uploads
+            if [ -f docker/Caddyfile ] && [ ! -f Caddyfile ]; then
+              mv docker/Caddyfile Caddyfile
+            elif [ -f docker/Caddyfile ]; then
+              cp docker/Caddyfile Caddyfile
+            fi
+
+            # Authenticate to GHCR (read-only token, scoped to this repo).
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+
+            # Pull the new images.
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .image_env pull api web
+
+            # Run migrations BEFORE swapping the API container. If this fails,
+            # the deploy aborts and the old API keeps serving traffic.
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .image_env \
+              run --rm --entrypoint "" api \
+              node /app/packages/database/dist/migrate.js
+
+            # Roll the API + Web; Postgres / Redis / Caddy stay untouched.
+            docker compose -f docker-compose.prod.yml --env-file .env --env-file .image_env up -d --remove-orphans
+
+            # Prune dangling images so disk doesn't fill up over time.
+            docker image prune -f
