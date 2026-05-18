@@ -871,31 +871,41 @@ function AddGuardrailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex w-[90vw] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded p-0 sm:max-w-[1200px]"
+        // Bound the dialog itself so the page doesn't push past the
+        // viewport on short phones — dvh tracks the live viewport
+        // height (excluding browser chrome) so a fully-open URL bar
+        // doesn't hide the footer. 85vh on desktop is plenty for the
+        // grid + footer; on mobile we leave only a small breathing
+        // margin and rely on the inner scroll for the rest.
+        className="flex max-h-[calc(100dvh-1rem)] sm:max-h-[85vh] w-[95vw] max-w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden rounded p-0 sm:w-[90vw] sm:max-w-[1200px]"
         showCloseButton={false}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_280px]">
+        {/* Body — single scroll on mobile (whole grid stacks and
+            scrolls together), per-column scroll on desktop. The grid
+            stops scrolling itself at sm+ so each cell can own its
+            own scrollbar without nesting two. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:grid sm:grid-cols-[1fr_280px] sm:overflow-hidden">
           {/* Left column */}
-          <div className="flex max-h-[70vh] flex-col">
+          <div className="flex flex-col sm:min-h-0">
             {/* Sticky header */}
-            <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
-              <div className="flex items-center justify-between">
+            <div className="shrink-0 flex flex-col gap-2 px-4 pt-4 pb-3 sm:gap-3 sm:px-6 sm:pt-6 sm:pb-4">
+              <div className="flex items-center justify-between gap-2">
                 {/* DialogTitle (vs a plain h2) so Radix can wire it
                     to the dialog's aria-labelledby. The styling
                     overrides the default tiny "leading-none font-
                     semibold" class so it still reads like an h2. */}
-                <DialogTitle className="text-[23px] font-bold leading-tight text-text-1">
+                <DialogTitle className="text-[18px] font-bold leading-tight text-text-1 sm:text-[23px]">
                   {initial ? "Edit guardrail" : "Add guardrail"}
                 </DialogTitle>
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
-                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <p className="text-[14px] leading-[1.5] text-text-2">
+              <p className="text-[13px] leading-[1.5] text-text-2 sm:text-[14px]">
                 Guardrails detect and mitigate the presence of specific types
                 of risks. To maintain the integrity and reliability of the
                 model&apos;s inputs and outputs, safeguard user data and align
@@ -903,8 +913,11 @@ function AddGuardrailDialog({
               </p>
             </div>
 
-            {/* Scrollable form content */}
-            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6">
+            {/* Form content — flows freely on mobile (parent scroll
+                takes over); per-column overflow scroll on desktop so
+                the validator picker on the right doesn't push this
+                column past the dialog cap. */}
+            <div className="flex flex-col gap-5 px-4 pb-4 sm:gap-6 sm:px-6 sm:pb-6 sm:min-h-0 sm:flex-1 sm:overflow-y-auto">
             {/* Guardrail name */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
@@ -1166,9 +1179,12 @@ function AddGuardrailDialog({
             </div>
           </div>
 
-          {/* Right: Validator picker sidebar */}
-          <div className="flex max-h-[70vh] flex-col overflow-y-auto border-l border-border-2 bg-bg-1 px-6 py-8">
-            <h3 className="text-[18px] font-semibold leading-[1.3] text-text-1">
+          {/* Right: Validator picker sidebar — on mobile it stacks
+              below the form and rides the parent's single scroll; on
+              desktop it gets its own column scroll within the bounded
+              dialog height. */}
+          <div className="flex flex-col border-t border-border-2 bg-bg-1 px-4 py-4 sm:border-l sm:border-t-0 sm:min-h-0 sm:overflow-y-auto sm:px-6 sm:py-8">
+            <h3 className="text-[16px] font-semibold leading-[1.3] text-text-1 sm:text-[18px]">
               Compliance templates
             </h3>
 
@@ -1220,8 +1236,10 @@ function AddGuardrailDialog({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between bg-bg-white px-6 py-6">
+        {/* Footer — shrink-0 so Save/Cancel never scroll out of
+            view, regardless of body height. Border at the top makes
+            it visually anchored when the body content sits under. */}
+        <div className="shrink-0 flex items-center justify-between gap-3 border-t border-border-2 bg-bg-white px-4 py-3 sm:px-6 sm:py-6">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
