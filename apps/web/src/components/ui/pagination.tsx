@@ -20,6 +20,13 @@ interface PaginationProps {
   /** Visual sibling count on each side of the current page. Defaults
    *  to 1 so 7 pages renders as `1 … 5 [6] 7 … 10` style layouts. */
   siblingCount?: number;
+  /**
+   * Strip the "Previous" / "Next" word labels and tighten the
+   * spacing so the bar fits inside narrow containers like the
+   * compare-models right rail (300px wide). The Figma desktop spec
+   * keeps the labels; this is opt-in for tight slots only.
+   */
+  compact?: boolean;
   className?: string;
 }
 
@@ -75,6 +82,7 @@ export function Pagination({
   onPageChange,
   hideOnSinglePage = false,
   siblingCount = 1,
+  compact = false,
   className,
 }: PaginationProps) {
   const items = useMemo(
@@ -97,11 +105,14 @@ export function Pagination({
       // read at a glance. Stacking a continuous 1px gray *under*
       // that accent (as the literal Figma export does) made the
       // edge look heavy.
-      className={`flex h-14 w-full items-stretch justify-between ${className ?? ""}`}
+      className={`flex w-full items-stretch justify-between ${
+        compact ? "h-10" : "h-14"
+      } ${className ?? ""}`}
     >
       <StepLink
         direction="prev"
         disabled={prevDisabled}
+        compact={compact}
         onClick={() => onPageChange(clampedPage - 1)}
       />
 
@@ -112,7 +123,9 @@ export function Pagination({
               <li
                 key={item}
                 aria-hidden="true"
-                className="flex min-w-10 items-center justify-center border-t-2 border-transparent px-2 text-[13px] text-text-3"
+                className={`flex items-center justify-center border-t-2 border-transparent text-[13px] text-text-3 ${
+                  compact ? "min-w-6 px-1" : "min-w-10 px-2"
+                }`}
               >
                 …
               </li>
@@ -128,7 +141,9 @@ export function Pagination({
                 }}
                 aria-current={isCurrent ? "page" : undefined}
                 aria-label={`Page ${item}`}
-                className={`flex min-w-10 items-center justify-center border-t-2 px-4 text-[13px] transition-colors ${
+                className={`flex items-center justify-center border-t-2 text-[13px] transition-colors ${
+                  compact ? "min-w-7 px-2" : "min-w-10 px-4"
+                } ${
                   isCurrent
                     ? "cursor-default border-primary-6 font-medium text-text-1"
                     : "cursor-pointer border-transparent text-text-3 hover:border-border-4 hover:text-text-1"
@@ -144,6 +159,7 @@ export function Pagination({
       <StepLink
         direction="next"
         disabled={nextDisabled}
+        compact={compact}
         onClick={() => onPageChange(clampedPage + 1)}
       />
     </nav>
@@ -153,10 +169,12 @@ export function Pagination({
 function StepLink({
   direction,
   disabled,
+  compact = false,
   onClick,
 }: {
   direction: "prev" | "next";
   disabled: boolean;
+  compact?: boolean;
   onClick: () => void;
 }) {
   const isPrev = direction === "prev";
@@ -168,15 +186,17 @@ function StepLink({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
-      className={`flex items-center gap-3 border-t-2 border-transparent px-2 text-[13px] transition-colors ${
+      className={`flex items-center border-t-2 border-transparent text-[13px] transition-colors ${
+        compact ? "gap-0 px-1.5" : "gap-3 px-2"
+      } ${
         disabled
           ? "cursor-not-allowed text-text-3/40"
           : "cursor-pointer text-text-3 hover:border-border-4 hover:text-text-1"
       }`}
     >
-      {isPrev && <Icon className="h-5 w-5" />}
-      {label}
-      {!isPrev && <Icon className="h-5 w-5" />}
+      {isPrev && <Icon className={compact ? "h-4 w-4" : "h-5 w-5"} />}
+      {!compact && label}
+      {!isPrev && <Icon className={compact ? "h-4 w-4" : "h-5 w-5"} />}
     </button>
   );
 }

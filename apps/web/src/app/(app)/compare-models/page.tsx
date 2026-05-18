@@ -58,6 +58,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   deleteArenaRun,
   fetchArenaRun,
@@ -797,15 +798,34 @@ export default function CompareModelsPage() {
         </div>
       </div>
 
-      {/* Body shell: main column + optional right rail */}
-      <div className="flex flex-col lg:flex-row min-h-0 flex-1 gap-3 lg:gap-6">
+      {/* Body shell: main column + optional right rail.
+          Switched to CSS Grid at lg+ specifically to decouple the
+          two columns' heights. Flexbox with align-items:stretch was
+          propagating the rail's intrinsic content height back into
+          the main card whenever History expanded — the row grew to
+          fit the rail and dragged the white card with it. Grid
+          assigns each cell its own track height (1fr of a bounded
+          row), so the columns are sized independently and each
+          handles its own internal scroll without affecting the
+          other. */}
+      <div className="flex flex-col min-h-0 flex-1 gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:overflow-hidden">
         {/* Main column — white card per Figma. Layout is intentionally
             *static*: scrollable area always takes the remaining height
             and the composer stays pinned at the bottom, regardless of
             whether a comparison is loaded, history is expanded, or the
             rail is open. Keeps the white card visually stable across
             state transitions. */}
-        <section className="flex min-w-0 flex-1 flex-col gap-3 lg:gap-4 overflow-hidden rounded-xl lg:rounded-[20px] bg-bg-white p-3 lg:p-6">
+        {/* Main card. On mobile we fill the column (flex-1 inside the
+            flex-col body shell) so the composer pins at viewport
+            bottom — typical chat UX. On desktop we drop that: the
+            card sits at the top of its grid cell (self-start) at a
+            fixed 750px height — auto-content was too cramped for
+            the placeholder/composer pair, and stretching to the
+            row brought back the rail-driven jump. Fixed height
+            decouples from rail, gives the placeholder its centered
+            whitespace, and lets the composer sit at the card's
+            bottom edge with internal scroll for long streams. */}
+        <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6 lg:min-h-0 lg:self-start lg:h-[750px]">
           <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-1">
             {!hasResults && !loading && !submittedQuestion && (
               // `my-auto` keeps the placeholder vertically centred inside
@@ -1016,7 +1036,7 @@ export default function CompareModelsPage() {
             Re-introduce as a slide-out Sheet in a follow-up if mobile
             users need history access without scrolling sideways. */}
         {railOpen ? (
-          <div className="hidden lg:flex">
+          <div className="hidden lg:flex lg:min-h-0 lg:overflow-hidden">
             <RightRail
               selectedModels={selectedModels}
               disabledModels={disabledModels}
@@ -1859,11 +1879,37 @@ function RightRail({
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
+
+  // History pagination — 5 entries per page so the rail doesn't grow
+  // into a wall of past prompts. Page state is local to the rail so
+  // opening/closing the section doesn't reset, but a new history
+  // entry (post-comparison) snaps back to page 1 so the most recent
+  // run is visible.
+  const HISTORY_PAGE_SIZE = 5;
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyTotalPages = Math.max(
+    1,
+    Math.ceil(history.length / HISTORY_PAGE_SIZE),
+  );
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [history.length]);
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
+  const pagedHistory = history.slice(
+    (historyPage - 1) * HISTORY_PAGE_SIZE,
+    historyPage * HISTORY_PAGE_SIZE,
+  );
+
   return (
     <aside
       className={
         className ??
-        "flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto"
+        // h-full + min-h-0 ride the desktop wrapper's bounded height
+        // and let overflow-y-auto kick in. Without h-full the aside
+        // would take its content height and overflow into the parent.
+        "flex h-full min-h-0 w-[300px] shrink-0 flex-col gap-6 overflow-y-auto"
       }
     >
       <header className="flex items-center justify-between">
@@ -1924,7 +1970,10 @@ function RightRail({
         </button>
       </RailSection>
 
-      {/* History section */}
+      {/* History section — paginated 5 per page so the rail doesn't
+          balloon past the viewport on power users. Date grouping
+          applies to the current page only; users scan one page at
+          a time so cross-page grouping wasn't carrying its weight. */}
       <RailSection
         title="History"
         expanded={historyExpanded}
@@ -1936,7 +1985,7 @@ function RightRail({
           </p>
         ) : (
           <div className="flex flex-col gap-4">
-            {groupHistoryByDate(history).map((group) => (
+            {groupHistoryByDate(pagedHistory).map((group) => (
               <div key={group.label} className="flex flex-col gap-2">
                 <p className="text-[13px] font-normal text-text-2">{group.label}</p>
                 <ul className="flex flex-col gap-2">
@@ -1964,6 +2013,14 @@ function RightRail({
                 </ul>
               </div>
             ))}
+            {historyTotalPages > 1 && (
+              <Pagination
+                page={historyPage}
+                totalPages={historyTotalPages}
+                onPageChange={setHistoryPage}
+                compact
+              />
+            )}
           </div>
         )}
       </RailSection>
