@@ -21,6 +21,7 @@ import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
 import { TeamCard } from "@/components/management/team-card";
 import { UserRow } from "@/components/management/user-row";
+import { UserCard } from "@/components/management/user-card";
 import { ModelRow } from "@/components/management/model-row";
 import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
@@ -254,32 +255,37 @@ export default function TeamsPage() {
 
       {/* ── Users ────────────────────────────────────────────────────────────── */}
       <PageTabsContent value="users">
-        <div className="flex flex-col gap-3 py-5 sm:flex-row sm:items-center sm:gap-6">
-          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
-            Users
-          </span>
+        {/* Mirror the Teams filter section: mobile stacks "Users +
+            Invite" on row 1 and search on row 2; desktop keeps the
+            single-row layout via `lg:contents`. */}
+        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
+          <div className="flex items-center justify-between gap-3 lg:contents">
+            <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
+              Users
+            </span>
+            <DisabledReasonTooltip
+              disabled={!user?.canCreateProject}
+              reason="Not available for basic users"
+              className="lg:order-last lg:w-auto"
+            >
+              <InviteUserDialog>
+                <Button
+                  variant="plusAction"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!user?.canCreateProject}
+                >
+                  <Plus className="h-4 w-4 text-white" />
+                  Invite User
+                </Button>
+              </InviteUserDialog>
+            </DisabledReasonTooltip>
+          </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search"
+            placeholder="Search users..."
             value={userSearch}
             onChange={(e) => setUserSearch(e.target.value)}
           />
-          <DisabledReasonTooltip
-            disabled={!user?.canCreateProject}
-            reason="Not available for basic users"
-            className="w-full sm:w-auto"
-          >
-            <InviteUserDialog>
-              <Button
-                variant="plusAction"
-                className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!user?.canCreateProject}
-              >
-                <Plus className="h-4 w-4 text-white" />
-                Invite User
-              </Button>
-            </InviteUserDialog>
-          </DisabledReasonTooltip>
         </div>
         {/* Pending-budget-approval banner. Surfaces users who finished
             Managed-Cloud onboarding but still have monthlyBudgetCents = 0
@@ -308,7 +314,37 @@ export default function TeamsPage() {
             </button>
           </div>
         )}
-        <div className="overflow-x-auto bg-bg-white rounded-lg">
+
+        {/* Mobile card list (<lg) — 9-col table doesn't fit on a
+            375px viewport. Each user becomes a stacked card per
+            UserCard. */}
+        <div className="lg:hidden flex flex-col gap-2.5">
+          {usersLoading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+            </div>
+          )}
+          {usersError && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
+              Failed to load users. Is the API running?
+            </div>
+          )}
+          {!usersLoading && !usersError && filteredUsers.length === 0 && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-12 text-center">
+              <Users className="mx-auto h-10 w-10 text-text-3" />
+              <p className="mt-3 text-sm text-text-2">
+                {userSearch
+                  ? "No users match your search."
+                  : "No users yet. Invite someone to get started."}
+              </p>
+            </div>
+          )}
+          {filteredUsers.map((u) => (
+            <UserCard key={u.id} user={u} />
+          ))}
+        </div>
+
+        <div className="hidden lg:block overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[850px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
