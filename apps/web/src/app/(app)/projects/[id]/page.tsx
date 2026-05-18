@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  AlertTriangle,
   ArrowLeft,
   Send,
   Paperclip,
@@ -28,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  fetchIntegrations,
   fetchProject,
   fetchConversation,
   createConversation,
@@ -119,6 +121,33 @@ export default function ProjectChatPage() {
     if (m.routing === "custom") return `${base} (Custom)`;
     return base;
   };
+
+  // BYOK fallback signal: the caller has at least one personal
+  // integration with a key set but flipped off in the Integration
+  // tab, AND the project's current model maps to that provider —
+  // meaning chat-transport is going to fall through to the WorkenAI
+  // default route instead of the user's own key. Surfaces as an
+  // inline banner above the chat so the user knows why their
+  // tokens (and not their own provider key) are getting billed.
+  const { data: integrations = [] } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: fetchIntegrations,
+    staleTime: 60 * 1000,
+  });
+  const projectProvider = project?.model
+    ? project.model.includes("/")
+      ? project.model.slice(0, project.model.indexOf("/"))
+      : null
+    : null;
+  const pausedByokIntegration =
+    projectProvider && project
+      ? integrations.find(
+          (i) =>
+            i.providerId === projectProvider &&
+            i.hasApiKey &&
+            !i.isEnabled,
+        ) ?? null
+      : null;
 
   const updateModelMutation = useMutation({
     mutationFn: (model: string) => updateProject(projectId, { model }),
@@ -599,6 +628,31 @@ export default function ProjectChatPage() {
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+            {pausedByokIntegration && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="mt-0.5 h-5 w-5 shrink-0 text-warning-7"
+                  strokeWidth={2}
+                />
+                <div className="flex-1 text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Your {pausedByokIntegration.displayName} key is paused.
+                  </p>
+                  <p className="text-text-3">
+                    Chat for this project is routing through the WorkenAI
+                    default instead of your own provider key. Re-enable it
+                    on the{" "}
+                    <Link
+                      href="/teams?tab=integration"
+                      className="font-medium text-primary-6 hover:text-primary-7 underline"
+                    >
+                      Integration tab
+                    </Link>{" "}
+                    to bill against your account again.
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="space-y-6">
               {/* Empty state */}
               {messages.length === 0 && !isLoadingConversation && (

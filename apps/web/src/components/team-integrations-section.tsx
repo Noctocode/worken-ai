@@ -322,7 +322,16 @@ export function TeamIntegrationsSection({
                 Linked by other admins
               </h3>
               <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
-                {othersLinks.map((link) => (
+                {othersLinks.map((link) => {
+                  // Master switch on the owner's personal Integration
+                  // tab gates the link's effective state. When master
+                  // is off, the per-team toggle is moot — chat-
+                  // transport already skips this BYOK route — so we
+                  // visually pin the link as Paused and disable the
+                  // toggle to stop admins flipping a no-op.
+                  const masterOff = !link.integrationEnabled;
+                  const effectiveActive = link.linkEnabled && !masterOff;
+                  return (
                   <li
                     key={link.integrationId}
                     className="flex items-center gap-3 px-4 py-3"
@@ -342,14 +351,19 @@ export function TeamIntegrationsSection({
                       <span className="text-[12px] text-text-3">
                         by {link.ownerName ?? "another admin"}
                         {!link.hasApiKey && " · no API key set"}
-                        {!link.integrationEnabled &&
-                          " · disabled in Integration tab"}
+                        {masterOff && (
+                          <span className="text-warning-7">
+                            {" "}
+                            · disabled in Integration tab
+                          </span>
+                        )}
                       </span>
                     </div>
                     {canManage ? (
                       <div className="flex shrink-0 items-center gap-3">
                         <Switch
-                          checked={link.linkEnabled}
+                          checked={effectiveActive}
+                          disabled={masterOff}
                           onCheckedChange={(next) =>
                             toggleMutation.mutate({
                               integrationId: link.integrationId,
@@ -357,22 +371,30 @@ export function TeamIntegrationsSection({
                             })
                           }
                           aria-label={
-                            link.linkEnabled
-                              ? "Pause use on this team"
-                              : "Resume use on this team"
+                            masterOff
+                              ? "Disabled by owner in their Integration tab"
+                              : link.linkEnabled
+                                ? "Pause use on this team"
+                                : "Resume use on this team"
+                          }
+                          title={
+                            masterOff
+                              ? "The owner disabled this key on their Integration tab. Ask them to turn it back on to use here."
+                              : undefined
                           }
                         />
                         <span className="w-12 text-right text-[12px] text-text-3">
-                          {link.linkEnabled ? "Active" : "Paused"}
+                          {effectiveActive ? "Active" : "Paused"}
                         </span>
                       </div>
                     ) : (
                       <span className="shrink-0 text-[12px] text-text-3">
-                        {link.linkEnabled ? "Active" : "Paused"}
+                        {effectiveActive ? "Active" : "Paused"}
                       </span>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </section>
           )}
