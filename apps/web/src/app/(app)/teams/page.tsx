@@ -19,6 +19,7 @@ import { useAuth } from "@/components/providers";
 import { fetchTeams, fetchOrgUsers, fetchModels } from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
+import { TeamCard } from "@/components/management/team-card";
 import { UserRow } from "@/components/management/user-row";
 import { ModelRow } from "@/components/management/model-row";
 import { AccountTab } from "@/components/management/account-tab";
@@ -110,34 +111,77 @@ export default function TeamsPage() {
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
       <PageTabsContent value="teams">
-        <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:gap-6">
-          <span className="text-[18px] font-bold text-black-900 whitespace-nowrap">
-            Teams
-          </span>
+        {/* Filter bar per Figma 4719:31181. Mobile: row 1 = Teams +
+            Create Team, row 2 = full-width search. Desktop: original
+            single-row layout. */}
+        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-4">
+          <div className="flex items-center justify-between gap-3 lg:contents">
+            <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
+              Teams
+            </span>
+            <DisabledReasonTooltip
+              disabled={!user?.canCreateProject}
+              reason="Not available for basic users"
+              className="lg:order-last lg:w-auto"
+            >
+              <CreateTeamDialog>
+                <Button
+                  variant="plusAction"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!user?.canCreateProject}
+                >
+                  <Plus className="h-4 w-4 text-white" />
+                  Create Team
+                </Button>
+              </CreateTeamDialog>
+            </DisabledReasonTooltip>
+          </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search"
+            placeholder="Search teams..."
             value={teamSearch}
             onChange={(e) => setTeamSearch(e.target.value)}
           />
-          <DisabledReasonTooltip
-            disabled={!user?.canCreateProject}
-            reason="Not available for basic users"
-            className="w-full sm:w-auto"
-          >
-            <CreateTeamDialog>
-              <Button
-                variant="plusAction"
-                className="w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!user?.canCreateProject}
-              >
-                <Plus className="h-4 w-4 text-white" />
-                Create Team
-              </Button>
-            </CreateTeamDialog>
-          </DisabledReasonTooltip>
         </div>
-        <div className="overflow-x-auto bg-bg-white rounded-lg">
+
+        {/* Mobile card list (<lg) — 7-col table doesn't survive on a
+            375px viewport. Figma 4720:31166 spec: each team is a
+            white card with name + kebab, description, divider, then
+            stacked rows for Monthly Budget / Spent / progress /
+            Projected / Members. */}
+        <div className="lg:hidden flex flex-col gap-2.5">
+          {teamsLoading && (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-text-3" />
+            </div>
+          )}
+          {teamsError && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
+              Failed to load teams. Is the API running?
+            </div>
+          )}
+          {!teamsLoading && !teamsError && filteredTeams.length === 0 && (
+            <div className="rounded-xl border border-border-2 bg-bg-white py-12 text-center">
+              <Users className="mx-auto h-10 w-10 text-text-3" />
+              <p className="mt-3 text-sm text-text-2">
+                {teamSearch
+                  ? "No teams match your search."
+                  : user?.canCreateProject
+                    ? "No teams yet. Create your first team to get started."
+                    : "You are not a member of any team yet."}
+              </p>
+            </div>
+          )}
+          {filteredTeams.map((team) => (
+            <TeamCard
+              key={team.id}
+              team={team}
+              isOwner={user?.id === team.ownerId}
+            />
+          ))}
+        </div>
+
+        <div className="hidden lg:block overflow-x-auto bg-bg-white rounded-lg">
           <table className="w-full min-w-[800px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">

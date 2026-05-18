@@ -44,8 +44,12 @@ function PageTabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="page-tabs-trigger"
       className={cn(
-        "relative flex items-center justify-center px-4 h-[55px]",
-        "text-[18px] leading-none whitespace-nowrap transition-colors",
+        // Compact on mobile so more tab labels fit before the strip
+        // needs scrolling; revert to the full-size desktop spec at lg+.
+        // Overflow-x-auto on the parent handles the remaining overflow
+        // gracefully at <lg (8 tabs still don't fit at 375px).
+        "relative flex items-center justify-center px-3 lg:px-4 h-[42px] lg:h-[55px]",
+        "text-[14px] lg:text-[18px] leading-none whitespace-nowrap transition-colors",
         "focus-visible:outline-none",
         // inactive
         "font-normal text-black-700 hover:text-black-700/75 cursor-pointer",
