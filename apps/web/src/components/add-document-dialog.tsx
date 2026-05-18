@@ -324,13 +324,24 @@ export function AddDocumentDialog({
         );
       }
       if (duplicates.length > 0) {
+        // Surface BOTH names when an existing copy was uploaded
+        // under a different filename. Without the existing.name the
+        // user sees "X is already in KC" but X isn't in the list.
+        const titleForOne = (d: (typeof duplicates)[number]) =>
+          d.existing.name && d.existing.name !== d.name
+            ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
+            : `"${d.name}" is already in your Knowledge Core.`;
         toast.info(
           duplicates.length === 1
-            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            ? titleForOne(duplicates[0])
             : `${duplicates.length} file(s) already in your Knowledge Core.`,
           {
             description: duplicates
-              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .map((d) =>
+                d.existing.name && d.existing.name !== d.name
+                  ? `"${d.name}" matches "${d.existing.name}" → "${d.existing.folderName}"`
+                  : `"${d.name}" → "${d.existing.folderName}"`,
+              )
               .join("\n"),
           },
         );

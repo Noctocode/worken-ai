@@ -319,13 +319,25 @@ export default function FolderDetailPage({
         toast.success(`Uploaded ${uploaded.length} file(s).`);
       }
       if (duplicates.length > 0) {
+        // When the existing copy was uploaded under a different
+        // filename (same content, renamed re-upload), surface BOTH
+        // names — otherwise the user reads "X is already in KC" and
+        // wonders where their file went because X isn't in the list.
+        const titleForOne = (d: (typeof duplicates)[number]) =>
+          d.existing.name && d.existing.name !== d.name
+            ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
+            : `"${d.name}" is already in your Knowledge Core.`;
         toast.info(
           duplicates.length === 1
-            ? `"${duplicates[0].name}" is already in your Knowledge Core.`
+            ? titleForOne(duplicates[0])
             : `${duplicates.length} file(s) were already in your Knowledge Core.`,
           {
             description: duplicates
-              .map((d) => `"${d.name}" → "${d.existing.folderName}"`)
+              .map((d) =>
+                d.existing.name && d.existing.name !== d.name
+                  ? `"${d.name}" matches "${d.existing.name}" → "${d.existing.folderName}"`
+                  : `"${d.name}" → "${d.existing.folderName}"`,
+              )
               .join("\n"),
           },
         );
