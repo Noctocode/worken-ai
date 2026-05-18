@@ -374,13 +374,15 @@ function ProjectCard({ project }: { project: Project }) {
                 }
                 updateModelMutation.mutate(agent.model);
               }}
-              disabled={
-                updateModelMutation.isPending ||
-                !pendingAgentId ||
-                (pendingAgentId !== null &&
-                  AGENTS.find((a) => a.id === pendingAgentId)?.model ===
-                    project.model)
-              }
+              // Disabled only while the mutation is in flight or no
+              // agent is picked. The "agent's model already matches
+              // project.model" case is handled by the click handler
+              // (closes the dialog as a no-op) — disabling Save there
+              // confuses users who pick a different agent that happens
+              // to share the same preset model with the current
+              // setting (Marketing / Code Engineer / Lawyer all map
+              // to claude-opus-4.7, for example).
+              disabled={updateModelMutation.isPending || !pendingAgentId}
             >
               {updateModelMutation.isPending ? "Saving..." : "Save"}
             </Button>
