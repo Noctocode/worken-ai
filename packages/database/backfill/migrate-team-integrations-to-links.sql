@@ -30,6 +30,13 @@ BEGIN;
 -- Personal predef twin = same owner_id + provider_id + api_url IS NULL.
 -- For custom LLMs (provider_id = 'custom'), we match on (owner, url)
 -- so two different on-prem endpoints stay distinct.
+--
+-- is_enabled on the new personal row is hard-coded to true: in the new
+-- model that column is the master switch, while the legacy team-row
+-- is_enabled was a per-team pause toggle (now carried into the link in
+-- step 2). Inheriting the team-row value would let any single paused
+-- team silently disable BYOK across every other team and personal use
+-- for the same owner/provider.
 INSERT INTO integrations (
   owner_id,
   team_id,
@@ -46,7 +53,7 @@ SELECT DISTINCT ON (t.owner_id, t.provider_id, t.api_url)
   t.provider_id,
   t.api_url,
   t.api_key_encrypted,
-  t.is_enabled,
+  true AS is_enabled,
   t.created_at,
   t.updated_at
 FROM integrations t
