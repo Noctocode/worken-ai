@@ -959,10 +959,31 @@ export function CompanyTab() {
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">Primary Guardrails</p>
-          <Button variant="plusAction" className="rounded-lg w-[155px]">
-            <Plus className="h-4 w-4 text-text-white" />
-            Add Guardrail
-          </Button>
+          {isAdmin ? (
+            <Button variant="plusAction" className="rounded-lg w-[155px]">
+              <Plus className="h-4 w-4 text-text-white" />
+              Add Guardrail
+            </Button>
+          ) : (
+            // Basic / advanced users see the button disabled with a
+            // tooltip — matches the Invite User pattern above and the
+            // team-detail Add Guardrail gate, so the affordance stays
+            // visible (signals the feature exists) without letting
+            // non-admins fire a no-op that the BE would reject anyway.
+            <DisabledReasonTooltip
+              disabled
+              reason="Only admins can add guardrails"
+            >
+              <Button
+                variant="plusAction"
+                className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled
+              >
+                <Plus className="h-4 w-4 text-text-white" />
+                Add Guardrail
+              </Button>
+            </DisabledReasonTooltip>
+          )}
         </div>
         <div className="bg-bg-white rounded overflow-hidden">
           <div className="overflow-x-auto">
