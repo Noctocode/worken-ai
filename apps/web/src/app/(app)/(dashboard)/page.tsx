@@ -164,7 +164,14 @@ function ProjectCard({ project }: { project: Project }) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-text-3 hover:text-text-1 cursor-pointer"
+                    // 24px was too cramped — the card itself swallows
+                    // near-miss clicks and navigates instead, so users
+                    // overshoot the kebab and land on the project
+                    // detail. 44px hit area + a subtle hover bg gives
+                    // a forgiving target (close to the WCAG 2.5.5
+                    // touch-target minimum) without making the visual
+                    // glyph any larger.
+                    className="h-11 w-11 rounded-md text-text-3 hover:bg-bg-1 hover:text-text-1 cursor-pointer"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   >
                     <MoreVertical className="h-5 w-5" />
