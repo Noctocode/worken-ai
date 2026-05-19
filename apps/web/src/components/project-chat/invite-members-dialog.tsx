@@ -40,10 +40,15 @@ import {
 
 import { EmailTagInput, type EmailTag } from "./email-tag-input";
 
-/** "Can Edit" → backend `editor`, "Admin" → backend `admin`. The
- *  Figma 179:16073 design only exposes these two; we treat existing
- *  team rows with manager/viewer roles read-only so we don't
- *  accidentally downgrade them from a chat-side dialog. */
+/** Full team-role vocabulary for the *invite* row — admins should
+ *  be able to seed managers / viewers from this dialog the same way
+ *  they can on /teams/[id], not just the two roles the Figma comp
+ *  drew. */
+type InviteRole = "admin" | "manager" | "editor" | "viewer";
+
+/** Subset writable on the per-row dropdown inside the Other group,
+ *  since `project_members` (the table that backs those rows) only
+ *  stores admin/editor/viewer — manager is a team-only role. */
 type DialogRole = "admin" | "editor";
 
 function roleLabel(role: string): string {
@@ -102,7 +107,7 @@ export function InviteMembersDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [tags, setTags] = useState<EmailTag[]>([]);
-  const [inviteRole, setInviteRole] = useState<DialogRole>("editor");
+  const [inviteRole, setInviteRole] = useState<InviteRole>("editor");
   const [sending, setSending] = useState(false);
   const qc = useQueryClient();
 
@@ -239,7 +244,7 @@ export function InviteMembersDialog({
               </div>
               <Select
                 value={inviteRole}
-                onValueChange={(v) => setInviteRole(v as DialogRole)}
+                onValueChange={(v) => setInviteRole(v as InviteRole)}
                 disabled={sending}
               >
                 {/* `data-[size=default]:h-9` in the shadcn SelectTrigger
@@ -251,9 +256,16 @@ export function InviteMembersDialog({
                 <SelectTrigger className="!h-auto w-full shrink-0 cursor-pointer rounded-xl sm:w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
+                {/* Full team-role set so admins can seed any role
+                    from this dialog — matches the /teams/[id] invite
+                    flow. The per-row dropdown in Other stays
+                    admin/editor only since project_members can't
+                    store the manager / viewer values. */}
                 <SelectContent>
-                  <SelectItem value="editor">Can Edit</SelectItem>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
+                  <SelectItem value="editor">Can Edit</SelectItem>
+                  <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
             </div>
