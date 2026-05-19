@@ -24,12 +24,23 @@ const VALID_ROLES = ['admin', 'editor', 'viewer'] as const;
 type DirectRole = (typeof VALID_ROLES)[number];
 
 export interface ProjectMemberRow {
+  /** For pending team invites the invitee has no user account yet,
+   *  so we synthesize the id from the team_members row id (prefixed
+   *  with `invite:` so it can't collide with a real user id). The
+   *  FE only uses it as a React key + DELETE target — both work
+   *  with the synthetic value when the row's `status` is 'pending'. */
   userId: string;
   userName: string | null;
   userEmail: string;
   userPicture: string | null;
   role: DirectRole;
+  /** 'team' rows are accepted members of the project's team.
+   *  'direct' rows live in `project_members` (ad-hoc additions).
+   *  Pending team invites also land under 'direct' so they show up
+   *  immediately in the "Other" group of the invite dialog — the
+   *  FE distinguishes them by `status: 'pending'`. */
   source: 'team' | 'direct';
+  status: 'pending' | 'accepted';
   addedAt: string;
 }
 
@@ -70,6 +81,7 @@ export class ProjectMembersService {
     const directIds = new Set(direct.map((r) => r.userId));
 
     const teamRows: ProjectMemberRow[] = [];
+    const pendingRows: ProjectMemberRow[] = [];
     if (project.teamId) {
       // 1) The team's owner. NOT duplicated into team_members — owner
       //    is identified via `teams.ownerId` only — so a pure
@@ -90,8 +102,10 @@ export class ProjectMembersService {
         .limit(1);
 
       const seenUserIds = new Set<string>(directIds);
+      const seenEmails = new Set<string>();
       if (owner && !seenUserIds.has(owner.userId)) {
         seenUserIds.add(owner.userId);
+        seenEmails.add(owner.userEmail.toLowerCase());
         teamRows.push({
           userId: owner.userId,
           userName: owner.userName,
@@ -102,6 +116,7 @@ export class ProjectMembersService {
           // FE label since the Figma comp only exposes admin/editor.
           role: 'admin',
           source: 'team',
+          status: 'accepted',
           addedAt:
             owner.createdAt instanceof Date
               ? owner.createdAt.toISOString()
@@ -109,11 +124,20 @@ export class ProjectMembersService {
         });
       }
 
-      // 2) Accepted non-owner members.
+      // 2) Every team_members row. Accepted members (userId set,
+      //    status='accepted') flow into the team group. Pending
+      //    invites (userId null, status='pending') land in the Other
+      //    group with a 'pending' status flag so the dialog can
+      //    surface the new invite the moment Send Invite returns —
+      //    the FE doesn't have to wait for the invitee to accept.
+      //
+      //    leftJoin (not inner) because pending rows have no user yet.
       const rows = await this.db
         .select({
+          rowId: teamMembers.id,
           userId: teamMembers.userId,
           role: teamMembers.role,
+          email: teamMembers.email,
           addedAt: teamMembers.createdAt,
           userName: users.name,
           userEmail: users.email,
@@ -121,32 +145,58 @@ export class ProjectMembersService {
           status: teamMembers.status,
         })
         .from(teamMembers)
-        .innerJoin(users, eq(teamMembers.userId, users.id))
+        .leftJoin(users, eq(teamMembers.userId, users.id))
         .where(eq(teamMembers.teamId, project.teamId));
 
       for (const r of rows) {
-        if (r.status !== 'accepted' || r.userId === null) continue;
-        // Dedupe across sources: a user might be in team_members AND
-        // project_members (rare but legal); prefer the team row so
-        // the FE groups them under the team, not "Other". Also dedupe
-        // against the owner row above in case team_members has an
-        // explicit entry for the owner.
-        if (seenUserIds.has(r.userId)) continue;
-        seenUserIds.add(r.userId);
-        teamRows.push({
-          userId: r.userId,
-          userName: r.userName,
-          userEmail: r.userEmail,
-          userPicture: r.userPicture,
-          role: (VALID_ROLES as readonly string[]).includes(r.role)
-            ? (r.role as DirectRole)
-            : 'editor',
-          source: 'team',
-          addedAt:
-            r.addedAt instanceof Date
-              ? r.addedAt.toISOString()
-              : new Date(r.addedAt).toISOString(),
-        });
+        const role: DirectRole = (VALID_ROLES as readonly string[]).includes(r.role)
+          ? (r.role as DirectRole)
+          : 'editor';
+        const addedAt =
+          r.addedAt instanceof Date
+            ? r.addedAt.toISOString()
+            : new Date(r.addedAt).toISOString();
+
+        if (r.status === 'accepted' && r.userId !== null) {
+          // Dedupe across sources: a user might be in team_members
+          // AND project_members (rare but legal); prefer the team row
+          // so the FE groups them under the team, not "Other". Also
+          // dedupe against the owner row above.
+          if (seenUserIds.has(r.userId)) continue;
+          seenUserIds.add(r.userId);
+          if (r.userEmail) seenEmails.add(r.userEmail.toLowerCase());
+          teamRows.push({
+            userId: r.userId,
+            userName: r.userName,
+            userEmail: r.userEmail ?? r.email,
+            userPicture: r.userPicture,
+            role,
+            source: 'team',
+            status: 'accepted',
+            addedAt,
+          });
+        } else if (r.status === 'pending') {
+          // Hide a pending invite for someone who is already an
+          // accepted member or an owner — happens when the team
+          // resends an invite to an active user.
+          if (r.userId && seenUserIds.has(r.userId)) continue;
+          if (r.email && seenEmails.has(r.email.toLowerCase())) continue;
+          if (r.email) seenEmails.add(r.email.toLowerCase());
+          pendingRows.push({
+            // Synthetic id keyed on the team_members row so the FE has
+            // a stable React key + a unique target for any future
+            // "cancel invite" action. `invite:` prefix can't collide
+            // with a real user uuid.
+            userId: `invite:${r.rowId}`,
+            userName: null,
+            userEmail: r.email,
+            userPicture: null,
+            role,
+            source: 'direct',
+            status: 'pending',
+            addedAt,
+          });
+        }
       }
     }
 
@@ -159,13 +209,14 @@ export class ProjectMembersService {
         ? (r.role as DirectRole)
         : 'editor',
       source: 'direct',
+      status: 'accepted',
       addedAt:
         r.addedAt instanceof Date
           ? r.addedAt.toISOString()
           : new Date(r.addedAt).toISOString(),
     }));
 
-    return [...teamRows, ...directRows];
+    return [...teamRows, ...directRows, ...pendingRows];
   }
 
   /**
@@ -226,6 +277,7 @@ export class ProjectMembersService {
       userPicture: target.picture,
       role,
       source: 'direct',
+      status: 'accepted',
       addedAt: new Date().toISOString(),
     };
   }

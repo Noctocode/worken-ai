@@ -857,16 +857,22 @@ export async function submitMessageFeedback(
 }
 
 export interface ProjectMember {
+  /** For pending team invites this is `invite:<team_members.id>` so
+   *  the FE has a stable React key even before the invitee accepts.
+   *  Don't try to look this up as a user id — only meaningful for
+   *  in-list rendering when status === 'pending'. */
   userId: string;
   userName: string | null;
   userEmail: string;
   userPicture: string | null;
   role: "admin" | "editor" | "viewer";
   /** "team" rows come from the project's team; "direct" rows are
-   *  ad-hoc invites stored in `project_members`. The FE groups by
-   *  this field to render the Figma "Marketing Team" + "Other"
-   *  sections of the invite modal (179:16073). */
+   *  ad-hoc invites stored in `project_members`. Pending team
+   *  invites also flow under "direct" so they show up immediately in
+   *  the Figma "Other" group after Send Invite — distinguish them
+   *  by `status`. */
   source: "team" | "direct";
+  status: "pending" | "accepted";
   addedAt: string;
 }
 

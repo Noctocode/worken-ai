@@ -385,11 +385,22 @@ function MemberGroup({
                 <p className="truncate text-[13px] font-medium text-text-1">
                   {m.userName ?? m.userEmail}
                 </p>
-                <p className="truncate text-[11px] text-text-3">
-                  {m.userEmail}
+                <p className="flex items-center gap-1.5 truncate text-[11px] text-text-3">
+                  <span className="truncate">{m.userEmail}</span>
+                  {m.status === "pending" && (
+                    <span className="shrink-0 rounded-sm bg-warning-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7">
+                      Pending
+                    </span>
+                  )}
                 </p>
               </div>
-              {onChangeRole && (m.role === "admin" || m.role === "editor") ? (
+              {/* Pending invites can't have their role changed inline
+                  yet (the team-invite row is the source of truth and
+                  resending the invite is the right edit). Show the
+                  role as a static label until acceptance. */}
+              {onChangeRole &&
+              m.status === "accepted" &&
+              (m.role === "admin" || m.role === "editor") ? (
                 <Select
                   value={m.role}
                   onValueChange={(v) =>
@@ -409,7 +420,11 @@ function MemberGroup({
                   {roleLabel(m.role)}
                 </span>
               )}
-              {onRemove && (
+              {/* Remove only makes sense for accepted direct members.
+                  Pending team invites would need a separate "cancel
+                  invite" path against team_members — out of scope for
+                  this dialog; the team page already exposes it. */}
+              {onRemove && m.status === "accepted" && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
