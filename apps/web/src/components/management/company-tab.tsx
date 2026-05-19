@@ -1023,7 +1023,27 @@ export function CompanyTab() {
                     </td>
                     <td className="px-4 align-middle w-[167px]">
                       <div className="flex items-center gap-2.5">
-                        <Switch checked={g.active} onCheckedChange={() => toggleGuardrail(g.id)} />
+                        {/* Same admin gate as Add Guardrail: non-admins
+                            see the toggle but can't flip it, and the
+                            tooltip explains why. Keeps the row's
+                            status legible for everyone. */}
+                        {isAdmin ? (
+                          <Switch
+                            checked={g.active}
+                            onCheckedChange={() => toggleGuardrail(g.id)}
+                          />
+                        ) : (
+                          <DisabledReasonTooltip
+                            disabled
+                            reason="Only admins can change guardrails"
+                          >
+                            <Switch
+                              checked={g.active}
+                              disabled
+                              className="opacity-50 cursor-not-allowed"
+                            />
+                          </DisabledReasonTooltip>
+                        )}
                         <span className="text-[16px] text-text-1 whitespace-nowrap">{g.active ? "Active" : "Inactive"}</span>
                       </div>
                     </td>
@@ -1036,11 +1056,31 @@ export function CompanyTab() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem className="gap-2">
+                            {/* Disabled menu items rather than hiding
+                                the kebab — keeps the affordance
+                                discoverable for non-admins and the
+                                tooltip explains the gate on hover. */}
+                            <DropdownMenuItem
+                              className="gap-2"
+                              disabled={!isAdmin}
+                              title={
+                                isAdmin
+                                  ? undefined
+                                  : "Only admins can edit guardrails"
+                              }
+                            >
                               <Pencil className="h-4 w-4" />
                               Edit
                             </DropdownMenuItem>
-                            <DropdownMenuItem className="gap-2 text-danger-6 focus:text-danger-6">
+                            <DropdownMenuItem
+                              className="gap-2 text-danger-6 focus:text-danger-6"
+                              disabled={!isAdmin}
+                              title={
+                                isAdmin
+                                  ? undefined
+                                  : "Only admins can delete guardrails"
+                              }
+                            >
                               <Trash2 className="h-4 w-4" />
                               Delete
                             </DropdownMenuItem>
