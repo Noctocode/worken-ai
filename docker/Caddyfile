@@ -5,28 +5,21 @@
 # so the HTTP-01 challenge can reach Caddy directly. After Caddy has
 # obtained certs, you can flip the proxy on (orange cloud) and set
 # SSL/TLS mode to Full (strict) in Cloudflare.
+#
+# Note: SSE streaming + gzip can introduce minor buffering. Caddy does
+# not let us exclude a response by Content-Type in `encode`, so for
+# token-by-token chat streaming the API should set
+# `X-Accel-Buffering: no` on SSE responses (cleaner than a Caddy hack).
 
 {
-    # email tim@noctocode.com   # uncomment if you want LE expiry notices
 }
 
-# Web app.
 app.workenai.com {
-    encode zstd gzip {
-        # Don't gzip SSE — would force buffering and break chat streaming.
-        match {
-            not header Content-Type text/event-stream*
-        }
-    }
+    encode zstd gzip
     reverse_proxy web:3000
 }
 
-# API.
 api.workenai.com {
-    encode zstd gzip {
-        match {
-            not header Content-Type text/event-stream*
-        }
-    }
+    encode zstd gzip
     reverse_proxy api:3001
 }
