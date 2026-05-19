@@ -18,10 +18,6 @@ interface Props {
   onChange: (next: EmailTag[]) => void;
   placeholder?: string;
   disabled?: boolean;
-  /** Strip the outer border/ring so the input can sit inside a
-   *  parent that already provides a rounded border (the Figma
-   *  combined input/role-dropdown control in 179:16073). */
-  borderless?: boolean;
 }
 
 /**
@@ -40,7 +36,6 @@ export function EmailTagInput({
   onChange,
   placeholder,
   disabled,
-  borderless,
 }: Props) {
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -75,11 +70,9 @@ export function EmailTagInput({
   return (
     <div
       onClick={() => inputRef.current?.focus()}
-      className={`flex min-h-[44px] flex-wrap items-center gap-1.5 px-2 py-1.5 ${
-        borderless
-          ? "h-full bg-transparent"
-          : "rounded-xl border border-border-2 bg-bg-white transition-colors focus-within:border-primary-5 focus-within:ring-2 focus-within:ring-primary-5/10"
-      } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-text"}`}
+      className={`flex min-h-[44px] flex-wrap items-center gap-1.5 rounded-xl border border-border-2 bg-bg-white px-2 py-1.5 transition-colors focus-within:border-primary-5 focus-within:ring-2 focus-within:ring-primary-5/10 ${
+        disabled ? "cursor-not-allowed opacity-60" : "cursor-text"
+      }`}
     >
       {tags.map((t, i) => (
         <span
