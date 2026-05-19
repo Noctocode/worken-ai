@@ -257,23 +257,24 @@ export function InviteMembersDialog({
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                disabled={sending || tags.filter((t) => !t.error).length === 0}
-                onClick={handleSend}
-                className="bg-primary-6 hover:bg-primary-7"
-              >
-                {sending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Sending…
-                  </>
-                ) : (
-                  "Send Invite"
-                )}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              disabled={sending || tags.filter((t) => !t.error).length === 0}
+              onClick={handleSend}
+              // Full-width + h-[44px] so the three stacked controls
+              // (input, role dropdown, send) all share the same height
+              // and gutter.
+              className="!h-[44px] w-full rounded-xl bg-primary-6 hover:bg-primary-7"
+            >
+              {sending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                "Send Invite"
+              )}
+            </Button>
           </div>
         )}
 
