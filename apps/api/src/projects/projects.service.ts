@@ -180,10 +180,11 @@ export class ProjectsService {
   }
 
   async findOne(id: string, userId: string) {
-    const [project] = await this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, id));
+    // selectWithTeamName left-joins teams so the response carries the
+    // team's display name. The simpler .select().from(projects) call
+    // we used before only returned the FK and the FE then rendered
+    // "Team" as a hard-coded fallback in the Invite Members dialog.
+    const [project] = await this.selectWithTeamName().where(eq(projects.id, id));
 
     if (!project) {
       throw new NotFoundException(`Project ${id} not found`);
