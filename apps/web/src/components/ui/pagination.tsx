@@ -85,14 +85,22 @@ export function Pagination({
   compact = false,
   className,
 }: PaginationProps) {
+  // Clamp first so the page-number run is computed from a value
+  // inside [1, totalPages]. Without this, a parent briefly passing an
+  // out-of-range page (typical when a filter shrinks totalPages and
+  // the page-clamping effect hasn't fired yet) produced a malformed
+  // run — e.g. `1 … 10` with no current page visible — for one frame
+  // before the parent reconciled. Clamping up-front keeps the visible
+  // run, the Prev/Next disabled state, and the active highlight all
+  // sourced from the same value.
+  const clampedPage = Math.min(Math.max(1, page), Math.max(1, totalPages));
   const items = useMemo(
-    () => paginationRange(page, totalPages, siblingCount),
-    [page, totalPages, siblingCount],
+    () => paginationRange(clampedPage, totalPages, siblingCount),
+    [clampedPage, totalPages, siblingCount],
   );
 
   if (totalPages <= 1 && hideOnSinglePage) return null;
 
-  const clampedPage = Math.min(Math.max(1, page), Math.max(1, totalPages));
   const prevDisabled = clampedPage <= 1;
   const nextDisabled = clampedPage >= totalPages;
 
