@@ -327,6 +327,151 @@ export class ProjectMembersService {
     return { removed: true };
   }
 
+  /**
+   * Invite by email — adds the invitee to *this project only* and to
+   * the org (`users` table), but NOT to the project's team. This is
+   * the path the InviteMembersDialog uses so people end up under the
+   * "Other" group in the dialog without becoming full team members.
+   *
+   * For genuinely new emails: pre-create the user row with the
+   * caller's company tenancy inherited (so they land in the org
+   * users list under /teams?tab=users). For existing emails — same
+   * company or different — just add them to project_members. We do
+   * NOT mutate an existing user's company affiliation; cross-tenant
+   * profile rewrites are a separate, manual operation.
+   *
+   * For team projects we inherit from the team owner so the
+   * invitee's company matches the team's workspace. For personal
+   * projects we inherit from the project owner.
+   */
+  async inviteByEmail(
+    projectId: string,
+    callerId: string,
+    body: { email: string; role?: DirectRole },
+  ): Promise<ProjectMemberRow> {
+    const project = await this.requireManage(projectId, callerId);
+
+    const rawEmail = (body?.email ?? '').trim().toLowerCase();
+    if (!rawEmail) {
+      throw new BadRequestException('email is required');
+    }
+    const role: DirectRole =
+      body.role && (VALID_ROLES as readonly string[]).includes(body.role)
+        ? body.role
+        : 'editor';
+
+    // 1) Find or create the org user.
+    const [existing] = await this.db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        picture: users.picture,
+      })
+      .from(users)
+      .where(eq(users.email, rawEmail))
+      .limit(1);
+
+    let target: { id: string; email: string; name: string | null; picture: string | null };
+    if (existing) {
+      target = existing;
+    } else {
+      // Inherit company tenancy from the project's team owner (team
+      // projects) or the project's own owner (personal projects), so
+      // the invitee lands in the same company on /teams?tab=users.
+      const inheritFromUserId = project.teamId
+        ? await this.getTeamOwnerId(project.teamId)
+        : project.userId;
+      const inheritedFields = await this.companyInheritFields(inheritFromUserId);
+
+      const [created] = await this.db
+        .insert(users)
+        .values({
+          email: rawEmail,
+          role: 'basic',
+          inviteStatus: 'pending',
+          ...inheritedFields,
+        })
+        .returning({
+          id: users.id,
+          email: users.email,
+          name: users.name,
+          picture: users.picture,
+        });
+      target = created;
+    }
+
+    // 2) Add to project_members (upsert so a repeat invite just
+    //    refreshes the role, mirroring the team-invite UX).
+    await this.db
+      .insert(projectMembers)
+      .values({
+        projectId,
+        userId: target.id,
+        role,
+        addedBy: callerId,
+      })
+      .onConflictDoUpdate({
+        target: [projectMembers.projectId, projectMembers.userId],
+        set: { role },
+      });
+
+    return {
+      userId: target.id,
+      userName: target.name,
+      userEmail: target.email,
+      userPicture: target.picture,
+      role,
+      source: 'direct',
+      status: 'accepted',
+      addedAt: new Date().toISOString(),
+    };
+  }
+
+  private async getTeamOwnerId(teamId: string): Promise<string | null> {
+    const [row] = await this.db
+      .select({ ownerId: teams.ownerId })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
+    return row?.ownerId ?? null;
+  }
+
+  private async companyInheritFields(
+    inheritFromUserId: string | null,
+  ): Promise<Record<string, unknown>> {
+    if (!inheritFromUserId) return {};
+    const [owner] = await this.db
+      .select({
+        profileType: users.profileType,
+        companyName: users.companyName,
+        industry: users.industry,
+        teamSize: users.teamSize,
+        infraChoice: users.infraChoice,
+      })
+      .from(users)
+      .where(eq(users.id, inheritFromUserId))
+      .limit(1);
+    if (
+      !owner ||
+      owner.profileType !== 'company' ||
+      !owner.companyName?.trim()
+    ) {
+      return {};
+    }
+    // Stamp onboardingCompletedAt so /setup-profile bounces the
+    // invitee straight to the dashboard — they're joining an
+    // existing workspace, not seeing the wizard fresh.
+    return {
+      profileType: 'company',
+      companyName: owner.companyName,
+      industry: owner.industry,
+      teamSize: owner.teamSize,
+      infraChoice: owner.infraChoice,
+      onboardingCompletedAt: new Date(),
+    };
+  }
+
   /* ─── Auth helpers ──────────────────────────────────────────── */
 
   /** Read access — owner, team member, or direct project member. */

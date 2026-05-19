@@ -245,6 +245,22 @@ export class ProjectsController {
     return this.projectMembers.add(id, user.id, body);
   }
 
+  /**
+   * Invite by email — single-shot path used by the chat-side
+   * InviteMembersDialog. Adds the invitee to this project AND to
+   * the caller's company (via `users` row creation), but NOT to the
+   * project's team. The dialog wants direct-project rows under
+   * "Other", not team membership.
+   */
+  @Post(':id/members/invite')
+  inviteMemberByEmail(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { email: string; role?: 'admin' | 'editor' | 'viewer' },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectMembers.inviteByEmail(id, user.id, body);
+  }
+
   @Patch(':id/members/:userId')
   updateMemberRole(
     @Param('id', new ParseUUIDPipe()) id: string,

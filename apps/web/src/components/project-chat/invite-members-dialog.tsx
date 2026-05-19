@@ -31,8 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   fetchProjectMembers,
-  inviteTeamMember,
-  inviteUser,
+  inviteProjectMemberByEmail,
   removeProjectMember,
   updateProjectMemberRole,
   type Project,
@@ -41,15 +40,16 @@ import {
 
 import { EmailTagInput, type EmailTag } from "./email-tag-input";
 
-/** Full team-role vocabulary for the *invite* row — admins should
- *  be able to seed managers / viewers from this dialog the same way
- *  they can on /teams/[id], not just the two roles the Figma comp
- *  drew. */
-type InviteRole = "admin" | "manager" | "editor" | "viewer";
+/** Project-level roles for the invite row. The invite path now
+ *  writes to `project_members` (NOT team_members), so the role
+ *  vocabulary is admin / editor / viewer — `manager` is a team-
+ *  scoped role that has no place at the project level. */
+type InviteRole = "admin" | "editor" | "viewer";
 
-/** Subset writable on the per-row dropdown inside the Other group,
- *  since `project_members` (the table that backs those rows) only
- *  stores admin/editor/viewer — manager is a team-only role. */
+/** Subset writable on the per-row dropdown inside the Other group.
+ *  Viewer is read-only-ish today (no role-bump UI) but valid in
+ *  project_members; we expose it on invite but not on the inline
+ *  per-row dropdown to keep that control compact. */
 type DialogRole = "admin" | "editor";
 
 function roleLabel(role: string): string {
@@ -139,50 +139,21 @@ export function InviteMembersDialog({
   }, [members]);
 
   const handleSend = async () => {
-    if (!project.teamId) return;
     const valid = tags.filter((t) => !t.error);
     if (valid.length === 0) {
       toast.error("Add at least one valid email.");
       return;
     }
     setSending(true);
-    // For each address fire both legs:
-    //  1. inviteTeamMember — adds them to the project's team (the
-    //     row that drives the chat-side roster shown under Other).
-    //  2. inviteUser — pulls them into the caller's company tenant so
-    //     they appear in /teams?tab=users. For genuinely new emails
-    //     the team-invite already pre-creates the user, so the
-    //     org-invite is idempotent. For existing emails in the same
-    //     company it sets their org role. For emails belonging to a
-    //     *different* company it 409s (cross-tenant); we swallow that
-    //     specifically because the team-invite still succeeded and we
-    //     don't want one of the two legs failing to abort the whole
-    //     batch. The toast surfaces the count of team-invites that
-    //     went through — the org leg is best-effort.
-    //
-    // Map the team role to the basic/advanced org-role axis: anything
-    // with team-management privileges (admin/manager) maps to
-    // 'advanced', editor/viewer to 'basic'.
-    const orgRole: "basic" | "advanced" =
-      inviteRole === "admin" || inviteRole === "manager"
-        ? "advanced"
-        : "basic";
+    // Single-shot per address: the new
+    // POST /projects/:id/members/invite endpoint creates the org
+    // user if needed (with the caller's company tenancy inherited)
+    // AND inserts a project_members row. No team membership is
+    // touched, so the invitee shows under Other immediately, and
+    // they also land in /teams?tab=users.
     const results = await Promise.allSettled(
       valid.map((t) =>
-        Promise.all([
-          inviteTeamMember(project.teamId!, t.value, inviteRole),
-          inviteUser(t.value, orgRole).catch((err: Error) => {
-            // Cross-company conflicts are expected when the email
-            // already exists in another tenant; log + carry on so
-            // the team-invite (and the Pending row in Other) still
-            // shows up. Other errors surface alongside.
-            // eslint-disable-next-line no-console
-            console.warn(
-              `Org-invite for ${t.value} skipped: ${err.message}`,
-            );
-            return null;
-          }),
-        ]).then(
+        inviteProjectMemberByEmail(project.id, t.value, inviteRole).then(
           () => ({ email: t.value, ok: true as const }),
           (err: Error) => ({
             email: t.value,
@@ -214,10 +185,11 @@ export function InviteMembersDialog({
           ? `Invited ${okCount} ${okCount === 1 ? "member" : "members"}.`
           : `Invited ${okCount} of ${valid.length}. Fix the highlighted addresses and retry.`,
       );
-      // Surface new accepted members + propagate to the avatar stack
-      // in the Appbar via the project query.
+      // Surface new accepted members. We don't touch team queries
+      // anymore (no team-invite happens), but we still invalidate
+      // the project query so any FE-cached project-team-members
+      // count stays consistent if it ever incorporates direct rows.
       qc.invalidateQueries({ queryKey: ["project-members", project.id] });
-      qc.invalidateQueries({ queryKey: ["teams", project.teamId] });
       qc.invalidateQueries({ queryKey: ["project", project.id] });
       // Org-users list (drives /teams?tab=users) — refresh so the
       // newly-created pending row shows up there too.
@@ -294,13 +266,12 @@ export function InviteMembersDialog({
                 <SelectTrigger className="!h-auto w-full shrink-0 cursor-pointer rounded-xl sm:w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
-                {/* Full team-role set so admins can seed any role
-                    from this dialog — matches the /teams/[id] invite
-                    flow. Labels mirror the team invite copy
-                    (Admin / Manager / Editor / Viewer). */}
+                {/* Project-level roles (Admin / Editor / Viewer).
+                    Manager is intentionally absent — it's a team
+                    role and the new invite path writes to
+                    project_members, not team_members. */}
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="editor">Editor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>

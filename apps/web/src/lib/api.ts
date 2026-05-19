@@ -901,6 +901,29 @@ export async function addProjectMember(
   return res.json();
 }
 
+/**
+ * Add by email — server-side path that creates the org user (if
+ * missing) AND adds them to the project's direct-membership table,
+ * skipping team_members entirely. Used by the chat-side
+ * InviteMembersDialog so invitees show under the "Other" group.
+ */
+export async function inviteProjectMemberByEmail(
+  projectId: string,
+  email: string,
+  role: "admin" | "editor" | "viewer" = "editor",
+): Promise<ProjectMember> {
+  const res = await apiFetch(`/projects/${projectId}/members/invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to invite member");
+  }
+  return res.json();
+}
+
 export async function updateProjectMemberRole(
   projectId: string,
   userId: string,
