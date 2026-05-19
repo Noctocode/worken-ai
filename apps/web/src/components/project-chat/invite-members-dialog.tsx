@@ -414,12 +414,16 @@ function MemberGroup({
                   )}
                 </p>
               </div>
-              {/* Pending invites can't have their role changed inline
-                  yet (the team-invite row is the source of truth and
-                  resending the invite is the right edit). Show the
-                  role as a static label until acceptance. */}
+              {/* Synthetic team-pending rows (id starts with
+                  `invite:`) can't have their role changed inline —
+                  the team_members row is the source of truth and
+                  resending the invite is the right edit. Direct
+                  project_members rows whose underlying user is still
+                  in signup limbo (status='pending') CAN have their
+                  role edited because the row is real and the FE
+                  call still resolves to a valid userId. */}
               {onChangeRole &&
-              m.status === "accepted" &&
+              !m.userId.startsWith("invite:") &&
               (m.role === "admin" || m.role === "editor") ? (
                 <Select
                   value={m.role}
@@ -440,11 +444,14 @@ function MemberGroup({
                   {roleLabel(m.role)}
                 </span>
               )}
-              {/* Remove only makes sense for accepted direct members.
-                  Pending team invites would need a separate "cancel
-                  invite" path against team_members — out of scope for
-                  this dialog; the team page already exposes it. */}
-              {onRemove && m.status === "accepted" && (
+              {/* Remove fires DELETE /projects/:id/members/:userId.
+                  Hide it for synthetic team-pending rows (their userId
+                  is `invite:<row>` and can't be deleted via that
+                  route — the team page handles team-invite cancels).
+                  Direct rows with status='pending' (user still
+                  finishing signup) keep the action because the
+                  project_members row IS real and can be removed. */}
+              {onRemove && !m.userId.startsWith("invite:") && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button

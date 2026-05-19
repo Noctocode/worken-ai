@@ -80,6 +80,12 @@ export class ProjectMembersService {
         userName: users.name,
         userEmail: users.email,
         userPicture: users.picture,
+        // Pull the org-level invite status so a project member whose
+        // user is still finishing signup (inviteStatus = 'pending')
+        // renders with a "Pending" badge in the dialog. Once they
+        // register, users.inviteStatus flips to 'active' and the
+        // dialog refreshes them to an accepted row.
+        inviteStatus: users.inviteStatus,
       })
       .from(projectMembers)
       .innerJoin(users, eq(projectMembers.userId, users.id))
@@ -216,7 +222,10 @@ export class ProjectMembersService {
         ? (r.role as DirectRole)
         : 'editor',
       source: 'direct',
-      status: 'accepted',
+      // Pending while the user is still completing signup
+      // (users.inviteStatus = 'pending'); flips to accepted on
+      // register / first login.
+      status: r.inviteStatus === 'pending' ? 'pending' : 'accepted',
       addedAt:
         r.addedAt instanceof Date
           ? r.addedAt.toISOString()
