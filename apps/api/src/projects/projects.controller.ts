@@ -18,11 +18,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from './projects.service.js';
-import type {
-  CreateProjectDto,
-  UpdateProjectDto,
-} from './projects.service.js';
+import type { CreateProjectDto, UpdateProjectDto } from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
+import { ProjectMembersService } from './project-members.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
@@ -40,6 +38,7 @@ export class ProjectsController {
   constructor(
     private readonly projectsService: ProjectsService,
     private readonly projectKnowledge: ProjectKnowledgeService,
+    private readonly projectMembers: ProjectMembersService,
   ) {}
 
   @Get()
@@ -225,5 +224,43 @@ export class ProjectsController {
       projectIds,
       nameConflictActions,
     });
+  }
+
+  /* ─── Project members (Figma 179:16073 invite modal) ──────────── */
+
+  @Get(':id/members')
+  listMembers(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectMembers.list(id, user.id);
+  }
+
+  @Post(':id/members')
+  addMember(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { userId: string; role?: 'admin' | 'editor' | 'viewer' },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectMembers.add(id, user.id, body);
+  }
+
+  @Patch(':id/members/:userId')
+  updateMemberRole(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Body() body: { role: 'admin' | 'editor' | 'viewer' },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectMembers.updateRole(id, userId, user.id, body.role);
+  }
+
+  @Delete(':id/members/:userId')
+  removeMember(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectMembers.remove(id, userId, user.id);
   }
 }

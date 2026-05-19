@@ -23,7 +23,9 @@ import {
   fetchConversation,
   createConversation,
   streamChatMessage,
+  submitMessageFeedback,
   updateProject,
+  type AlternativeModelSuggestion,
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
@@ -31,6 +33,7 @@ import { ChatHeader } from "@/components/project-chat/chat-header";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
 import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
+import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
 import { useAuth } from "@/components/providers";
 import { humanizeChatError } from "@/lib/chat-errors";
 
@@ -55,6 +58,12 @@ interface LocalMessage {
    *  don't flash for a single frame and vanish on the post-error
    *  conversation refetch. */
   isError?: boolean;
+  /** Optional follow-up nudge the BE attached to this assistant turn
+   *  via the SSE `done` event. Renders a "Try X instead" bubble below
+   *  the message until the user clicks Try It or dismisses it.
+   *  Stripped from any message the user dismisses so re-renders don't
+   *  resurrect the bubble. Not persisted across reloads. */
+  alternativeModel?: AlternativeModelSuggestion;
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -241,6 +250,38 @@ export default function ProjectChatPage() {
     abortRef.current?.abort();
   };
 
+  /**
+   * "Try It" handler for a suggestion bubble — switch the project to
+   * the suggested model so the user's next message uses it. We
+   * deliberately don't auto-regenerate the assistant turn that
+   * triggered the suggestion: the user might want to tweak the
+   * prompt, and an automatic re-fire would also burn a second model
+   * call without explicit consent.
+   *
+   * The bubble is cleared from local state so the suggestion doesn't
+   * keep nudging after the user has acted on it. The full Figma
+   * 168:7221 side-by-side compare panel ("Continue with this model"
+   * / "Continue the conversation with both models") is a follow-up.
+   */
+  const handleTrySuggestedModel = (assistantMessageId: string) => {
+    const target = messages.find((m) => m.id === assistantMessageId);
+    if (!target?.alternativeModel) return;
+    const next = target.alternativeModel;
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.id === assistantMessageId ? { ...m, alternativeModel: undefined } : m,
+      ),
+    );
+    if (!project || project.model === next.id) return;
+    updateModelMutation.mutate(next.id, {
+      onSuccess: () => {
+        toast.success(
+          `Switched to ${next.label} — your next message will use it.`,
+        );
+      },
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isSending || !project) return;
@@ -402,6 +443,19 @@ export default function ProjectChatPage() {
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === assistantId ? { ...m, partial: true } : m,
+              ),
+            );
+          }
+          // Attach the BE's optional model suggestion to this turn.
+          // Stays in local state only — not persisted across reloads;
+          // the user dismissing on a refresh just makes the bubble
+          // reappear if the rule still matches.
+          if (event.alternativeModel) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId
+                  ? { ...m, alternativeModel: event.alternativeModel }
+                  : m,
               ),
             );
           }
@@ -827,6 +881,50 @@ export default function ProjectChatPage() {
                         <MessageActions
                           content={msg.content}
                           isStreaming={isSending && msg.id.startsWith("resp-")}
+                          onFeedback={
+                            // Local optimistic id (`resp-…`) means BE
+                            // hasn't persisted yet — skip the feedback
+                            // call, the conversation refetch on stream-
+                            // end will replace this with a real id and
+                            // the user can vote then.
+                            msg.id.startsWith("resp-") ||
+                            msg.id.startsWith("temp-")
+                              ? undefined
+                              : (score) => {
+                                  submitMessageFeedback(msg.id, score).catch(
+                                    (err: Error) => {
+                                      toast.error(
+                                        err.message ||
+                                          "Couldn't save feedback.",
+                                      );
+                                    },
+                                  );
+                                }
+                          }
+                        />
+                      )}
+                    {/* BE-attached model suggestion (Figma 168:7221).
+                        Only fires on assistant turns once the stream
+                        is complete and the BE actually returned a
+                        recommendation; we strip it the moment the
+                        user clicks Try It or dismisses so it doesn't
+                        keep nagging. */}
+                    {msg.role === "assistant" &&
+                      !msg.isError &&
+                      msg.alternativeModel &&
+                      !(isSending && msg.id.startsWith("resp-")) && (
+                        <ModelSuggestionBubble
+                          suggestion={msg.alternativeModel}
+                          onTryIt={() => handleTrySuggestedModel(msg.id)}
+                          onDismiss={() =>
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, alternativeModel: undefined }
+                                  : m,
+                              ),
+                            )
+                          }
                         />
                       )}
                     <span

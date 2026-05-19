@@ -26,6 +26,7 @@ import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.j
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { ChatService } from './chat.service.js';
+import { ModelSuggestionService } from './model-suggestion.service.js';
 
 interface ChatRequestBody {
   conversationId: string;
@@ -47,6 +48,7 @@ export class ChatController {
     private readonly guardrails: GuardrailEvaluatorService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly projectKnowledge: ProjectKnowledgeService,
+    private readonly modelSuggestions: ModelSuggestionService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -484,10 +486,23 @@ export class ChatController {
     });
 
     if (!res.writableEnded) {
+      // Optional follow-up suggestion. Only fires when a static rule
+      // matches AND the user wasn't stopped mid-stream — sending a
+      // suggestion for an aborted turn would be confusing UX. The
+      // field is purely additive on the SSE shape; older FE builds
+      // that don't read it just ignore it.
+      const alternativeModel = clientDisconnected
+        ? null
+        : this.modelSuggestions.suggest({
+            prompt: safePrompt,
+            currentModel: body.model ?? '',
+          });
+
       sendEvent('done', {
         totalTokens: usageTotalTokens,
         costUsd,
         partial: clientDisconnected ? true : undefined,
+        alternativeModel: alternativeModel ?? undefined,
       });
       res.end();
     }

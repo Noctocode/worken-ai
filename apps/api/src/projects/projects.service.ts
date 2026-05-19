@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, isNull, inArray, or } from 'drizzle-orm';
 import {
+  projectMembers,
   projects,
   teamMembers,
   teams,
@@ -113,10 +114,16 @@ export class ProjectsService {
    */
   private async enrichWithTeamMembers<
     T extends { id: string; teamId: string | null },
-  >(rows: T[]): Promise<Array<T & {
-    teamMembers?: ProjectMemberPreview[];
-    teamMembersCount?: number;
-  }>> {
+  >(
+    rows: T[],
+  ): Promise<
+    Array<
+      T & {
+        teamMembers?: ProjectMemberPreview[];
+        teamMembersCount?: number;
+      }
+    >
+  > {
     const distinctTeamIds = Array.from(
       new Set(
         rows.map((r) => r.teamId).filter((id): id is string => id != null),
@@ -182,20 +189,31 @@ export class ProjectsService {
       throw new NotFoundException(`Project ${id} not found`);
     }
 
-    // If team project, allow any team member
+    // Access sources (any one is sufficient), strictly additive over
+    // the legacy model so a row in `project_members` widens the gate
+    // but never narrows it: owner, team membership, direct invite.
+    if (project.userId === userId) return project;
+
     if (project.teamId) {
       const role = await this.teamsService.getUserTeamRole(
         project.teamId,
         userId,
       );
-      if (!role) {
-        throw new NotFoundException(`Project ${id} not found`);
-      }
-      return project;
+      if (role) return project;
     }
 
-    // Personal project — owner only
-    if (project.userId !== userId) {
+    const [direct] = await this.db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!direct) {
       throw new NotFoundException(`Project ${id} not found`);
     }
     return project;
