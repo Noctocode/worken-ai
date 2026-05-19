@@ -35,19 +35,15 @@ export default function TeamsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
-  // Management surfaces basic users have no business modifying —
-  // org-level model catalog, BYOK / Custom-LLM wiring, and API
-  // tokens. Hidden from the tab strip and redirected away from on
-  // direct URL hit. Personal stuff (My Account, Billing) stays.
+  // Tabs always render for everyone — basic users keep visibility
+  // into management surfaces but the action buttons inside each tab
+  // are individually disabled by their components (Add New Model,
+  // Generate API Link, integration add/remove, etc.).
   const isAdmin = user?.role === "admin";
-  const isManagementTab = (t: string) =>
-    t === "models" || t === "api" || t === "integration";
   const rawTab = searchParams.get("tab");
-  const requestedTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
+  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
     ? rawTab!
     : "teams";
-  const activeTab =
-    !isAdmin && isManagementTab(requestedTab) ? "teams" : requestedTab;
   const setActiveTab = (tab: string) => {
     router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };
@@ -114,16 +110,12 @@ export default function TeamsPage() {
       <PageTabsList>
         <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
-        {isAdmin && (
-          <PageTabsTrigger value="models">Models</PageTabsTrigger>
-        )}
+        <PageTabsTrigger value="models">Models</PageTabsTrigger>
         <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
         <PageTabsTrigger value="company">Company</PageTabsTrigger>
-        {isAdmin && <PageTabsTrigger value="api">API</PageTabsTrigger>}
+        <PageTabsTrigger value="api">API</PageTabsTrigger>
         <PageTabsTrigger value="billing">Billing</PageTabsTrigger>
-        {isAdmin && (
-          <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
-        )}
+        <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
       </PageTabsList>
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
@@ -431,11 +423,7 @@ export default function TeamsPage() {
         </div>
       </PageTabsContent>
 
-      {/* ── Models ─────────────────────────────────────────────────────────────
-           Admin-only — basic users don't see the trigger and we skip
-           the panel mount entirely so the catalog fetch + table never
-           fires for them. */}
-      {isAdmin && (
+      {/* ── Models ───────────────────────────────────────────────────────────── */}
       <PageTabsContent value="models">
         {/* Same filter pattern as Teams + Users: title and primary CTA
             share the top row on mobile, search fills the second row.
@@ -445,12 +433,29 @@ export default function TeamsPage() {
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
               Models
             </span>
-            <AddModelDialog>
-              <Button variant="plusAction" className="lg:order-last">
-                <Plus className="h-4 w-4 text-white" />
-                Add New Model
-              </Button>
-            </AddModelDialog>
+            {isAdmin ? (
+              <AddModelDialog>
+                <Button variant="plusAction" className="lg:order-last">
+                  <Plus className="h-4 w-4 text-white" />
+                  Add New Model
+                </Button>
+              </AddModelDialog>
+            ) : (
+              <DisabledReasonTooltip
+                disabled
+                reason="Only admins can add models"
+                className="lg:order-last"
+              >
+                <Button
+                  variant="plusAction"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  <Plus className="h-4 w-4 text-white" />
+                  Add New Model
+                </Button>
+              </DisabledReasonTooltip>
+            )}
           </div>
           <SearchInput
             className="flex-1"
@@ -547,7 +552,6 @@ export default function TeamsPage() {
           </table>
         </div>
       </PageTabsContent>
-      )}
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
       <PageTabsContent value="my-account">
@@ -556,19 +560,15 @@ export default function TeamsPage() {
       <PageTabsContent value="company">
         <CompanyTab />
       </PageTabsContent>
-      {isAdmin && (
-        <PageTabsContent value="api">
-          <ApiTab />
-        </PageTabsContent>
-      )}
+      <PageTabsContent value="api">
+        <ApiTab />
+      </PageTabsContent>
       <PageTabsContent value="billing">
         <BillingTab />
       </PageTabsContent>
-      {isAdmin && (
-        <PageTabsContent value="integration">
-          <IntegrationTab />
-        </PageTabsContent>
-      )}
+      <PageTabsContent value="integration">
+        <IntegrationTab />
+      </PageTabsContent>
     </PageTabs>
   );
 }
