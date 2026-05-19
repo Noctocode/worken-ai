@@ -326,7 +326,7 @@ export class ProjectMembersService {
   }
 
   async remove(projectId: string, targetUserId: string, callerId: string) {
-    await this.requireManage(projectId, callerId);
+    const project = await this.requireManage(projectId, callerId);
 
     const [deleted] = await this.db
       .delete(projectMembers)
@@ -340,6 +340,37 @@ export class ProjectMembersService {
     if (!deleted) {
       throw new NotFoundException('Project membership not found');
     }
+
+    // Tell the removed user. Mirrors team_member_removed — info-only
+    // (no accept/dismiss), so the inbox doubles as an audit trail of
+    // "you were dropped from X by Y". Failure is logged but doesn't
+    // roll back the delete; the membership change is already done.
+    try {
+      const [caller] = await this.db
+        .select({ name: users.name, email: users.email })
+        .from(users)
+        .where(eq(users.id, callerId))
+        .limit(1);
+      const callerName = caller?.name ?? caller?.email ?? 'A teammate';
+      await this.notifications.create({
+        userId: targetUserId,
+        type: 'project_removed',
+        title: `${callerName} removed you from ${project.name}`,
+        body: `You no longer have direct access to this project.`,
+        data: {
+          projectId: project.id,
+          projectName: project.name,
+          removedBy: callerId,
+          removedByName: callerName,
+        },
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to notify ${targetUserId} of project removal: ${msg}`,
+      );
+    }
+
     return { removed: true };
   }
 

@@ -37,6 +37,7 @@ export type NotificationType =
   | 'project_created'
   | 'project_deleted'
   | 'project_invite'
+  | 'project_removed'
   | 'guardrail_added';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
