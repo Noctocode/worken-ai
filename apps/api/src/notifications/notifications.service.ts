@@ -36,6 +36,7 @@ export type NotificationType =
   | 'file_ingestion_failed'
   | 'project_created'
   | 'project_deleted'
+  | 'project_invite'
   | 'guardrail_added';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';

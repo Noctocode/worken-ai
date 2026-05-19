@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq } from 'drizzle-orm';
@@ -14,6 +15,8 @@ import {
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { MailService } from '../mail/mail.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 
 /** Same role vocabulary as the team-member table so the FE picker
@@ -46,9 +49,13 @@ export interface ProjectMemberRow {
 
 @Injectable()
 export class ProjectMembersService {
+  private readonly logger = new Logger(ProjectMembersService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly teamsService: TeamsService,
+    private readonly mailService: MailService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -373,6 +380,7 @@ export class ProjectMembersService {
       .limit(1);
 
     let target: { id: string; email: string; name: string | null; picture: string | null };
+    const isNewUser = !existing;
     if (existing) {
       target = existing;
     } else {
@@ -415,6 +423,47 @@ export class ProjectMembersService {
         target: [projectMembers.projectId, projectMembers.userId],
         set: { role },
       });
+
+    // 3) Notify the invitee. The team-invite path sends a dedicated
+    //    project-invitation email; ours piggy-backs on the org-
+    //    invitation template for new users (signup link) and an in-
+    //    app notification for existing users. Failure here is logged
+    //    but doesn't fail the mutation — the row is already in place
+    //    and the inviter can resend manually if needed.
+    const [inviter] = await this.db
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, callerId))
+      .limit(1);
+    const inviterName = inviter?.name ?? inviter?.email ?? 'A teammate';
+
+    try {
+      if (isNewUser) {
+        await this.mailService.sendOrgInvitation({
+          to: rawEmail,
+          inviterName,
+          role: 'basic',
+        });
+      } else {
+        await this.notifications.create({
+          userId: target.id,
+          type: 'project_invite',
+          title: `${inviterName} added you to ${project.name}`,
+          body: `Open the project to start chatting.`,
+          data: {
+            projectId: project.id,
+            projectName: project.name,
+            inviterName,
+            role,
+          },
+        });
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to notify ${rawEmail} of project invite: ${msg}`,
+      );
+    }
 
     return {
       userId: target.id,
