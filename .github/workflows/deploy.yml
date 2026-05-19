@@ -72,9 +72,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Lowercase owner
+      - name: Lowercase owner + tag
         id: meta
-        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
 
       # Copy infra files (compose + Caddyfile) to the VPS. Idempotent.
       - name: Sync infra files to VPS
@@ -114,7 +116,7 @@ jobs:
             LINKEDIN_URL=${{ vars.LINKEDIN_URL }}
             TWITTER_URL=${{ vars.TWITTER_URL }}
           GH_OWNER: ${{ steps.meta.outputs.owner }}
-          IMAGE_TAG: sha-${{ github.sha }}
+          IMAGE_TAG: ${{ steps.meta.outputs.tag }}
           GHCR_USER: ${{ github.actor }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -129,12 +131,11 @@ jobs:
             cd /srv/worken
 
             # Pin tag + owner for compose substitution (NOT secrets).
+            # Both values are computed on the runner and forwarded via envs:.
             cat > .image_env <<EOF
             GH_OWNER=${GH_OWNER}
-            IMAGE_TAG=sha-$(echo $GITHUB_SHA | cut -c1-12)
+            IMAGE_TAG=${IMAGE_TAG}
             EOF
-            # We re-compute the short SHA inside the script as well; both halves match.
-            IMAGE_TAG=$(grep '^IMAGE_TAG=' .image_env | cut -d= -f2)
             export GH_OWNER IMAGE_TAG
 
             # Write the application .env atomically with restrictive perms.
