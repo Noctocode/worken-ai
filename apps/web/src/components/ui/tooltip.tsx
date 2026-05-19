@@ -67,7 +67,11 @@ function TooltipContent({
  * with the reason only when disabled. The span wrapper is needed because
  * disabled buttons don't fire pointer events, which swallows the tooltip —
  * events land on the span instead. `className` is forwarded to the span so
- * callers can keep their button's sizing (e.g. full-width).
+ * callers can keep their button's sizing (e.g. full-width). When `className`
+ * is supplied we always render the span — even in the not-disabled branch —
+ * so layout hooks like `lg:order-last` keep working regardless of the
+ * `disabled` toggle (otherwise enabling the action silently demotes the
+ * className to a Fragment and reorders the row).
  */
 function DisabledReasonTooltip({
   disabled,
@@ -80,7 +84,12 @@ function DisabledReasonTooltip({
   className?: string
   children: React.ReactNode
 }) {
-  if (!disabled) return <>{children}</>
+  if (!disabled) {
+    if (className) {
+      return <span className={cn("inline-block", className)}>{children}</span>
+    }
+    return <>{children}</>
+  }
   return (
     <Tooltip>
       <TooltipTrigger asChild>

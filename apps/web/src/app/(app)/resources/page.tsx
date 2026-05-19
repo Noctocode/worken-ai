@@ -138,7 +138,7 @@ export default function ResourcesPage() {
       >
         <div className="flex items-center gap-3">
           <BookOpen className="h-7 w-7" strokeWidth={2} />
-          <h2 className="text-[28px] font-bold leading-[1.5]">
+          <h2 className="text-[20px] sm:text-[28px] font-bold leading-[1.5]">
             Prompt Engineering Hub
           </h2>
         </div>

@@ -183,7 +183,7 @@ export default function LessonDetailPage({
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
-        <h1 className="text-[26px] font-bold leading-[1.3] text-text-1">
+        <h1 className="text-[20px] sm:text-[26px] font-bold leading-[1.3] text-text-1">
           {module.title}
         </h1>
       </div>

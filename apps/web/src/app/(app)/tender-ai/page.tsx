@@ -232,7 +232,7 @@ export default function TenderAiPage() {
                 )}
               </div>
               <div className="flex flex-col">
-                <span className="text-[28px] font-bold leading-tight text-text-1">
+                <span className="text-[22px] sm:text-[28px] font-bold leading-tight text-text-1">
                   {s.value}
                 </span>
                 <span className="text-[13px] text-text-2">
