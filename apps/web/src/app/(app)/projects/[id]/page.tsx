@@ -7,10 +7,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
-  ArrowLeft,
-  Send,
-  Paperclip,
-  ImageIcon,
   Sparkles,
   Bot,
   Loader2,
@@ -20,13 +16,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchIntegrations,
@@ -38,8 +27,11 @@ import {
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
+import { ChatHeader } from "@/components/project-chat/chat-header";
+import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
+import { ChatComposer } from "@/components/project-chat/chat-composer";
+import { MessageActions } from "@/components/project-chat/message-actions";
 import { useAuth } from "@/components/providers";
-import { useUserModels } from "@/lib/hooks/use-user-models";
 import { humanizeChatError } from "@/lib/chat-errors";
 
 interface LocalMessage {
@@ -99,28 +91,6 @@ export default function ProjectChatPage() {
     queryKey: ["project", projectId],
     queryFn: () => fetchProject(projectId),
   });
-
-  // Effective model list for the picker in the project header.
-  // Same source as the arena — aliases the user owns plus any BYOK-
-  // unlocked catalog models — so what they see here matches what
-  // chat can actually route. `effective` carries the per-entry
-  // routing so we can tag picker items with "(BYOK)" / "(Custom)"
-  // — lets the user tell whose tokens get billed for each pick.
-  const { effective: effectiveModels, getLabel: getModelLabel } =
-    useUserModels();
-
-  // Append a routing marker to the model label so the user can tell
-  // at a glance whether a pick will hit their BYOK key, a Custom LLM
-  // endpoint, or our default WorkenAI / OpenRouter route. No marker
-  // for the WorkenAI route — that's the default and the empty state.
-  const labelWithRouting = (id: string): string => {
-    const m = effectiveModels.find((x) => x.id === id);
-    const base = m?.name ?? getModelLabel(id);
-    if (!m) return base;
-    if (m.routing === "byok") return `${base} (BYOK)`;
-    if (m.routing === "custom") return `${base} (Custom)`;
-    return base;
-  };
 
   // BYOK fallback signal: the caller has at least one personal
   // integration with a key set but flipped off in the Integration
@@ -517,13 +487,6 @@ export default function ProjectChatPage() {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
-    }
-  };
-
   const sidebarProps = {
     projectId,
     activeConversationId,
@@ -564,66 +527,17 @@ export default function ProjectChatPage() {
     <div className="flex min-h-0 flex-1">
       <ChatHistorySidebar {...sidebarProps} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Project Header */}
-        <div className="flex h-14 shrink-0 items-center justify-between border-b border-border-2 bg-bg-white/60 px-4 backdrop-blur-md sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link href="/">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-text-2 hover:text-text-1"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <div className="h-4 w-px bg-border-2" />
-            <h1 className="text-sm font-semibold text-text-1">
-              {project.name}
-            </h1>
-          </div>
-          {/* Model picker — swap the model the project chats with.
-              Optimistic feel via setQueryData on success so the next
-              send picks up the new id without waiting on a refetch. */}
-          <Select
-            value={project.model}
-            onValueChange={(next) => {
-              if (next && next !== project.model) {
-                updateModelMutation.mutate(next);
-              }
-            }}
-            disabled={updateModelMutation.isPending}
-          >
-            <SelectTrigger
-              aria-label="Change project model"
-              className="h-8 w-auto gap-1 border-border-2 bg-bg-1 px-2.5 text-xs font-medium text-text-2 hover:text-text-1 focus:ring-0 focus:ring-offset-0"
-            >
-              <Sparkles className="h-3 w-3" />
-              <SelectValue>{labelWithRouting(project.model)}</SelectValue>
-            </SelectTrigger>
-            <SelectContent align="end" className="max-h-[320px]">
-              {/* If the project's current model is not in the effective
-                  list (stale slug, e.g. an old default that no longer
-                  resolves), surface it at the top with an "(unavailable)"
-                  marker so the picker still reflects the stored value
-                  and the user can switch off it. */}
-              {!effectiveModels.some((m) => m.id === project.model) && (
-                <SelectItem value={project.model} disabled>
-                  {project.model} (unavailable)
-                </SelectItem>
-              )}
-              {effectiveModels.map((m) => (
-                <SelectItem key={m.id} value={m.id}>
-                  {labelWithRouting(m.id)}
-                </SelectItem>
-              ))}
-              {effectiveModels.length === 0 && (
-                <div className="px-3 py-2 text-xs text-text-3">
-                  No models available yet.
-                </div>
-              )}
-            </SelectContent>
-          </Select>
-        </div>
+        {/* Project Header — extracted so the header can host the
+            model picker, the team chip, and the avatar stack + invite
+            CTA without ballooning this orchestrator file. The picker's
+            optimistic-update flow (setQueryData on success) still
+            lives in updateModelMutation below so the next send picks
+            up the new model id without waiting on a refetch. */}
+        <ChatHeader
+          project={project}
+          onChangeModel={(next) => updateModelMutation.mutate(next)}
+          isChangingModel={updateModelMutation.isPending}
+        />
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
@@ -654,17 +568,12 @@ export default function ProjectChatPage() {
               </div>
             )}
             <div className="space-y-6">
-              {/* Empty state */}
+              {/* Empty state — Figma 250:21487 hero: project name as
+                  H1, description below, composer immediately under the
+                  hero (still rendered below by the regular composer
+                  block). */}
               {messages.length === 0 && !isLoadingConversation && (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <Bot className="h-12 w-12 text-text-3" />
-                  <h3 className="mt-4 text-sm font-medium text-text-1">
-                    Start a conversation
-                  </h3>
-                  <p className="mt-1 text-xs text-text-3">
-                    Send a message to begin chatting with your AI assistant.
-                  </p>
-                </div>
+                <ChatEmptyState project={project} />
               )}
 
               {isLoadingConversation && (
@@ -905,6 +814,21 @@ export default function ProjectChatPage() {
                         </div>
                       </details>
                     ) : null}
+                    {/* Per-message action row (Figma `Icons` frame —
+                        30:10464, 168:7221). Hidden mid-stream so we
+                        don't expose Copy of a half-rendered bubble or
+                        feedback buttons for content that hasn't fully
+                        arrived. Error bubbles also skip actions so a
+                        humanised 402 / guardrail message doesn't get
+                        thumbs-down'd as if it were a model output. */}
+                    {msg.role === "assistant" &&
+                      !msg.isError &&
+                      msg.content !== "" && (
+                        <MessageActions
+                          content={msg.content}
+                          isStreaming={isSending && msg.id.startsWith("resp-")}
+                        />
+                      )}
                     <span
                       className={`mt-1 block text-[11px] text-text-3 ${
                         msg.role === "user" ? "text-right" : "text-left"
@@ -942,82 +866,20 @@ export default function ProjectChatPage() {
           </div>
         </div>
 
-        {/* Input Area */}
-        <div className="shrink-0 border-t border-border-2 bg-bg-white/60 backdrop-blur-md">
-          <form
-            onSubmit={handleSubmit}
-            className="mx-auto max-w-3xl px-4 py-3 sm:px-6"
-          >
-            <div className="flex items-end gap-2">
-              <div className="relative flex-1">
-                <textarea
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Type your message..."
-                  rows={1}
-                  disabled={isSending}
-                  className="w-full resize-none rounded-xl border border-border-2 bg-bg-white/80 px-4 py-3 pr-12 text-sm text-text-1 placeholder:text-text-3 focus:border-primary-5 focus:bg-bg-white focus:outline-none focus:ring-2 focus:ring-primary-5/10 disabled:opacity-50"
-                  style={{ minHeight: "44px", maxHeight: "120px" }}
-                  onInput={(e) => {
-                    const target = e.target as HTMLTextAreaElement;
-                    target.style.height = "auto";
-                    target.style.height =
-                      Math.min(target.scrollHeight, 120) + "px";
-                  }}
-                />
-              </div>
-              {/* While streaming we swap the Send affordance for a
-                  Stop button so the user can interrupt mid-token.
-                  abortRef.current.abort() → fetch reader cancels →
-                  BE persists what was buffered with partial:true. */}
-              {isSending ? (
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="destructive"
-                  className="h-11 w-11 shrink-0 rounded-xl"
-                  onClick={handleStop}
-                  title="Stop generating"
-                >
-                  <Square className="h-4 w-4" fill="currentColor" />
-                </Button>
-              ) : (
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="h-11 w-11 shrink-0 rounded-xl bg-primary-6 hover:bg-primary-7"
-                  disabled={!message.trim()}
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <div className="flex items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-text-3 hover:text-text-1"
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-text-3 hover:text-text-1"
-                >
-                  <ImageIcon className="h-4 w-4" />
-                </Button>
-              </div>
-              <span className="text-[11px] text-text-3">
-                Shift + Enter for new line
-              </span>
-            </div>
-          </form>
-        </div>
+        {/* Composer — extracted so the two-row Figma layout, the
+            Attach File / Upload Image / Prompt Library pills, and the
+            send/stop swap all live next to each other. Streaming +
+            Stop semantics are unchanged: ChatComposer is purely a
+            view layer over the same `message` state, `handleSubmit`,
+            and `handleStop` defined in this orchestrator. */}
+        <ChatComposer
+          projectId={projectId}
+          message={message}
+          onMessageChange={setMessage}
+          onSubmit={handleSubmit}
+          onStop={handleStop}
+          isSending={isSending}
+        />
       </div>
     </div>
   );
