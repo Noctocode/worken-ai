@@ -11,10 +11,11 @@ interface PaginationProps {
   onPageChange: (next: number) => void;
   /**
    * Hide the bar entirely when only one page exists. Defaults to
-   * *false* to match the Figma comp, which always renders the bar
-   * under the table for visual anchoring — even on single-page
-   * datasets where Prev/Next are disabled and only "1" is active.
-   * Pass `true` to fall back to the hide-when-trivial behavior.
+   * *true* — a single-page result set doesn't need a disabled
+   * Prev/Next + lone "1" pill under the table, and every existing
+   * callsite (observability, knowledge-core, teams, etc.) was
+   * already assuming this behavior. Pass `false` to force the bar
+   * to render as a visual anchor even on trivial datasets.
    */
   hideOnSinglePage?: boolean;
   /** Visual sibling count on each side of the current page. Defaults
@@ -80,7 +81,7 @@ export function Pagination({
   page,
   totalPages,
   onPageChange,
-  hideOnSinglePage = false,
+  hideOnSinglePage = true,
   siblingCount = 1,
   compact = false,
   className,
