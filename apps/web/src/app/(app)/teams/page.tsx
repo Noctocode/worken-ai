@@ -35,8 +35,19 @@ export default function TeamsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
+  // Management surfaces basic users have no business modifying —
+  // org-level model catalog, BYOK / Custom-LLM wiring, and API
+  // tokens. Hidden from the tab strip and redirected away from on
+  // direct URL hit. Personal stuff (My Account, Billing) stays.
+  const isAdmin = user?.role === "admin";
+  const isManagementTab = (t: string) =>
+    t === "models" || t === "api" || t === "integration";
   const rawTab = searchParams.get("tab");
-  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number]) ? rawTab! : "teams";
+  const requestedTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
+    ? rawTab!
+    : "teams";
+  const activeTab =
+    !isAdmin && isManagementTab(requestedTab) ? "teams" : requestedTab;
   const setActiveTab = (tab: string) => {
     router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };
@@ -103,12 +114,16 @@ export default function TeamsPage() {
       <PageTabsList>
         <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
-        <PageTabsTrigger value="models">Models</PageTabsTrigger>
+        {isAdmin && (
+          <PageTabsTrigger value="models">Models</PageTabsTrigger>
+        )}
         <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
         <PageTabsTrigger value="company">Company</PageTabsTrigger>
-        <PageTabsTrigger value="api">API</PageTabsTrigger>
+        {isAdmin && <PageTabsTrigger value="api">API</PageTabsTrigger>}
         <PageTabsTrigger value="billing">Billing</PageTabsTrigger>
-        <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
+        {isAdmin && (
+          <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
+        )}
       </PageTabsList>
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
@@ -416,7 +431,11 @@ export default function TeamsPage() {
         </div>
       </PageTabsContent>
 
-      {/* ── Models ───────────────────────────────────────────────────────────── */}
+      {/* ── Models ─────────────────────────────────────────────────────────────
+           Admin-only — basic users don't see the trigger and we skip
+           the panel mount entirely so the catalog fetch + table never
+           fires for them. */}
+      {isAdmin && (
       <PageTabsContent value="models">
         {/* Same filter pattern as Teams + Users: title and primary CTA
             share the top row on mobile, search fills the second row.
@@ -528,6 +547,7 @@ export default function TeamsPage() {
           </table>
         </div>
       </PageTabsContent>
+      )}
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
       <PageTabsContent value="my-account">
@@ -536,15 +556,19 @@ export default function TeamsPage() {
       <PageTabsContent value="company">
         <CompanyTab />
       </PageTabsContent>
-      <PageTabsContent value="api">
-        <ApiTab />
-      </PageTabsContent>
+      {isAdmin && (
+        <PageTabsContent value="api">
+          <ApiTab />
+        </PageTabsContent>
+      )}
       <PageTabsContent value="billing">
         <BillingTab />
       </PageTabsContent>
-      <PageTabsContent value="integration">
-        <IntegrationTab />
-      </PageTabsContent>
+      {isAdmin && (
+        <PageTabsContent value="integration">
+          <IntegrationTab />
+        </PageTabsContent>
+      )}
     </PageTabs>
   );
 }
