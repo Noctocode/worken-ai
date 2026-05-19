@@ -10,6 +10,7 @@ import {
   projectMembers,
   projects,
   teamMembers,
+  teams,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -70,6 +71,45 @@ export class ProjectMembersService {
 
     const teamRows: ProjectMemberRow[] = [];
     if (project.teamId) {
+      // 1) The team's owner. NOT duplicated into team_members — owner
+      //    is identified via `teams.ownerId` only — so a pure
+      //    team_members query would silently drop them and the Members
+      //    section would underreport (and feel buggy on a team where
+      //    only the owner has joined).
+      const [owner] = await this.db
+        .select({
+          userId: teams.ownerId,
+          userName: users.name,
+          userEmail: users.email,
+          userPicture: users.picture,
+          createdAt: teams.createdAt,
+        })
+        .from(teams)
+        .innerJoin(users, eq(teams.ownerId, users.id))
+        .where(eq(teams.id, project.teamId))
+        .limit(1);
+
+      const seenUserIds = new Set<string>(directIds);
+      if (owner && !seenUserIds.has(owner.userId)) {
+        seenUserIds.add(owner.userId);
+        teamRows.push({
+          userId: owner.userId,
+          userName: owner.userName,
+          userEmail: owner.userEmail,
+          userPicture: owner.userPicture,
+          // Display the owner as admin in the dialog — the BE still
+          // treats them as owner everywhere else, this is just the
+          // FE label since the Figma comp only exposes admin/editor.
+          role: 'admin',
+          source: 'team',
+          addedAt:
+            owner.createdAt instanceof Date
+              ? owner.createdAt.toISOString()
+              : new Date(owner.createdAt).toISOString(),
+        });
+      }
+
+      // 2) Accepted non-owner members.
       const rows = await this.db
         .select({
           userId: teamMembers.userId,
@@ -86,10 +126,13 @@ export class ProjectMembersService {
 
       for (const r of rows) {
         if (r.status !== 'accepted' || r.userId === null) continue;
-        // Skip dual-listing — if the same user appears in both
-        // sources (added directly AND via team) we prefer the team
-        // row so the FE groups them under the team, not "Other".
-        if (directIds.has(r.userId)) continue;
+        // Dedupe across sources: a user might be in team_members AND
+        // project_members (rare but legal); prefer the team row so
+        // the FE groups them under the team, not "Other". Also dedupe
+        // against the owner row above in case team_members has an
+        // explicit entry for the owner.
+        if (seenUserIds.has(r.userId)) continue;
+        seenUserIds.add(r.userId);
         teamRows.push({
           userId: r.userId,
           userName: r.userName,
