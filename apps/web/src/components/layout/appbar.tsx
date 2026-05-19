@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/select";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { MobileTopbar } from "./mobile-topbar";
-import { InviteMemberDialog } from "@/components/invite-member-dialog";
+import { InviteMembersDialog } from "@/components/project-chat/invite-members-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { fetchProject, fetchTeam } from "@/lib/api";
@@ -404,13 +404,19 @@ export const Appbar = () => {
             </Popover.Portal>
           </Popover.Root>
 
-          {_project?.teamId && (
-            <InviteMemberDialog teamId={_project.teamId}>
+          {_project?.teamId && _project && (
+            // Project-aware modal (Figma 179:16073): multi-email
+            // invite + the existing-members roster with the team and
+            // direct-invitee groups. The old single-email
+            // InviteMemberDialog still ships for /teams + dashboard;
+            // we only swap the trigger inside the projectDetail
+            // header.
+            <InviteMembersDialog project={_project}>
               <Button variant="plusAction" className="rounded-lg w-[174px]">
                 <Plus className="h-4 w-4 text-text-white" />
                 Invite Member
               </Button>
-            </InviteMemberDialog>
+            </InviteMembersDialog>
           )}
         </div>
         </header>
