@@ -74,7 +74,11 @@ export function ChatComposer({
     <div className="shrink-0 bg-bg-1 px-4 pb-4 pt-2 sm:px-6 sm:pb-6">
       <form
         onSubmit={onSubmit}
-        className="mx-auto flex max-w-3xl flex-col gap-0 rounded-2xl border border-border-2 bg-bg-white shadow-[0px_4px_4px_rgba(0,0,0,0.06)]"
+        // Full-width composer (no max-w cap) so the input spans the
+        // chat column edge-to-edge. The shadowed white card sits
+        // directly inside the bg-bg-1 frame; horizontal padding lives
+        // on the outer wrapper so the card itself can fill it.
+        className="flex w-full flex-col gap-0 rounded-2xl border border-border-2 bg-bg-white shadow-[0px_4px_4px_rgba(0,0,0,0.06)]"
       >
         {/* Row 1 — the textarea. Kept exactly as the old composer
             (autoresize, max-height clamp, Enter/Shift+Enter) so the
