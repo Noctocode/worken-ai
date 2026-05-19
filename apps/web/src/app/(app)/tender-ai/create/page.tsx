@@ -204,7 +204,7 @@ function BasicInfoStep({
   return (
     <div className="flex flex-col gap-8">
       <div className="text-center">
-        <h2 className="text-[26px] font-bold leading-[1.3] text-text-1">
+        <h2 className="text-[20px] sm:text-[26px] font-bold leading-[1.3] text-text-1">
           Basic Information
         </h2>
         <p className="mt-2 text-[14px] leading-[1.3] text-text-2">

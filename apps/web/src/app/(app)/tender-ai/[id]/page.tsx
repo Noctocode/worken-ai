@@ -342,7 +342,7 @@ export default function TenderDetailPage({
         <div className="flex min-w-0 flex-1 flex-col gap-6">
           {/* Title card */}
           <section>
-            <h1 className="text-[26px] font-bold leading-tight text-text-1 sm:text-[26px]">
+            <h1 className="text-[20px] font-bold leading-tight text-text-1 sm:text-[26px]">
               {tender.name}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-4 text-[14px] text-text-2">

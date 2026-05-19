@@ -217,7 +217,7 @@ export default function CreateProjectPage() {
           that breakpoint. md+ keeps the appbar createProject variant
           unchanged. */}
       <div className="md:hidden flex items-center bg-bg-white px-4 py-4 border-b border-bg-1">
-        <h1 className="text-[26px] font-bold text-text-1">Create Project</h1>
+        <h1 className="text-[20px] font-bold text-text-1">Create Project</h1>
       </div>
 
       {/* Content */}
@@ -240,7 +240,7 @@ export default function CreateProjectPage() {
             Figma 4659:69759; transparent on desktop so the section
             sits flush with the page bg. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full md:max-w-[600px] rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
-          <h2 className="text-[23px] font-bold text-text-1">Select Project Type</h2>
+          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">Select Project Type</h2>
 
           <div className="flex w-full md:w-auto rounded-lg border border-border-3 overflow-hidden">
             <button
@@ -351,7 +351,7 @@ export default function CreateProjectPage() {
 
         {/* Select Agent — same card pattern as Select Project Type. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
-          <h2 className="text-[23px] font-bold text-text-1">Select Agent</h2>
+          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">Select Agent</h2>
           <AgentGrid
             selectedAgentId={selectedAgent}
             onSelect={(agent) => setSelectedAgent(agent.id)}
