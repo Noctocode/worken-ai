@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, inArray, or } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, inArray, or, type SQL } from 'drizzle-orm';
 import {
   projectMembers,
   projects,
@@ -70,23 +70,52 @@ export class ProjectsService {
   async findAll(userId: string, filter: 'all' | 'personal' | 'team' = 'all') {
     const teamIds = await this.teamsService.getUserTeamIds(userId);
 
+    // Projects the user has *direct* access to via `project_members`
+    // (the "Other" group in the invite dialog). These are projects
+    // they were pulled into individually — not via team membership.
+    // The chat surface should treat them as first-class so the
+    // invitee actually sees the project they were invited to. We
+    // surface them under whichever filter the user is already on:
+    //   - 'personal': would feel wrong here (these are typically
+    //     team-bound projects), so we omit. The 'all' tab is the
+    //     correct home.
+    //   - 'team': include too — the project IS team-bound in the
+    //     data model, the user just got there through a different
+    //     gate. Better to see it than not.
+    //   - 'all': include.
+    const directProjectIdRows = await this.db
+      .select({ projectId: projectMembers.projectId })
+      .from(projectMembers)
+      .where(eq(projectMembers.userId, userId));
+    const directProjectIds = directProjectIdRows.map((r) => r.projectId);
+
     let rows;
     if (filter === 'personal') {
       rows = await this.selectWithTeamName()
         .where(and(eq(projects.userId, userId), isNull(projects.teamId)))
         .orderBy(desc(projects.createdAt));
     } else if (filter === 'team') {
-      if (teamIds.length === 0) return [];
+      const conditions: SQL[] = [];
+      if (teamIds.length > 0) {
+        conditions.push(inArray(projects.teamId, teamIds));
+      }
+      if (directProjectIds.length > 0) {
+        conditions.push(inArray(projects.id, directProjectIds));
+      }
+      if (conditions.length === 0) return [];
       rows = await this.selectWithTeamName()
-        .where(inArray(projects.teamId, teamIds))
+        .where(or(...conditions))
         .orderBy(desc(projects.createdAt));
     } else {
-      // 'all' — personal + team projects
+      // 'all' — personal + team projects + direct-invite projects.
       const conditions = [
         and(eq(projects.userId, userId), isNull(projects.teamId)),
       ];
       if (teamIds.length > 0) {
         conditions.push(inArray(projects.teamId, teamIds));
+      }
+      if (directProjectIds.length > 0) {
+        conditions.push(inArray(projects.id, directProjectIds));
       }
       rows = await this.selectWithTeamName()
         .where(or(...conditions))
