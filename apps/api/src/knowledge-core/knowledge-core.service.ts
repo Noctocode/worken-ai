@@ -40,6 +40,28 @@ export async function sha256File(filePath: string): Promise<string> {
   return hash.digest('hex');
 }
 
+/**
+ * Pick the next free "<base> (N).<ext>" slot when the user resolves a
+ * same-name conflict with "keep both". Starts at N=2 (Google-Drive-
+ * style: "report.pdf" → "report (2).pdf"). The `used` set is mutated
+ * by the caller across the batch so two "keep_both"s of the same name
+ * don't both pick (2).
+ */
+function pickNextAvailableName(name: string, used: Set<string>): string {
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base} (${n})${ext}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  // Pathological — 1000 collisions on the exact same base. Fall back
+  // to a timestamp suffix; the row still goes in and the user can
+  // rename it later. Better than throwing.
+  return `${base} (${Date.now()})${ext}`;
+}
+
+export type NameConflictAction = 'overwrite' | 'keep_both' | 'skip';
+
 @Injectable()
 export class KnowledgeCoreService {
   constructor(
@@ -56,9 +78,10 @@ export class KnowledgeCoreService {
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
         fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
-        totalBytes: sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
-          'total_bytes',
-        ),
+        totalBytes:
+          sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
+            'total_bytes',
+          ),
       })
       .from(knowledgeFolders)
       .leftJoin(
@@ -89,7 +112,8 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFolders.id, id));
 
     if (!folder) throw new NotFoundException('Folder not found');
-    if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
+    if (folder.ownerId !== userId)
+      throw new ForbiddenException('Access denied');
 
     const files = await this.db
       .select({
@@ -102,7 +126,7 @@ export class KnowledgeCoreService {
         uploadedById: knowledgeFiles.uploadedById,
         uploadedByName: users.name,
         // Surface ingestion status so the FE can render the per-file
-        // training badge without a second round-trip.
+        // context-availability badge without a second round-trip.
         ingestionStatus: knowledgeFiles.ingestionStatus,
         ingestionError: knowledgeFiles.ingestionError,
         // Surfaced so the row UI can render the 'Admin only' badge
@@ -209,17 +233,13 @@ export class KnowledgeCoreService {
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.folderId, id));
 
-    await this.db
-      .delete(knowledgeFolders)
-      .where(eq(knowledgeFolders.id, id));
+    await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.id, id));
 
     await Promise.allSettled(
       fileRows.map(async ({ storagePath }) => {
         if (!storagePath) return;
         try {
-          await fs.promises.unlink(
-            path.resolve(process.cwd(), storagePath),
-          );
+          await fs.promises.unlink(path.resolve(process.cwd(), storagePath));
         } catch {
           // File may already be removed
         }
@@ -234,6 +254,14 @@ export class KnowledgeCoreService {
     visibilityInput?: string,
     teamIdsInput?: string[],
     projectIdsInput?: string[],
+    // Per-name decision the FE collected from the user after a
+    // previous call surfaced same-name-different-content conflicts in
+    // this folder. Keys are the original filenames the FE re-uploads;
+    // values pick what to do with the prior row. Missing / unknown
+    // entries fall back to 'skip' so the worst case is a soft no-op,
+    // not a silent overwrite. See the name-conflict block below for
+    // the actions' semantics.
+    nameConflictActions?: Record<string, NameConflictAction>,
   ) {
     const [folder] = await this.db
       .select()
@@ -241,7 +269,8 @@ export class KnowledgeCoreService {
       .where(eq(knowledgeFolders.id, folderId));
 
     if (!folder) throw new NotFoundException('Folder not found');
-    if (folder.ownerId !== userId) throw new ForbiddenException('Access denied');
+    if (folder.ownerId !== userId)
+      throw new ForbiddenException('Access denied');
 
     // Visibility for chat-time RAG search: company-profile uploaders
     // make their files org-wide ('company'); personal-profile keep
@@ -252,8 +281,7 @@ export class KnowledgeCoreService {
       .select({ profileType: users.profileType, role: users.role })
       .from(users)
       .where(eq(users.id, userId));
-    const scope =
-      uploader?.profileType === 'company' ? 'company' : 'personal';
+    const scope = uploader?.profileType === 'company' ? 'company' : 'personal';
 
     // Secondary visibility within the scope. Default 'all' keeps
     // legacy behaviour. 'admins' is a privilege — only an admin can
@@ -402,19 +430,136 @@ export class KnowledgeCoreService {
     if (duplicates.length > 0) {
       await Promise.allSettled(
         hashed
-          .filter(
-            (h) => !toInsert.includes(h) && h.file.path,
-          )
+          .filter((h) => !toInsert.includes(h) && h.file.path)
           .map((h) => fs.promises.unlink(h.file.path)),
       );
     }
 
-    const values = toInsert.map(({ file, hash }) => {
-      const ext = path.extname(file.originalname).replace('.', '').toUpperCase();
+    // Name-conflict resolution layer. Sits *after* content dedupe so
+    // a same-name-AND-same-bytes upload is still treated as a real
+    // duplicate (no point asking the user about it). What lands here
+    // is only "same name in this folder, different bytes" — the
+    // common case where the user is uploading a new version of a
+    // doc they already have.
+    //
+    // Three actions are supported via `nameConflictActions`:
+    //   - 'overwrite'  — nuke the prior row + chunks + disk file and
+    //                     let the new bytes take the original name.
+    //   - 'keep_both'  — rename the new row to "<base> (N).<ext>"
+    //                     ("report.pdf" → "report (2).pdf").
+    //   - 'skip' / missing — return the conflict back to the FE so
+    //                     the user can pick explicitly. The tmp disk
+    //                     file is unlinked here; the new bytes never
+    //                     enter the DB on this call.
+    //
+    // The first call from the FE generally has no actions map and
+    // serves as the "discover conflicts" pass; the FE then surfaces
+    // a resolution dialog and re-uploads with the chosen actions.
+    const candidateNames = Array.from(
+      new Set(toInsert.map((entry) => entry.file.originalname)),
+    );
+    const nameRows = candidateNames.length
+      ? await this.db
+          .select({
+            id: knowledgeFiles.id,
+            name: knowledgeFiles.name,
+            storagePath: knowledgeFiles.storagePath,
+          })
+          .from(knowledgeFiles)
+          .where(
+            and(
+              eq(knowledgeFiles.uploadedById, userId),
+              eq(knowledgeFiles.folderId, folderId),
+              inArray(knowledgeFiles.name, candidateNames),
+            ),
+          )
+      : [];
+    const existingByName = new Map<
+      string,
+      { id: string; storagePath: string | null }
+    >();
+    for (const row of nameRows) {
+      // Defensive: a folder can in principle hold multiple rows with
+      // the same name (no DB-level unique constraint), so keep the
+      // first match deterministically. Overwriting still only nukes
+      // that one row — the user can resolve any orphan dups later.
+      if (existingByName.has(row.name)) continue;
+      existingByName.set(row.name, {
+        id: row.id,
+        storagePath: row.storagePath,
+      });
+    }
+
+    // Lazy: only loaded when at least one 'keep_both' action fires
+    // (most batches won't touch this code path). Mutated as we pick
+    // names so two "keep_both"s of "report.pdf" in the same batch
+    // can't both pick "report (2).pdf".
+    let usedNamesInFolder: Set<string> | null = null;
+    const loadUsedNames = async () => {
+      if (usedNamesInFolder) return usedNamesInFolder;
+      const rows = await this.db
+        .select({ name: knowledgeFiles.name })
+        .from(knowledgeFiles)
+        .where(eq(knowledgeFiles.folderId, folderId));
+      usedNamesInFolder = new Set(rows.map((r) => r.name));
+      return usedNamesInFolder;
+    };
+
+    const nameConflicts: Array<{
+      name: string;
+      existing: { id: string };
+    }> = [];
+    const toInsertResolved: Array<{
+      file: Express.Multer.File;
+      hash: string;
+      finalName: string;
+    }> = [];
+    for (const entry of toInsert) {
+      const name = entry.file.originalname;
+      const conflict = existingByName.get(name);
+      if (!conflict) {
+        toInsertResolved.push({ ...entry, finalName: name });
+        continue;
+      }
+      const action = nameConflictActions?.[name] ?? 'skip';
+      if (action === 'overwrite') {
+        await this.deleteFileRowAndAssets(conflict.id, conflict.storagePath);
+        // Also drop the cached name set entry if a prior 'keep_both'
+        // already loaded it — the overwrite freed the slot in case a
+        // later 'keep_both' in this same batch wants to reuse the
+        // base name. Cheap and defensive. Copy to a const ref so
+        // TS's narrowing of the closure-mutated outer let doesn't
+        // collapse the value to `never` here.
+        const cache = usedNamesInFolder as Set<string> | null;
+        if (cache) cache.delete(name);
+        toInsertResolved.push({ ...entry, finalName: name });
+        continue;
+      }
+      if (action === 'keep_both') {
+        const used = await loadUsedNames();
+        for (const r of toInsertResolved) used.add(r.finalName);
+        const finalName = pickNextAvailableName(name, used);
+        used.add(finalName);
+        toInsertResolved.push({ ...entry, finalName });
+        continue;
+      }
+      // 'skip' (or any unrecognized value): surface the conflict to
+      // the FE and clean up the tmp file so we don't leak disk.
+      nameConflicts.push({ name, existing: { id: conflict.id } });
+      if (entry.file.path) {
+        fs.promises.unlink(entry.file.path).catch(() => {});
+      }
+    }
+
+    const values = toInsertResolved.map(({ file, hash, finalName }) => {
+      const ext = path
+        .extname(file.originalname)
+        .replace('.', '')
+        .toUpperCase();
       const fileType = ext || 'FILE';
       return {
         folderId,
-        name: file.originalname,
+        name: finalName,
         fileType,
         sizeBytes: file.size,
         storagePath: path.posix.join(
@@ -495,15 +640,49 @@ export class KnowledgeCoreService {
       // hydrates `teams: [{id,name}]` via hydrateTeamLinks. Adding
       // an ad-hoc `teamIds` here would break that contract for no
       // benefit.
-      return { uploaded: inserted, duplicates };
+      return { uploaded: inserted, duplicates, nameConflicts };
     } catch (error) {
       await Promise.allSettled(
-        toInsert
+        toInsertResolved
           .filter((entry) => entry.file.path)
           .map((entry) => fs.promises.unlink(entry.file.path)),
       );
       throw error;
     }
+  }
+
+  /**
+   * Atomic teardown for a knowledge file: disk copy → chunks → team
+   * links → project attachments → file row. Shared by the regular
+   * delete path and by the upload-time 'overwrite' resolution so
+   * the two stay byte-for-byte aligned (any future cascade rule
+   * lands in one place). Best-effort on the disk unlink — a leftover
+   * tmp file is harmless, but a DB row left behind would resurrect
+   * deleted embeddings the next time the worker scans.
+   */
+  private async deleteFileRowAndAssets(
+    fileId: string,
+    storagePath: string | null,
+  ) {
+    if (storagePath) {
+      try {
+        await fs.promises.unlink(path.resolve(process.cwd(), storagePath));
+      } catch {
+        // File may already be removed from disk
+      }
+    }
+    await this.db.transaction(async (tx) => {
+      await tx
+        .delete(knowledgeChunks)
+        .where(eq(knowledgeChunks.fileId, fileId));
+      await tx
+        .delete(knowledgeFileTeams)
+        .where(eq(knowledgeFileTeams.fileId, fileId));
+      await tx
+        .delete(projectKnowledgeFiles)
+        .where(eq(projectKnowledgeFiles.fileId, fileId));
+      await tx.delete(knowledgeFiles).where(eq(knowledgeFiles.id, fileId));
+    });
   }
 
   /**
@@ -578,7 +757,9 @@ export class KnowledgeCoreService {
         '`teamIds` must be an array when visibility is "teams".',
       );
     }
-    const unique = Array.from(new Set(input.filter((s) => typeof s === 'string' && s.length > 0)));
+    const unique = Array.from(
+      new Set(input.filter((s) => typeof s === 'string' && s.length > 0)),
+    );
     if (unique.length === 0) {
       throw new BadRequestException(
         'Pick at least one team for "Teams" visibility.',
@@ -776,7 +957,7 @@ export class KnowledgeCoreService {
     }
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is already being trained. Try again once the current run finishes.',
+        'This file is already being added to context. Try again once the current run finishes.',
       );
     }
 
@@ -844,7 +1025,7 @@ export class KnowledgeCoreService {
     }
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is being trained right now. Try again once the current run finishes.',
+        'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 
@@ -918,7 +1099,7 @@ export class KnowledgeCoreService {
     }
     if (visibilityInput === 'admins' && !isAdmin) {
       throw new ForbiddenException(
-        "Only admins can mark a file as admin-only.",
+        'Only admins can mark a file as admin-only.',
       );
     }
     // Mirror the upload-path invariant: 'teams' / 'project' are only
@@ -942,7 +1123,7 @@ export class KnowledgeCoreService {
     // same guard reingestFile uses; the admin retries in a second.
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
-        'This file is being trained right now. Try again once the current run finishes.',
+        'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 
@@ -1042,7 +1223,7 @@ export class KnowledgeCoreService {
     }
     if (visibilityInput === 'admins' && !isAdmin) {
       throw new ForbiddenException(
-        "Only admins can mark a file as admin-only.",
+        'Only admins can mark a file as admin-only.',
       );
     }
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
@@ -1146,11 +1327,13 @@ export class KnowledgeCoreService {
             .delete(projectKnowledgeFiles)
             .where(inArray(projectKnowledgeFiles.fileId, affectedIds));
           if (visibilityInput === 'teams' && teamIds.length > 0) {
-            await tx.insert(knowledgeFileTeams).values(
-              affectedIds.flatMap((fileId) =>
-                teamIds.map((teamId) => ({ fileId, teamId })),
-              ),
-            );
+            await tx
+              .insert(knowledgeFileTeams)
+              .values(
+                affectedIds.flatMap((fileId) =>
+                  teamIds.map((teamId) => ({ fileId, teamId })),
+                ),
+              );
           }
           if (visibilityInput === 'project' && projectIds.length > 0) {
             await tx.insert(projectKnowledgeFiles).values(
@@ -1168,7 +1351,7 @@ export class KnowledgeCoreService {
     }
 
     return {
-      visibility: visibilityInput as 'all' | 'admins' | 'teams' | 'project',
+      visibility: visibilityInput,
       teamIds,
       projectIds,
       affectedIds,
@@ -1261,32 +1444,10 @@ export class KnowledgeCoreService {
     if (!file) throw new NotFoundException('File not found');
     if (file.ownerId !== userId) throw new ForbiddenException('Access denied');
 
-    if (file.storagePath) {
-      try {
-        await fs.promises.unlink(path.resolve(process.cwd(), file.storagePath));
-      } catch {
-        // File may already be removed from disk
-      }
-    }
-
-    // Defense-in-depth: clear child rows explicitly inside a
-    // transaction before deleting the file. FK cascade should handle
-    // this, but explicit deletes guarantee chat-time RAG no longer
-    // surfaces this file even if the live DB lost the CASCADE rule.
-    // Order: chunks (RAG embeddings) → team links → project
-    // attachments → the file row itself.
-    await this.db.transaction(async (tx) => {
-      await tx
-        .delete(knowledgeChunks)
-        .where(eq(knowledgeChunks.fileId, fileId));
-      await tx
-        .delete(knowledgeFileTeams)
-        .where(eq(knowledgeFileTeams.fileId, fileId));
-      await tx
-        .delete(projectKnowledgeFiles)
-        .where(eq(projectKnowledgeFiles.fileId, fileId));
-      await tx.delete(knowledgeFiles).where(eq(knowledgeFiles.id, fileId));
-    });
+    // Disk + chunks + team links + project attachments + file row.
+    // Shared with the upload-time 'overwrite' path so any future
+    // cascade rule lands in one place.
+    await this.deleteFileRowAndAssets(fileId, file.storagePath);
 
     await this.db
       .update(knowledgeFolders)

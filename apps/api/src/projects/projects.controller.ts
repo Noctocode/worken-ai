@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UploadedFiles,
@@ -17,7 +18,10 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from './projects.service.js';
-import type { CreateProjectDto } from './projects.service.js';
+import type {
+  CreateProjectDto,
+  UpdateProjectDto,
+} from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -57,6 +61,15 @@ export class ProjectsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.projectsService.create(dto, user.id);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateProjectDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.projectsService.update(id, user.id, dto);
   }
 
   @Delete(':id')
@@ -162,6 +175,10 @@ export class ProjectsController {
       visibility?: string;
       teamIds?: string | string[];
       projectIds?: string | string[];
+      // JSON-encoded `{ [filename]: 'overwrite' | 'keep_both' |
+      // 'skip' }`. See `knowledge-core.controller.uploadFiles` for
+      // the format — same parsing rules apply here.
+      nameConflictActions?: string;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -175,11 +192,38 @@ export class ProjectsController {
       : body?.projectIds
         ? [body.projectIds]
         : [];
+    let nameConflictActions:
+      | Record<string, 'overwrite' | 'keep_both' | 'skip'>
+      | undefined;
+    if (body?.nameConflictActions) {
+      try {
+        const parsed: unknown = JSON.parse(body.nameConflictActions);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          nameConflictActions = {};
+          for (const [key, value] of Object.entries(
+            parsed as Record<string, unknown>,
+          )) {
+            if (
+              typeof key === 'string' &&
+              (value === 'overwrite' ||
+                value === 'keep_both' ||
+                value === 'skip')
+            ) {
+              nameConflictActions[key] = value;
+            }
+          }
+        }
+      } catch {
+        // Malformed JSON → undefined → BE treats every name
+        // conflict as 'skip' and bounces them back to the FE.
+      }
+    }
     return this.projectKnowledge.uploadAndAttach(id, user.id, files, {
       folderId: body?.folderId,
       visibility: body?.visibility,
       teamIds,
       projectIds,
+      nameConflictActions,
     });
   }
 }

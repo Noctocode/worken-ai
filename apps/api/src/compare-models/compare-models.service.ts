@@ -18,7 +18,11 @@ interface OpenRouterUsage {
   cost?: number;
 }
 
-function describeOpenRouterError(model: string, action: string, err: unknown): Error {
+function describeOpenRouterError(
+  model: string,
+  action: string,
+  err: unknown,
+): Error {
   if (err instanceof OpenAI.APIError) {
     const body =
       typeof err.error === 'string'
@@ -123,7 +127,10 @@ export class CompareModelsService {
 
     let completion;
     try {
-      completion = await this.makeClient(apiKey, baseURL).chat.completions.create({
+      completion = await this.makeClient(
+        apiKey,
+        baseURL,
+      ).chat.completions.create({
         model,
         messages: [...systemMessages, { role: 'user', content: question }],
         ...(enableReasoning && { reasoning: { enabled: true } }),
@@ -136,7 +143,7 @@ export class CompareModelsService {
     type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
       reasoning_details?: unknown;
     };
-    const response = completion.choices[0].message as ORChatMessage;
+    const response = completion.choices[0].message;
 
     const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {
@@ -219,14 +226,18 @@ export class CompareModelsService {
         ...(enableReasoning && { reasoning: { enabled: true } }),
       });
     } catch (err) {
-      throw describeOpenRouterError(model, 'chat.completions.create (compare)', err);
+      throw describeOpenRouterError(
+        model,
+        'chat.completions.create (compare)',
+        err,
+      );
     }
 
     // Extract response with reasoning_details
     type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
       reasoning_details?: unknown;
     };
-    const response = completion.choices[0].message as ORChatMessage;
+    const response = completion.choices[0].message;
 
     return {
       content: response.content || '',

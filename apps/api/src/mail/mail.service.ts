@@ -232,11 +232,7 @@ export class MailService {
     });
   }
 
-  async sendOrgInvitation({
-    to,
-    inviterName,
-    role,
-  }: OrgInvitationParams) {
+  async sendOrgInvitation({ to, inviterName, role }: OrgInvitationParams) {
     const frontendUrl =
       this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const signupUrl = `${frontendUrl}/register?email=${encodeURIComponent(to)}`;

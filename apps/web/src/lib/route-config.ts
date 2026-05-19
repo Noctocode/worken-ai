@@ -32,12 +32,6 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
-  "/catalog": {
-    bg: "bg-bg-1",
-    title: "Models Catalog",
-    hideSearch: true,
-    hideNotifications: true,
-  },
   "/docs/api": {
     bg: "bg-bg-1",
     title: "API Documentation",
@@ -113,6 +107,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
     appbarSearch: { placeholder: "Search", event: "knowledge-core:search" },
+    appbarExpandControls: true,
   },
   "/tender-ai": {
     bg: "bg-bg-1",

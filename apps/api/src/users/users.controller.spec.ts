@@ -33,9 +33,7 @@ describe('UsersController auth gates', () => {
   function bootstrap(callerRows: unknown[]) {
     const db = mockDb(callerRows);
     usersService = {
-      updateBudget: jest
-        .fn()
-        .mockResolvedValue({ monthlyBudgetCents: 5000 }),
+      updateBudget: jest.fn().mockResolvedValue({ monthlyBudgetCents: 5000 }),
       updateRole: jest
         .fn()
         .mockResolvedValue({ id: 'target-id', role: 'advanced' }),
@@ -102,9 +100,9 @@ describe('UsersController auth gates', () => {
   describe('DELETE /users/:id', () => {
     it('admin succeeds and forwards to UsersService.remove', async () => {
       bootstrap([{ role: 'admin' }]);
-      await expect(
-        controller.remove('target-id', ADMIN),
-      ).resolves.toEqual({ success: true });
+      await expect(controller.remove('target-id', ADMIN)).resolves.toEqual({
+        success: true,
+      });
       expect(usersService.remove).toHaveBeenCalledWith('target-id', ADMIN.id);
     });
 

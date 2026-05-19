@@ -83,7 +83,9 @@ export class NotificationsService {
    * abort the parent action (invite, chat call). Email remains as
    * the backup channel anyway.
    */
-  async create(input: CreateNotificationInput): Promise<NotificationView | null> {
+  async create(
+    input: CreateNotificationInput,
+  ): Promise<NotificationView | null> {
     try {
       const [row] = await this.db
         .insert(notifications)
@@ -114,9 +116,11 @@ export class NotificationsService {
    * the user sees one notif row twice. Cheaper than a partial
    * unique index, simpler than an advisory lock.
    */
-  async createIfNotExists(input: CreateNotificationInput & {
-    data: Record<string, unknown> & { thresholdKey: string };
-  }): Promise<NotificationView | null> {
+  async createIfNotExists(
+    input: CreateNotificationInput & {
+      data: Record<string, unknown> & { thresholdKey: string };
+    },
+  ): Promise<NotificationView | null> {
     try {
       const existing = await this.db
         .select({ id: notifications.id })
@@ -183,9 +187,7 @@ export class NotificationsService {
     const [row] = await this.db
       .update(notifications)
       .set({ readAt: new Date() })
-      .where(
-        and(eq(notifications.id, id), eq(notifications.userId, userId)),
-      )
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
       .returning();
     if (!row) throw new NotFoundException('Notification not found');
     return this.toView(row);
@@ -196,10 +198,7 @@ export class NotificationsService {
       .update(notifications)
       .set({ readAt: new Date() })
       .where(
-        and(
-          eq(notifications.userId, userId),
-          isNull(notifications.readAt),
-        ),
+        and(eq(notifications.userId, userId), isNull(notifications.readAt)),
       )
       .returning({ id: notifications.id });
     return { markedCount: rows.length };
@@ -209,9 +208,7 @@ export class NotificationsService {
     const [row] = await this.db
       .update(notifications)
       .set({ status: 'dismissed' })
-      .where(
-        and(eq(notifications.id, id), eq(notifications.userId, userId)),
-      )
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
       .returning({ id: notifications.id });
     if (!row) throw new NotFoundException('Notification not found');
     return row;
@@ -225,9 +222,7 @@ export class NotificationsService {
     const [row] = await this.db
       .select()
       .from(notifications)
-      .where(
-        and(eq(notifications.id, id), eq(notifications.userId, userId)),
-      );
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
     if (!row) throw new NotFoundException('Notification not found');
     return row;
   }
@@ -242,9 +237,7 @@ export class NotificationsService {
     await this.db
       .update(notifications)
       .set({ status: 'acted', readAt: new Date() })
-      .where(
-        and(eq(notifications.id, id), eq(notifications.userId, userId)),
-      );
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
   }
 
   /**
@@ -323,10 +316,7 @@ export class NotificationsService {
       .select({ userId: teamMembers.userId })
       .from(teamMembers)
       .where(
-        and(
-          eq(teamMembers.teamId, teamId),
-          eq(teamMembers.status, 'accepted'),
-        ),
+        and(eq(teamMembers.teamId, teamId), eq(teamMembers.status, 'accepted')),
       );
     const set = new Set<string>();
     if (owner) set.add(owner);
@@ -404,12 +394,7 @@ export class NotificationsService {
     const rows = await this.db
       .select({ id: users.id })
       .from(users)
-      .where(
-        and(
-          eq(users.role, 'admin'),
-          eq(users.companyName, companyName),
-        ),
-      );
+      .where(and(eq(users.role, 'admin'), eq(users.companyName, companyName)));
     return rows.map((r) => r.id);
   }
 

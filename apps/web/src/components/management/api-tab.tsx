@@ -17,6 +17,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,6 +109,21 @@ export function ApiTab() {
   }, [copyToast]);
 
   const keys = keysQuery.data ?? [];
+
+  // Page API keys — usually a small set (<20) so the Pagination
+  // component auto-hides on a single page, but power users can have
+  // many keys and the picker is the cheapest way to keep the table
+  // bounded.
+  const KEYS_PAGE_SIZE = 10;
+  const [keysPage, setKeysPage] = useState(1);
+  const keysTotalPages = Math.max(1, Math.ceil(keys.length / KEYS_PAGE_SIZE));
+  const pagedKeys = keys.slice(
+    (keysPage - 1) * KEYS_PAGE_SIZE,
+    keysPage * KEYS_PAGE_SIZE,
+  );
+  useEffect(() => {
+    if (keysPage > keysTotalPages) setKeysPage(keysTotalPages);
+  }, [keysPage, keysTotalPages]);
 
   return (
     <div className="py-5">
@@ -218,7 +234,7 @@ export function ApiTab() {
                     </td>
                   </tr>
                 )}
-              {keys.map((key) => (
+              {pagedKeys.map((key) => (
                 <tr
                   key={key.id}
                   className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-bg-1/50"
@@ -263,6 +279,12 @@ export function ApiTab() {
               ))}
             </tbody>
           </table>
+          <Pagination
+            page={keysPage}
+            totalPages={keysTotalPages}
+            onPageChange={setKeysPage}
+            className="px-4"
+          />
         </div>
       </div>
 

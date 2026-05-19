@@ -243,13 +243,20 @@ export class ProjectKnowledgeService {
       visibility?: string;
       teamIds?: string[];
       projectIds?: string[];
+      nameConflictActions?: Record<string, 'overwrite' | 'keep_both' | 'skip'>;
     },
   ): Promise<{
     uploaded: Array<{ id: string; name: string; ingestionStatus: string }>;
     duplicates: Array<{
       name: string;
-      existing: { id: string | null; name: string; folderId: string; folderName: string };
+      existing: {
+        id: string | null;
+        name: string;
+        folderId: string;
+        folderName: string;
+      };
     }>;
+    nameConflicts: Array<{ name: string; existing: { id: string } }>;
   }> {
     await this.assertProjectAccess(projectId, callerId);
     if (files.length === 0) {
@@ -257,8 +264,7 @@ export class ProjectKnowledgeService {
     }
 
     const folderId =
-      options.folderId ??
-      (await this.ensureDefaultProjectsFolder(callerId));
+      options.folderId ?? (await this.ensureDefaultProjectsFolder(callerId));
 
     const result = await this.knowledgeCore.uploadFiles(
       folderId,
@@ -267,6 +273,7 @@ export class ProjectKnowledgeService {
       options.visibility,
       options.teamIds,
       options.projectIds,
+      options.nameConflictActions,
     );
 
     // Auto-attach every successful upload to this project. The
@@ -300,6 +307,7 @@ export class ProjectKnowledgeService {
         ingestionStatus: u.ingestionStatus,
       })),
       duplicates: result.duplicates,
+      nameConflicts: result.nameConflicts,
     };
   }
 
@@ -417,4 +425,3 @@ export class ProjectKnowledgeService {
     return rows.map((r) => r.fileId);
   }
 }
-

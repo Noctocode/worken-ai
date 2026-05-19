@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { users } from '@worken/database/schema';
@@ -84,12 +85,15 @@ export class TeamsController {
       .from(users)
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role === 'basic') {
-      throw new ForbiddenException('Only admin or advanced users can create teams.');
+      throw new ForbiddenException(
+        'Only admin or advanced users can create teams.',
+      );
     }
 
-    const budgetCents = body.monthlyBudget != null
-      ? Math.round(body.monthlyBudget * 100)
-      : undefined;
+    const budgetCents =
+      body.monthlyBudget != null
+        ? Math.round(body.monthlyBudget * 100)
+        : undefined;
     return this.teamsService.create(
       body.name,
       caller.id,
@@ -101,10 +105,7 @@ export class TeamsController {
   }
 
   @Delete(':id')
-  deleteTeam(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  deleteTeam(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.teamsService.deleteTeam(id, user.id);
   }
 
@@ -181,57 +182,85 @@ export class TeamsController {
     return this.teamsService.findGuardrails(id);
   }
 
-  // Team-scoped BYOK integrations. Mirrors POST/PATCH/DELETE on
-  // /integrations but everything lands on a single team-shared row
-  // (one per provider per team), so when any member chats with that
-  // provider the call uses this key first.
-  @Get(':id/integrations')
-  listIntegrations(
+  // ─── Integration links (picker model) ──────────────────────────
+  //
+  // Replaces the legacy team-scoped /integrations endpoints above:
+  // instead of pushing the encrypted key into a separate row per
+  // team, admins configure their key once on /teams?tab=integration
+  // and link it into one or more teams via these endpoints. The old
+  // routes stay during the FE migration but no longer receive new
+  // writes from the picker.
+
+  @Get(':id/integration-links')
+  listIntegrationLinks(
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.teamsService.listIntegrations(id, user.id);
+    return this.teamsService.listIntegrationLinks(id, user.id);
   }
 
-  @Post(':id/integrations')
-  upsertIntegration(
+  // Caller's personal integrations + which are already linked. Drives
+  // the picker UI on team-details — split from `integration-links` so
+  // the read for the picker doesn't need to join in linkage state
+  // that's already on the linked list.
+  @Get(':id/integration-links/linkable')
+  listLinkableIntegrations(
     @Param('id') id: string,
-    @Body()
-    body: {
-      providerId: string;
-      apiKey?: string | null;
-      isEnabled?: boolean;
-    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    if (typeof body?.providerId !== 'string' || !body.providerId.trim()) {
-      throw new BadRequestException('`providerId` is required');
+    return this.teamsService.listLinkableIntegrations(id, user.id);
+  }
+
+  @Put(':id/integration-links')
+  setIntegrationLinks(
+    @Param('id') id: string,
+    @Body() body: { integrationIds?: string[] },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (!Array.isArray(body?.integrationIds)) {
+      throw new BadRequestException('`integrationIds` must be an array.');
     }
-    return this.teamsService.upsertIntegration(id, user.id, body);
-  }
-
-  @Patch(':id/integrations/:integrationId')
-  updateIntegration(
-    @Param('id') id: string,
-    @Param('integrationId', new ParseUUIDPipe()) integrationId: string,
-    @Body() body: { isEnabled?: boolean; apiKey?: string | null },
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
-    return this.teamsService.updateIntegration(
+    // Validate each entry up-front. Without this, a non-UUID string
+    // would slip through into the service's `inArray(integrations.id,
+    // …)` and trip a Postgres `invalid input syntax for type uuid`
+    // cast error — surfaces as a 500 instead of the 400 the client
+    // actually needs to act on.
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const invalid = body.integrationIds.filter(
+      (v) => typeof v !== 'string' || !UUID_RE.test(v),
+    );
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `\`integrationIds\` contains non-UUID values: ${invalid
+          .slice(0, 3)
+          .map((v) => JSON.stringify(v))
+          .join(', ')}`,
+      );
+    }
+    return this.teamsService.setIntegrationLinks(
       id,
       user.id,
-      integrationId,
-      body,
+      body.integrationIds,
     );
   }
 
-  @Delete(':id/integrations/:integrationId')
-  removeIntegration(
+  @Patch(':id/integration-links/:integrationId')
+  setIntegrationLinkEnabled(
     @Param('id') id: string,
     @Param('integrationId', new ParseUUIDPipe()) integrationId: string,
+    @Body() body: { isEnabled?: boolean },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.teamsService.removeIntegration(id, user.id, integrationId);
+    if (typeof body?.isEnabled !== 'boolean') {
+      throw new BadRequestException('`isEnabled` must be a boolean.');
+    }
+    return this.teamsService.setIntegrationLinkEnabled(
+      id,
+      user.id,
+      integrationId,
+      body.isEnabled,
+    );
   }
 
   // Per-member monthly cap. Body accepts a number (cents) or null to

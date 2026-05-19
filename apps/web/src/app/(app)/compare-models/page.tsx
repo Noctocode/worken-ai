@@ -38,6 +38,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -54,6 +58,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   deleteArenaRun,
   fetchArenaRun,
@@ -274,6 +279,10 @@ export default function CompareModelsPage() {
 
   const [disabledModels, setDisabledModels] = useState<Set<string>>(new Set());
   const [railOpen, setRailOpen] = useState(true);
+  // Separate state so the mobile drawer doesn't leak into the desktop
+  // inline rail when crossing the md breakpoint. The 3-dot button in
+  // the mobile header is the only path that flips it.
+  const [mobileRailOpen, setMobileRailOpen] = useState(false);
   const [modelsExpanded, setModelsExpanded] = useState(true);
   const [historyExpanded, setHistoryExpanded] = useState(false);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -296,6 +305,25 @@ export default function CompareModelsPage() {
     () => selectedModels.filter((id) => !disabledModels.has(id)),
     [selectedModels, disabledModels],
   );
+
+  // At <md the response grid collapses to a single visible card with
+  // a tab strip on top — phone viewports can't fit two cards side by
+  // side at a readable line length. Active tab defaults to the first
+  // model and follows the user-selected list as they add/remove
+  // models (e.g. dropping the currently active one falls back to the
+  // first available).
+  const [mobileActiveModel, setMobileActiveModel] = useState<string | null>(
+    null,
+  );
+  useEffect(() => {
+    if (activeModels.length === 0) {
+      setMobileActiveModel(null);
+      return;
+    }
+    if (!mobileActiveModel || !activeModels.includes(mobileActiveModel)) {
+      setMobileActiveModel(activeModels[0]);
+    }
+  }, [activeModels, mobileActiveModel]);
 
   const toggleModel = (id: string) => {
     setDisabledModels((prev) => {
@@ -695,7 +723,7 @@ export default function CompareModelsPage() {
   // and silently rendering an empty rail looks broken.
   if (!modelsLoading && availableModels.length < MIN_MODELS) {
     return (
-      <div className="flex h-full min-h-0 items-center justify-center pb-6">
+      <div className="flex h-0 min-h-0 flex-1 items-center justify-center pb-6">
         <div className="flex max-w-[480px] flex-col items-center gap-4 rounded-[20px] bg-bg-white p-8 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary-1">
             <LayoutGrid className="h-6 w-6 text-primary-7" />
@@ -721,15 +749,90 @@ export default function CompareModelsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6 pb-6">
-      {/* Body shell: main column + optional right rail */}
-      <div className="flex min-h-0 flex-1 gap-6">
-        {/* Main column — white card per Figma */}
-        <section className="flex min-w-0 flex-1 flex-col gap-4 overflow-hidden rounded-[20px] bg-bg-white p-6">
-          {/* Scrollable content area (prompt + responses) */}
-          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+    // `flex-1 h-0` (not `h-full`) — the app shell wraps pages in a
+    // `min-h-full flex-col` container, which is *min-height*, not
+    // height. That means `h-full` here resolves to auto and the row
+    // below grows with whatever the right rail contains, dragging
+    // the white card with it (so expanding History made the card
+    // visibly "jump"). Using flex-grow against `h-0` forces this
+    // wrapper to claim the remaining definite height of the shell,
+    // which gives the row a fixed height and lets the aside scroll
+    // its history list internally instead of pushing the layout.
+    <div className="flex h-0 min-h-0 flex-1 flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
+      {/* Mobile in-page header — the desktop appbar (default variant)
+          renders the "Model Arena" title + the "New Comparison"
+          appbarAction. At <md the appbar collapses to MobileTopbar
+          (logo + hamburger only), so the page owns this slot itself
+          per Figma frame 4659:70093 — back arrow, title, "New" button,
+          and a placeholder 3-dot menu. */}
+      <div className="lg:hidden -mx-6 flex items-center justify-between gap-3 border-b border-bg-1 bg-bg-white px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Link
+            href="/"
+            aria-label="Back"
+            className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Link>
+          <h1 className="truncate text-[20px] font-bold text-text-1">
+            Model Arena
+          </h1>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={newComparison}
+            className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-primary-6 px-3 text-[14px] font-medium text-white hover:bg-primary-7"
+          >
+            <Plus className="h-4 w-4" />
+            New
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileRailOpen(true)}
+            aria-label="Comparison details"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
+          >
+            <MoreVertical className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Body shell: main column + optional right rail.
+          Switched to CSS Grid at lg+ specifically to decouple the
+          two columns' heights. Flexbox with align-items:stretch was
+          propagating the rail's intrinsic content height back into
+          the main card whenever History expanded — the row grew to
+          fit the rail and dragged the white card with it. Grid
+          assigns each cell its own track height (1fr of a bounded
+          row), so the columns are sized independently and each
+          handles its own internal scroll without affecting the
+          other. */}
+      <div className="flex flex-col min-h-0 flex-1 gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:overflow-hidden">
+        {/* Main column — white card per Figma. Layout is intentionally
+            *static*: scrollable area always takes the remaining height
+            and the composer stays pinned at the bottom, regardless of
+            whether a comparison is loaded, history is expanded, or the
+            rail is open. Keeps the white card visually stable across
+            state transitions. */}
+        {/* Main card. On mobile we fill the column (flex-1 inside the
+            flex-col body shell) so the composer pins at viewport
+            bottom — typical chat UX. On desktop we drop that: the
+            card sits at the top of its grid cell (self-start) at a
+            fixed 750px height — auto-content was too cramped for
+            the placeholder/composer pair, and stretching to the
+            row brought back the rail-driven jump. Fixed height
+            decouples from rail, gives the placeholder its centered
+            whitespace, and lets the composer sit at the card's
+            bottom edge with internal scroll for long streams. */}
+        <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6 lg:min-h-0 lg:self-start lg:h-[750px]">
+          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-1">
             {!hasResults && !loading && !submittedQuestion && (
-              <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+              // `my-auto` keeps the placeholder vertically centred inside
+              // the scrollable area without changing the area's flex
+              // sizing — so the composer below it stays put and the
+              // white card never reflows when state changes.
+              <div className="mx-auto my-auto flex w-full max-w-[480px] flex-col items-center gap-2 py-10 text-center">
                 <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <h3 className="text-[16px] font-semibold text-text-1">
                   Compare models side by side
@@ -827,32 +930,85 @@ export default function CompareModelsPage() {
             )}
 
             {(loading || hasResults) && (
-              // Up to 3 cards per row, each 1/3 of the available width.
-              // 4th+ wrap to the next row at the same 1/3 width — so a
-              // single comparison never silently widens its cards just
-              // because the row is half-empty. With 1 or 2 cards we
-              // still cap columns at the active count so they fill the
-              // row evenly (full / half).
-              <div
-                className="grid gap-4"
-                style={{
-                  gridTemplateColumns: `repeat(${Math.min(
-                    Math.max(activeModels.length, 1),
-                    3,
-                  )}, minmax(0, 1fr))`,
-                }}
-              >
-                {activeModels.map((id) => (
-                  <ResponseCard
-                    key={id}
-                    modelId={id}
-                    response={responses[id] ?? null}
-                    evaluation={evaluations[id] ?? null}
-                    status={modelStatuses[id] ?? (loading ? "pending" : "done")}
-                    onCopy={(t) => copyText(t, getModelLabel(id))}
-                  />
-                ))}
-              </div>
+              <>
+                {/* Mobile tabs (<md) — pick which model's response to
+                    look at. Active tab gets a blue underline + bold
+                    text per Figma 4659:70101. Single tab? Skip the
+                    strip entirely; the single card carries enough
+                    identity on its own via ResponseCard's header. */}
+                {activeModels.length > 1 && (
+                  <div className="lg:hidden -mx-3 flex items-stretch overflow-x-auto border-b border-border-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                    {activeModels.map((id) => {
+                      const isActive = mobileActiveModel === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setMobileActiveModel(id)}
+                          className={`relative flex shrink-0 cursor-pointer items-center gap-1.5 px-4 py-3 text-[12px] font-medium transition-colors ${
+                            isActive
+                              ? "text-text-1"
+                              : "text-text-3 hover:text-text-2"
+                          }`}
+                        >
+                          {getModelLabel(id)}
+                          {isActive && (
+                            <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary-6" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Desktop grid — up to 3 cards per row, each 1/3 of
+                    the available width. 4th+ wrap to the next row at
+                    the same 1/3 width so a single comparison never
+                    silently widens its cards just because the row is
+                    half-empty. With 1 or 2 cards we still cap columns
+                    at the active count so they fill the row evenly
+                    (full / half). */}
+                <div
+                  className="hidden lg:grid gap-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${Math.min(
+                      Math.max(activeModels.length, 1),
+                      3,
+                    )}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {activeModels.map((id) => (
+                    <ResponseCard
+                      key={id}
+                      modelId={id}
+                      response={responses[id] ?? null}
+                      evaluation={evaluations[id] ?? null}
+                      status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                      onCopy={(t) => copyText(t, getModelLabel(id))}
+                    />
+                  ))}
+                </div>
+
+                {/* Mobile single-card view — render only the active
+                    tab's ResponseCard. Same component, same data, just
+                    one at a time. */}
+                <div className="lg:hidden flex flex-col gap-3">
+                  {activeModels
+                    .filter((id) =>
+                      mobileActiveModel ? id === mobileActiveModel : true,
+                    )
+                    .map((id) => (
+                      <ResponseCard
+                        key={id}
+                        modelId={id}
+                        response={responses[id] ?? null}
+                        evaluation={evaluations[id] ?? null}
+                        status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                        onCopy={(t) => copyText(t, getModelLabel(id))}
+                      />
+                    ))}
+                </div>
+              </>
             )}
           </div>
 
@@ -874,9 +1030,59 @@ export default function CompareModelsPage() {
           />
         </section>
 
-        {/* Right rail */}
+        {/* Right rail — hidden at <md: the rail's controls (model
+            pickers, history, ...) would crowd a 375px viewport, and
+            the in-page mobile header already owns the "New" action.
+            Re-introduce as a slide-out Sheet in a follow-up if mobile
+            users need history access without scrolling sideways. */}
         {railOpen ? (
+          <div className="hidden lg:flex lg:min-h-0 lg:overflow-hidden">
+            <RightRail
+              selectedModels={selectedModels}
+              disabledModels={disabledModels}
+              onToggleModel={toggleModel}
+              onChangeModel={changeModel}
+              onRemoveModel={removeModel}
+              modelsExpanded={modelsExpanded}
+              setModelsExpanded={setModelsExpanded}
+              historyExpanded={historyExpanded}
+              setHistoryExpanded={setHistoryExpanded}
+              history={history}
+              onDeleteHistory={(runId) => setDeleteRunId(runId)}
+              onLoadHistory={loadHistoryRun}
+              onClose={() => setRailOpen(false)}
+              onAddModel={() => setAddModelOpen(true)}
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setRailOpen(true)}
+            className="hidden lg:flex self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Open Comparison Details"
+            aria-label="Open Comparison Details"
+          >
+            <ChevronRight className="h-4 w-4 rotate-180" />
+          </button>
+        )}
+      </div>
+
+      {/* Mobile Comparison Details drawer — same RightRail content,
+          but slid in from the right via a Sheet at <md. Opened from
+          the 3-dot button in the page-level mobile header. Auto-close
+          on every callback so picking a history entry / adding a
+          model dismisses the drawer and returns the user to the
+          response view without an extra tap. */}
+      <Sheet open={mobileRailOpen} onOpenChange={setMobileRailOpen}>
+        <SheetContent
+          side="right"
+          className="w-[320px] sm:w-[360px] p-5 lg:hidden"
+        >
+          {/* hideClose: Sheet ships its own X in the corner — the
+              rail's local close button would stack on top of it. */}
           <RightRail
+            className="flex h-full flex-col gap-6 overflow-y-auto pr-1"
+            hideClose
             selectedModels={selectedModels}
             disabledModels={disabledModels}
             onToggleModel={toggleModel}
@@ -888,22 +1094,18 @@ export default function CompareModelsPage() {
             setHistoryExpanded={setHistoryExpanded}
             history={history}
             onDeleteHistory={(runId) => setDeleteRunId(runId)}
-            onLoadHistory={loadHistoryRun}
-            onClose={() => setRailOpen(false)}
-            onAddModel={() => setAddModelOpen(true)}
+            onLoadHistory={(runId) => {
+              loadHistoryRun(runId);
+              setMobileRailOpen(false);
+            }}
+            onClose={() => setMobileRailOpen(false)}
+            onAddModel={() => {
+              setAddModelOpen(true);
+              setMobileRailOpen(false);
+            }}
           />
-        ) : (
-          <button
-            type="button"
-            onClick={() => setRailOpen(true)}
-            className="self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Open Comparison Details"
-            aria-label="Open Comparison Details"
-          >
-            <ChevronRight className="h-4 w-4 rotate-180" />
-          </button>
-        )}
-      </div>
+        </SheetContent>
+      </Sheet>
 
       <AddModelDialog
         open={addModelOpen}
@@ -1083,8 +1285,10 @@ function ResponseCard({
 
       {/* Body — driven by `status` so each lifecycle phase has its
           own visual treatment instead of conflating "no content
-          yet" with "no response will ever arrive". */}
-      <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1">
+          yet" with "no response will ever arrive". `break-words`
+          stops long unbreakable strings (URLs, code samples) from
+          forcing horizontal page scroll on narrow viewports. */}
+      <div className="rounded bg-bg-white p-3 text-[13px] leading-[1.625] text-text-1 break-words min-w-0">
         {status === "pending" ? (
           <span className="flex items-center gap-2 text-text-3">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1338,13 +1542,17 @@ function Composer({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-grow the question textarea to fit its content. Runs on every value
-  // change (typing, pasting, programmatic inserts from shortcuts/library).
+  // Auto-grow the question textarea to fit its content, capped so a
+  // pasted novel can't push the composer to fill the page. Past the
+  // cap the textarea scrolls internally.
   useEffect(() => {
     const ta = questionRef.current;
     if (!ta) return;
+    const MAX = 200;
     ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
+    const next = Math.min(ta.scrollHeight, MAX);
+    ta.style.height = `${next}px`;
+    ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
   }, [question]);
 
   function handleInsertShortcut(shortcut: Shortcut) {
@@ -1644,6 +1852,8 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
+  hideClose = false,
+  className,
 }: {
   selectedModels: string[];
   disabledModels: Set<string>;
@@ -1659,25 +1869,64 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
+  /** When the rail is embedded in a parent that already supplies a
+   *  close affordance (e.g. the mobile Sheet's built-in X), suppress
+   *  the local X in the header to avoid two stacked dismiss buttons. */
+  hideClose?: boolean;
+  /** Override the default desktop aside layout (fixed 300px wide). */
+  className?: string;
 }) {
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
+
+  // History pagination — 5 entries per page so the rail doesn't grow
+  // into a wall of past prompts. Page state is local to the rail so
+  // opening/closing the section doesn't reset, but a new history
+  // entry (post-comparison) snaps back to page 1 so the most recent
+  // run is visible.
+  const HISTORY_PAGE_SIZE = 5;
+  const [historyPage, setHistoryPage] = useState(1);
+  const historyTotalPages = Math.max(
+    1,
+    Math.ceil(history.length / HISTORY_PAGE_SIZE),
+  );
+  useEffect(() => {
+    setHistoryPage(1);
+  }, [history.length]);
+  useEffect(() => {
+    if (historyPage > historyTotalPages) setHistoryPage(historyTotalPages);
+  }, [historyPage, historyTotalPages]);
+  const pagedHistory = history.slice(
+    (historyPage - 1) * HISTORY_PAGE_SIZE,
+    historyPage * HISTORY_PAGE_SIZE,
+  );
+
   return (
-    <aside className="flex w-[300px] shrink-0 flex-col gap-6 overflow-y-auto">
+    <aside
+      className={
+        className ??
+        // h-full + min-h-0 ride the desktop wrapper's bounded height
+        // and let overflow-y-auto kick in. Without h-full the aside
+        // would take its content height and overflow into the parent.
+        "flex h-full min-h-0 w-[300px] shrink-0 flex-col gap-6 overflow-y-auto"
+      }
+    >
       <header className="flex items-center justify-between">
         <h2 className="text-[18px] font-bold leading-[1.3] text-text-2">
           Comparison Details
         </h2>
-        <button
-          type="button"
-          onClick={onClose}
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-          title="Close"
-          aria-label="Close"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        {!hideClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+            title="Close"
+            aria-label="Close"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        )}
       </header>
 
       {/* Models section */}
@@ -1721,7 +1970,10 @@ function RightRail({
         </button>
       </RailSection>
 
-      {/* History section */}
+      {/* History section — paginated 5 per page so the rail doesn't
+          balloon past the viewport on power users. Date grouping
+          applies to the current page only; users scan one page at
+          a time so cross-page grouping wasn't carrying its weight. */}
       <RailSection
         title="History"
         expanded={historyExpanded}
@@ -1733,7 +1985,7 @@ function RightRail({
           </p>
         ) : (
           <div className="flex flex-col gap-4">
-            {groupHistoryByDate(history).map((group) => (
+            {groupHistoryByDate(pagedHistory).map((group) => (
               <div key={group.label} className="flex flex-col gap-2">
                 <p className="text-[13px] font-normal text-text-2">{group.label}</p>
                 <ul className="flex flex-col gap-2">
@@ -1761,6 +2013,14 @@ function RightRail({
                 </ul>
               </div>
             ))}
+            {historyTotalPages > 1 && (
+              <Pagination
+                page={historyPage}
+                totalPages={historyTotalPages}
+                onPageChange={setHistoryPage}
+                compact
+              />
+            )}
           </div>
         )}
       </RailSection>
@@ -2107,7 +2367,7 @@ function AddModelDialog({
 
                 <p className="text-[13px] leading-[1.5] text-text-2">
                   {selected.description ??
-                    "Available in the WorkenAI catalog. Used to compare answers against other models in the arena."}
+                    "Available in WorkenAI. Used to compare answers against other models in the arena."}
                 </p>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -2128,8 +2388,7 @@ function AddModelDialog({
               </>
             ) : (
               <p className="text-[13px] text-text-3">
-                No models enabled yet. Ask an admin to enable models in
-                Models → Catalog.
+                No models found. Check back in a moment.
               </p>
             )}
           </div>

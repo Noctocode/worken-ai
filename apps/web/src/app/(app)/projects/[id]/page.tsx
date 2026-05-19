@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  AlertTriangle,
   ArrowLeft,
   Send,
   Paperclip,
@@ -18,17 +19,27 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchIntegrations,
   fetchProject,
   fetchConversation,
   createConversation,
   streamChatMessage,
+  updateProject,
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { useAuth } from "@/components/providers";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { humanizeChatError } from "@/lib/chat-errors";
 
 interface LocalMessage {
@@ -46,6 +57,12 @@ interface LocalMessage {
    *  whatever was buffered. Drives the "Stopped" badge so the
    *  conversation history reflects that the response was cut short. */
   partial?: boolean;
+  /** True when this bubble holds a client-only error message — i.e.
+   *  the request never reached the BE assistant-write step. The
+   *  sync-from-BE effect preserves trailing error bubbles so they
+   *  don't flash for a single frame and vanish on the post-error
+   *  conversation refetch. */
+  isError?: boolean;
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -81,6 +98,70 @@ export default function ProjectChatPage() {
   } = useQuery({
     queryKey: ["project", projectId],
     queryFn: () => fetchProject(projectId),
+  });
+
+  // Effective model list for the picker in the project header.
+  // Same source as the arena — aliases the user owns plus any BYOK-
+  // unlocked catalog models — so what they see here matches what
+  // chat can actually route. `effective` carries the per-entry
+  // routing so we can tag picker items with "(BYOK)" / "(Custom)"
+  // — lets the user tell whose tokens get billed for each pick.
+  const { effective: effectiveModels, getLabel: getModelLabel } =
+    useUserModels();
+
+  // Append a routing marker to the model label so the user can tell
+  // at a glance whether a pick will hit their BYOK key, a Custom LLM
+  // endpoint, or our default WorkenAI / OpenRouter route. No marker
+  // for the WorkenAI route — that's the default and the empty state.
+  const labelWithRouting = (id: string): string => {
+    const m = effectiveModels.find((x) => x.id === id);
+    const base = m?.name ?? getModelLabel(id);
+    if (!m) return base;
+    if (m.routing === "byok") return `${base} (BYOK)`;
+    if (m.routing === "custom") return `${base} (Custom)`;
+    return base;
+  };
+
+  // BYOK fallback signal: the caller has at least one personal
+  // integration with a key set but flipped off in the Integration
+  // tab, AND the project's current model maps to that provider —
+  // meaning chat-transport is going to fall through to the WorkenAI
+  // default route instead of the user's own key. Surfaces as an
+  // inline banner above the chat so the user knows why their
+  // tokens (and not their own provider key) are getting billed.
+  const { data: integrations = [] } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: fetchIntegrations,
+    staleTime: 60 * 1000,
+  });
+  const projectProvider = project?.model
+    ? project.model.includes("/")
+      ? project.model.slice(0, project.model.indexOf("/"))
+      : null
+    : null;
+  const pausedByokIntegration =
+    projectProvider && project
+      ? integrations.find(
+          (i) =>
+            i.providerId === projectProvider &&
+            i.hasApiKey &&
+            !i.isEnabled,
+        ) ?? null
+      : null;
+
+  const updateModelMutation = useMutation({
+    mutationFn: (model: string) => updateProject(projectId, { model }),
+    onSuccess: (updated) => {
+      // Refetch so the cached project (and `project.model` used by
+      // streamChatMessage on the next send) reflects the switch
+      // before the user types again.
+      queryClient.setQueryData(["project", projectId], updated);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to change model",
+      );
+    },
   });
 
   const [activeConversationId, setActiveConversationId] = useState<
@@ -121,43 +202,55 @@ export default function ProjectChatPage() {
     },
   );
 
-  // Sync fetched messages to local state
+  // Sync fetched messages to local state.
+  //
+  // Preserves a *trailing* client-only error bubble (`isError: true`)
+  // that the BE doesn't know about. Without this, an error message
+  // we just wrote into local state (e.g. budget gate 402, guardrail
+  // input block, network failure) gets clobbered by the post-error
+  // conversation refetch fired from the submit handler's finally
+  // block — the bubble appears for a single frame and vanishes. The
+  // length check makes sure we only re-attach the error when the BE
+  // genuinely has fewer messages (i.e. the assistant write never
+  // landed). On a successful retry the BE catches up, lengths align,
+  // and the stale error gets dropped naturally.
   useEffect(() => {
-    if (conversationData?.messages) {
-      setMessages(
-        conversationData.messages.map((m: ConversationMessage) => {
-          // Pull both reasoning_details and the partial flag out of
-          // the jsonb metadata blob in one go. Both are optional and
-          // typed as `unknown` on the wire, so narrow defensively.
-          const meta =
-            m.metadata && typeof m.metadata === "object"
-              ? (m.metadata as Record<string, unknown>)
-              : null;
-          return {
-            id: m.id,
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.createdAt).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            }),
-            reasoning:
-              // BE persists thinking text under metadata.reasoning_details
-              // as a plain string (the stream accumulator stringifies
-              // every `reasoning` SSE delta into one buffer). Defensive
-              // narrowing covers legacy non-stream rows that may have
-              // stored a structured object instead.
-              typeof meta?.reasoning_details === "string"
-                ? (meta.reasoning_details as string)
-                : undefined,
-            partial: meta?.partial === true,
-            userId: m.userId,
-            userName: m.userName,
-            userPicture: m.userPicture,
-          };
-        }),
-      );
-    }
+    if (!conversationData?.messages) return;
+    const beMessages = conversationData.messages.map(
+      (m: ConversationMessage): LocalMessage => {
+        const meta =
+          m.metadata && typeof m.metadata === "object"
+            ? (m.metadata as Record<string, unknown>)
+            : null;
+        return {
+          id: m.id,
+          role: m.role as "user" | "assistant",
+          content: m.content,
+          timestamp: new Date(m.createdAt).toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          }),
+          reasoning:
+            typeof meta?.reasoning_details === "string"
+              ? (meta.reasoning_details as string)
+              : undefined,
+          partial: meta?.partial === true,
+          userId: m.userId,
+          userName: m.userName,
+          userPicture: m.userPicture,
+        };
+      },
+    );
+    setMessages((prev) => {
+      const trailing = prev[prev.length - 1];
+      if (
+        trailing?.isError &&
+        beMessages.length < prev.length
+      ) {
+        return [...beMessages, trailing];
+      }
+      return beMessages;
+    });
   }, [conversationData]);
 
   useEffect(() => {
@@ -308,7 +401,7 @@ export default function ProjectChatPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId
-                ? { ...m, content: blockedMessage }
+                ? { ...m, content: blockedMessage, isError: true }
                 : m,
             ),
           );
@@ -322,7 +415,9 @@ export default function ProjectChatPage() {
           );
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, content: errMessage } : m,
+              m.id === assistantId
+                ? { ...m, content: errMessage, isError: true }
+                : m,
             ),
           );
         } else if (event.type === "done") {
@@ -357,6 +452,7 @@ export default function ProjectChatPage() {
                   ...m,
                   content:
                     "No response from the AI gateway. The streaming endpoint may not be available — try refreshing the page, and if the problem persists, restart the API server.",
+                  isError: true,
                 }
               : m,
           ),
@@ -376,7 +472,7 @@ export default function ProjectChatPage() {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantId
-              ? { ...m, content: humanizeChatError(err) }
+              ? { ...m, content: humanizeChatError(err), isError: true }
               : m,
           ),
         );
@@ -485,18 +581,78 @@ export default function ProjectChatPage() {
               {project.name}
             </h1>
           </div>
-          <Badge
-            variant="secondary"
-            className="gap-1 border border-border-2 bg-bg-1 text-xs font-medium text-text-2"
+          {/* Model picker — swap the model the project chats with.
+              Optimistic feel via setQueryData on success so the next
+              send picks up the new id without waiting on a refetch. */}
+          <Select
+            value={project.model}
+            onValueChange={(next) => {
+              if (next && next !== project.model) {
+                updateModelMutation.mutate(next);
+              }
+            }}
+            disabled={updateModelMutation.isPending}
           >
-            <Sparkles className="h-3 w-3" />
-            {project.model}
-          </Badge>
+            <SelectTrigger
+              aria-label="Change project model"
+              className="h-8 w-auto gap-1 border-border-2 bg-bg-1 px-2.5 text-xs font-medium text-text-2 hover:text-text-1 focus:ring-0 focus:ring-offset-0"
+            >
+              <Sparkles className="h-3 w-3" />
+              <SelectValue>{labelWithRouting(project.model)}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end" className="max-h-[320px]">
+              {/* If the project's current model is not in the effective
+                  list (stale slug, e.g. an old default that no longer
+                  resolves), surface it at the top with an "(unavailable)"
+                  marker so the picker still reflects the stored value
+                  and the user can switch off it. */}
+              {!effectiveModels.some((m) => m.id === project.model) && (
+                <SelectItem value={project.model} disabled>
+                  {project.model} (unavailable)
+                </SelectItem>
+              )}
+              {effectiveModels.map((m) => (
+                <SelectItem key={m.id} value={m.id}>
+                  {labelWithRouting(m.id)}
+                </SelectItem>
+              ))}
+              {effectiveModels.length === 0 && (
+                <div className="px-3 py-2 text-xs text-text-3">
+                  No models available yet.
+                </div>
+              )}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+            {pausedByokIntegration && (
+              <div className="mb-4 flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1/40 px-4 py-3">
+                <AlertTriangle
+                  className="mt-0.5 h-5 w-5 shrink-0 text-warning-7"
+                  strokeWidth={2}
+                />
+                <div className="flex-1 text-[13px] leading-relaxed text-text-2">
+                  <p className="font-semibold text-text-1">
+                    Your {pausedByokIntegration.displayName} key is paused.
+                  </p>
+                  <p className="text-text-3">
+                    Chat for this project is routing through the WorkenAI
+                    default instead of your own provider key. Re-enable it
+                    on the{" "}
+                    <Link
+                      href="/teams?tab=integration"
+                      className="font-medium text-primary-6 hover:text-primary-7 underline"
+                    >
+                      Integration tab
+                    </Link>{" "}
+                    to bill against your account again.
+                  </p>
+                </div>
+              </div>
+            )}
             <div className="space-y-6">
               {/* Empty state */}
               {messages.length === 0 && !isLoadingConversation && (

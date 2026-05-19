@@ -125,9 +125,7 @@ export class ObservabilityService {
       // Defensive — if the lookup fails for any reason, never break the
       // user-facing call path. The event just gets a NULL team.
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `getPrimaryTeamId failed for user ${userId}: ${msg}`,
-      );
+      this.logger.warn(`getPrimaryTeamId failed for user ${userId}: ${msg}`);
       return null;
     }
   }
@@ -184,7 +182,10 @@ export class ObservabilityService {
       .orderBy(bucketSql);
 
     return rows.map((r) => ({
-      bucket: typeof r.bucket === 'string' ? r.bucket : new Date(r.bucket).toISOString(),
+      bucket:
+        typeof r.bucket === 'string'
+          ? r.bucket
+          : new Date(r.bucket).toISOString(),
       tokens: Number(r.tokens ?? 0),
       cost: Number(r.cost ?? 0),
       calls: Number(r.calls ?? 0),
@@ -241,7 +242,7 @@ export class ObservabilityService {
 
     return rows.map((r) => ({
       teamId: r.teamId,
-      teamName: r.teamName ?? (r.teamId ? "(unknown team)" : "Personal"),
+      teamName: r.teamName ?? (r.teamId ? '(unknown team)' : 'Personal'),
       cost: Number(r.cost ?? 0),
       tokens: Number(r.tokens ?? 0),
       avgLatencyMs: Number(r.avgLatencyMs ?? 0),
@@ -250,7 +251,13 @@ export class ObservabilityService {
     }));
   }
 
-  async listEvents(opts: {
+  /**
+   * Shared WHERE-clause builder for the events table. Extracted so the
+   * paginated table view (`listEvents`) and the CSV export
+   * (`exportEvents`) stay byte-for-byte aligned on filtering — adding
+   * a new filter only needs to land in one place.
+   */
+  private buildEventsWhere(opts: {
     from: Date;
     to: Date;
     search?: string | null;
@@ -258,15 +265,15 @@ export class ObservabilityService {
     teamId?: string | null;
     model?: string | null;
     eventType?: string | null;
-    page: number;
-    pageSize: number;
   }) {
     const conditions = [
       gte(observabilityEvents.createdAt, opts.from),
       lte(observabilityEvents.createdAt, opts.to),
     ];
-    if (opts.userId) conditions.push(eq(observabilityEvents.userId, opts.userId));
-    if (opts.teamId) conditions.push(eq(observabilityEvents.teamId, opts.teamId));
+    if (opts.userId)
+      conditions.push(eq(observabilityEvents.userId, opts.userId));
+    if (opts.teamId)
+      conditions.push(eq(observabilityEvents.teamId, opts.teamId));
     if (opts.model) conditions.push(eq(observabilityEvents.model, opts.model));
     if (opts.eventType)
       conditions.push(eq(observabilityEvents.eventType, opts.eventType));
@@ -280,8 +287,21 @@ export class ObservabilityService {
       );
       if (searchClause) conditions.push(searchClause);
     }
+    return and(...conditions);
+  }
 
-    const where = and(...conditions);
+  async listEvents(opts: {
+    from: Date;
+    to: Date;
+    search?: string | null;
+    userId?: string | null;
+    teamId?: string | null;
+    model?: string | null;
+    eventType?: string | null;
+    page: number;
+    pageSize: number;
+  }) {
+    const where = this.buildEventsWhere(opts);
     const limit = Math.max(1, Math.min(opts.pageSize, 200));
     const offset = Math.max(0, (opts.page - 1) * limit);
 
@@ -329,12 +349,81 @@ export class ObservabilityService {
     };
   }
 
+  /**
+   * Un-paginated event fetch used by the CSV export path. Same shape
+   * + same WHERE as `listEvents`, just no `limit`/`offset` pagination
+   * — instead we cap at `MAX_EXPORT_ROWS` so a careless export over a
+   * wide range can't OOM the server. The FE shows a toast warning if
+   * the cap was hit so the admin knows they need to narrow the
+   * filter before re-exporting.
+   */
+  async exportEvents(opts: {
+    from: Date;
+    to: Date;
+    search?: string | null;
+    userId?: string | null;
+    teamId?: string | null;
+    model?: string | null;
+    eventType?: string | null;
+  }) {
+    const MAX_EXPORT_ROWS = 10_000;
+    const where = this.buildEventsWhere(opts);
+
+    const [{ total }] = await this.db
+      .select({ total: sql<number>`count(*)::int` })
+      .from(observabilityEvents)
+      .leftJoin(users, eq(users.id, observabilityEvents.userId))
+      .where(where);
+
+    const rows = await this.db
+      .select({
+        id: observabilityEvents.id,
+        createdAt: observabilityEvents.createdAt,
+        eventType: observabilityEvents.eventType,
+        model: observabilityEvents.model,
+        provider: observabilityEvents.provider,
+        totalTokens: observabilityEvents.totalTokens,
+        costUsd: sql<string>`${observabilityEvents.costUsd}::text`,
+        latencyMs: observabilityEvents.latencyMs,
+        success: observabilityEvents.success,
+        errorMessage: observabilityEvents.errorMessage,
+        promptPreview: observabilityEvents.promptPreview,
+        userId: observabilityEvents.userId,
+        userName: users.name,
+        userEmail: users.email,
+        teamId: observabilityEvents.teamId,
+        teamName: teams.name,
+      })
+      .from(observabilityEvents)
+      .leftJoin(users, eq(users.id, observabilityEvents.userId))
+      .leftJoin(teams, eq(teams.id, observabilityEvents.teamId))
+      .where(where)
+      .orderBy(desc(observabilityEvents.createdAt))
+      .limit(MAX_EXPORT_ROWS);
+
+    return {
+      total: Number(total ?? 0),
+      truncated: Number(total ?? 0) > MAX_EXPORT_ROWS,
+      maxRows: MAX_EXPORT_ROWS,
+      events: rows.map((r) => ({
+        ...r,
+        costUsd: r.costUsd === null ? null : Number(r.costUsd),
+      })),
+    };
+  }
+
   async guardrailActivity(from: Date, to: Date) {
     const rows = await this.db
       .select({
-        guardrailId: sql<string | null>`${observabilityEvents.metadata} ->> 'guardrailId'`,
-        guardrailName: sql<string | null>`${observabilityEvents.metadata} ->> 'name'`,
-        severity: sql<string | null>`${observabilityEvents.metadata} ->> 'severity'`,
+        guardrailId: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'guardrailId'`,
+        guardrailName: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'name'`,
+        severity: sql<
+          string | null
+        >`${observabilityEvents.metadata} ->> 'severity'`,
         count: sql<number>`count(*)::int`,
         lastTriggeredAt: sql<Date>`max(${observabilityEvents.createdAt})`,
       })
@@ -353,7 +442,10 @@ export class ObservabilityService {
       )
       .orderBy(sql`count(*) desc`);
 
-    const totalTriggers = rows.reduce((sum, r) => sum + Number(r.count ?? 0), 0);
+    const totalTriggers = rows.reduce(
+      (sum, r) => sum + Number(r.count ?? 0),
+      0,
+    );
     return { totalTriggers, triggers: rows };
   }
 
@@ -369,7 +461,8 @@ export class ObservabilityService {
         eventType: input.eventType,
         model: input.model ?? null,
         provider:
-          input.provider ?? (input.model ? providerFromModel(input.model) : null),
+          input.provider ??
+          (input.model ? providerFromModel(input.model) : null),
         promptTokens: input.promptTokens ?? null,
         completionTokens: input.completionTokens ?? null,
         totalTokens: input.totalTokens ?? null,

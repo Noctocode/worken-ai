@@ -1,7 +1,11 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { fetchEffectiveModels, type AvailableModel } from "@/lib/api";
+import {
+  fetchEffectiveModels,
+  type AvailableModel,
+  type EffectiveModel,
+} from "@/lib/api";
 
 const STALE_TIME_MS = 60 * 1000; // 1 min — list moves when user edits Models or Integration tabs
 
@@ -17,7 +21,7 @@ const STALE_TIME_MS = 60 * 1000; // 1 min — list moves when user edits Models 
  *
  * Returns an empty list when the user has neither aliases nor BYOK
  * keys; UI should treat that as a setup-required state (the arena
- * already does — it gates on `< 2 models`).
+ * gates on `< 2 models`, project create alerts the user instead).
  *
  * The hook keeps the same shape as useAvailableModels for drop-in
  * compatibility — consumers that just need {id, name, getLabel} don't
@@ -25,6 +29,11 @@ const STALE_TIME_MS = 60 * 1000; // 1 min — list moves when user edits Models 
  */
 export function useUserModels(): {
   models: AvailableModel[];
+  /** Same models as `models`, with the `routing` field preserved so
+   *  pickers can append a "(BYOK)" / "(Custom)" marker. Kept separate
+   *  so legacy callers that only need `AvailableModel` don't need to
+   *  worry about the extra field. */
+  effective: EffectiveModel[];
   isLoading: boolean;
   error: unknown;
   getLabel: (id: string) => string;
@@ -35,11 +44,9 @@ export function useUserModels(): {
     staleTime: STALE_TIME_MS,
   });
 
-  const all = data ?? [];
-  // Strip the BE-only `source` / `aliasId` fields for callers that only
-  // know AvailableModel. Order is BE-controlled: aliases first, then
-  // BYOK catalog entries.
-  const models: AvailableModel[] = all.map((m) => ({
+  const effective = data ?? [];
+  // Order is BE-controlled: aliases first, then BYOK catalog entries.
+  const models: AvailableModel[] = effective.map((m) => ({
     id: m.id,
     name: m.name,
     description: m.description,
@@ -50,5 +57,5 @@ export function useUserModels(): {
   const getLabel = (id: string) =>
     models.find((m) => m.id === id)?.name ?? id;
 
-  return { models, isLoading, error, getLabel };
+  return { models, effective, isLoading, error, getLabel };
 }

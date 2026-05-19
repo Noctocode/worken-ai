@@ -546,8 +546,7 @@ export class GuardrailsSectionService {
         .where(eq(guardrails.id, guardrailId))
         .limit(1);
       const ruleName = rule?.name ?? 'A guardrail';
-      const recipients =
-        await this.notifications.getCompanyUsers(callerUserId);
+      const recipients = await this.notifications.getCompanyUsers(callerUserId);
       await Promise.allSettled(
         recipients.map((userId) =>
           this.notifications.create({
@@ -574,11 +573,7 @@ export class GuardrailsSectionService {
    * other teams keep their links, and the owner can re-link the team
    * later from the team page.
    */
-  async unassignFromTeam(
-    guardrailId: string,
-    teamId: string,
-    userId: string,
-  ) {
+  async unassignFromTeam(guardrailId: string, teamId: string, userId: string) {
     const [rule] = await this.db
       .select({ ownerId: guardrails.ownerId })
       .from(guardrails)

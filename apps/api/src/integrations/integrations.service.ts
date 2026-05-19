@@ -91,10 +91,7 @@ export class IntegrationsService {
       .select()
       .from(integrations)
       .where(
-        and(
-          eq(integrations.ownerId, userId),
-          isNull(integrations.teamId),
-        ),
+        and(eq(integrations.ownerId, userId), isNull(integrations.teamId)),
       );
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
@@ -219,9 +216,7 @@ export class IntegrationsService {
 
     // Predefined first, in catalog order.
     for (const p of PREDEFINED_PROVIDERS) {
-      const row = rows.find(
-        (r) => r.providerId === p.id && r.apiUrl === null,
-      );
+      const row = rows.find((r) => r.providerId === p.id && r.apiUrl === null);
       out.push({
         id: row?.id ?? null,
         providerId: p.id,
@@ -468,7 +463,8 @@ export class IntegrationsService {
 
     const all = await this.listForUser(userId);
     const view = all.find((v) => v.id === id);
-    if (!view) throw new NotFoundException('Integration not found after update');
+    if (!view)
+      throw new NotFoundException('Integration not found after update');
     return view;
   }
 

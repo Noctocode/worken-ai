@@ -96,8 +96,8 @@ export default function SetupProfileLayout({
   // Snapshotted ONCE on mount via a ref. Step 6's submit invalidates
   // ["auth","me"], which would flip onboardingCompleted to true mid-
   // flow; if we re-evaluated on every change we'd redirect away from
-  // the "Training your AI…" progress screen before it had a chance to
-  // poll. Step 6 owns the post-success redirect itself.
+  // the "Setting up your AI…" progress screen before it had a chance
+  // to poll. Step 6 owns the post-success redirect itself.
   const guardRanRef = useRef(false);
   // Tri-state guard:
   //   "checking" — initial; we don't yet know if this visitor is

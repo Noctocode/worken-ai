@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
-  Menu,
   ChevronRight,
   Search,
   Bell,
@@ -36,8 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { SidebarContent } from "./sidebar";
+import { MobileTopbar } from "./mobile-topbar";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
@@ -106,26 +104,12 @@ export const Appbar = () => {
     const teamName = breadcrumbs[breadcrumbs.length - 1]?.label ?? "";
 
     return (
-      <header
-        className={`sticky top-0 z-20 flex py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-2">
-          {/* Mobile Menu Trigger */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link href="/teams">
             <Button
               variant="ghost"
@@ -178,7 +162,8 @@ export const Appbar = () => {
             </Button>
           </DisabledReasonTooltip>
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
@@ -203,26 +188,12 @@ export const Appbar = () => {
     const canDelete = isAdmin;
 
     return (
-      <header
-        className={`sticky top-0 z-20 flex py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-2">
-          {/* Mobile Menu Trigger */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link href="/teams?tab=users">
             <Button
               variant="ghost"
@@ -264,7 +235,8 @@ export const Appbar = () => {
             )}
           </div>
         )}
-      </header>
+        </header>
+      </>
     );
   }
 
@@ -284,25 +256,11 @@ export const Appbar = () => {
     };
 
     return (
-      <header
-        className={`sticky top-0 z-20 flex items-center gap-[80px] px-6 py-6 ${config.bg}`}
-      >
-        {/* Mobile Menu */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[88px]">
-            <SidebarContent showToggle={false} forceCollapsed />
-          </SheetContent>
-        </Sheet>
-
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 items-center gap-6 lg:gap-12 px-6 py-6 ${config.bg}`}
+        >
         <h4 className="text-text-1 shrink-0">AI Chat</h4>
 
         <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
@@ -328,7 +286,8 @@ export const Appbar = () => {
             className="flex-1 bg-transparent text-[16px] leading-[24px] text-text-1 outline-none placeholder:text-text-3"
           />
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
@@ -339,21 +298,12 @@ export const Appbar = () => {
     const extraCount = members.length > 4 ? members.length - 4 : 0;
 
     return (
-      <header
-        className={`sticky top-0 z-20 flex items-center justify-between py-6 px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 items-center justify-between py-6 px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-4">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button variant="ghost" size="icon" className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link href="/">
             <Button variant="ghost" size="icon" className="h-8 w-8 text-black-700 hover:text-black-900">
               <ArrowLeft className="h-4 w-4" />
@@ -463,32 +413,20 @@ export const Appbar = () => {
             </InviteMemberDialog>
           )}
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
   /* ── Create project appbar ────────────────────────────────────────────── */
   if (config.appbarType === "createProject") {
     return (
-      <header
-        className={`sticky top-0 z-20 flex py-6 items-center border-b border-bg-1 px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center border-b border-bg-1 px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-2">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link href="/">
             <Button
               variant="ghost"
@@ -500,32 +438,20 @@ export const Appbar = () => {
           </Link>
           <h4 className="text-[26px] font-bold text-text-1">Create Project</h4>
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
   /* ── Tender create appbar ─────────────────────────────────────────────── */
   if (config.appbarType === "tenderCreate") {
     return (
-      <header
-        className={`sticky top-0 z-20 flex py-6 items-center px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-3">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link
             href="/tender-ai"
             className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2 hover:text-primary-6"
@@ -534,32 +460,20 @@ export const Appbar = () => {
             Back to Dashboard
           </Link>
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
   /* ── Tender detail appbar ─────────────────────────────────────────────── */
   if (config.appbarType === "tenderDetail") {
     return (
-      <header
-        className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
-      >
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
+        >
         <div className="flex items-center gap-3">
-          <Sheet>
-            <SheetTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-              >
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="p-0 w-[88px]">
-              <SidebarContent showToggle={false} forceCollapsed />
-            </SheetContent>
-          </Sheet>
-
           <Link href="/tender-ai">
             <Button
               variant="ghost"
@@ -598,30 +512,17 @@ export const Appbar = () => {
             Share with Team
           </Button>
         </div>
-      </header>
+        </header>
+      </>
     );
   }
 
   /* ── Default appbar ──────────────────────────────────────────────────── */
   return (
-    <header className={`sticky top-0 z-20 flex py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
+    <>
+      <MobileTopbar />
+      <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
-        {/* Mobile Menu Trigger */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0 text-slate-500 hover:bg-slate-100 md:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-[88px]">
-            <SidebarContent showToggle={false} forceCollapsed />
-          </SheetContent>
-        </Sheet>
-
         {config.title ? (
           <h4 className="text-[26px] font-bold text-text-1">{config.title}</h4>
         ) : (
@@ -662,7 +563,11 @@ export const Appbar = () => {
         {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
 
         {config.appbarSearch && (
-          <div className="relative hidden flex-1 sm:block">
+          // Fills the right-controls container; the left margin (34px)
+          // stacks with the header's gap-4 (16px) for a consistent
+          // ~50px breathing room between the title and the search,
+          // independent of how wide the appbar gets.
+          <div className="relative hidden flex-1 sm:block ml-[34px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
               type="text"
@@ -720,7 +625,8 @@ export const Appbar = () => {
           </>
         )}
       </div>
-    </header>
+      </header>
+    </>
   );
 };
 
@@ -743,6 +649,28 @@ const OBSERVABILITY_RANGES = [
 
 function ObservabilityAppbarSlot() {
   const [range, setRange] = useState<string>("7d");
+  // Page → appbar signal: enables / disables Export CSV based on
+  // whether the current filter set has any rows on the BE. Default
+  // disabled until the page reports a non-empty result, so the button
+  // can't be clicked before the first events fetch resolves.
+  const [exportEnabled, setExportEnabled] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  useEffect(() => {
+    const onEnabled = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      setExportEnabled(Boolean(detail));
+    };
+    const onExporting = (e: Event) => {
+      const detail = (e as CustomEvent<boolean>).detail;
+      setExporting(Boolean(detail));
+    };
+    window.addEventListener("observability:export-enabled", onEnabled);
+    window.addEventListener("observability:export-busy", onExporting);
+    return () => {
+      window.removeEventListener("observability:export-enabled", onEnabled);
+      window.removeEventListener("observability:export-busy", onExporting);
+    };
+  }, []);
   return (
     <>
       <Select
@@ -782,16 +710,24 @@ function ObservabilityAppbarSlot() {
       </Select>
       <Button
         variant="outline"
+        disabled={!exportEnabled || exporting}
         onClick={() =>
           window.dispatchEvent(new CustomEvent("observability:export"))
+        }
+        title={
+          exporting
+            ? "Preparing CSV…"
+            : exportEnabled
+              ? "Export the currently filtered events as CSV"
+              : "No events match the current filters"
         }
         // Project Button defaults to h-12 (size=default in this fork), so
         // the Time Range Select at h-9 looked shorter. Pin h-9 + matching
         // px-3 / text-sm so the two controls read as a pair.
-        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1"
+        className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Download className="h-4 w-4" />
-        Export CSV
+        {exporting ? "Exporting…" : "Export CSV"}
       </Button>
     </>
   );

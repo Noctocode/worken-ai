@@ -2,15 +2,16 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import {
   AlertTriangle,
   Check,
   CheckCircle,
-  ChevronLeft,
-  ChevronRight,
   Eye,
   Loader2,
+  MoreVertical,
   Pencil,
+  Plus,
   Search,
   Shield,
   ShieldCheck,
@@ -18,6 +19,12 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,6 +37,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -132,17 +140,18 @@ function StatCard({
   iconBg: string;
 }) {
   return (
-    <div className="flex flex-1 gap-3 rounded-[20px] bg-bg-white p-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+    <div className="flex flex-1 gap-2 lg:gap-3 rounded-[10px] lg:rounded-[20px] border border-border-2 lg:border-transparent bg-bg-white p-3 lg:p-6 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
+        className={`flex h-9 w-9 lg:h-10 lg:w-10 shrink-0 items-center justify-center rounded-lg ${iconBg}`}
       >
-        <Icon className="h-5 w-5" strokeWidth={2} />
+        <Icon className="h-4 w-4 lg:h-5 lg:w-5" strokeWidth={2} />
       </span>
-      <div className="flex flex-col">
-        <span className="text-[24px] font-bold leading-tight text-text-1">
+      <div className="flex min-w-0 flex-col">
+        <span className="text-[11px] lg:hidden text-text-2 truncate">{label}</span>
+        <span className="text-[20px] lg:text-[24px] font-bold leading-tight text-text-1">
           {value}
         </span>
-        <span className="text-[13px] text-text-2">{label}</span>
+        <span className="hidden lg:inline text-[13px] text-text-2">{label}</span>
       </div>
     </div>
   );
@@ -238,8 +247,8 @@ function OverviewTab({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Stats */}
-      <div className="flex flex-wrap gap-4">
+      {/* Stats — 2x2 grid on mobile, 4-up on desktop. */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-4">
         <StatCard
           label="Active Rules"
           value={String(stats?.activeRules ?? 0)}
@@ -266,22 +275,28 @@ function OverviewTab({
         />
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap items-center gap-6">
-        <h3 className="text-[18px] font-bold text-text-1">All Guardrails</h3>
+      {/* Filters — mobile: wrapped in a white card per Figma 4708:31029
+          with the title row, full-width search, and 2 selects side-by-
+          side as flex-1 chips. Desktop: same flat single-row layout
+          we've always had. */}
+      <div className="flex flex-col gap-2.5 rounded-xl border border-border-2 bg-bg-white p-4 lg:flex-row lg:items-center lg:gap-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:flex-wrap">
+        <h3 className="text-[16px] font-semibold text-text-1 lg:text-[18px] lg:font-bold">
+          All Guardrails
+        </h3>
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
+          <Search className="pointer-events-none absolute left-3 lg:left-4 top-1/2 h-4 w-4 lg:h-5 lg:w-5 -translate-y-1/2 text-text-3" />
           <Input
+            id="guardrails-search"
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
               setPage(1);
             }}
             placeholder="Search guardrails..."
-            className="h-12 rounded-xl border-border-3 bg-bg-white pl-12 text-[16px] placeholder:text-text-3"
+            className="h-10 lg:h-12 rounded-md lg:rounded-xl border-border-3 bg-bg-white pl-10 lg:pl-12 text-[14px] lg:text-[16px] placeholder:text-text-3"
           />
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 lg:gap-4">
           <Select
             value={severity}
             onValueChange={(v) => {
@@ -289,7 +304,7 @@ function OverviewTab({
               setPage(1);
             }}
           >
-            <SelectTrigger className="cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-6 text-[16px] data-[size=default]:h-12">
+            <SelectTrigger className="flex-1 lg:flex-none cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 lg:px-6 text-[14px] lg:text-[16px] data-[size=default]:h-10 lg:data-[size=default]:h-12">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -300,7 +315,7 @@ function OverviewTab({
             </SelectContent>
           </Select>
           <Select value={timeFilter} onValueChange={setTimeFilter}>
-            <SelectTrigger className="cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-6 text-[16px] data-[size=default]:h-12">
+            <SelectTrigger className="flex-1 lg:flex-none cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 lg:px-6 text-[14px] lg:text-[16px] data-[size=default]:h-10 lg:data-[size=default]:h-12">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -313,8 +328,111 @@ function OverviewTab({
         </div>
       </div>
 
-      {/* Table */}
-      <div className="overflow-hidden rounded-[20px]">
+      {/* Mobile card list (<lg) — table-per-row pattern doesn't survive
+          on a 375px viewport with 7 columns. Each guardrail becomes a
+          card carrying Name + ••• actions, then a badges row (type +
+          scope + severity), and a triggers tally. Toggle/edit/delete
+          live inside the kebab menu so the card stays compact. */}
+      <div className="lg:hidden flex flex-col gap-2">
+        {paginated.map((g) => (
+          <div
+            key={g.id}
+            className={`flex flex-col gap-2.5 rounded-[10px] border border-border-2 bg-bg-white p-3.5 ${SEVERITY_ROW_ACCENT[g.severity]}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-1">
+                {g.name}
+              </span>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label={`Actions for ${g.name}`}
+                    className="flex h-7 w-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-text-3 hover:bg-bg-1 hover:text-text-1"
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    className="gap-2"
+                    onClick={() => onToggle(g.id)}
+                  >
+                    {g.isActive ? (
+                      <>
+                        <X className="h-4 w-4" />
+                        Pause
+                      </>
+                    ) : (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Activate
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                  {canOrgWide && (
+                    <DropdownMenuItem
+                      className="gap-2"
+                      onClick={() => onToggleOrgWide(g.id)}
+                    >
+                      <Shield className="h-4 w-4" />
+                      {g.isOrgWide ? "Disable Org-wide" : "Enable Org-wide"}
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem
+                    className="gap-2"
+                    onClick={() => onEdit(g)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="gap-2 text-danger-6 focus:text-danger-6"
+                    onSelect={() => setDeleteId(g.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="rounded-md bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-text-2">
+                {g.type}
+              </span>
+              {g.isOrgWide && (
+                <span className="rounded-md bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6">
+                  Org-wide
+                </span>
+              )}
+              <span
+                className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${SEVERITY_STYLES[g.severity]}`}
+              >
+                {g.severity}
+              </span>
+              {!g.isActive && (
+                <span className="rounded-md bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3">
+                  Paused
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1.5 text-[12px] text-text-3">
+              <span>Triggers:</span>
+              <span className="text-[13px] font-semibold text-text-1">
+                {g.triggers.toLocaleString()}
+              </span>
+            </div>
+          </div>
+        ))}
+        {paginated.length === 0 && (
+          <div className="rounded-[10px] border border-border-2 bg-bg-white px-4 py-10 text-center text-[13px] text-text-3">
+            No guardrails found.
+          </div>
+        )}
+      </div>
+
+      {/* Desktop table — same data, original layout, only rendered at lg+. */}
+      <div className="hidden lg:block overflow-hidden rounded-[20px]">
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-border-2 text-[14px] font-medium text-text-2">
@@ -456,49 +574,15 @@ function OverviewTab({
             )}
           </tbody>
         </table>
-
-        {/* Pagination */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between border-t border-border-2 px-6 py-3">
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-1.5 text-[13px]"
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              <ChevronLeft className="h-3.5 w-3.5" />
-              Previous
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                (p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setPage(p)}
-                    className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded text-[13px] transition-colors ${
-                      p === page
-                        ? "bg-primary-6 font-semibold text-white"
-                        : "text-text-2 hover:bg-bg-1"
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ),
-              )}
-            </div>
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-1.5 text-[13px]"
-              disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-              <ChevronRight className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        )}
       </div>
+
+      {/* Pagination — shared by mobile card list + desktop table. */}
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={setPage}
+        className="px-4 lg:px-6"
+      />
 
       {/* Delete dialog */}
       <Dialog
@@ -564,54 +648,99 @@ function TemplatesTab({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {templates.map((t) => (
-        <div
-          key={t.id}
-          className="flex flex-col gap-4 rounded-[20px] border border-border-3 bg-bg-white p-6"
-        >
-          <div className="flex items-start justify-between">
-            <div className="flex items-center gap-4">
-              <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
-              <div className="flex flex-col">
-                <h3 className="text-[18px] font-bold text-text-1">{t.name}</h3>
-                <span className="text-[13px] font-normal text-text-3">
-                  {t.ruleCount} rules
-                </span>
+    <div className="flex flex-col gap-3 lg:gap-6">
+      {/* Mobile-only page title — matches Figma 4716:31110. Desktop
+          renders the tab name in the appbar so we don't double up. */}
+      <h2 className="lg:hidden -mx-6 border-b border-border-2 bg-bg-white px-4 py-3.5 text-[17px] font-semibold text-text-1">
+        Compliance Templates
+      </h2>
+      {templates.map((t) => {
+        const isApplied = appliedTemplateIds.has(t.id);
+        return (
+          <div
+            key={t.id}
+            className={`flex flex-col gap-3 lg:gap-4 rounded-xl lg:rounded-[20px] border bg-bg-white p-4 lg:p-6 ${
+              isApplied
+                ? "border-primary-6 bg-primary-1/40 lg:border-primary-6"
+                : "border-border-3"
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 lg:gap-4">
+                <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
+                <div className="flex min-w-0 flex-col">
+                  <h3 className="truncate text-[15px] font-semibold text-text-1 lg:text-[18px] lg:font-bold">
+                    {t.name}
+                  </h3>
+                  <span className="hidden text-[13px] font-normal text-text-3 lg:inline">
+                    {t.ruleCount} rules
+                  </span>
+                </div>
+              </div>
+              <span className="rounded-xl bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3 lg:hidden">
+                {t.ruleCount} rules
+              </span>
+              {/* Desktop CTA stays in the title row; mobile pushes it
+                  below the description as a full-width primary action. */}
+              <div className="hidden lg:block">
+                {isApplied ? (
+                  <Button
+                    onClick={() => onDisable(t.id)}
+                    variant="outline"
+                    className="cursor-pointer rounded-lg border-border-3 px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
+                  >
+                    Disable
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => onApply(t.id)}
+                    className="cursor-pointer rounded-lg bg-primary-6 px-6 py-2 text-[16px] font-normal text-white hover:bg-primary-7"
+                  >
+                    Apply
+                  </Button>
+                )}
               </div>
             </div>
-            {appliedTemplateIds.has(t.id) ? (
-              <Button
-                onClick={() => onDisable(t.id)}
-                variant="outline"
-                className="cursor-pointer rounded-lg border-border-3 px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
-              >
-                Disable
-              </Button>
-            ) : (
-              <Button
-                onClick={() => onApply(t.id)}
-                className="cursor-pointer rounded-lg bg-primary-6 px-6 py-2 text-[16px] font-normal text-white hover:bg-primary-7"
-              >
-                Apply
-              </Button>
-            )}
+            <p className="text-[13px] lg:text-[14px] font-normal text-text-3">
+              {t.description}
+            </p>
+            <div className="hidden h-px bg-border-2 lg:block" />
+            <div className="flex flex-col gap-1.5 lg:gap-2.5">
+              <span className="text-[12px] font-medium text-text-2 lg:text-[16px] lg:font-normal lg:text-text-1">
+                Features:
+              </span>
+              {t.features.map((f) => (
+                <div key={f} className="flex items-center gap-2 lg:gap-2.5">
+                  <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                  <span className="text-[13px] lg:text-[14px] font-normal text-text-3">
+                    {f}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {/* Mobile full-width CTA — primary Apply, outline Disable to
+                match the Figma "Enable" state on inactive cards. */}
+            <div className="lg:hidden">
+              {isApplied ? (
+                <Button
+                  onClick={() => onDisable(t.id)}
+                  variant="outline"
+                  className="w-full cursor-pointer rounded-lg border-border-3 py-2.5 text-[15px] font-normal text-text-1 hover:bg-bg-1"
+                >
+                  Disable
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => onApply(t.id)}
+                  className="w-full cursor-pointer rounded-lg bg-primary-6 py-2.5 text-[15px] font-normal text-white hover:bg-primary-7"
+                >
+                  Apply
+                </Button>
+              )}
+            </div>
           </div>
-          <p className="text-[14px] font-normal text-text-3">{t.description}</p>
-          <div className="flex flex-col gap-2.5">
-            <span className="text-[16px] font-normal text-text-1">Features:</span>
-            {t.features.map((f) => (
-              <div
-                key={f}
-                className="flex items-center gap-2.5"
-              >
-                <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary-6" />
-                <span className="text-[14px] font-normal text-text-3">{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -742,31 +871,41 @@ function AddGuardrailDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex w-[90vw] max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded p-0 sm:max-w-[1200px]"
+        // Bound the dialog itself so the page doesn't push past the
+        // viewport on short phones — dvh tracks the live viewport
+        // height (excluding browser chrome) so a fully-open URL bar
+        // doesn't hide the footer. 85vh on desktop is plenty for the
+        // grid + footer; on mobile we leave only a small breathing
+        // margin and rely on the inner scroll for the rest.
+        className="flex max-h-[calc(100dvh-1rem)] sm:max-h-[85vh] w-[95vw] max-w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden rounded p-0 sm:w-[90vw] sm:max-w-[1200px]"
         showCloseButton={false}
       >
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_280px]">
+        {/* Body — single scroll on mobile (whole grid stacks and
+            scrolls together), per-column scroll on desktop. The grid
+            stops scrolling itself at sm+ so each cell can own its
+            own scrollbar without nesting two. */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto sm:grid sm:grid-cols-[1fr_280px] sm:overflow-hidden">
           {/* Left column */}
-          <div className="flex max-h-[70vh] flex-col">
+          <div className="flex flex-col sm:min-h-0">
             {/* Sticky header */}
-            <div className="shrink-0 flex flex-col gap-3 px-6 pt-6 pb-4">
-              <div className="flex items-center justify-between">
+            <div className="shrink-0 flex flex-col gap-2 px-4 pt-4 pb-3 sm:gap-3 sm:px-6 sm:pt-6 sm:pb-4">
+              <div className="flex items-center justify-between gap-2">
                 {/* DialogTitle (vs a plain h2) so Radix can wire it
                     to the dialog's aria-labelledby. The styling
                     overrides the default tiny "leading-none font-
                     semibold" class so it still reads like an h2. */}
-                <DialogTitle className="text-[23px] font-bold leading-tight text-text-1">
+                <DialogTitle className="text-[18px] font-bold leading-tight text-text-1 sm:text-[23px]">
                   {initial ? "Edit guardrail" : "Add guardrail"}
                 </DialogTitle>
                 <button
                   type="button"
                   onClick={() => onOpenChange(false)}
-                  className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
+                  className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
-              <p className="text-[14px] leading-[1.5] text-text-2">
+              <p className="text-[13px] leading-[1.5] text-text-2 sm:text-[14px]">
                 Guardrails detect and mitigate the presence of specific types
                 of risks. To maintain the integrity and reliability of the
                 model&apos;s inputs and outputs, safeguard user data and align
@@ -774,8 +913,11 @@ function AddGuardrailDialog({
               </p>
             </div>
 
-            {/* Scrollable form content */}
-            <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6">
+            {/* Form content — flows freely on mobile (parent scroll
+                takes over); per-column overflow scroll on desktop so
+                the validator picker on the right doesn't push this
+                column past the dialog cap. */}
+            <div className="flex flex-col gap-5 px-4 pb-4 sm:gap-6 sm:px-6 sm:pb-6 sm:min-h-0 sm:flex-1 sm:overflow-y-auto">
             {/* Guardrail name */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
@@ -1037,9 +1179,12 @@ function AddGuardrailDialog({
             </div>
           </div>
 
-          {/* Right: Validator picker sidebar */}
-          <div className="flex max-h-[70vh] flex-col overflow-y-auto border-l border-border-2 bg-bg-1 px-6 py-8">
-            <h3 className="text-[18px] font-semibold leading-[1.3] text-text-1">
+          {/* Right: Validator picker sidebar — on mobile it stacks
+              below the form and rides the parent's single scroll; on
+              desktop it gets its own column scroll within the bounded
+              dialog height. */}
+          <div className="flex flex-col border-t border-border-2 bg-bg-1 px-4 py-4 sm:border-l sm:border-t-0 sm:min-h-0 sm:overflow-y-auto sm:px-6 sm:py-8">
+            <h3 className="text-[16px] font-semibold leading-[1.3] text-text-1 sm:text-[18px]">
               Compliance templates
             </h3>
 
@@ -1091,8 +1236,10 @@ function AddGuardrailDialog({
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between bg-bg-white px-6 py-6">
+        {/* Footer — shrink-0 so Save/Cancel never scroll out of
+            view, regardless of body height. Border at the top makes
+            it visually anchored when the body content sits under. */}
+        <div className="shrink-0 flex items-center justify-between gap-3 border-t border-border-2 bg-bg-white px-4 py-3 sm:px-6 sm:py-6">
           <Button
             variant="outline"
             onClick={() => onOpenChange(false)}
@@ -1279,30 +1426,84 @@ export default function GuardrailsPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-6 py-6">
+    <div className="flex flex-col gap-3 py-3 lg:gap-6 lg:py-6">
+      {/* Mobile in-page header — the desktop appbar (default variant)
+          renders the "Guardrails" title and the appbarAction "Add
+          Guardrail" CTA. At <lg the appbar collapses to MobileTopbar
+          so the page owns this slot itself per Figma 4705:31022 —
+          logo + title left, search jump + Add right. */}
+      <header className="lg:hidden -mx-6 flex items-center justify-between gap-2 border-b border-border-2 bg-bg-white px-4 py-3.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Image
+            src="/main-logo.png"
+            alt="WorkenAI"
+            width={30}
+            height={14}
+            className="shrink-0"
+          />
+          <h1 className="truncate text-[18px] font-semibold text-text-1">
+            Guardrails
+          </h1>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              // No global command palette yet — jump to the in-page
+              // filter section's search input and focus it. Matches
+              // the Figma search icon affordance without needing a
+              // new modal.
+              const el = document.getElementById("guardrails-search");
+              if (el) {
+                el.scrollIntoView({ behavior: "smooth", block: "center" });
+                el.focus({ preventScroll: true });
+              }
+            }}
+            aria-label="Search guardrails"
+            className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-medium text-text-1 hover:bg-bg-1"
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </button>
+        </div>
+      </header>
+
       {/* Tabs */}
-      <div className="flex border-b border-border-2">
+      <div className="flex border-b border-border-2 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
         <button
           type="button"
           onClick={() => setTab("overview")}
-          className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
+          className={`relative shrink-0 cursor-pointer px-4 py-3 text-[14px] lg:px-4 lg:py-4 lg:text-[18px] transition-colors ${
             tab === "overview"
-              ? "border-border-3 font-bold text-text-1"
-              : "border-transparent font-normal text-text-2 hover:text-text-1"
+              ? "font-semibold text-text-1"
+              : "font-normal text-text-2 hover:text-text-1"
           }`}
         >
           Overview
+          {tab === "overview" && (
+            <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary-6 lg:bg-border-3" />
+          )}
         </button>
         <button
           type="button"
           onClick={() => setTab("templates")}
-          className={`cursor-pointer border-b px-4 py-4 text-[18px] transition-colors ${
+          className={`relative shrink-0 cursor-pointer px-4 py-3 text-[14px] lg:px-4 lg:py-4 lg:text-[18px] transition-colors ${
             tab === "templates"
-              ? "border-border-3 font-bold text-text-1"
-              : "border-transparent font-normal text-text-2 hover:text-text-1"
+              ? "font-semibold text-text-1"
+              : "font-normal text-text-2 hover:text-text-1"
           }`}
         >
           Compliance templates
+          {tab === "templates" && (
+            <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary-6 lg:bg-border-3" />
+          )}
         </button>
       </div>
 

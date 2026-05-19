@@ -16,7 +16,10 @@ import {
   Bot,
   PenSquare,
   Activity,
+  Sparkles,
+  Search,
 } from "lucide-react";
+import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -36,11 +39,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { AgentGrid } from "@/components/agent-grid";
+import { AGENTS } from "@/lib/agents";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
+import { TeamMembersPopover } from "@/components/team-members-popover";
 import { useAuth } from "@/components/providers";
 import {
   fetchProjects,
   deleteProject,
+  updateProject,
   fetchArenaRuns,
   type Project,
   type ArenaRunSummary,
@@ -97,6 +104,11 @@ function ProjectCard({ project }: { project: Project }) {
   const router = useRouter();
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  // Dialog-local agent pick — re-seeded on each open from the project's
+  // current model (first agent matching that slug). Committed only on
+  // Save so cancelling doesn't leave a half-changed selection behind.
+  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { getLabel: getModelLabel } = useAvailableModels();
 
@@ -108,6 +120,30 @@ function ProjectCard({ project }: { project: Project }) {
     },
   });
 
+  const updateModelMutation = useMutation({
+    mutationFn: (model: string) => updateProject(project.id, { model }),
+    onSuccess: () => {
+      // Invalidate both the list (this card lives in it) and the single-
+      // project query, so the project detail page picks up the change
+      // when the user navigates in next.
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+      setModelDialogOpen(false);
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to change model",
+      );
+    },
+  });
+
+  // Resolve a stored project.model slug to the first agent whose
+  // preset maps to that model. Used to highlight a card when the
+  // Change model dialog opens. Returns null when no agent matches
+  // (custom slug, deprecated default, ...). */
+  const agentIdForModel = (modelId: string): string | null =>
+    AGENTS.find((a) => a.model === modelId)?.id ?? null;
+
   return (
     <>
       <div
@@ -117,18 +153,25 @@ function ProjectCard({ project }: { project: Project }) {
           {/* Top section */}
           <div className="flex-1 flex flex-col gap-2 border border-border-2 px-6 py-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="flex items-center justify-center rounded bg-primary-1 p-1">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-primary-1 p-1">
                   <User className="h-[18px] w-[18px] text-primary-6" />
                 </div>
-                <span className="text-[18px] font-bold text-text-1">{project.name}</span>
+                <span className="text-[18px] font-bold text-text-1 truncate">{project.name}</span>
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-text-3 hover:text-text-1 cursor-pointer"
+                    // 24px was too cramped — the card itself swallows
+                    // near-miss clicks and navigates instead, so users
+                    // overshoot the kebab and land on the project
+                    // detail. 44px hit area + a subtle hover bg gives
+                    // a forgiving target (close to the WCAG 2.5.5
+                    // touch-target minimum) without making the visual
+                    // glyph any larger.
+                    className="h-11 w-11 rounded-md text-text-3 hover:bg-bg-1 hover:text-text-1 cursor-pointer"
                     onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                   >
                     <MoreVertical className="h-5 w-5" />
@@ -143,6 +186,20 @@ function ProjectCard({ project }: { project: Project }) {
                     Manage Context
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    onSelect={() => {
+                      // Re-seed the picker each open so a previous
+                      // cancelled change doesn't linger. We start with
+                      // the agent that maps to the project's current
+                      // model (when one matches), so the user sees
+                      // their existing pick highlighted.
+                      setPendingAgentId(agentIdForModel(project.model));
+                      setModelDialogOpen(true);
+                    }}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Change model
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
                     className="text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteDialogOpen(true)}
                   >
@@ -152,28 +209,110 @@ function ProjectCard({ project }: { project: Project }) {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-            {/* Model badge */}
-            <div className="flex items-center gap-2.5 rounded bg-bg-2 px-2 py-1 w-fit">
-              <div className="flex items-center gap-1">
-                <Bot className="h-[18px] w-[18px] text-text-2" />
-                <span className="text-[13px] text-text-2">{project.name}</span>
-              </div>
-              <span className="text-[13px] text-text-2">/</span>
-              <div className="flex items-center gap-1">
-                <PenSquare className="h-[18px] w-[18px] text-text-2" />
-                <span className="text-[13px] text-text-2">{getModelLabel(project.model)}</span>
-              </div>
+            {/* Model badge — shows the agent preset that matches the
+                project's current model (if any) plus the resolved model
+                name. Previously rendered project.name twice — that was
+                a typo from the original mock and isn't useful info to
+                duplicate next to the title. */}
+            <div className="flex items-center gap-2.5 rounded bg-bg-2 px-2 py-1 w-fit max-w-full">
+              {(() => {
+                const agentLabel = AGENTS.find(
+                  (a) => a.model === project.model,
+                )?.label;
+                return (
+                  <>
+                    {agentLabel && (
+                      <>
+                        <div className="flex items-center gap-1 min-w-0">
+                          <Bot className="h-[18px] w-[18px] shrink-0 text-text-2" />
+                          <span className="text-[13px] text-text-2 truncate">
+                            {agentLabel}
+                          </span>
+                        </div>
+                        <span className="text-[13px] text-text-2 shrink-0">/</span>
+                      </>
+                    )}
+                    <div className="flex items-center gap-1 min-w-0">
+                      <PenSquare className="h-[18px] w-[18px] shrink-0 text-text-2" />
+                      <span className="text-[13px] text-text-2 truncate">
+                        {getModelLabel(project.model)}
+                      </span>
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
-          {/* Bottom section */}
-          <div className="flex items-center gap-5 px-3 py-2">
-            <div className="flex items-center gap-1">
-              <PenSquare className="h-[18px] w-[18px] text-text-2" />
-              <span className="text-[13px] text-text-2">{formatDate(project.createdAt)}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Activity className="h-[18px] w-[18px] text-text-2" />
-              <span className="text-[13px] text-text-2">0</span>
+          {/* Bottom section — Figma frame 14:3623 / 4659:69143 carries an
+              avatar stack of up to 4 team members on the LEFT for team
+              projects, then date + activity on the RIGHT. Personal
+              projects (no teamMembers) skip the avatar block and keep
+              just date + activity. */}
+          <div className="flex items-center gap-3 px-3 py-2">
+            {project.teamId &&
+              project.teamMembers &&
+              project.teamMembers.length > 0 && (
+                <TeamMembersPopover teamId={project.teamId}>
+                  <button
+                    type="button"
+                    aria-label="View team members"
+                    onClick={(e) => {
+                      // Outer card wrapper navigates to the project on
+                      // click — stopPropagation keeps the route swap
+                      // from firing. Do NOT preventDefault: Radix
+                      // Popover triggers on onClick, and composed
+                      // handlers in `asChild` bail when the child
+                      // calls preventDefault, leaving the popover
+                      // closed.
+                      e.stopPropagation();
+                    }}
+                    className="flex items-center gap-1 min-w-0 cursor-pointer rounded-md p-0.5 -m-0.5 hover:bg-bg-1"
+                  >
+                    <div className="flex items-center">
+                      {project.teamMembers.map((m, i) => {
+                        const extraClass = i > 0 ? "-ml-2" : "";
+                        const initials = (m.userName ?? "?")
+                          .trim()
+                          .charAt(0)
+                          .toUpperCase();
+                        return m.userPicture ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={m.id}
+                            src={m.userPicture}
+                            alt={m.userName ?? ""}
+                            className={`h-6 w-6 shrink-0 rounded-full border border-bg-white object-cover ${extraClass}`}
+                          />
+                        ) : (
+                          <div
+                            key={m.id}
+                            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-bg-white bg-primary-6 text-[10px] font-medium text-white ${extraClass}`}
+                          >
+                            {initials}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {project.teamMembersCount != null &&
+                      project.teamMembersCount > project.teamMembers.length && (
+                        <span className="ml-1 text-[13px] text-text-3 whitespace-nowrap">
+                          +{project.teamMembersCount - project.teamMembers.length}
+                        </span>
+                      )}
+                  </button>
+                </TeamMembersPopover>
+              )}
+            <div className="ml-auto flex items-center gap-5">
+              <div className="flex items-center gap-1">
+                <PenSquare className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2 whitespace-nowrap">
+                  {formatDate(project.createdAt)}
+                </span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Activity className="h-[18px] w-[18px] text-text-2" />
+                <span className="text-[13px] text-text-2">0</span>
+              </div>
             </div>
           </div>
         </div>
@@ -198,18 +337,95 @@ function ProjectCard({ project }: { project: Project }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>
+        {/* Wider than the default dialog: the agent grid wants room
+            for 3–4 cards across on a typical viewport. The same
+            visual language as the Select Agent step on
+            /projects/create — picking a card maps to that agent's
+            preset model, which we save as the new project default. */}
+        <DialogContent className="max-w-[960px] sm:max-w-[960px]">
+          <DialogHeader>
+            <DialogTitle>Change model</DialogTitle>
+            <DialogDescription>
+              Pick an agent preset for <strong>{project.name}</strong>. The
+              next message you send in this project will use the selected
+              agent&apos;s default model.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-center py-2">
+            <AgentGrid
+              selectedAgentId={pendingAgentId}
+              onSelect={(agent) => setPendingAgentId(agent.id)}
+            />
+          </div>
+          <p className="mx-auto max-w-[700px] text-center text-[12px] text-text-3">
+            <strong>(BYOK)</strong> uses your own provider key.{" "}
+            <strong>(Custom)</strong> uses a Custom LLM endpoint. Agents
+            without a marker route through the WorkenAI default key.
+          </p>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setModelDialogOpen(false)}
+              disabled={updateModelMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                const agent = AGENTS.find((a) => a.id === pendingAgentId);
+                if (!agent) return;
+                if (agent.model === project.model) {
+                  setModelDialogOpen(false);
+                  return;
+                }
+                updateModelMutation.mutate(agent.model);
+              }}
+              // Disabled only while the mutation is in flight or no
+              // agent is picked. The "agent's model already matches
+              // project.model" case is handled by the click handler
+              // (closes the dialog as a no-op) — disabling Save there
+              // confuses users who pick a different agent that happens
+              // to share the same preset model with the current
+              // setting (Marketing / Code Engineer / Lawyer all map
+              // to claude-opus-4.7, for example).
+              disabled={updateModelMutation.isPending || !pendingAgentId}
+            >
+              {updateModelMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
+const DASHBOARD_TABS = [
+  { value: "all", label: "All" },
+  { value: "personal", label: "Personal" },
+  { value: "team", label: "Team" },
+] as const;
+
 export default function WorkenDashboard() {
   const { user } = useAuth();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const VALID_FILTERS = ["all", "personal", "team"] as const;
   const filterParam = searchParams.get("filter");
   const activeTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
     ? (filterParam as typeof VALID_FILTERS[number])
     : "all";
+
+  // URL-driven tab switch — mirrors the appbar's setTab logic, but
+  // owned here so the mobile in-page segmented control can drive it
+  // directly without rounding through a custom event.
+  const setMobileTab = (tab: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "all") params.delete("filter");
+    else params.set("filter", tab);
+    const qs = params.toString();
+    router.push(qs ? `/?${qs}` : "/");
+  };
 
   const {
     data: projects,
@@ -247,6 +463,37 @@ export default function WorkenDashboard() {
 
   return (
     <div className="space-y-6 pt-4">
+      {/* Mobile in-page header — the desktop appbar carries title +
+          tabs + search; on <md we move that into the page content so
+          the sticky top bar can shrink to a compact brand + menu row.
+          Matches Figma node 4659:69128 (title row + segmented tabs). */}
+      <div className="md:hidden flex flex-col gap-4 pb-2">
+        <div className="flex items-center gap-3">
+          <h4 className="text-[23px] font-bold text-text-1 shrink-0">AI Chat</h4>
+          <div className="flex flex-1 items-center gap-2 rounded-md border border-border-3 bg-bg-white px-3 py-2">
+            <Search className="h-4 w-4 shrink-0 text-text-3" />
+            <input
+              placeholder="Search"
+              className="flex-1 min-w-0 bg-transparent text-[14px] text-text-1 outline-none placeholder:text-text-3"
+            />
+          </div>
+        </div>
+        <div className="flex items-stretch overflow-hidden rounded-[4px] border border-border-2">
+          {DASHBOARD_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setMobileTab(tab.value)}
+              className={`flex-1 px-4 py-2.5 text-[14px] font-normal text-text-1 cursor-pointer transition-colors ${
+                activeTab === tab.value ? "bg-bg-3" : "bg-bg-white hover:bg-bg-1"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* All tab: two-column layout */}
       {activeTab === "all" && (
         <>
@@ -255,26 +502,26 @@ export default function WorkenDashboard() {
               <Loader2 className="h-6 w-6 animate-spin text-text-3" />
             </div>
           ) : (
-            <div className="flex gap-4">
-              <div className="flex-1 min-w-0 space-y-4">
-                <p className="text-[26px] font-bold text-text-1">Team Projects</p>
-                <div className="grid grid-cols-2 gap-2.5">
+            <div className="flex flex-col gap-6 md:flex-row md:gap-4">
+              <div className="flex-1 min-w-0 space-y-4 md:space-y-4">
+                <p className="text-[18px] md:text-[26px] font-bold text-text-1">Team Projects</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {teamProjects?.map((project) => (
                     <ProjectCard key={project.id} project={project} />
                   ))}
                   {teamProjects?.length === 0 && (
-                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No team projects yet.</p>
+                    <p className="col-span-full py-8 text-center text-sm text-text-3">No team projects yet.</p>
                   )}
                 </div>
               </div>
               <div className="flex-1 min-w-0 space-y-4">
-                <p className="text-[26px] font-bold text-text-1">Personal Projects</p>
-                <div className="grid grid-cols-2 gap-2.5">
+                <p className="text-[18px] md:text-[26px] font-bold text-text-1">Personal Projects</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {personalProjects?.map((project) => (
                     <ProjectCard key={project.id} project={project} />
                   ))}
                   {personalProjects?.length === 0 && (
-                    <p className="col-span-2 py-8 text-center text-sm text-text-3">No personal projects yet.</p>
+                    <p className="col-span-full py-8 text-center text-sm text-text-3">No personal projects yet.</p>
                   )}
                 </div>
               </div>
@@ -286,11 +533,11 @@ export default function WorkenDashboard() {
       {/* Personal/Team tab: single grid */}
       {activeTab !== "all" && (
         <>
-          <p className="text-[26px] font-bold text-text-1">
+          <p className="text-[18px] md:text-[26px] font-bold text-text-1">
             {activeTab === "team" ? "Team Projects" : "Personal Projects"}
           </p>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {isLoading && (
           <div className="col-span-full flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin text-text-3" />

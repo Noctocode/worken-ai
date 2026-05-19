@@ -4,18 +4,6 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Briefcase,
-  Code,
-  HeadphonesIcon,
-  Megaphone,
-  Shield,
-  TrendingUp,
-  Users,
-  Search,
-  PenTool,
-  Settings,
-  Scale,
-  Bot,
   Info,
   X,
   ChevronDown,
@@ -46,39 +34,8 @@ import {
   // type OrgUser,
 } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
-
-/**
- * Each agent maps to a sensible default OpenRouter model. The mapping is
- * advisory: if the admin hasn't enabled the agent's preferred model in
- * the Catalog, we fall back to the first enabled model so project
- * creation never blocks. Tweak freely — these are starting points.
- */
-const AGENTS = [
-  { id: "general-assistant", label: "General Assistant", icon: Bot,
-    model: "anthropic/claude-opus-4.6-fast" },
-  { id: "business-development", label: "Business Development Specialist", icon: Briefcase,
-    model: "openai/gpt-5.5" },
-  { id: "marketing-strategist", label: "Marketing Strategist", icon: Megaphone,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "customer-support", label: "Customer Support", icon: HeadphonesIcon,
-    model: "openai/gpt-5.4-mini" },
-  { id: "code-engineer", label: "Code Engineer", icon: Code,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "security-advisor", label: "Security Advisor", icon: Shield,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "sales-rep", label: "Sales Rep", icon: TrendingUp,
-    model: "openai/gpt-5.5" },
-  { id: "hr", label: "HR", icon: Users,
-    model: "anthropic/claude-opus-4.6-fast" },
-  { id: "seo-specialist", label: "SEO Specialist", icon: Search,
-    model: "openai/gpt-5.5" },
-  { id: "copywriter", label: "Copywriter", icon: PenTool,
-    model: "anthropic/claude-opus-4.7" },
-  { id: "automation-engineer", label: "Automation Engineer", icon: Settings,
-    model: "deepseek/deepseek-v4-pro" },
-  { id: "lawyer", label: "Lawyer", icon: Scale,
-    model: "anthropic/claude-opus-4.7" },
-] as const;
+import { AGENTS } from "@/lib/agents";
+import { AgentGrid } from "@/components/agent-grid";
 
 /* ─── Member picker (DISABLED) ────────────────────────────────────────────
  * Replaced by the Team selector below: instead of inviting individual members
@@ -229,16 +186,16 @@ export default function CreateProjectPage() {
     const agent = AGENTS.find((a) => a.id === selectedAgent);
     if (!agent) return;
     if (availableModels.length === 0) {
-      // Admin hasn't enabled any models yet — surface a clear error rather
+      // No models in the catalog response — surface a clear error rather
       // than silently submitting with an empty model id.
       setNameError(false);
       alert(
-        "No models are enabled in this workspace. Ask an admin to enable at least one model in Models → Catalog.",
+        "No models are available right now. Try again in a moment, or contact support if it persists.",
       );
       return;
     }
-    // Prefer the model recommended for this agent. If the admin hasn't
-    // enabled it in the Catalog, fall back to the first enabled model so
+    // Prefer the model recommended for this agent; if it isn't in the
+    // catalog response, fall back to the first available model so
     // project creation never blocks on missing config.
     const preferredModel = availableModels.find((m) => m.id === agent.model);
     const model = preferredModel?.id ?? availableModels[0].id;
@@ -251,195 +208,170 @@ export default function CreateProjectPage() {
   };
 
   return (
-    <div className="-mx-6 -mb-6 flex flex-col" style={{ minHeight: "calc(100vh - 4.5rem)" }}>
+    <div
+      className="-mx-6 -mb-6 flex flex-col bg-bg-1 md:bg-transparent"
+      style={{ minHeight: "calc(100vh - 4.5rem)" }}
+    >
+      {/* Mobile title row — the appbar collapses to MobileTopbar at
+          <md (logo + hamburger only), so the page owns the title at
+          that breakpoint. md+ keeps the appbar createProject variant
+          unchanged. */}
+      <div className="md:hidden flex items-center bg-bg-white px-4 py-4 border-b border-bg-1">
+        <h1 className="text-[26px] font-bold text-text-1">Create Project</h1>
+      </div>
+
       {/* Content */}
-      <div className="flex-1 flex flex-col items-center gap-8 pt-16 pb-8 px-6">
-          {/* Project Name */}
-          <div className="flex flex-col w-[414px]">
-            <input
-              type="text"
-              value={projectName}
-              onChange={(e) => { setProjectName(e.target.value); setNameError(false); }}
-              placeholder="Project Name"
-              className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError ? "border-danger-5" : "border-border-3"}`}
-            />
-            {nameError && (
-              <span className="mt-1 text-[13px] text-danger-5">Project name is required</span>
-            )}
-          </div>
-
-          {/* Select Project Type */}
-          <div className="flex flex-col items-center gap-4 w-full max-w-[600px]">
-            <h2 className="text-[23px] font-bold text-text-1">Select Project Type</h2>
-
-            <div className="flex rounded-lg border border-border-3 overflow-hidden">
-              <button
-                onClick={() => { setProjectType("personal"); setTeamError(false); }}
-                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] cursor-pointer transition-colors ${
-                  projectType === "personal"
-                    ? "bg-primary-6 text-white"
-                    : "bg-bg-white text-text-1 hover:bg-bg-1"
-                }`}
-              >
-                Personal
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex items-center">
-                      <Info className="h-[18px] w-[18px] opacity-60" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs text-center">
-                    A private workspace only you can access. Spend
-                    counts against your personal monthly budget.
-                  </TooltipContent>
-                </Tooltip>
-              </button>
-              <button
-                onClick={() => setProjectType("team")}
-                className={`flex items-center justify-center gap-2 w-[150px] py-3 text-[16px] cursor-pointer transition-colors ${
-                  projectType === "team"
-                    ? "bg-primary-6 text-white"
-                    : "bg-bg-white text-text-1 hover:bg-bg-1"
-                }`}
-              >
-                Team
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="inline-flex items-center">
-                      <Info className="h-[18px] w-[18px] opacity-60" />
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs text-center">
-                    A shared workspace for a team. Spend counts against
-                    the chosen team&rsquo;s monthly budget and members
-                    can collaborate on prompts and chatbots.
-                  </TooltipContent>
-                </Tooltip>
-              </button>
-            </div>
-
-            <p className="text-[14px] text-text-2 text-center leading-normal">
-              {projectType === "personal" ? (
-                <>
-                  A dedicated space to create and test your own AI chatbots.<br />
-                  Design conversations, craft prompts, and iterate privately at your own pace.
-                </>
-              ) : (
-                <>
-                  A shared workspace for building AI chat experiences together.<br />
-                  Collaborate on chatbot design, manage shared prompts, and coordinate updates in one place.
-                </>
-              )}
-            </p>
-
-            {/* Team picker — choose which existing team the project belongs to.
-                Replaces the previous "search & invite members" flow: every
-                member of the selected team automatically gets access. */}
-            {projectType === "team" && (
-              <div className="flex flex-col w-full">
-                {manageableTeams.length === 0 ? (
-                  <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-3 text-[14px] text-text-2">
-                    You don&apos;t own or co-manage any teams yet.{" "}
-                    <Link href="/teams" className="text-primary-6 hover:underline">
-                      Create a team first
-                    </Link>{" "}
-                    to add a team project.
-                  </div>
-                ) : (
-                  <Select
-                    value={selectedTeamId}
-                    onValueChange={(v) => { setSelectedTeamId(v); setTeamError(false); }}
-                  >
-                    <SelectTrigger
-                      className={`w-full cursor-pointer rounded-lg text-[16px] text-text-1 data-[size=default]:h-12 ${
-                        teamError ? "border-danger-5" : "border-border-2"
-                      }`}
-                    >
-                      <SelectValue placeholder="Select a team..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {manageableTeams.map((t) => (
-                        <SelectItem
-                          key={t.id}
-                          value={t.id}
-                          className="cursor-pointer text-[16px]"
-                        >
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {teamError && (
-                  <span className="mt-1 text-[13px] text-danger-5">Please select a team</span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Select Agent */}
-          <div className="flex flex-col items-center gap-4 w-full">
-            <h2 className="text-[23px] font-bold text-text-1">Select Agent</h2>
-
-            <div className="flex flex-wrap gap-2.5 justify-center w-full max-w-[900px]">
-              {AGENTS.map((agent) => {
-                const Icon = agent.icon;
-                const isSelected = selectedAgent === agent.id;
-                const resolvedModel =
-                  availableModels.find((m) => m.id === agent.model) ??
-                  availableModels[0];
-                const willFallback =
-                  resolvedModel != null && resolvedModel.id !== agent.model;
-                return (
-                  <button
-                    key={agent.id}
-                    onClick={() => setSelectedAgent(agent.id)}
-                    title={
-                      resolvedModel
-                        ? willFallback
-                          ? `Preferred ${agent.model} not enabled — will use ${resolvedModel.name}`
-                          : `Uses ${resolvedModel.name}`
-                        : agent.model
-                    }
-                    className={`flex flex-col items-center gap-2.5 p-4 min-w-[200px] flex-1 max-w-[220px] cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-primary-1 border border-primary-6"
-                        : "bg-bg-1 border border-transparent hover:border-border-3"
-                    }`}
-                  >
-                    <div className="flex h-[60px] w-[60px] items-center justify-center rounded-xl bg-[rgba(60,126,255,0.2)]">
-                      <Icon className="h-10 w-10 text-primary-6" />
-                    </div>
-                    <span className="text-[13px] text-text-2 whitespace-nowrap">{agent.label}</span>
-                    {resolvedModel && (
-                      <span
-                        className={`text-[11px] truncate max-w-full ${
-                          willFallback ? "text-warning-6" : "text-text-3"
-                        }`}
-                      >
-                        {willFallback
-                          ? `↳ ${resolvedModel.name} (fallback)`
-                          : resolvedModel.name}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+      <div className="flex-1 flex flex-col items-stretch md:items-center gap-6 md:gap-8 px-4 md:px-6 pt-6 md:pt-16 pb-8">
+        {/* Project Name */}
+        <div className="flex flex-col w-full md:w-[414px]">
+          <input
+            type="text"
+            value={projectName}
+            onChange={(e) => { setProjectName(e.target.value); setNameError(false); }}
+            placeholder="Project Name"
+            className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError ? "border-danger-5" : "border-border-3"}`}
+          />
+          {nameError && (
+            <span className="mt-1 text-[13px] text-danger-5">Project name is required</span>
+          )}
         </div>
 
-      {/* Bottom bar */}
-      <div className="sticky bottom-0 flex items-center justify-between bg-bg-white px-6 py-4">
+        {/* Select Project Type — wrapped in a white card on mobile per
+            Figma 4659:69759; transparent on desktop so the section
+            sits flush with the page bg. */}
+        <div className="flex flex-col items-stretch md:items-center gap-4 w-full md:max-w-[600px] rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
+          <h2 className="text-[23px] font-bold text-text-1">Select Project Type</h2>
+
+          <div className="flex w-full md:w-auto rounded-lg border border-border-3 overflow-hidden">
+            <button
+              onClick={() => { setProjectType("personal"); setTeamError(false); }}
+              className={`flex flex-1 md:flex-none md:w-[150px] items-center justify-center gap-2 py-3 text-[16px] cursor-pointer transition-colors ${
+                projectType === "personal"
+                  ? "bg-primary-6 text-white"
+                  : "bg-bg-white text-text-1 hover:bg-bg-1"
+              }`}
+            >
+              Personal
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center">
+                    <Info className="h-[18px] w-[18px] opacity-60" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-center">
+                  A private workspace only you can access. Spend
+                  counts against your personal monthly budget.
+                </TooltipContent>
+              </Tooltip>
+            </button>
+            <button
+              onClick={() => setProjectType("team")}
+              className={`flex flex-1 md:flex-none md:w-[150px] items-center justify-center gap-2 py-3 text-[16px] cursor-pointer transition-colors ${
+                projectType === "team"
+                  ? "bg-primary-6 text-white"
+                  : "bg-bg-white text-text-1 hover:bg-bg-1"
+              }`}
+            >
+              Team
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex items-center">
+                    <Info className="h-[18px] w-[18px] opacity-60" />
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-xs text-center">
+                  A shared workspace for a team. Spend counts against
+                  the chosen team&rsquo;s monthly budget and members
+                  can collaborate on prompts and chatbots.
+                </TooltipContent>
+              </Tooltip>
+            </button>
+          </div>
+
+          <p className="text-[14px] text-text-2 md:text-center leading-normal">
+            {projectType === "personal" ? (
+              <>
+                A dedicated space to create and test your own AI chatbots.{" "}
+                Design conversations, craft prompts, and iterate privately at
+                your own pace.
+              </>
+            ) : (
+              <>
+                A shared workspace for building AI chat experiences together.{" "}
+                Collaborate on chatbot design, manage shared prompts, and
+                coordinate updates in one place.
+              </>
+            )}
+          </p>
+
+          {/* Team picker — choose which existing team the project belongs to.
+              Replaces the previous "search & invite members" flow: every
+              member of the selected team automatically gets access. */}
+          {projectType === "team" && (
+            <div className="flex flex-col w-full">
+              {manageableTeams.length === 0 ? (
+                <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-3 text-[14px] text-text-2">
+                  You don&apos;t own or co-manage any teams yet.{" "}
+                  <Link href="/teams" className="text-primary-6 hover:underline">
+                    Create a team first
+                  </Link>{" "}
+                  to add a team project.
+                </div>
+              ) : (
+                <Select
+                  value={selectedTeamId}
+                  onValueChange={(v) => { setSelectedTeamId(v); setTeamError(false); }}
+                >
+                  <SelectTrigger
+                    className={`w-full cursor-pointer rounded-lg text-[16px] text-text-1 data-[size=default]:h-12 ${
+                      teamError ? "border-danger-5" : "border-border-2"
+                    }`}
+                  >
+                    <SelectValue placeholder="Select a team..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {manageableTeams.map((t) => (
+                      <SelectItem
+                        key={t.id}
+                        value={t.id}
+                        className="cursor-pointer text-[16px]"
+                      >
+                        {t.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {teamError && (
+                <span className="mt-1 text-[13px] text-danger-5">Please select a team</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Select Agent — same card pattern as Select Project Type. */}
+        <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
+          <h2 className="text-[23px] font-bold text-text-1">Select Agent</h2>
+          <AgentGrid
+            selectedAgentId={selectedAgent}
+            onSelect={(agent) => setSelectedAgent(agent.id)}
+          />
+        </div>
+      </div>
+
+      {/* Bottom bar — Cancel + Create Project. Stretches to full-width
+          buttons on mobile (matching Figma 4659:69874), keeps the
+          fixed compact buttons on desktop. */}
+      <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-bg-1 bg-bg-white px-4 py-3 md:px-6 md:py-4">
         <Button
           variant="outline"
-          className="h-[43px] w-[97px] rounded-lg border-border-2 text-[16px] text-text-1 cursor-pointer"
+          className="h-[43px] flex-1 md:flex-none md:w-[97px] rounded-lg border-border-2 text-[16px] text-text-1 cursor-pointer"
           onClick={() => router.back()}
         >
           Cancel
         </Button>
         <Button
-          className="h-10 w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
+          className="h-[43px] md:h-10 flex-1 md:flex-none md:w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
           disabled={mutation.isPending || !selectedAgent}
         >

@@ -6,10 +6,9 @@ import { fetchAvailableModels, type AvailableModel } from "@/lib/api";
 const STALE_TIME_MS = 5 * 60 * 1000; // 5 min — catalog rarely changes mid-session
 
 /**
- * The admin-curated subset of the OpenRouter catalog. Drives every model
- * picker in the app. Returns an empty list (not a fallback to hardcoded
- * defaults) when the admin has enabled nothing yet — UI should treat that
- * as a setup-required state.
+ * The full OpenRouter catalog. Drives every model picker in the app.
+ * Returns an empty list only if the catalog fetch fails or the upstream
+ * provider is empty — UI should treat that as a transient state.
  */
 export function useAvailableModels(): {
   models: AvailableModel[];

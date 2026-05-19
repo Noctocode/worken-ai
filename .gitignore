@@ -42,3 +42,7 @@ coverage
 
 # Runtime upload storage (local dev; swap for S3 later)
 apps/api/uploads
+
+# Local Figma reference screenshots downloaded by the figma MCP — not
+# part of the codebase, kept out so PRs stay focused.
+_figma-refs/

@@ -55,13 +55,19 @@ export default function AppLayout({
             <Sidebar />
             <main className="flex min-w-0 flex-1 flex-col">
               <Appbar />
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
                 {/* `min-h-full flex-col` + `mt-auto` on Footer makes
                     the copyright row stick to the viewport bottom on
                     short pages and yield naturally on long ones.
                     Bottom padding lives on the Footer now, so we
-                    don't double-pad below the copyright line. */}
-                <div className="flex min-h-full flex-col px-6 pb-2">
+                    don't double-pad below the copyright line.
+                    `min-w-0` on the inner column lets long, no-wrap
+                    content (badges, identifiers, long names) collapse
+                    inside its container instead of pushing the whole
+                    page wider than the viewport — tables that need
+                    horizontal scroll wrap themselves in
+                    `overflow-x-auto` so they keep working. */}
+                <div className="flex min-h-full min-w-0 flex-col px-6 pb-2">
                   {children}
                   <Footer />
                 </div>

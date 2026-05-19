@@ -9,7 +9,6 @@ import {
   Database,
   FolderOpen,
   Layers,
-  Layers3,
   LogOut,
   MessageSquare,
   Moon,
@@ -392,14 +391,6 @@ export const SidebarContent = ({
                   My account
                 </Link>
               </DropdownMenuItem>
-              {user?.role === "admin" && (
-                <DropdownMenuItem asChild>
-                  <Link href="/catalog" className="cursor-pointer">
-                    <Layers3 className="mr-2 h-4 w-4" />
-                    Models catalog
-                  </Link>
-                </DropdownMenuItem>
-              )}
             </DropdownMenuContent>
           </DropdownMenu>
           {!collapsed && (

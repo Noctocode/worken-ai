@@ -37,11 +37,7 @@ const IMAGE_MIMETYPES = new Set([
 ]);
 const NO_TEXT_MARKER = 'NO_TEXT_FOUND';
 
-export type IngestionStatus =
-  | 'pending'
-  | 'processing'
-  | 'done'
-  | 'failed';
+export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
   total: number;
@@ -318,14 +314,22 @@ export class KnowledgeIngestionService {
     // chunks marked `visibility='admins'` are reachable only when
     // the caller has role='admin'. Personal-scope chunks are
     // owner-only via the userId filter — visibility doesn't apply
-    // there. One round-trip to read role; uploads aren't a hot
-    // path, but chat-time RAG runs on every prompt — keeping this
-    // a single SELECT per call is intentional.
+    // there. One round-trip to read role + companyName; uploads
+    // aren't a hot path, but chat-time RAG runs on every prompt —
+    // keeping this a single SELECT per call is intentional.
+    //
+    // companyName gates every company-scope branch (admin + non-
+    // admin). Without it the query leaked chunks across companies
+    // — the original code assumed single-tenant ("scope='company'
+    // == org-wide") but the schema actually supports multiple
+    // companies via users.company_name. We now require
+    // uploader.company_name = caller.company_name.
     const [caller] = await this.db
-      .select({ role: users.role })
+      .select({ role: users.role, companyName: users.companyName })
       .from(users)
       .where(eq(users.id, userId));
     const isAdmin = caller?.role === 'admin';
+    const callerCompanyName = caller?.companyName ?? null;
 
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
@@ -343,19 +347,36 @@ export class KnowledgeIngestionService {
     // The teams branch probes via EXISTS against the join table.
     // Indexes on knowledge_file_teams (file_id) and team_members
     // (user_id, status) keep this sub-millisecond per chunk.
+    // Cross-company isolation guard: chunk is in caller's company
+    // iff its file's uploader shares caller.company_name. NULL
+    // company_name (personal-profile caller) collapses to FALSE so
+    // a personal user never sees ANY company-scope chunks.
+    const sameCompanyAsCaller = callerCompanyName
+      ? sql`EXISTS (
+          SELECT 1
+          FROM ${knowledgeFiles} kf
+          INNER JOIN ${users} uploader ON uploader.id = kf.uploaded_by_id
+          WHERE kf.id = ${knowledgeChunks.fileId}
+            AND uploader.company_name = ${callerCompanyName}
+        )`
+      : sql`FALSE`;
+
     const companyBranch = isAdmin
       ? and(
           eq(knowledgeChunks.scope, 'company'),
           sql`${knowledgeChunks.visibility} <> 'project'`,
+          sameCompanyAsCaller,
         )
       : or(
           and(
             eq(knowledgeChunks.scope, 'company'),
             eq(knowledgeChunks.visibility, 'all'),
+            sameCompanyAsCaller,
           ),
           and(
             eq(knowledgeChunks.scope, 'company'),
             eq(knowledgeChunks.visibility, 'teams'),
+            sameCompanyAsCaller,
             sql`EXISTS (
               SELECT 1
               FROM ${knowledgeFileTeams} kft
@@ -410,13 +431,29 @@ export class KnowledgeIngestionService {
     if (fileIds.length === 0) return [];
 
     const [caller] = await this.db
-      .select({ role: users.role })
+      .select({ role: users.role, companyName: users.companyName })
       .from(users)
       .where(eq(users.id, userId));
     const isAdmin = caller?.role === 'admin';
+    const callerCompanyName = caller?.companyName ?? null;
 
     const [queryEmbedding] = await this.documentsService.embed([query]);
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+
+    // Cross-company isolation (same guard as searchAccessibleChunks):
+    // even when a file is attached to a project the caller belongs
+    // to, the chunk only counts if the uploader is in the caller's
+    // company. Prevents a personal-profile user (no company_name)
+    // from seeing any company-scope content via project attach.
+    const sameCompanyAsCaller = callerCompanyName
+      ? sql`EXISTS (
+          SELECT 1
+          FROM ${knowledgeFiles} kf
+          INNER JOIN ${users} uploader ON uploader.id = kf.uploaded_by_id
+          WHERE kf.id = ${knowledgeChunks.fileId}
+            AND uploader.company_name = ${callerCompanyName}
+        )`
+      : sql`FALSE`;
 
     // Visibility filter constrained to the attached fileIds:
     //   - admin: any company chunk (admins-only / teams / project all
@@ -428,15 +465,17 @@ export class KnowledgeIngestionService {
     //     project_knowledge_files, which is the access grant for
     //     project visibility). 'admins'-visibility stays off-limits.
     const companyBranch = isAdmin
-      ? eq(knowledgeChunks.scope, 'company')
+      ? and(eq(knowledgeChunks.scope, 'company'), sameCompanyAsCaller)
       : or(
           and(
             eq(knowledgeChunks.scope, 'company'),
             eq(knowledgeChunks.visibility, 'all'),
+            sameCompanyAsCaller,
           ),
           and(
             eq(knowledgeChunks.scope, 'company'),
             eq(knowledgeChunks.visibility, 'teams'),
+            sameCompanyAsCaller,
             sql`EXISTS (
               SELECT 1
               FROM ${knowledgeFileTeams} kft
@@ -450,6 +489,7 @@ export class KnowledgeIngestionService {
           and(
             eq(knowledgeChunks.scope, 'company'),
             eq(knowledgeChunks.visibility, 'project'),
+            sameCompanyAsCaller,
           ),
         );
 

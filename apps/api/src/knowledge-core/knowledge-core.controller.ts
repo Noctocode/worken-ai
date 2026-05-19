@@ -19,7 +19,10 @@ import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
-import { KnowledgeCoreService } from './knowledge-core.service.js';
+import {
+  KnowledgeCoreService,
+  type NameConflictAction,
+} from './knowledge-core.service.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -38,10 +41,7 @@ export class KnowledgeCoreController {
   }
 
   @Get('folders/:id')
-  findFolder(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  findFolder(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findFolder(id, user.id);
   }
 
@@ -90,7 +90,12 @@ export class KnowledgeCoreController {
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
         ) {
-          cb(new BadRequestException(`Unsupported file type: ${file.originalname}`), false);
+          cb(
+            new BadRequestException(
+              `Unsupported file type: ${file.originalname}`,
+            ),
+            false,
+          );
           return;
         }
         cb(null, true);
@@ -110,11 +115,19 @@ export class KnowledgeCoreController {
     // ("teamIds=a" vs. multiple `teamIds=a&teamIds=b` appends).
     // Normalize before passing on so the service only deals with
     // `string[]`.
+    //
+    // `nameConflictActions` is JSON-encoded by the FE — multipart
+    // can't transport an object natively, so the FE stringifies and
+    // the controller parses. Malformed JSON is silently dropped so a
+    // garbage value doesn't blow up the upload; the service then
+    // treats every name conflict as 'skip', i.e. surfaces it back
+    // for the user to resolve.
     @Body()
     body: {
       visibility?: string;
       teamIds?: string | string[];
       projectIds?: string | string[];
+      nameConflictActions?: string;
     },
   ) {
     const teamIds = Array.isArray(body?.teamIds)
@@ -127,6 +140,30 @@ export class KnowledgeCoreController {
       : body?.projectIds
         ? [body.projectIds]
         : [];
+    let nameConflictActions: Record<string, NameConflictAction> | undefined;
+    if (body?.nameConflictActions) {
+      try {
+        const parsed: unknown = JSON.parse(body.nameConflictActions);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          nameConflictActions = {};
+          for (const [key, value] of Object.entries(
+            parsed as Record<string, unknown>,
+          )) {
+            if (
+              typeof key === 'string' &&
+              (value === 'overwrite' ||
+                value === 'keep_both' ||
+                value === 'skip')
+            ) {
+              nameConflictActions[key] = value;
+            }
+          }
+        }
+      } catch {
+        // Fall through — undefined means service treats every name
+        // conflict as 'skip' and bounces them back to the user.
+      }
+    }
     return this.service.uploadFiles(
       folderId,
       user.id,
@@ -134,6 +171,7 @@ export class KnowledgeCoreController {
       body?.visibility,
       teamIds,
       projectIds,
+      nameConflictActions,
     );
   }
 
@@ -180,10 +218,7 @@ export class KnowledgeCoreController {
    * the owner triggers Retrain.
    */
   @Post('files/:id/untrain')
-  untrainFile(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  untrainFile(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.untrainFile(id, user.id);
   }
 
@@ -237,10 +272,7 @@ export class KnowledgeCoreController {
   }
 
   @Delete('files/:id')
-  deleteFile(
-    @Param('id') id: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  deleteFile(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.deleteFile(id, user.id);
   }
 
