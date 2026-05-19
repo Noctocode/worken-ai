@@ -32,6 +32,7 @@ import {
 import {
   fetchProjectMembers,
   inviteTeamMember,
+  inviteUser,
   removeProjectMember,
   updateProjectMemberRole,
   type Project,
@@ -145,9 +146,43 @@ export function InviteMembersDialog({
       return;
     }
     setSending(true);
+    // For each address fire both legs:
+    //  1. inviteTeamMember — adds them to the project's team (the
+    //     row that drives the chat-side roster shown under Other).
+    //  2. inviteUser — pulls them into the caller's company tenant so
+    //     they appear in /teams?tab=users. For genuinely new emails
+    //     the team-invite already pre-creates the user, so the
+    //     org-invite is idempotent. For existing emails in the same
+    //     company it sets their org role. For emails belonging to a
+    //     *different* company it 409s (cross-tenant); we swallow that
+    //     specifically because the team-invite still succeeded and we
+    //     don't want one of the two legs failing to abort the whole
+    //     batch. The toast surfaces the count of team-invites that
+    //     went through — the org leg is best-effort.
+    //
+    // Map the team role to the basic/advanced org-role axis: anything
+    // with team-management privileges (admin/manager) maps to
+    // 'advanced', editor/viewer to 'basic'.
+    const orgRole: "basic" | "advanced" =
+      inviteRole === "admin" || inviteRole === "manager"
+        ? "advanced"
+        : "basic";
     const results = await Promise.allSettled(
       valid.map((t) =>
-        inviteTeamMember(project.teamId!, t.value, inviteRole).then(
+        Promise.all([
+          inviteTeamMember(project.teamId!, t.value, inviteRole),
+          inviteUser(t.value, orgRole).catch((err: Error) => {
+            // Cross-company conflicts are expected when the email
+            // already exists in another tenant; log + carry on so
+            // the team-invite (and the Pending row in Other) still
+            // shows up. Other errors surface alongside.
+            // eslint-disable-next-line no-console
+            console.warn(
+              `Org-invite for ${t.value} skipped: ${err.message}`,
+            );
+            return null;
+          }),
+        ]).then(
           () => ({ email: t.value, ok: true as const }),
           (err: Error) => ({
             email: t.value,
@@ -184,6 +219,9 @@ export function InviteMembersDialog({
       qc.invalidateQueries({ queryKey: ["project-members", project.id] });
       qc.invalidateQueries({ queryKey: ["teams", project.teamId] });
       qc.invalidateQueries({ queryKey: ["project", project.id] });
+      // Org-users list (drives /teams?tab=users) — refresh so the
+      // newly-created pending row shows up there too.
+      qc.invalidateQueries({ queryKey: ["org-users"] });
     } else {
       toast.error(`None of the invites went through. Check the addresses.`);
     }
