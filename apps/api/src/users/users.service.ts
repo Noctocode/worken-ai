@@ -12,6 +12,7 @@ import {
   teamMembers,
   teams,
   projects,
+  projectKnowledgeFiles,
   conversations,
   guardrails,
   messages,
@@ -23,6 +24,7 @@ import {
   observabilityEvents,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { MailService } from '../mail/mail.service.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
@@ -36,6 +38,7 @@ export class UsersService {
     private readonly provisioningService: OpenRouterProvisioningService,
     private readonly encryptionService: EncryptionService,
     private readonly notifications: NotificationsService,
+    private readonly mailService: MailService,
   ) {}
 
   /**
@@ -468,18 +471,32 @@ export class UsersService {
   }
 
   async remove(userId: string, callerId: string) {
-    const [user] = await this.db
-      .select({ id: users.id })
+    // Snapshot the target's email/name + caller's display name now —
+    // after the transaction the rows are gone and we can't recover
+    // them for the goodbye email.
+    const [target] = await this.db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        companyName: users.companyName,
+      })
       .from(users)
       .where(eq(users.id, userId));
 
-    if (!user) {
+    if (!target) {
       throw new NotFoundException('User not found');
     }
 
     if (userId === callerId) {
       throw new BadRequestException('You cannot remove yourself');
     }
+
+    const [caller] = await this.db
+      .select({ name: users.name, email: users.email })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const callerName = caller?.name ?? caller?.email ?? 'An admin';
 
     await this.db.transaction(async (tx) => {
       const ownedTeams = await tx
@@ -525,6 +542,16 @@ export class UsersService {
         .set({ uploadedById: null })
         .where(eq(knowledgeFiles.uploadedById, userId));
 
+      // project_knowledge_files.attached_by is a NO-ACTION FK — null
+      // it out so we keep the attachment (other team members still
+      // see the file as project context) but drop the attribution to
+      // the deleted user. Without this the final users delete throws
+      // 23503 for any KC file this user ever attached.
+      await tx
+        .update(projectKnowledgeFiles)
+        .set({ attachedBy: null })
+        .where(eq(projectKnowledgeFiles.attachedBy, userId));
+
       // Messages the user posted in conversations owned by SOMEONE ELSE
       // (e.g., team chats) survive the conversations delete above. The
       // FK is NO ACTION, so we null out the author to preserve the
@@ -536,6 +563,24 @@ export class UsersService {
 
       await tx.delete(users).where(eq(users.id, userId));
     });
+
+    // Heads-up email AFTER the row is gone (and after the transaction
+    // commits — wrap in try/catch so a mail failure can't roll back
+    // the delete). The recipient no longer has an account to log
+    // into, so this email is the only signal they get.
+    try {
+      await this.mailService.sendAccountRemovedEmail({
+        to: target.email,
+        name: target.name,
+        byName: callerName,
+        companyName: target.companyName,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Failed to send account-removed mail to ${target.email}: ${msg}`,
+      );
+    }
 
     return { success: true };
   }
