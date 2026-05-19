@@ -58,7 +58,7 @@ function roleLabel(role: string): string {
     case "manager":
       return "Manager";
     case "editor":
-      return "Can Edit";
+      return "Editor";
     case "viewer":
       return "Viewer";
     default:
@@ -258,13 +258,12 @@ export function InviteMembersDialog({
                 </SelectTrigger>
                 {/* Full team-role set so admins can seed any role
                     from this dialog — matches the /teams/[id] invite
-                    flow. The per-row dropdown in Other stays
-                    admin/editor only since project_members can't
-                    store the manager / viewer values. */}
+                    flow. Labels mirror the team invite copy
+                    (Admin / Manager / Editor / Viewer). */}
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
                   <SelectItem value="manager">Manager</SelectItem>
-                  <SelectItem value="editor">Can Edit</SelectItem>
+                  <SelectItem value="editor">Editor</SelectItem>
                   <SelectItem value="viewer">Viewer</SelectItem>
                 </SelectContent>
               </Select>
@@ -423,8 +422,8 @@ function MemberGroup({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="editor">Can Edit</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="editor">Editor</SelectItem>
                   </SelectContent>
                 </Select>
               ) : (
