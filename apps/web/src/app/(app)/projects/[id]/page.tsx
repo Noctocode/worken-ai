@@ -29,7 +29,6 @@ import {
   type ConversationMessage,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
-import { ChatHeader } from "@/components/project-chat/chat-header";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
 import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
@@ -581,17 +580,12 @@ export default function ProjectChatPage() {
     <div className="flex min-h-0 flex-1">
       <ChatHistorySidebar {...sidebarProps} />
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Project Header — extracted so the header can host the
-            model picker, the team chip, and the avatar stack + invite
-            CTA without ballooning this orchestrator file. The picker's
-            optimistic-update flow (setQueryData on success) still
-            lives in updateModelMutation below so the next send picks
-            up the new model id without waiting on a refetch. */}
-        <ChatHeader
-          project={project}
-          onChangeModel={(next) => updateModelMutation.mutate(next)}
-          isChangingModel={updateModelMutation.isPending}
-        />
+        {/* No in-page header: the global Appbar (projectDetail
+            variant) already renders Back / title / team chip / model
+            label / search / avatar stack / Invite Member, so a second
+            row of the same controls inside the page would just
+            duplicate the chrome. updateModelMutation below is still
+            used by the "Try It" suggestion handler. */}
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
