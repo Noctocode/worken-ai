@@ -242,7 +242,10 @@ export function InviteMembersDialog({
                 onValueChange={(v) => setInviteRole(v as DialogRole)}
                 disabled={sending}
               >
-                <SelectTrigger className="h-[44px] w-full shrink-0 cursor-pointer sm:w-[140px]">
+                {/* Match EmailTagInput: 44px tall, rounded-xl so the
+                    two controls sit next to each other as a visual
+                    pair rather than reading as one tall, one short. */}
+                <SelectTrigger className="h-[44px] w-full shrink-0 cursor-pointer rounded-xl sm:w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
