@@ -220,6 +220,24 @@ export class TeamsController {
     if (!Array.isArray(body?.integrationIds)) {
       throw new BadRequestException('`integrationIds` must be an array.');
     }
+    // Validate each entry up-front. Without this, a non-UUID string
+    // would slip through into the service's `inArray(integrations.id,
+    // …)` and trip a Postgres `invalid input syntax for type uuid`
+    // cast error — surfaces as a 500 instead of the 400 the client
+    // actually needs to act on.
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const invalid = body.integrationIds.filter(
+      (v) => typeof v !== 'string' || !UUID_RE.test(v),
+    );
+    if (invalid.length > 0) {
+      throw new BadRequestException(
+        `\`integrationIds\` contains non-UUID values: ${invalid
+          .slice(0, 3)
+          .map((v) => JSON.stringify(v))
+          .join(', ')}`,
+      );
+    }
     return this.teamsService.setIntegrationLinks(
       id,
       user.id,
