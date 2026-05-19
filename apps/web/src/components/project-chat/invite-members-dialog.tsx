@@ -229,7 +229,7 @@ export function InviteMembersDialog({
             <label className="text-[12px] font-medium text-text-2">
               Invite by email
             </label>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
               <div className="flex-1">
                 <EmailTagInput
                   tags={tags}
@@ -242,10 +242,13 @@ export function InviteMembersDialog({
                 onValueChange={(v) => setInviteRole(v as DialogRole)}
                 disabled={sending}
               >
-                {/* Match EmailTagInput: 44px tall, rounded-xl so the
-                    two controls sit next to each other as a visual
-                    pair rather than reading as one tall, one short. */}
-                <SelectTrigger className="h-[44px] w-full shrink-0 cursor-pointer rounded-xl sm:w-[140px]">
+                {/* `data-[size=default]:h-9` in the shadcn SelectTrigger
+                    locks the trigger at 36px; we want it to match the
+                    EmailTagInput's 44px (and grow alongside when tags
+                    wrap). `!h-auto` cancels the data-attr lock so the
+                    flex `items-stretch` parent gets to decide the
+                    height for real. */}
+                <SelectTrigger className="!h-auto w-full shrink-0 cursor-pointer rounded-xl sm:w-[140px]">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
