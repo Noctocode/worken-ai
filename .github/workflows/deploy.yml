@@ -17,6 +17,10 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    # Needed so this job can read environment-scoped variables like
+    # NEXT_PUBLIC_API_URL, which Next.js inlines into the bundle at
+    # build time. Without this, `vars.X` resolves to empty.
+    environment: production
     permissions:
       contents: read
       packages: write
