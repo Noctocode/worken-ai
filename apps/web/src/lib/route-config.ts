@@ -107,6 +107,7 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
     appbarSearch: { placeholder: "Search", event: "knowledge-core:search" },
+    appbarExpandControls: true,
   },
   "/tender-ai": {
     bg: "bg-bg-1",

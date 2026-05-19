@@ -563,7 +563,11 @@ export const Appbar = () => {
         {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
 
         {config.appbarSearch && (
-          <div className="relative hidden flex-1 sm:block">
+          // Fills the right-controls container; the left margin (34px)
+          // stacks with the header's gap-4 (16px) for a consistent
+          // ~50px breathing room between the title and the search,
+          // independent of how wide the appbar gets.
+          <div className="relative hidden flex-1 sm:block ml-[34px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
               type="text"
