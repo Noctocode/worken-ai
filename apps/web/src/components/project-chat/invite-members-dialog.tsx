@@ -38,7 +38,7 @@ import {
   type ProjectMember,
 } from "@/lib/api";
 
-import { EmailTagInput, type EmailTag } from "./email-tag-input.js";
+import { EmailTagInput, type EmailTag } from "./email-tag-input";
 
 /** "Can Edit" → backend `editor`, "Admin" → backend `admin`. The
  *  Figma 179:16073 design only exposes these two; we treat existing
