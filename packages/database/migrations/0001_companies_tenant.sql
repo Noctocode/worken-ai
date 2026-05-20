@@ -28,12 +28,13 @@ CREATE INDEX "users_company_id_idx" ON "users" USING btree ("company_id");
 -- runs.
 INSERT INTO "companies" ("name", "industry", "team_size", "infra_choice")
 SELECT DISTINCT ON (lower(trim("company_name")))
-	"company_name",
+	trim("company_name"),
 	"industry",
 	"team_size",
 	"infra_choice"
 FROM "users"
 WHERE "company_name" IS NOT NULL
+	AND trim("company_name") <> ''
 	AND "profile_type" = 'company'
 ORDER BY lower(trim("company_name")), "onboarding_completed_at" NULLS LAST;
 --> statement-breakpoint
