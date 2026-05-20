@@ -18,11 +18,19 @@ import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
 import type { Request as Req, Response as Res } from 'express';
 
+// Cookie domain — set in prod to `.workenai.com` so the same access /
+// refresh tokens are available to both `app.workenai.com` (where the
+// Next.js middleware reads them server-side) and `api.workenai.com`
+// (where the API authenticates them). Leave unset in dev so cookies
+// stay host-only on `localhost`.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   path: '/',
+  domain: COOKIE_DOMAIN,
 };
 
 function setSessionCookies(
