@@ -45,7 +45,13 @@ export default function SetupProfileStep2Page() {
   // yelling at them the moment they land on the page. After the first
   // failed Continue, subsequent renders re-evaluate per-field so
   // filling a field clears its error live.
+  //
+  // No "is this company name taken" check here: the tenant is keyed
+  // by `companies.id` (UUID) now, not by the display name. Two
+  // self-signups with the same string are two distinct tenants —
+  // there's nothing to block at this step.
   const [attempted, setAttempted] = useState(false);
+
   const errors = {
     companyName: !companyName.trim(),
     industry: !industry,
@@ -59,8 +65,6 @@ export default function SetupProfileStep2Page() {
       setAttempted(true);
       return;
     }
-    // All fields already in context via individual onChanges, so a
-    // patchless saveDraft persists exactly what the user sees.
     saveDraft();
     router.push("/setup-profile/step-4");
   };
@@ -113,7 +117,7 @@ export default function SetupProfileStep2Page() {
                   value={companyName}
                   onChange={(e) => update({ companyName: e.target.value })}
                   aria-invalid={attempted && errors.companyName}
-                  className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
+                  className="h-11 pl-10 text-base rounded-md placeholder:text-text-3 border-border-3"
                 />
               </div>
               {attempted && errors.companyName && (

@@ -40,9 +40,22 @@ export const users = pgTable("users", {
     withTimezone: true,
   }),
   profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
-  // Onboarding fields (populated in a single transaction when the user
-  // completes the /setup-profile wizard). Nullable while onboarding is
-  // incomplete.
+  // Tenant pointer. The source of truth for "which company tenant is
+  // this user in". `companyName` / `industry` / `teamSize` below are
+  // *display caches* on the user row — every read should treat
+  // `company_id` as authoritative. NULL when the user hasn't picked
+  // a company profile yet (mid-onboarding) or when profileType is
+  // 'personal'. ON DELETE SET NULL so a company can be torn down
+  // without nuking its members' user rows.
+  companyId: uuid("company_id").references(() => companies.id, {
+    onDelete: "set null",
+  }),
+  // Display caches written alongside `companyId` on onboarding /
+  // invite. Kept on the user row to avoid joining `companies` on
+  // every /auth/me, dashboard tile, or org-users listing. NOT the
+  // tenant identifier — same name on two different `company_id`s is
+  // legitimate (two distinct tenants that picked the same display
+  // name), and these fields should never be used for filtering.
   companyName: text("company_name"),
   industry: text("industry"),
   teamSize: text("team_size"),
@@ -53,6 +66,48 @@ export const users = pgTable("users", {
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  // Reverse lookup: "every user in tenant X" — drives
+  // /teams?tab=users and any future tenant-scoped query.
+  index("users_company_id_idx").on(table.companyId),
+]);
+
+/**
+ * Tenant identity. A `companies` row IS a tenant — UUID-based, so
+ * two companies with the same display `name` are still two distinct
+ * tenants (the user who picked a duplicate name on self-signup gets
+ * their own UUID, isolated from the original tenant).
+ *
+ * Created in one of two places:
+ *   - OnboardingService.completeInner when a self-signup completes
+ *     step-6 with profileType='company'.
+ *   - Invite flows (users/invite, teams/invite, project-direct
+ *     invite) pre-create the user row pointing at the *inviter's*
+ *     existing `companyId`. No new companies row in that case.
+ *
+ * Mutability: a tenant can rename itself (UPDATE companies.name) and
+ * every member sees the new name on next refetch. The legacy
+ * `users.companyName` cache is updated in lockstep on rename.
+ */
+export const companies = pgTable("companies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  industry: text("industry"),
+  teamSize: text("team_size"),
+  infraChoice: text("infra_choice"),
+  // Tenant-scoped monthly budget cap (cents). Tri-state, mirrors the
+  // legacy singleton `org_settings.monthly_budget_cents` which it
+  // replaces:
+  //   - NULL → no cap set for this tenant (chat-transport gate
+  //     silent-passes; FE hides over-budget banner).
+  //   - 0    → kill switch — every chat call in this tenant 402s
+  //     with ORG_SUSPENDED. Tenant-scoped, so flipping the switch
+  //     in tenant A no longer suspends tenant B.
+  //   - >0   → enforced; the gate blocks when tenant spend +
+  //     estimate >= cap.
+  monthlyBudgetCents: integer("monthly_budget_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

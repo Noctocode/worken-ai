@@ -88,8 +88,8 @@ export class ObservabilityController {
     const previousFrom = new Date(from.getTime() - span);
     const previousTo = new Date(from.getTime() - 1);
     const [current, previous] = await Promise.all([
-      this.observabilityService.summary(from, to),
-      this.observabilityService.summary(previousFrom, previousTo),
+      this.observabilityService.summary(caller.id, from, to),
+      this.observabilityService.summary(caller.id, previousFrom, previousTo),
     ]);
     return { range: key, current, previous };
   }
@@ -107,6 +107,7 @@ export class ObservabilityController {
       defaultGranularityForRange(key),
     );
     const series = await this.observabilityService.tokenUsageSeries(
+      caller.id,
       from,
       to,
       granularity,
@@ -121,7 +122,11 @@ export class ObservabilityController {
   ) {
     await this.assertAdmin(caller);
     const { key, from, to } = parseRange(range);
-    const providers = await this.observabilityService.costByProvider(from, to);
+    const providers = await this.observabilityService.costByProvider(
+      caller.id,
+      from,
+      to,
+    );
     return { range: key, providers };
   }
 
@@ -132,7 +137,11 @@ export class ObservabilityController {
   ) {
     await this.assertAdmin(caller);
     const { key, from, to } = parseRange(range);
-    const teams = await this.observabilityService.teamAnalytics(from, to);
+    const teams = await this.observabilityService.teamAnalytics(
+      caller.id,
+      from,
+      to,
+    );
     return { range: key, teams };
   }
 
@@ -152,7 +161,7 @@ export class ObservabilityController {
     const { key, from, to } = parseRange(range);
     const page = Math.max(1, Number(pageRaw) || 1);
     const pageSize = Math.max(1, Math.min(Number(pageSizeRaw) || 50, 200));
-    const result = await this.observabilityService.listEvents({
+    const result = await this.observabilityService.listEvents(caller.id, {
       from,
       to,
       search: search ?? null,
@@ -187,7 +196,7 @@ export class ObservabilityController {
   ) {
     await this.assertAdmin(caller);
     const { key, from, to } = parseRange(range);
-    const result = await this.observabilityService.exportEvents({
+    const result = await this.observabilityService.exportEvents(caller.id, {
       from,
       to,
       search: search ?? null,
@@ -206,7 +215,11 @@ export class ObservabilityController {
   ) {
     await this.assertAdmin(caller);
     const { key, from, to } = parseRange(range);
-    const result = await this.observabilityService.guardrailActivity(from, to);
+    const result = await this.observabilityService.guardrailActivity(
+      caller.id,
+      from,
+      to,
+    );
     return { range: key, ...result };
   }
 }

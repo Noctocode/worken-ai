@@ -649,6 +649,7 @@ export class AuthService {
           .select({
             id: users.id,
             profileType: users.profileType,
+            companyId: users.companyId,
             companyName: users.companyName,
             industry: users.industry,
             teamSize: users.teamSize,
@@ -658,12 +659,16 @@ export class AuthService {
           .where(
             and(eq(users.profileType, 'company'), inArray(users.id, ownerIds)),
           );
-        const companyOwner = ownerProfiles.find((o) => !!o.companyName?.trim());
+        // Pick the owner that actually has a tenant — `companyId` is
+        // the source of truth; the display caches (`companyName` etc.)
+        // come along for the ride.
+        const companyOwner = ownerProfiles.find((o) => !!o.companyId);
         if (companyOwner) {
           await this.db
             .update(users)
             .set({
               profileType: 'company',
+              companyId: companyOwner.companyId,
               companyName: companyOwner.companyName,
               industry: companyOwner.industry,
               teamSize: companyOwner.teamSize,

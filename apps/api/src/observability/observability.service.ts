@@ -1,5 +1,17 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import {
   observabilityEvents,
   teamMembers,
@@ -132,7 +144,53 @@ export class ObservabilityService {
 
   // ─── Aggregation queries (used by Phase 2 controller) ──────────────────
 
-  async summary(from: Date, to: Date) {
+  /**
+   * Resolve every `users.id` that shares the caller's tenant. Output
+   * shape:
+   *   - `[uuid, uuid, …]` for a company-profile caller with a tenant —
+   *     used as the `inArray(events.userId, …)` scope for every
+   *     aggregate / event-list query so admin in tenant A never sees
+   *     tenant B's calls.
+   *   - `[caller.id]` for personal-profile / mid-onboarding callers —
+   *     they can only see their own events; the dashboard is admin-
+   *     only so this branch is mostly defensive.
+   *   - `[]` if the caller row vanished mid-request — caller layer
+   *     short-circuits to an empty result instead of unscoped SELECT.
+   *
+   * Filtering by `companyId` (UUID) — not display name — is what
+   * keeps two same-name tenants isolated, same as the rest of the
+   * tenant refactor.
+   */
+  private async resolveTenantUserIds(callerId: string): Promise<string[]> {
+    const [caller] = await this.db
+      .select({
+        profileType: users.profileType,
+        companyId: users.companyId,
+      })
+      .from(users)
+      .where(eq(users.id, callerId));
+    if (!caller) return [];
+    if (caller.profileType === 'company' && caller.companyId) {
+      const tenantMembers = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.companyId, caller.companyId));
+      return tenantMembers.map((m) => m.id);
+    }
+    return [callerId];
+  }
+
+  async summary(callerId: string, from: Date, to: Date) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) {
+      return {
+        totalCost: 0,
+        totalTokens: 0,
+        avgLatencyMs: 0,
+        activeUsers: 0,
+        callCount: 0,
+      };
+    }
     const [row] = await this.db
       .select({
         totalCost: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)::text`,
@@ -146,6 +204,7 @@ export class ObservabilityService {
         and(
           gte(observabilityEvents.createdAt, from),
           lte(observabilityEvents.createdAt, to),
+          inArray(observabilityEvents.userId, tenantUserIds),
         ),
       );
 
@@ -159,10 +218,13 @@ export class ObservabilityService {
   }
 
   async tokenUsageSeries(
+    callerId: string,
     from: Date,
     to: Date,
     granularity: 'hour' | 'day' | 'week',
   ) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) return [];
     const bucketSql = sql.raw(`date_trunc('${granularity}', created_at)`);
     const rows = await this.db
       .select({
@@ -176,6 +238,7 @@ export class ObservabilityService {
         and(
           gte(observabilityEvents.createdAt, from),
           lte(observabilityEvents.createdAt, to),
+          inArray(observabilityEvents.userId, tenantUserIds),
         ),
       )
       .groupBy(bucketSql)
@@ -192,7 +255,9 @@ export class ObservabilityService {
     }));
   }
 
-  async costByProvider(from: Date, to: Date) {
+  async costByProvider(callerId: string, from: Date, to: Date) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) return [];
     const rows = await this.db
       .select({
         provider: observabilityEvents.provider,
@@ -205,6 +270,7 @@ export class ObservabilityService {
         and(
           gte(observabilityEvents.createdAt, from),
           lte(observabilityEvents.createdAt, to),
+          inArray(observabilityEvents.userId, tenantUserIds),
         ),
       )
       .groupBy(observabilityEvents.provider)
@@ -218,7 +284,9 @@ export class ObservabilityService {
     }));
   }
 
-  async teamAnalytics(from: Date, to: Date) {
+  async teamAnalytics(callerId: string, from: Date, to: Date) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) return [];
     const rows = await this.db
       .select({
         teamId: observabilityEvents.teamId,
@@ -235,6 +303,7 @@ export class ObservabilityService {
         and(
           gte(observabilityEvents.createdAt, from),
           lte(observabilityEvents.createdAt, to),
+          inArray(observabilityEvents.userId, tenantUserIds),
         ),
       )
       .groupBy(observabilityEvents.teamId, teams.name)
@@ -256,19 +325,31 @@ export class ObservabilityService {
    * paginated table view (`listEvents`) and the CSV export
    * (`exportEvents`) stay byte-for-byte aligned on filtering — adding
    * a new filter only needs to land in one place.
+   *
+   * `tenantUserIds` is the resolved set of users in the caller's
+   * tenant; the predicate `inArray(events.userId, tenantUserIds)` is
+   * the cross-tenant isolation guard, applied here so both
+   * `listEvents` and `exportEvents` inherit it. The FE-supplied
+   * `opts.userId` is still honoured for "show only events from user
+   * X" filtering, but only takes effect when X is already in
+   * `tenantUserIds`.
    */
-  private buildEventsWhere(opts: {
-    from: Date;
-    to: Date;
-    search?: string | null;
-    userId?: string | null;
-    teamId?: string | null;
-    model?: string | null;
-    eventType?: string | null;
-  }) {
-    const conditions = [
+  private buildEventsWhere(
+    opts: {
+      from: Date;
+      to: Date;
+      search?: string | null;
+      userId?: string | null;
+      teamId?: string | null;
+      model?: string | null;
+      eventType?: string | null;
+    },
+    tenantUserIds: string[],
+  ): SQL | undefined {
+    const conditions: SQL[] = [
       gte(observabilityEvents.createdAt, opts.from),
       lte(observabilityEvents.createdAt, opts.to),
+      inArray(observabilityEvents.userId, tenantUserIds),
     ];
     if (opts.userId)
       conditions.push(eq(observabilityEvents.userId, opts.userId));
@@ -290,18 +371,25 @@ export class ObservabilityService {
     return and(...conditions);
   }
 
-  async listEvents(opts: {
-    from: Date;
-    to: Date;
-    search?: string | null;
-    userId?: string | null;
-    teamId?: string | null;
-    model?: string | null;
-    eventType?: string | null;
-    page: number;
-    pageSize: number;
-  }) {
-    const where = this.buildEventsWhere(opts);
+  async listEvents(
+    callerId: string,
+    opts: {
+      from: Date;
+      to: Date;
+      search?: string | null;
+      userId?: string | null;
+      teamId?: string | null;
+      model?: string | null;
+      eventType?: string | null;
+      page: number;
+      pageSize: number;
+    },
+  ) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) {
+      return { total: 0, page: opts.page, pageSize: opts.pageSize, events: [] };
+    }
+    const where = this.buildEventsWhere(opts, tenantUserIds);
     const limit = Math.max(1, Math.min(opts.pageSize, 200));
     const offset = Math.max(0, (opts.page - 1) * limit);
 
@@ -357,17 +445,29 @@ export class ObservabilityService {
    * the cap was hit so the admin knows they need to narrow the
    * filter before re-exporting.
    */
-  async exportEvents(opts: {
-    from: Date;
-    to: Date;
-    search?: string | null;
-    userId?: string | null;
-    teamId?: string | null;
-    model?: string | null;
-    eventType?: string | null;
-  }) {
+  async exportEvents(
+    callerId: string,
+    opts: {
+      from: Date;
+      to: Date;
+      search?: string | null;
+      userId?: string | null;
+      teamId?: string | null;
+      model?: string | null;
+      eventType?: string | null;
+    },
+  ) {
     const MAX_EXPORT_ROWS = 10_000;
-    const where = this.buildEventsWhere(opts);
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) {
+      return {
+        total: 0,
+        truncated: false,
+        maxRows: MAX_EXPORT_ROWS,
+        events: [],
+      };
+    }
+    const where = this.buildEventsWhere(opts, tenantUserIds);
 
     const [{ total }] = await this.db
       .select({ total: sql<number>`count(*)::int` })
@@ -412,7 +512,11 @@ export class ObservabilityService {
     };
   }
 
-  async guardrailActivity(from: Date, to: Date) {
+  async guardrailActivity(callerId: string, from: Date, to: Date) {
+    const tenantUserIds = await this.resolveTenantUserIds(callerId);
+    if (tenantUserIds.length === 0) {
+      return { totalTriggers: 0, triggers: [] };
+    }
     const rows = await this.db
       .select({
         guardrailId: sql<
@@ -433,6 +537,7 @@ export class ObservabilityService {
           gte(observabilityEvents.createdAt, from),
           lte(observabilityEvents.createdAt, to),
           eq(observabilityEvents.eventType, 'guardrail_trigger'),
+          inArray(observabilityEvents.userId, tenantUserIds),
         ),
       )
       .groupBy(
