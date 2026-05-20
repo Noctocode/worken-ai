@@ -7,7 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import {
@@ -218,6 +218,51 @@ export class OnboardingService {
     if (!current) throw new BadRequestException('User not found');
     if (current.onboardingCompletedAt) {
       throw new ConflictException('Onboarding already completed');
+    }
+
+    // Block creating a duplicate company tenant.
+    //
+    // `users.companyName` is plain text and unindexed — anyone hitting
+    // /register without an invite can type any string in step-2,
+    // including "Noctocode" or any other existing company's name, and
+    // walk away with their own row marked `profileType='company',
+    // companyName='Noctocode'`. They then leak into the real
+    // Noctocode admin's /teams?tab=users via UsersService.findAll
+    // (which still filters only by profileType, not by tenant).
+    //
+    // Right architecture is a `companies` table with a unique name +
+    // a company_id FK on users — that lands in a separate migration
+    // PR. As a tactical guard until then: reject onboarding completion
+    // if the typed company name is already used by *another* user.
+    // Comparison normalises trim + lowercase so "Noctocode" /
+    // "noctocode" / " NOCTOCODE " all count as the same tenant.
+    // Excluding the caller's own row via `ne(users.id, userId)` keeps
+    // re-runs (support-cleared `onboardingCompletedAt`) and invitee
+    // flows (their row already has the companyName inherited from the
+    // inviter) working — the existing match is themselves, which we
+    // ignore.
+    if (
+      payload.profileType === 'company' &&
+      payload.companyName &&
+      payload.companyName.trim().length > 0
+    ) {
+      const normalised = payload.companyName.trim().toLowerCase();
+      const [conflict] = await this.db
+        .select({ id: users.id })
+        .from(users)
+        .where(
+          and(
+            sql`lower(trim(${users.companyName})) = ${normalised}`,
+            ne(users.id, userId),
+          ),
+        )
+        .limit(1);
+      if (conflict) {
+        throw new ConflictException(
+          `A company named "${payload.companyName.trim()}" already exists. ` +
+            `Ask the admin of that company to invite you instead of recreating it.`,
+        );
+      }
     }
 
     // Write files to disk first. If the subsequent DB transaction rolls
