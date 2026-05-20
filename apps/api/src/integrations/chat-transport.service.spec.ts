@@ -332,52 +332,83 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
     );
   }
 
-  it('passes when org_settings row is missing (fresh deployment)', async () => {
-    const svc = makeService([
-      [], // org_settings — no row yet
-    ]);
+  it('silently passes when no callerUserId is provided (test/back-compat)', async () => {
+    // Without a caller we can't identify a tenant; prod paths always
+    // wire it in, but back-compat tests don't, and the gate should
+    // be a no-op rather than fall back to a deployment-wide cap.
+    const svc = makeService([]);
     await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
   });
 
-  it('passes when monthlyBudgetCents is null ("no target set")', async () => {
-    const svc = makeService([[{ monthlyBudgetCents: null }]]);
-    await expect(svc.assertOrgBudgetNotExceeded()).resolves.toBeUndefined();
-  });
-
-  it('throws ORG_SUSPENDED when monthlyBudgetCents = 0 (kill switch)', async () => {
-    const svc = makeService([[{ monthlyBudgetCents: 0 }]]);
-    await expect(svc.assertOrgBudgetNotExceeded()).rejects.toThrow(
-      ORG_SUSPENDED_MARKER,
-    );
-  });
-
-  it('passes when projected (spent + estimate) stays under the target', async () => {
+  it('silently passes when caller has no tenant (personal-profile / mid-onboarding)', async () => {
+    // LEFT JOIN companies onto users — personal callers land here
+    // with companyId=null and monthlyBudgetCents=null and the gate
+    // skips.
     const svc = makeService([
-      [{ monthlyBudgetCents: 50000 }], // $500 target
-      [{ total: '100.00' }], // $100 spent so far
+      [{ companyId: null, monthlyBudgetCents: null }],
     ]);
     await expect(
-      svc.assertOrgBudgetNotExceeded({ estimatedCostCents: 100 }), // +$1
+      svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
     ).resolves.toBeUndefined();
   });
 
-  it('throws ORG_BUDGET_EXCEEDED post-flight when spend already crosses target', async () => {
+  it('passes when tenant monthlyBudgetCents is null ("no target set")', async () => {
     const svc = makeService([
-      [{ monthlyBudgetCents: 50000 }], // $500
-      [{ total: '512.00' }], // $512 — over
-    ]);
-    await expect(svc.assertOrgBudgetNotExceeded()).rejects.toThrow(
-      ORG_BUDGET_EXCEEDED_MARKER,
-    );
-  });
-
-  it('throws ORG_BUDGET_EXCEEDED pre-flight when the estimate would push over', async () => {
-    const svc = makeService([
-      [{ monthlyBudgetCents: 50000 }], // $500
-      [{ total: '498.00' }], // $498
+      [{ companyId: 'c1', monthlyBudgetCents: null }],
     ]);
     await expect(
-      svc.assertOrgBudgetNotExceeded({ estimatedCostCents: 500 }), // +$5 → $503
+      svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws ORG_SUSPENDED when tenant monthlyBudgetCents = 0 (kill switch)', async () => {
+    const svc = makeService([[{ companyId: 'c1', monthlyBudgetCents: 0 }]]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
+    ).rejects.toThrow(ORG_SUSPENDED_MARKER);
+  });
+
+  it('passes when projected (spent + estimate) stays under the tenant target', async () => {
+    // Row order matters: the aggregate's outer `db.select` is shifted
+    // off the queue BEFORE the subquery's `db.select` (JS evaluates
+    // the method chain head before evaluating the where-arg's
+    // sub-expression). So [agg] resolves to row[1]; the empty row[2]
+    // is just a placeholder the subquery shift consumes silently.
+    const svc = makeService([
+      [{ companyId: 'c1', monthlyBudgetCents: 50000 }], // $500 tenant cap
+      [{ total: '100.00' }], // aggregate: $100 spent so far in tenant
+      [], // tenant-users subquery (consumed and discarded)
+    ]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({
+        callerUserId: 'u1',
+        estimatedCostCents: 100,
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws ORG_BUDGET_EXCEEDED post-flight when tenant spend already crosses target', async () => {
+    const svc = makeService([
+      [{ companyId: 'c1', monthlyBudgetCents: 50000 }], // $500
+      [{ total: '512.00' }], // aggregate: $512 — over
+      [], // tenant-users subquery
+    ]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
+    ).rejects.toThrow(ORG_BUDGET_EXCEEDED_MARKER);
+  });
+
+  it('throws ORG_BUDGET_EXCEEDED pre-flight when the estimate would push the tenant over', async () => {
+    const svc = makeService([
+      [{ companyId: 'c1', monthlyBudgetCents: 50000 }], // $500
+      [{ total: '498.00' }], // aggregate: $498
+      [], // tenant-users subquery
+    ]);
+    await expect(
+      svc.assertOrgBudgetNotExceeded({
+        callerUserId: 'u1',
+        estimatedCostCents: 500,
+      }),
     ).rejects.toThrow(/would push the company past/);
   });
 });

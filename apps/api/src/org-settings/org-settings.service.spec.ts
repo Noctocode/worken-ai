@@ -36,19 +36,19 @@ function svc() {
 describe('OrgSettingsService.update validation', () => {
   it('rejects negative monthly budget', async () => {
     await expect(
-      svc().update({ monthlyBudgetCents: -1 }),
+      svc().update({ monthlyBudgetCents: -1 }, 'caller-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects non-integer monthly budget', async () => {
     await expect(
-      svc().update({ monthlyBudgetCents: 12.5 }),
+      svc().update({ monthlyBudgetCents: 12.5 }, 'caller-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
   it('rejects NaN', async () => {
     await expect(
-      svc().update({ monthlyBudgetCents: NaN }),
+      svc().update({ monthlyBudgetCents: NaN }, 'caller-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 });

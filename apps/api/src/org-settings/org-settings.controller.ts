@@ -23,11 +23,12 @@ export class OrgSettingsController {
   /**
    * Read access is open to any authenticated user — the Company tab
    * needs the budget target to render its primary card and the value
-   * isn't sensitive.
+   * isn't sensitive. Returns the caller's *tenant* budget; personal-
+   * profile / mid-onboarding users get a synthetic "no target" view.
    */
   @Get()
-  getCurrent() {
-    return this.orgSettings.getCurrent();
+  getCurrent(@CurrentUser() caller: AuthenticatedUser) {
+    return this.orgSettings.getCurrent(caller.id);
   }
 
   @Patch()

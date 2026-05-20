@@ -15,6 +15,13 @@
       "when": 1779290000000,
       "tag": "0001_companies_tenant",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779380000000,
+      "tag": "0002_companies_monthly_budget",
+      "breakpoints": true
     }
   ]
 }

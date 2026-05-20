@@ -97,6 +97,17 @@ export const companies = pgTable("companies", {
   industry: text("industry"),
   teamSize: text("team_size"),
   infraChoice: text("infra_choice"),
+  // Tenant-scoped monthly budget cap (cents). Tri-state, mirrors the
+  // legacy singleton `org_settings.monthly_budget_cents` which it
+  // replaces:
+  //   - NULL → no cap set for this tenant (chat-transport gate
+  //     silent-passes; FE hides over-budget banner).
+  //   - 0    → kill switch — every chat call in this tenant 402s
+  //     with ORG_SUSPENDED. Tenant-scoped, so flipping the switch
+  //     in tenant A no longer suspends tenant B.
+  //   - >0   → enforced; the gate blocks when tenant spend +
+  //     estimate >= cap.
+  monthlyBudgetCents: integer("monthly_budget_cents"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
