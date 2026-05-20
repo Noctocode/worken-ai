@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseInterceptors,
@@ -53,6 +54,36 @@ export class OnboardingController {
   @Get('profile')
   getProfile(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.getProfile(user.id);
+  }
+
+  /**
+   * "Is this company name still free to claim?" check used by the
+   * step-2 wizard input. Returns `{ available: boolean }`. Excludes
+   * the caller's own row so an invitee whose row already has the
+   * inherited company name still sees `available: true` for that
+   * name.
+   *
+   * Advisory — `complete` re-validates server-side so a race between
+   * two simultaneous self-signups can't both succeed.
+   */
+  @Get('check-company')
+  async checkCompany(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('name') name?: string,
+  ) {
+    const trimmed = (name ?? '').trim();
+    if (trimmed.length === 0) {
+      // Empty input is treated as "not available" — the FE only
+      // shows the inline conflict copy when available=false AND the
+      // input is non-empty, so this stays out of the "Continue is
+      // disabled because empty" message we already render.
+      return { available: false };
+    }
+    const available = await this.onboardingService.isCompanyNameAvailable(
+      user.id,
+      trimmed,
+    );
+    return { available };
   }
 
   /**

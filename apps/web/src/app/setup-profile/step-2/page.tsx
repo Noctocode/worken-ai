@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Building2, User as UserIcon } from "lucide-react";
+import { Building2, Loader2, User as UserIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { checkOnboardingCompanyName } from "@/lib/api";
 import { useOnboarding } from "../layout";
 
 const INDUSTRIES = [
@@ -46,6 +47,45 @@ export default function SetupProfileStep2Page() {
   // failed Continue, subsequent renders re-evaluate per-field so
   // filling a field clears its error live.
   const [attempted, setAttempted] = useState(false);
+
+  // Inline "is this company name still free?" check. Debounced 400ms
+  // after typing stops so we don't hammer the BE on every keystroke;
+  // stale-response guard via the local request token cancels older
+  // checks if the user keeps typing past a slow round-trip.
+  //   - 'idle'  → no check has fired yet for the current value
+  //   - 'check' → in-flight
+  //   - 'free'  → BE confirms available
+  //   - 'taken' → BE reports another user already owns this name
+  //   - 'error' → network or 5xx; we let the user proceed and rely
+  //               on the server-side check at /onboarding/complete
+  type NameStatus = "idle" | "check" | "free" | "taken" | "error";
+  const [nameStatus, setNameStatus] = useState<NameStatus>("idle");
+
+  useEffect(() => {
+    const trimmed = companyName.trim();
+    if (trimmed.length === 0) {
+      setNameStatus("idle");
+      return;
+    }
+    setNameStatus("check");
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      checkOnboardingCompanyName(trimmed)
+        .then((res) => {
+          if (cancelled) return;
+          setNameStatus(res.available ? "free" : "taken");
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setNameStatus("error");
+        });
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [companyName]);
+
   const errors = {
     companyName: !companyName.trim(),
     industry: !industry,
@@ -53,9 +93,17 @@ export default function SetupProfileStep2Page() {
   };
   const hasError =
     errors.companyName || errors.industry || errors.teamSize;
+  // Block Continue while a duplicate is detected or while the check
+  // is still in flight (avoids a race where the user clicks Continue
+  // 100ms after typing and walks through the wizard before the BE
+  // call returns). 'error' falls through so a flaky check endpoint
+  // doesn't strand the user — the server-side check at completion
+  // catches a genuine duplicate.
+  const blockedByNameCheck =
+    nameStatus === "taken" || nameStatus === "check";
 
   const handleContinue = () => {
-    if (hasError) {
+    if (hasError || blockedByNameCheck) {
       setAttempted(true);
       return;
     }
@@ -112,15 +160,33 @@ export default function SetupProfileStep2Page() {
                   placeholder="Company Name"
                   value={companyName}
                   onChange={(e) => update({ companyName: e.target.value })}
-                  aria-invalid={attempted && errors.companyName}
-                  className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
+                  aria-invalid={
+                    (attempted && errors.companyName) ||
+                    nameStatus === "taken"
+                  }
+                  className={`h-11 pl-10 pr-10 text-base rounded-md placeholder:text-text-3 ${
+                    nameStatus === "taken"
+                      ? "border-danger-5 focus-visible:border-danger-5 focus-visible:ring-danger-5/20"
+                      : "border-border-3"
+                  }`}
                 />
+                {/* Right-edge spinner while the debounced check is
+                    in flight — subtle hint that we're confirming the
+                    name, without blocking interaction. */}
+                {nameStatus === "check" && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-text-3" />
+                )}
               </div>
-              {attempted && errors.companyName && (
+              {attempted && errors.companyName ? (
                 <p className="text-[12px] text-danger-6">
                   Company name is required.
                 </p>
-              )}
+              ) : nameStatus === "taken" ? (
+                <p className="text-[12px] text-danger-6">
+                  This company already exists. Ask the admin to invite you,
+                  or pick a different name.
+                </p>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -184,8 +250,16 @@ export default function SetupProfileStep2Page() {
                 Back
               </Button>
               <Button
-                className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
+                className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={handleContinue}
+                disabled={blockedByNameCheck}
+                title={
+                  nameStatus === "taken"
+                    ? "This company already exists — pick a different name or ask for an invite."
+                    : nameStatus === "check"
+                      ? "Checking company name…"
+                      : undefined
+                }
               >
                 Continue
               </Button>

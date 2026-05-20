@@ -170,6 +170,40 @@ export class OnboardingService {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
+  /**
+   * Check whether `name` is free to be claimed as a fresh company
+   * tenant by the caller. Returns true when no OTHER user already
+   * owns the same (trim + lowercase) companyName. The caller's own
+   * row is excluded so re-runs (support-cleared
+   * `onboardingCompletedAt`) and invitee flows (companyName already
+   * inherited from inviter) report "available" for themselves.
+   *
+   * Surfaced via GET /onboarding/check-company so the step-2 wizard
+   * can validate inline as the user types — and walk through the
+   * rest of the wizard with confidence — instead of getting a 409
+   * at /onboarding/complete after step-6. The same check still
+   * runs server-side at complete() since the step-2 result is
+   * advisory; a slow second user could in theory race.
+   */
+  async isCompanyNameAvailable(
+    userId: string,
+    name: string,
+  ): Promise<boolean> {
+    const normalised = name.trim().toLowerCase();
+    if (normalised.length === 0) return false;
+    const [conflict] = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          sql`lower(trim(${users.companyName})) = ${normalised}`,
+          ne(users.id, userId),
+        ),
+      )
+      .limit(1);
+    return !conflict;
+  }
+
   async complete(
     userId: string,
     payload: OnboardingPayload,
@@ -233,31 +267,19 @@ export class OnboardingService {
     // Right architecture is a `companies` table with a unique name +
     // a company_id FK on users — that lands in a separate migration
     // PR. As a tactical guard until then: reject onboarding completion
-    // if the typed company name is already used by *another* user.
-    // Comparison normalises trim + lowercase so "Noctocode" /
-    // "noctocode" / " NOCTOCODE " all count as the same tenant.
-    // Excluding the caller's own row via `ne(users.id, userId)` keeps
-    // re-runs (support-cleared `onboardingCompletedAt`) and invitee
-    // flows (their row already has the companyName inherited from the
-    // inviter) working — the existing match is themselves, which we
-    // ignore.
+    // if the typed company name is already used by another user.
+    // Same check is exposed via isCompanyNameAvailable() so step-2
+    // can validate inline before the user walks through 4 more steps.
     if (
       payload.profileType === 'company' &&
       payload.companyName &&
       payload.companyName.trim().length > 0
     ) {
-      const normalised = payload.companyName.trim().toLowerCase();
-      const [conflict] = await this.db
-        .select({ id: users.id })
-        .from(users)
-        .where(
-          and(
-            sql`lower(trim(${users.companyName})) = ${normalised}`,
-            ne(users.id, userId),
-          ),
-        )
-        .limit(1);
-      if (conflict) {
+      const available = await this.isCompanyNameAvailable(
+        userId,
+        payload.companyName,
+      );
+      if (!available) {
         throw new ConflictException(
           `A company named "${payload.companyName.trim()}" already exists. ` +
             `Ask the admin of that company to invite you instead of recreating it.`,
