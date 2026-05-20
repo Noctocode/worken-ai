@@ -654,11 +654,13 @@ export class GuardrailEvaluatorService {
     // load the rule.
     //
     // Org-wide rules: every rule with is_org_wide=true whose owner
-    // shares the current user's company_name. Bypasses the per-team
+    // shares the current user's `company_id`. Bypasses the per-team
     // links entirely — one company admin can enforce a rule across
     // every team and every member without N link rows. Skipped for
-    // personal-profile users (null companyName) since "everyone in
-    // the company" has no meaning there.
+    // personal-profile users (null companyId) since "everyone in
+    // the company" has no meaning there. Tenant comparison by UUID,
+    // not display name — two distinct tenants that share a name stay
+    // isolated.
     const personalCond = and(
       eq(guardrails.ownerId, scope.userId),
       eq(guardrails.isActive, true),
@@ -691,8 +693,8 @@ export class GuardrailEvaluatorService {
         INNER JOIN ${users} owner_u
           ON owner_u.id = ${guardrails.ownerId}
         WHERE caller_u.id = ${scope.userId}
-          AND caller_u.company_name IS NOT NULL
-          AND caller_u.company_name = owner_u.company_name
+          AND caller_u.company_id IS NOT NULL
+          AND caller_u.company_id = owner_u.company_id
       )`,
     );
 

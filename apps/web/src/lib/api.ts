@@ -2611,26 +2611,6 @@ export async function getOnboardingIngestionStatus(): Promise<IngestionStatusRes
   return (await res.json()) as IngestionStatusResponse;
 }
 
-/**
- * Is `name` free to be claimed as a fresh company tenant? Used by the
- * step-2 wizard input for inline validation so the user doesn't walk
- * through 4 more steps just to hit a 409 at completion. Excludes the
- * caller's own row server-side — invitees whose row already has the
- * inherited companyName still see `available: true` for that name.
- *
- * Server still re-validates at /onboarding/complete; this is purely
- * advisory.
- */
-export async function checkOnboardingCompanyName(
-  name: string,
-): Promise<{ available: boolean }> {
-  const res = await apiFetch(
-    `/onboarding/check-company?name=${encodeURIComponent(name)}`,
-  );
-  if (!res.ok) throw new Error("Failed to check company name");
-  return (await res.json()) as { available: boolean };
-}
-
 // ─── Observability ────────────────────────────────────────────────────
 
 export type ObservabilityRange = "24h" | "7d" | "30d" | "90d";

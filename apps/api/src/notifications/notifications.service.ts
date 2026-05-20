@@ -358,43 +358,49 @@ export class NotificationsService {
   }
 
   /**
-   * Every user in the caller's company. Used by transparency-style
+   * Every user in the caller's tenant. Used by transparency-style
    * notifications (org-wide guardrail added, etc) where the audience
    * is the whole org, not just admins. Excludes the caller; if the
-   * caller has no company_name (personal profile), returns empty.
+   * caller has no `companyId` (personal profile / mid-onboarding),
+   * returns empty.
+   *
+   * Tenant key is `companyId` (UUID), not `companyName` — two
+   * distinct tenants that happen to share a display name stay
+   * isolated, and a tenant rename doesn't change the recipient set.
    */
   async getCompanyUsers(callerUserId: string): Promise<string[]> {
     const callerRow = await this.db
-      .select({ companyName: users.companyName })
+      .select({ companyId: users.companyId })
       .from(users)
       .where(eq(users.id, callerUserId))
       .limit(1);
-    const companyName = callerRow[0]?.companyName ?? null;
-    if (!companyName) return [];
+    const companyId = callerRow[0]?.companyId ?? null;
+    if (!companyId) return [];
     const rows = await this.db
       .select({ id: users.id })
       .from(users)
-      .where(eq(users.companyName, companyName));
+      .where(eq(users.companyId, companyId));
     return rows.map((r) => r.id).filter((id) => id !== callerUserId);
   }
 
   /**
    * Resolve the set of users who should receive an org-budget
-   * alert: every accepted org admin. Multi-tenant scoping uses the
-   * caller's company_name so we don't page admins of other tenants.
+   * alert: every org admin in the caller's tenant. Scoped by
+   * `companyId` so a budget alert in tenant A doesn't page tenant
+   * B's admins.
    */
   async getOrgBudgetRecipients(callerUserId: string): Promise<string[]> {
     const callerRow = await this.db
-      .select({ companyName: users.companyName })
+      .select({ companyId: users.companyId })
       .from(users)
       .where(eq(users.id, callerUserId))
       .limit(1);
-    const companyName = callerRow[0]?.companyName ?? null;
-    if (!companyName) return [];
+    const companyId = callerRow[0]?.companyId ?? null;
+    if (!companyId) return [];
     const rows = await this.db
       .select({ id: users.id })
       .from(users)
-      .where(and(eq(users.role, 'admin'), eq(users.companyName, companyName)));
+      .where(and(eq(users.role, 'admin'), eq(users.companyId, companyId)));
     return rows.map((r) => r.id);
   }
 

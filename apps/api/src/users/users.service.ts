@@ -6,7 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 import {
   users,
   teamMembers,
@@ -55,18 +55,32 @@ export class UsersService {
   }
 
   async findAll(callerId: string) {
-    // Scope: a single-tenant deployment is one company AND can also
-    // host independent Private Pro accounts side-by-side. A company-
-    // profile caller sees only other company-profile users (plus
-    // NULL-profile rows, which are pending invitees mid-flow that
-    // haven't completed onboarding yet — admin needs them in the
-    // list to see who's still queued). Personal-profile (Private
-    // Pro) callers see only themselves; their account is isolated.
+    // Tenant scope: a company-profile caller sees every user that
+    // shares their `companyId`. Personal-profile (Private Pro)
+    // callers see only themselves — their account is isolated.
+    //
+    // Filtering on `companyId` (not `profileType`) is what closes
+    // the prior cross-tenant leak: when the scope key was profileType
+    // alone, every self-signup that completed onboarding with
+    // profileType='company' showed up in every other company admin's
+    // /teams?tab=users — because the query had no tenant key. Now
+    // each tenant is a UUID, and two unrelated companies that happen
+    // to share a display name are still isolated.
+    //
+    // A caller with companyId=NULL falls back to "see only yourself".
+    // That's the safe default for: mid-onboarding users (no tenant
+    // yet), personal-profile users, and any pre-migration row the
+    // backfill couldn't resolve (none today, but the guard is
+    // defensive — better to under-show than to leak).
     const [caller] = await this.db
-      .select({ profileType: users.profileType })
+      .select({
+        profileType: users.profileType,
+        companyId: users.companyId,
+      })
       .from(users)
       .where(eq(users.id, callerId));
-    const isCompanyScope = caller?.profileType === 'company';
+    const isCompanyScope =
+      caller?.profileType === 'company' && !!caller.companyId;
 
     const baseSelect = {
       id: users.id,
@@ -83,13 +97,7 @@ export class UsersService {
       ? await this.db
           .select(baseSelect)
           .from(users)
-          // 'personal' rows are independent Private Pro accounts —
-          // they share the deployment but not the company tenancy.
-          // Filter them out so a company admin's user list doesn't
-          // surface unrelated personal accounts.
-          .where(
-            or(eq(users.profileType, 'company'), isNull(users.profileType)),
-          )
+          .where(eq(users.companyId, caller!.companyId!))
       : await this.db
           .select(baseSelect)
           .from(users)

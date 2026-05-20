@@ -480,9 +480,9 @@ export class GuardrailsSectionService {
    * configuration without any data loss.
    *
    * Permission: rule's owner, OR a company admin (`role='admin'`)
-   * who shares the owner's companyName. The admin escape hatch lets
-   * a company owner enforce a rule across every team even when
-   * someone else originally authored it.
+   * in the same tenant as the owner (`users.companyId` match). The
+   * admin escape hatch lets a company owner enforce a rule across
+   * every team even when someone else originally authored it.
    */
   async toggleOrgWide(guardrailId: string, userId: string) {
     const [rule] = await this.db
@@ -494,18 +494,21 @@ export class GuardrailsSectionService {
 
     if (rule.ownerId !== userId) {
       const [caller] = await this.db
-        .select({ role: users.role, companyName: users.companyName })
+        .select({ role: users.role, companyId: users.companyId })
         .from(users)
         .where(eq(users.id, userId));
       const [owner] = await this.db
-        .select({ companyName: users.companyName })
+        .select({ companyId: users.companyId })
         .from(users)
         .where(eq(users.id, rule.ownerId));
 
+      // Tenant comparison by UUID — two distinct tenants that share
+      // a display name stay isolated, so an admin in tenant A
+      // can't toggle a rule owned by tenant B's user.
       const isCompanyAdmin =
         caller?.role === 'admin' &&
-        !!caller.companyName &&
-        caller.companyName === owner?.companyName;
+        !!caller.companyId &&
+        caller.companyId === owner?.companyId;
 
       if (!isCompanyAdmin) {
         throw new ForbiddenException(
