@@ -18,11 +18,19 @@ import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
 import type { Request as Req, Response as Res } from 'express';
 
+// Cookie domain — set in prod to `.workenai.com` so the same access /
+// refresh tokens are available to both `app.workenai.com` (where the
+// Next.js middleware reads them server-side) and `api.workenai.com`
+// (where the API authenticates them). Leave unset in dev so cookies
+// stay host-only on `localhost`.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
+
 const COOKIE_OPTIONS = {
   httpOnly: true,
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   path: '/',
+  domain: COOKIE_DOMAIN,
 };
 
 function setSessionCookies(
@@ -185,16 +193,22 @@ export class AuthController {
     // Standalone signup: send the verification email and return without a
     // session. Frontend will redirect to /check-email. If mail delivery
     // fails we still 200 — the user can resend from /check-email.
+    //
+    // Fire-and-forget: SMTP send can take 200-3000ms depending on the
+    // provider and we were `await`ing it inside the request — every
+    // signup carried that latency on top of argon2 even though the
+    // mail is non-fatal. Detached so the response returns the moment
+    // the user row is in place; the email arrives a beat later.
     if (verificationToken) {
-      try {
-        await this.mailService.sendVerificationEmail({
+      void this.mailService
+        .sendVerificationEmail({
           to: user.email,
           name: user.name ?? 'there',
           token: verificationToken,
+        })
+        .catch((err) => {
+          console.error('Failed to send verification email:', err);
         });
-      } catch (err) {
-        console.error('Failed to send verification email:', err);
-      }
     }
 
     res.json({

@@ -324,13 +324,13 @@ export class OnboardingService {
             continue;
           }
           // onConflictDoNothing on the partial unique index
-          // `(owner_id, provider_id) WHERE api_url IS NULL` so a
-          // re-run of onboarding (e.g. support-action that cleared
-          // onboarding_completed_at after the legacy backfill SQL was
-          // applied) doesn't crash the whole transaction with 23505
-          // and orphan the just-uploaded knowledge documents. The
-          // existing row is left as-is — the user can update keys
-          // from Management → Integration.
+          // `(owner_id, provider_id) WHERE api_url IS NULL AND
+          // team_id IS NULL` so a re-run of onboarding (e.g. support
+          // action that cleared `onboarding_completed_at` after the
+          // legacy backfill SQL was applied) doesn't crash the whole
+          // transaction with 23505 and orphan the just-uploaded
+          // knowledge documents. The existing row is left as-is —
+          // the user can update keys from Management → Integration.
           await tx
             .insert(integrations)
             .values({
@@ -342,7 +342,21 @@ export class OnboardingService {
             })
             .onConflictDoNothing({
               target: [integrations.ownerId, integrations.providerId],
-              where: sql`${integrations.apiUrl} IS NULL`,
+              // Index inference rule for partial unique indexes:
+              // the ON CONFLICT WHERE clause must IMPLY the index's
+              // predicate (i.e. be at least as restrictive). The
+              // matching index here is
+              // `integrations_owner_provider_predef_unique` defined
+              // as (owner_id, provider_id) WHERE api_url IS NULL AND
+              // team_id IS NULL — so this predicate must also include
+              // team_id IS NULL. Earlier the WHERE only carried
+              // api_url IS NULL, which is *less* restrictive than the
+              // index predicate; Postgres rejected it with 42P10
+              // ("no unique or exclusion constraint matching the ON
+              // CONFLICT specification"), surfacing as a 500 on
+              // /onboarding/complete the moment a user supplied an
+              // OpenAI / Anthropic key in step-5.
+              where: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
             });
         }
       }
