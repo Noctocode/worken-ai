@@ -1,6 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import OpenAI from 'openai';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
@@ -15,19 +14,19 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
+import { OcrFallbackService } from '../openrouter/ocr-fallback.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
 // shared so the two modules stay decoupled. If you rename the onboarding
 // folder, update both.
 const ONBOARDING_FOLDER_NAME = 'Onboarding';
 
-// OCR model used for image uploads. Same model arena uses for
-// attachment OCR (compare-models.controller) — :free tier so cost
-// stays predictable. The OCR call always routes through OpenRouter,
-// regardless of any BYOK keys the user might have for chat — vision
-// support varies across providers and we don't want to surprise the
-// user with an Anthropic-only key failing on an image.
-const OCR_MODEL = 'baidu/qianfan-ocr-fast:free';
+// OCR is delegated to OcrFallbackService — model selection lives in
+// OCR_MODELS env var (chain of vision-capable models tried in order).
+// We still route through OpenRouter regardless of any BYOK keys the
+// user might have for chat — vision support varies across providers
+// and we don't want to surprise the user with an Anthropic-only key
+// failing on an image.
 const IMAGE_MIMETYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -35,7 +34,6 @@ const IMAGE_MIMETYPES = new Set([
   'image/webp',
   'image/gif',
 ]);
-const NO_TEXT_MARKER = 'NO_TEXT_FOUND';
 
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
@@ -74,6 +72,7 @@ export class KnowledgeIngestionService {
     private readonly documentsService: DocumentsService,
     private readonly keyResolver: KeyResolverService,
     private readonly notifications: NotificationsService,
+    private readonly ocrFallback: OcrFallbackService,
   ) {}
 
   /**
@@ -539,32 +538,9 @@ export class KnowledgeIngestionService {
     mimetype: string,
   ): Promise<string> {
     const apiKey = await this.keyResolver.resolveUserKey(userId);
-    const client = new OpenAI({
-      apiKey,
-      baseURL: 'https://openrouter.ai/api/v1',
-    });
     const dataUrl = `data:${mimetype};base64,${buffer.toString('base64')}`;
-    const completion = await client.chat.completions.create({
-      model: OCR_MODEL,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: 'Extract ALL text visible in this image, preserving structure and line breaks as best you can. If there is no text, respond with exactly: NO_TEXT_FOUND.',
-            },
-            {
-              type: 'image_url',
-              image_url: { url: dataUrl },
-            },
-          ],
-        },
-      ],
-    });
-    const raw = completion.choices[0]?.message?.content?.trim() ?? '';
-    if (raw === NO_TEXT_MARKER) return '';
-    return raw;
+    const { text } = await this.ocrFallback.extractText(dataUrl, apiKey);
+    return text;
   }
 
   private inferMimeFromName(filename: string): string {
