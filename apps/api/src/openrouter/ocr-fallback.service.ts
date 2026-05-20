@@ -3,17 +3,24 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 
 /**
- * Default OCR fallback chain. Ordered roughly fastest-first; the
- * runtime tries each model in sequence and stops at the first one
- * that returns a non-error response. Every entry is a public :free
- * tier model on OpenRouter as of writing. Operators can override the
- * list via the OCR_MODELS env var when a provider goes dark.
+ * Default OCR fallback chain. Ordered roughly smallest-first (the
+ * smaller model is cheaper and usually faster on short OCR prompts);
+ * the runtime tries each in sequence and stops at the first one that
+ * returns a non-error response. Every entry is a public :free tier
+ * vision-capable model currently listed on OpenRouter as of 2026-05.
+ *
+ * Free-tier model availability shifts often — providers come and go
+ * from the free pool without notice (that's how the previous default
+ * `baidu/qianfan-ocr-fast:free` ended up dark). Operators can override
+ * this chain with the OCR_MODELS env var when a provider drops, or
+ * append a paid model (e.g. `openai/gpt-4o-mini`) as the last hop to
+ * guarantee an answer.
  */
 const DEFAULT_OCR_MODELS =
-  'meta-llama/llama-3.2-11b-vision-instruct:free,' +
-  'mistralai/mistral-small-3.2-24b-instruct:free,' +
-  'qwen/qwen2.5-vl-72b-instruct:free,' +
-  'google/gemma-3-27b-it:free';
+  'nvidia/nemotron-nano-12b-v2-vl:free,' +
+  'google/gemma-4-26b-a4b-it:free,' +
+  'google/gemma-4-31b-it:free,' +
+  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free';
 
 /**
  * Sentinel the OCR prompt asks the model to emit when the image has
