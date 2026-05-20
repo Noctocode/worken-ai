@@ -214,11 +214,21 @@ export class UsersController {
       })
       .returning();
 
-    await this.mailService.sendOrgInvitation({
-      to: email,
-      inviterName,
-      role: body.role,
-    });
+    // Fire-and-forget: a slow SMTP relay (200-3000ms typical) used to
+    // freeze the admin's "Inviting…" button until the mail returned.
+    // The row is already persisted, so the invite is real even if the
+    // mail bounces — admin can re-invite to re-send.
+    this.mailService
+      .sendOrgInvitation({
+        to: email,
+        inviterName,
+        role: body.role,
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error(`sendOrgInvitation to ${email} failed: ${msg}`);
+      });
 
     return { status: 'invited', email: created.email, role: created.role };
   }
