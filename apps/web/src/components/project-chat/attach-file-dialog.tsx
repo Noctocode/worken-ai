@@ -2,7 +2,16 @@
 
 import { useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FileText, Loader2, Plus, Search, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  FileText,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+  Unplug,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -68,6 +77,18 @@ export function AttachFileDialog({
     queryKey: ["project-knowledge-files", projectId],
     queryFn: () => fetchProjectKnowledgeFiles(projectId),
     enabled: open,
+    // While any row is still being ingested ("Queued" / "Adding"),
+    // refetch every 2s so the badge transitions live. Once every
+    // row has settled (done / failed / untrained) the predicate
+    // returns false and react-query stops polling — no need to
+    // close the dialog to get a fresh state.
+    refetchInterval: (query) => {
+      const rows = query.state.data ?? [];
+      const anyInProgress = rows.some(
+        (r) => r.ingestionStatus === "pending" || r.ingestionStatus === "processing",
+      );
+      return anyInProgress ? 2000 : false;
+    },
   });
 
   const filtered = useMemo<ProjectKnowledgeFile[]>(() => {
@@ -277,6 +298,10 @@ export function AttachFileDialog({
                           {f.folderName}
                         </p>
                       </div>
+                      <IngestionStatusBadge
+                        status={f.ingestionStatus}
+                        error={f.ingestionError}
+                      />
                     </label>
                   </li>
                 );
@@ -324,5 +349,67 @@ export function AttachFileDialog({
         onCancel={handleConflictCancel}
       />
     </>
+  );
+}
+
+/**
+ * Ingestion-status pill. Mirrors the badge on /knowledge-core/[folder]
+ * so the same vocabulary follows the file across surfaces:
+ *
+ *   pending / processing → spinner, "Queued" / "Adding"
+ *   done                 → check, "In context"
+ *   untrained            → unplug, "Excluded"
+ *   failed               → warning, "Skipped" + tooltip with the
+ *                          underlying ingestion error so the user
+ *                          knows WHY (OCR provider down, scan with
+ *                          no text, password-protected PDF, …)
+ *
+ * Inline-duplicated rather than imported from the KC folder page —
+ * those pages don't share a components module for this domain yet
+ * and that page does the same thing. If a third caller needs it,
+ * extract to apps/web/src/components/knowledge/.
+ */
+function IngestionStatusBadge({
+  status,
+  error,
+}: {
+  status: "pending" | "processing" | "done" | "failed" | "untrained";
+  error?: string | null;
+}) {
+  if (status === "done") {
+    return (
+      <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
+        <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+        In context
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
+        title={error ?? "Could not extract searchable text from this file."}
+      >
+        <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+        Skipped
+      </span>
+    );
+  }
+  if (status === "untrained") {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title="Excluded from context — open Knowledge Core to include this file again."
+      >
+        <Unplug className="h-3 w-3" strokeWidth={2} />
+        Excluded
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
+      <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
+      {status === "processing" ? "Adding" : "Queued"}
+    </span>
   );
 }
