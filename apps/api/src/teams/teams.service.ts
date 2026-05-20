@@ -1744,14 +1744,14 @@ export class TeamsService {
    *
    *  1. Rules explicitly linked via `guardrail_teams` — each gets
    *     `teamIsActive` from the link row (per-team pause toggle).
-   *  2. Org-wide rules whose owner shares this team's company —
+   *  2. Org-wide rules whose owner shares this team's tenant —
    *     surfaced with `teamIsActive=true` (org-wide can't be paused
    *     per-team) and `isOrgWide=true` so the FE can disable the
    *     per-team Switch + "Remove from team" affordances.
    *
-   * "Same company" resolved by joining users on `company_name`.
-   * Teams without a resolvable company (orphan teams from before the
-   * profile flow) silently skip the org-wide branch.
+   * "Same tenant" resolved by joining users on `company_id` (UUID).
+   * Teams whose owner has no resolvable tenant (orphan teams from
+   * before the profile flow) silently skip the org-wide branch.
    */
   async findGuardrails(teamId: string) {
     const linked = await this.db

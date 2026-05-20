@@ -844,9 +844,10 @@ export class ChatTransportService {
     const projectedCents = spentCents + estimateCents;
 
     // 80% / 100% threshold alerts — same shape as the team-budget
-    // gate above. Recipients = every admin sharing the caller's
-    // company_name. Skipped when callerUserId is absent (test
-    // call path) or the user has no company (personal profile).
+    // gate above. Recipients = every admin in the caller's tenant
+    // (resolved by `users.company_id`). Skipped when callerUserId
+    // is absent (test call path) or the user has no tenant
+    // (personal profile / mid-onboarding).
     const eightyPct = Math.floor(targetCents * 0.8);
     if (
       options.callerUserId &&
