@@ -72,7 +72,7 @@ export class UsersController {
     }
     const page = Math.max(1, Number(pageRaw) || 1);
     const pageSize = Math.max(1, Math.min(Number(pageSizeRaw) || 50, 200));
-    return this.observabilityService.listEvents({
+    return this.observabilityService.listEvents(caller.id, {
       from: new Date(0),
       to: new Date(),
       userId: id,
