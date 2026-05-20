@@ -327,6 +327,17 @@ export class OnboardingService {
           industry: payload.profileType === 'company' ? payload.industry : null,
           teamSize: payload.profileType === 'company' ? payload.teamSize : null,
           infraChoice: payload.infraChoice,
+          // Self-signup → admin of the freshly-created tenant
+          // (company profile) OR sole owner of their own workspace
+          // (personal profile). Both branches arrive here from
+          // /setup-profile, which is reachable only by users who
+          // *weren't* pre-seeded by an invite flow (invitees get
+          // their role + companyId from the inviter and bypass the
+          // wizard entirely on first login). Default is 'basic' on
+          // the users row; we promote to 'admin' so the new tenant
+          // owner can immediately invite + manage their org without
+          // a second user having to grant them the role.
+          role: 'admin',
           onboardingCompletedAt: new Date(),
           updatedAt: new Date(),
         })
