@@ -13,7 +13,6 @@ import {
   integer,
   real,
   numeric,
-  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
@@ -48,7 +47,7 @@ export const users = pgTable("users", {
   // a company profile yet (mid-onboarding) or when profileType is
   // 'personal'. ON DELETE SET NULL so a company can be torn down
   // without nuking its members' user rows.
-  companyId: uuid("company_id").references((): AnyPgColumn => companies.id, {
+  companyId: uuid("company_id").references(() => companies.id, {
     onDelete: "set null",
   }),
   // Display caches written alongside `companyId` on onboarding /
@@ -109,10 +108,7 @@ export const teams = pgTable("teams", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
-  parentTeamId: uuid("parent_team_id").references(
-    (): AnyPgColumn => teams.id,
-    { onDelete: "set null" },
-  ),
+  parentTeamId: uuid("parent_team_id").references(() => teams.id, { onDelete: "set null" }),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
