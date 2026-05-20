@@ -193,16 +193,22 @@ export class AuthController {
     // Standalone signup: send the verification email and return without a
     // session. Frontend will redirect to /check-email. If mail delivery
     // fails we still 200 — the user can resend from /check-email.
+    //
+    // Fire-and-forget: SMTP send can take 200-3000ms depending on the
+    // provider and we were `await`ing it inside the request — every
+    // signup carried that latency on top of argon2 even though the
+    // mail is non-fatal. Detached so the response returns the moment
+    // the user row is in place; the email arrives a beat later.
     if (verificationToken) {
-      try {
-        await this.mailService.sendVerificationEmail({
+      void this.mailService
+        .sendVerificationEmail({
           to: user.email,
           name: user.name ?? 'there',
           token: verificationToken,
+        })
+        .catch((err) => {
+          console.error('Failed to send verification email:', err);
         });
-      } catch (err) {
-        console.error('Failed to send verification email:', err);
-      }
     }
 
     res.json({
