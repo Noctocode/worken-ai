@@ -79,8 +79,8 @@ export class UsersService {
       })
       .from(users)
       .where(eq(users.id, callerId));
-    const isCompanyScope =
-      caller?.profileType === 'company' && !!caller.companyId;
+    const callerCompanyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
 
     const baseSelect = {
       id: users.id,
@@ -93,11 +93,11 @@ export class UsersService {
       infraChoice: users.infraChoice,
       createdAt: users.createdAt,
     };
-    const allUsers = isCompanyScope
+    const allUsers = callerCompanyId
       ? await this.db
           .select(baseSelect)
           .from(users)
-          .where(eq(users.companyId, caller!.companyId!))
+          .where(eq(users.companyId, callerCompanyId))
       : await this.db
           .select(baseSelect)
           .from(users)
