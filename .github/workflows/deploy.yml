@@ -106,6 +106,7 @@ jobs:
             POSTGRES_DB=${{ secrets.POSTGRES_DB }}
             FRONTEND_URL=${{ vars.FRONTEND_URL }}
             API_URL=${{ vars.API_URL }}
+            COOKIE_DOMAIN=${{ vars.COOKIE_DOMAIN }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
             GOOGLE_CALLBACK_URL=${{ vars.GOOGLE_CALLBACK_URL }}
