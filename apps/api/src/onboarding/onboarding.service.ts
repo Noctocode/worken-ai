@@ -342,7 +342,16 @@ export class OnboardingService {
             })
             .onConflictDoNothing({
               target: [integrations.ownerId, integrations.providerId],
-              where: sql`${integrations.apiUrl} IS NULL`,
+              // WHERE predicate must EXACTLY match the partial unique
+              // index `integrations_owner_provider_predef_unique` which
+              // is `(owner_id, provider_id) WHERE api_url IS NULL AND
+              // team_id IS NULL`. Earlier the WHERE was just
+              // `api_url IS NULL` — Postgres rejected the spec with
+              // 42P10 ("no unique or exclusion constraint matching
+              // the ON CONFLICT specification"), surfacing as a 500
+              // on /onboarding/complete the moment a user supplied
+              // an OpenAI / Anthropic key in step-5.
+              where: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
             });
         }
       }
