@@ -173,7 +173,15 @@ export default function SetupProfileStep6Page() {
       if (state.profileType === "personal" && !state.fullName?.trim()) {
         throw new Error("Full name is required.");
       }
-      setFilesAtSubmit(files.length);
+      // Capture the snapshot count in a local — onSuccess gets it via
+      // the mutation's return value (synchronous, race-free), while
+      // setFilesAtSubmit feeds the render-time progress denominator.
+      // Reading `filesAtSubmit` state in onSuccess would race with the
+      // setState here because state updates don't apply until the next
+      // render, and onSuccess fires synchronously after mutationFn
+      // resolves.
+      const submittedCount = files.length;
+      setFilesAtSubmit(submittedCount);
       await completeOnboarding(
         {
           profileType: state.profileType,
@@ -191,12 +199,13 @@ export default function SetupProfileStep6Page() {
         },
         files,
       );
+      return submittedCount;
     },
-    onSuccess: () => {
+    onSuccess: (submittedCount) => {
       // Auth side-effects fire immediately so the dashboard the user
       // lands on later sees the completed onboarding state.
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      if (filesAtSubmit === 0) {
+      if (submittedCount === 0) {
         // No files = no ingestion work. Skip the progress UI and
         // redirect right away so the path stays as fast as it was.
         finishAndRedirect();
