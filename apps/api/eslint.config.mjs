@@ -33,4 +33,15 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // unbound-method has a well-known false-positive on jest.Mocked<T>:
+    // `expect(svc.method).toHaveBeenCalledWith(...)` detaches the
+    // method but jest doesn't actually invoke it, so the `this` warning
+    // doesn't apply. Disabling for spec files mirrors the recommended
+    // setup when paired with jest's own expect() ecosystem.
+    files: ['**/*.spec.ts', '**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+    },
+  },
 );
