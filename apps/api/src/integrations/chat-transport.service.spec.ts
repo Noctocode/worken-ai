@@ -133,10 +133,8 @@ function makeChainableDb(rowSets: unknown[][]) {
 
   const makeChain = (rows: unknown[]) => {
     const promiseLike: Record<string, unknown> & PromiseLike<unknown[]> = {
-      then: (
-        onFulfilled?: (value: unknown[]) => unknown,
-        _onRejected?: (reason: unknown) => unknown,
-      ) => Promise.resolve(rows).then(onFulfilled),
+      then: (onFulfilled?: (value: unknown[]) => unknown) =>
+        Promise.resolve(rows).then(onFulfilled),
       catch: (onRejected?: (reason: unknown) => unknown) =>
         Promise.resolve(rows).catch(onRejected),
     } as unknown as Record<string, unknown> & PromiseLike<unknown[]>;
@@ -182,10 +180,10 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       // `getOrgBudgetRecipients` would matter and both default to
       // empty (no recipients → no rows enqueued).
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as any,
     );
   }
@@ -324,10 +322,10 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
       // `getOrgBudgetRecipients` would matter and both default to
       // empty (no recipients → no rows enqueued).
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as any,
     );
   }
@@ -344,18 +342,14 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
     // LEFT JOIN companies onto users — personal callers land here
     // with companyId=null and monthlyBudgetCents=null and the gate
     // skips.
-    const svc = makeService([
-      [{ companyId: null, monthlyBudgetCents: null }],
-    ]);
+    const svc = makeService([[{ companyId: null, monthlyBudgetCents: null }]]);
     await expect(
       svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
     ).resolves.toBeUndefined();
   });
 
   it('passes when tenant monthlyBudgetCents is null ("no target set")', async () => {
-    const svc = makeService([
-      [{ companyId: 'c1', monthlyBudgetCents: null }],
-    ]);
+    const svc = makeService([[{ companyId: 'c1', monthlyBudgetCents: null }]]);
     await expect(
       svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
     ).resolves.toBeUndefined();
@@ -425,10 +419,10 @@ describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
       {} as never,
       {} as never,
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as never,
     );
   }

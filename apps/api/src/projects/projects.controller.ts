@@ -18,10 +18,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'crypto';
 import { ProjectsService } from './projects.service.js';
-import type {
-  CreateProjectDto,
-  UpdateProjectDto,
-} from './projects.service.js';
+import type { CreateProjectDto, UpdateProjectDto } from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';

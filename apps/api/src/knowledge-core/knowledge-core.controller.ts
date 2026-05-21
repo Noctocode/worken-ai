@@ -28,6 +28,10 @@ const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 function sanitizeFilename(name: string): string {
+  // \x00-\x1f are exactly what we're stripping — they're filesystem-
+  // illegal on Windows and can hide path-traversal payloads on Unix,
+  // so the control-char range is the entire point of the regex.
+  // eslint-disable-next-line no-control-regex
   return name.replace(/[/\\:*?"<>|\x00-\x1f]/g, '_');
 }
 

@@ -50,11 +50,7 @@ export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
  * notification popover. Undefined for non-invite types and for
  * orphaned rows where the team_members row has been deleted.
  */
-export type TeamInviteState =
-  | 'pending'
-  | 'accepted'
-  | 'declined'
-  | 'expired';
+export type TeamInviteState = 'pending' | 'accepted' | 'declined' | 'expired';
 
 /**
  * Shape returned to the FE. `data` is intentionally loose — each
@@ -520,10 +516,7 @@ function deriveInviteState(member: {
   expiresAt: Date | null;
 }): TeamInviteState {
   if (member.status === 'accepted') return 'accepted';
-  if (
-    member.invitationStatus === 'revoked' ||
-    member.invitationRevokedAt
-  ) {
+  if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
     return 'declined';
   }
   if (

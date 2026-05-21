@@ -49,6 +49,7 @@ function makeServiceWithChunks(chunks: OpenAIChunk[]) {
     chat: {
       completions: {
         create: jest.fn().mockResolvedValue({
+          // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub; the spec only iterates the yielded chunks
           [Symbol.asyncIterator]: async function* () {
             for (const chunk of chunks) yield chunk;
           },
@@ -204,6 +205,7 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
   });
 
   it('delegates anthropic-sdk transport to the AnthropicClientService', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub; consumers await each yield, not the generator body
     async function* fakeAnthropicStream(): AsyncIterable<ChatStreamEvent> {
       yield { type: 'content', delta: 'hi from claude' };
       yield {

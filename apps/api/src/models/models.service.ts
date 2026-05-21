@@ -281,15 +281,15 @@ export class ModelsService {
     );
 
     // Mirror chat-transport's routing decision so the picker marker
-     // matches what a chat call will actually do. Returns:
-     //   - 'custom'   for aliases bound to a Custom LLM integration
-     //   - 'byok'     when chat-transport will honour the user's BYOK key
-     //   - 'workenai' for fallback to the OpenRouter default route
-     // The Anthropic native shim has a blocklist (-fast, Opus 4.6, bare
-     // family ids) that falls back to OpenRouter even with a BYOK key
-     // set — we apply isAnthropicNativeSupported here so the picker
-     // doesn't promise "(BYOK)" for slugs we'd actually route via
-     // OpenRouter.
+    // matches what a chat call will actually do. Returns:
+    //   - 'custom'   for aliases bound to a Custom LLM integration
+    //   - 'byok'     when chat-transport will honour the user's BYOK key
+    //   - 'workenai' for fallback to the OpenRouter default route
+    // The Anthropic native shim has a blocklist (-fast, Opus 4.6, bare
+    // family ids) that falls back to OpenRouter even with a BYOK key
+    // set — we apply isAnthropicNativeSupported here so the picker
+    // doesn't promise "(BYOK)" for slugs we'd actually route via
+    // OpenRouter.
     const computeRouting = (
       modelId: string,
       hasCustomIntegration: boolean,
