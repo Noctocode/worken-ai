@@ -1606,8 +1606,16 @@ export class TeamsService {
       .set({
         userId,
         status: 'accepted',
-        invitationToken: null,
         invitationStatus: 'accepted',
+        // Intentionally NOT nulling invitationToken here. The token
+        // stays on the row so `getInviteByToken` can still resolve
+        // it after acceptance and surface the "already accepted"
+        // screen on the email-link landing page — without this, a
+        // user who accepts via the in-app notification and later
+        // clicks the email link saw "Invitation not found" instead.
+        // Re-use as an accept vector is blocked by the
+        // `status === 'accepted'` check above, so keeping the token
+        // is purely a lookup convenience, not a new attack surface.
       })
       .where(eq(teamMembers.id, member.id))
       .returning();

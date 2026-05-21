@@ -333,7 +333,14 @@ export class NotificationsService {
           .set({
             invitationStatus: 'revoked',
             invitationRevokedAt: new Date(),
-            invitationToken: null,
+            // Intentionally keep invitationToken so a follow-up
+            // email-link click can still resolve the row via
+            // getInviteByToken and see the "has been revoked"
+            // screen instead of a misleading "Invitation not
+            // found". Re-use as an accept vector is blocked by
+            // the `invitationStatus === 'revoked'` guard on
+            // acceptInviteByToken — keeping the token is a
+            // lookup convenience only.
           })
           .where(
             and(
