@@ -208,6 +208,12 @@ export class NotificationsService {
           id: teamMembers.id,
           status: teamMembers.status,
           invitationStatus: teamMembers.invitationStatus,
+          // invitationRevokedAt is part of the revocation signal in
+          // getInviteByToken / acceptInviteByToken (either it OR
+          // invitationStatus='revoked' counts). Selecting just the
+          // status column would misreport legacy rows that only have
+          // the timestamp set — keep the two paths consistent.
+          invitationRevokedAt: teamMembers.invitationRevokedAt,
           expiresAt: teamMembers.invitationExpiresAt,
         })
         .from(teamMembers)
@@ -496,10 +502,13 @@ export class NotificationsService {
  * NotificationsService.declineTeamInvite already write to the
  * column:
  *   - status='accepted'                   → 'accepted'
- *   - invitationStatus='revoked'          → 'declined' (invitee
+ *   - invitationStatus='revoked' OR
+ *     invitationRevokedAt is set          → 'declined' (invitee
  *     decline OR owner revoke — both leave the invite unactionable
  *     for the invitee, so we collapse them under the invitee-
- *     facing label)
+ *     facing label). Both signals matter because legacy rows may
+ *     have only the timestamp; getInviteByToken / acceptInviteByToken
+ *     use the same OR-combined check.
  *   - invitationStatus='expired' OR the
  *     deadline has passed                 → 'expired'
  *   - everything else                     → 'pending'
@@ -507,10 +516,16 @@ export class NotificationsService {
 function deriveInviteState(member: {
   status: string;
   invitationStatus: string | null;
+  invitationRevokedAt: Date | null;
   expiresAt: Date | null;
 }): TeamInviteState {
   if (member.status === 'accepted') return 'accepted';
-  if (member.invitationStatus === 'revoked') return 'declined';
+  if (
+    member.invitationStatus === 'revoked' ||
+    member.invitationRevokedAt
+  ) {
+    return 'declined';
+  }
   if (
     member.invitationStatus === 'expired' ||
     (member.expiresAt && member.expiresAt.getTime() < Date.now())
