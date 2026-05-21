@@ -22,11 +22,19 @@ import { randomUUID } from 'crypto';
 import {
   users,
   teams,
+  teamMembers,
   companies,
   integrations,
   knowledgeFiles,
   knowledgeFolders,
   onboardingDrafts,
+  tenders,
+  tenderTeamMembers,
+  modelConfigs,
+  guardrails,
+  conversations,
+  projects,
+  messages,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -170,6 +178,120 @@ export class OnboardingService {
     private readonly encryption: EncryptionService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
+
+  /**
+   * Escape hatch for a mid-onboarding user who can't (or won't)
+   * complete the wizard. Wipes their `users` row plus every
+   * row that would otherwise be FK-orphaned, freeing the email
+   * for re-registration.
+   *
+   * Hard-gated on `onboarding_completed_at IS NULL`: an already-
+   * onboarded user with real teams / chats / projects must go
+   * through the normal "delete my account" admin path (a future
+   * follow-up); this endpoint only covers the "I got stuck in
+   * the wizard" case where the row is mostly empty.
+   *
+   * Companies-row cleanup: in practice a mid-onboarding row has
+   * `company_id = NULL` because `completeInner` mints the
+   * `companies` row inside the same transaction that stamps
+   * `onboarding_completed_at`. But we defensively delete the
+   * tenant row anyway if the caller is the only member — protects
+   * against a future race or a support-action that cleared
+   * `onboarding_completed_at` without touching `company_id`.
+   */
+  async abortOnboarding(userId: string): Promise<void> {
+    const [current] = await this.db
+      .select({
+        id: users.id,
+        companyId: users.companyId,
+        onboardingCompletedAt: users.onboardingCompletedAt,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (!current) throw new NotFoundException('User not found');
+    if (current.onboardingCompletedAt) {
+      throw new BadRequestException(
+        'Onboarding already completed — this endpoint only covers interrupted setup. ' +
+          'Contact support to delete a fully-onboarded account.',
+      );
+    }
+
+    await this.db.transaction(async (tx) => {
+      const companyId = current.companyId;
+
+      // Owned teams shouldn't exist mid-onboarding (team creation
+      // requires a finished profile), but tear them down anyway in
+      // case a future flow or a support action created one.
+      // Mirrors UsersService.remove so the FK web stays consistent
+      // regardless of which path nukes a user.
+      const ownedTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.ownerId, userId));
+      const ownedTeamIds = ownedTeams.map((t) => t.id);
+      if (ownedTeamIds.length > 0) {
+        await tx
+          .update(projects)
+          .set({ teamId: null })
+          .where(inArray(projects.teamId, ownedTeamIds));
+        await tx
+          .delete(teamMembers)
+          .where(inArray(teamMembers.teamId, ownedTeamIds));
+        await tx.delete(teams).where(inArray(teams.id, ownedTeamIds));
+      }
+
+      await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
+      await tx
+        .delete(tenderTeamMembers)
+        .where(eq(tenderTeamMembers.userId, userId));
+      await tx.delete(tenders).where(eq(tenders.ownerId, userId));
+      await tx
+        .delete(knowledgeFolders)
+        .where(eq(knowledgeFolders.ownerId, userId));
+      await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+      await tx.delete(guardrails).where(eq(guardrails.ownerId, userId));
+      await tx.delete(conversations).where(eq(conversations.userId, userId));
+      await tx.delete(projects).where(eq(projects.userId, userId));
+      await tx.delete(integrations).where(eq(integrations.ownerId, userId));
+
+      // Files uploaded mid-onboarding (e.g., the user reached step 6
+      // and attached docs before bailing) — null the FK so the row
+      // stays around if it was attached to a folder we just deleted
+      // cascades correctly. Folders are owned by the user and
+      // already deleted above; their files cascade out too. Keep
+      // this NULL-update for any straggler from a future flow.
+      await tx
+        .update(knowledgeFiles)
+        .set({ uploadedById: null })
+        .where(eq(knowledgeFiles.uploadedById, userId));
+
+      await tx
+        .update(messages)
+        .set({ userId: null })
+        .where(eq(messages.userId, userId));
+
+      await tx
+        .delete(onboardingDrafts)
+        .where(eq(onboardingDrafts.userId, userId));
+
+      await tx.delete(users).where(eq(users.id, userId));
+
+      // Tenant cleanup: drop the companies row if this user was the
+      // sole member. Check AFTER the user delete so the LIMIT 1
+      // probe doesn't accidentally count the deleted row.
+      if (companyId) {
+        const [otherMember] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.companyId, companyId))
+          .limit(1);
+        if (!otherMember) {
+          await tx.delete(companies).where(eq(companies.id, companyId));
+        }
+      }
+    });
+  }
 
   async complete(
     userId: string,

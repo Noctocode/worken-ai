@@ -43,6 +43,18 @@ const UPLOAD_TMP_DIR = join(process.cwd(), 'uploads', 'tmp');
 // Multer expects the destination to exist synchronously at import time.
 mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
 
+// Mirror of auth.controller.ts's COOKIE_OPTIONS — kept in sync so
+// /onboarding/abort clears the same cookies /auth/logout would.
+// Drift here would leave a dangling refresh_token pointing at a
+// just-deleted user.
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax' as const,
+  path: '/',
+  domain: process.env.COOKIE_DOMAIN || undefined,
+};
+
 @Controller('onboarding')
 export class OnboardingController {
   constructor(
@@ -96,6 +108,28 @@ export class OnboardingController {
   @Delete('company')
   deleteCompany(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.deleteCompany(user.id);
+  }
+
+  /**
+   * Escape hatch for a user stuck mid-onboarding (failed
+   * `/onboarding/complete`, indecisive about profile type,
+   * registered the wrong email, etc.). Wipes the user row and
+   * clears the auth cookies so they can re-register with the
+   * same email. Refuses to run for an already-completed user —
+   * those go through the regular "delete account" admin flow.
+   *
+   * Same cookie-clear shape as `/auth/logout` so we don't leave a
+   * dangling `refresh_token` pointing at a now-deleted user.
+   */
+  @Delete('abort')
+  @HttpCode(204)
+  async abortOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: ExpressResponse,
+  ) {
+    await this.onboardingService.abortOnboarding(user.id);
+    res.clearCookie('access_token', AUTH_COOKIE_OPTIONS);
+    res.clearCookie('refresh_token', AUTH_COOKIE_OPTIONS);
   }
 
   /**

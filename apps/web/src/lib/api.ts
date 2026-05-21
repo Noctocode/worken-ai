@@ -2543,6 +2543,20 @@ export async function deleteOnboardingDraft(): Promise<void> {
   await apiFetch("/onboarding/draft", { method: "DELETE" });
 }
 
+/**
+ * Escape hatch for a user stuck mid-onboarding. Wipes the BE user
+ * row + clears the auth cookies; the caller is responsible for the
+ * client-side redirect (typically to /register so the freed email
+ * can be re-used).
+ */
+export async function abortOnboarding(): Promise<void> {
+  const res = await apiFetch("/onboarding/abort", { method: "DELETE" });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message || "Failed to abort onboarding");
+  }
+}
+
 export interface CompleteOnboardingPayload {
   profileType: "company" | "personal";
   fullName?: string;
