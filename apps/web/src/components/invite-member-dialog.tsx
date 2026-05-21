@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { inviteUser, inviteTeamMember } from "@/lib/api";
+import { inviteUser, inviteTeamMember, type OrgRole } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,7 +26,6 @@ import {
 } from "@/components/ui/select";
 
 type TeamRole = "admin" | "manager" | "editor" | "viewer";
-type OrgRole = "basic" | "advanced" | "admin";
 
 function TeamInviteDialog({
   children,

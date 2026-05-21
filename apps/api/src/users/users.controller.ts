@@ -179,10 +179,23 @@ export class UsersController {
         );
       }
 
-      // Build the patch: always allow the role update; additionally
-      // backfill company fields when the existing row is unsealed
-      // (no companyId yet — likely a stale invite that never
-      // completed onboarding) and the inviter can supply them.
+      // Role changes on an existing user are an admin-only action —
+      // the /users/:id/role endpoint is the proper path and it's
+      // already gated to admins. Letting an advanced caller flip
+      // roles through /users/invite would silently bypass that gate
+      // (e.g. an advanced user re-invites an admin as 'basic' to
+      // demote them). Allow the invite to proceed as a re-send /
+      // notification, but refuse the role mutation.
+      if (existing.role !== body.role && callerUser.role !== 'admin') {
+        throw new ForbiddenException(
+          "Only admins can change an existing user's role.",
+        );
+      }
+
+      // Build the patch: role updates are admin-only (gated above);
+      // additionally backfill company fields when the existing row
+      // is unsealed (no companyId yet — likely a stale invite that
+      // never completed onboarding) and the inviter can supply them.
       const patch: Record<string, unknown> = {};
       if (existing.role !== body.role) patch.role = body.role;
       if (inheritsCompany && !existingCompanyId) {

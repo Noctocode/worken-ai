@@ -606,8 +606,8 @@ export interface InviteTeamMemberResult extends TeamMember {
 
 export async function inviteUser(
   email: string,
-  role: "basic" | "advanced" | "admin",
-): Promise<{ status: string; email: string; role: string }> {
+  role: OrgRole,
+): Promise<{ status: string; email: string; role: OrgRole }> {
   const res = await apiFetch("/users/invite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

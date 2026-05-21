@@ -114,4 +114,165 @@ describe('UsersController auth gates', () => {
       expect(usersService.remove).not.toHaveBeenCalled();
     });
   });
+
+  describe('POST /users/invite', () => {
+    // Invite hits two select chains in sequence (caller row, then
+    // existing-user-by-email) and then either an update or an insert.
+    // The shared mockDb only supports one select shape, so this
+    // helper sequences select responses and stubs update / insert.
+    function bootstrapInvite({
+      caller,
+      existing,
+    }: {
+      caller: Record<string, unknown> | null;
+      existing: Record<string, unknown> | null;
+    }) {
+      const selectQueue: unknown[][] = [
+        caller ? [caller] : [],
+        existing ? [existing] : [],
+      ];
+      const select = jest.fn(() => ({
+        from: jest.fn(() => ({
+          where: jest.fn().mockResolvedValue(selectQueue.shift() ?? []),
+        })),
+      }));
+      const updateWhere = jest.fn().mockResolvedValue(undefined);
+      const update = jest.fn(() => ({
+        set: jest.fn(() => ({ where: updateWhere })),
+      }));
+      const insertReturning = jest
+        .fn()
+        .mockResolvedValue([{ email: 'new@example.com', role: 'basic' }]);
+      const insert = jest.fn(() => ({
+        values: jest.fn(() => ({ returning: insertReturning })),
+      }));
+      const notifications = {
+        create: jest.fn().mockResolvedValue(undefined),
+      };
+      const mailService = {
+        sendOrgInvitation: jest.fn().mockResolvedValue(undefined),
+      };
+      const db = { select, update, insert };
+
+      const inviteController = new UsersController(
+        db as never,
+        {} as never, // usersService — not used by invite
+        {} as never, // teamsService
+        mailService as never,
+        {} as never, // observabilityService
+        notifications as never,
+      );
+      return { controller: inviteController, update, notifications };
+    }
+
+    const ADVANCED: AuthenticatedUser = {
+      id: 'advanced-id',
+      email: 'adv@example.com',
+    };
+    const advancedCallerRow = {
+      id: 'advanced-id',
+      role: 'advanced',
+      email: 'adv@example.com',
+      companyId: null,
+      profileType: null,
+    };
+    const adminCallerRow = {
+      id: 'admin-id',
+      role: 'admin',
+      email: 'admin@example.com',
+      companyId: null,
+      profileType: null,
+    };
+
+    // Regression: advanced caller invites an existing admin user with
+    // role 'basic'. Without the guard the controller would patch
+    // existing.role through the invite endpoint, silently bypassing
+    // the admin-only /users/:id/role gate. Must 403, must not update.
+    it('non-admin cannot change existing user role via invite', async () => {
+      const { controller, update } = bootstrapInvite({
+        caller: advancedCallerRow,
+        existing: {
+          id: 'target-id',
+          role: 'admin',
+          email: 'target@example.com',
+          companyId: null,
+        },
+      });
+      await expect(
+        controller.inviteUser(
+          { email: 'target@example.com', role: 'basic' },
+          ADVANCED,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('admin can change existing user role via invite', async () => {
+      const { controller, update, notifications } = bootstrapInvite({
+        caller: adminCallerRow,
+        existing: {
+          id: 'target-id',
+          role: 'basic',
+          email: 'target@example.com',
+          companyId: null,
+        },
+      });
+      await expect(
+        controller.inviteUser(
+          { email: 'target@example.com', role: 'advanced' },
+          { id: 'admin-id', email: 'admin@example.com' },
+        ),
+      ).resolves.toEqual({
+        status: 'updated',
+        email: 'target@example.com',
+        role: 'advanced',
+      });
+      expect(update).toHaveBeenCalled();
+      expect(notifications.create).toHaveBeenCalled();
+    });
+
+    // Non-admins re-inviting at the same role must still succeed —
+    // the guard targets role *changes*, not re-sends. No update is
+    // needed (empty patch); the notification still fires.
+    it('non-admin can re-invite existing user without role change', async () => {
+      const { controller, update, notifications } = bootstrapInvite({
+        caller: advancedCallerRow,
+        existing: {
+          id: 'target-id',
+          role: 'basic',
+          email: 'target@example.com',
+          companyId: null,
+        },
+      });
+      await expect(
+        controller.inviteUser(
+          { email: 'target@example.com', role: 'basic' },
+          ADVANCED,
+        ),
+      ).resolves.toEqual({
+        status: 'updated',
+        email: 'target@example.com',
+        role: 'basic',
+      });
+      expect(update).not.toHaveBeenCalled();
+      expect(notifications.create).toHaveBeenCalled();
+    });
+
+    // Sibling guard from before this PR: even creating a brand-new
+    // admin requires admin caller. Locked in here so a future
+    // refactor doesn't quietly drop it alongside the new check.
+    it('non-admin cannot invite a brand-new user as admin', async () => {
+      const { controller, update } = bootstrapInvite({
+        caller: advancedCallerRow,
+        existing: null,
+      });
+      await expect(
+        controller.inviteUser(
+          { email: 'new@example.com', role: 'admin' },
+          ADVANCED,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    });
+  });
 });
