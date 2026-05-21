@@ -75,6 +75,39 @@ function formatFull(iso: string): string {
 }
 
 /**
+ * Pill for a team_invite row whose underlying invite is no longer
+ * actionable. Same component spirit as the popover variant — kept
+ * inline because the markup is tiny and the only caller is the
+ * list below. Sizes a touch larger here than the popover since this
+ * is the dedicated history page.
+ */
+function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
+  if (!state || state === "pending") return null;
+  const label =
+    state === "accepted"
+      ? "Accepted"
+      : state === "declined"
+        ? "Declined"
+        : "Expired";
+  const tone =
+    state === "accepted"
+      ? "bg-success-1 text-success-7"
+      : state === "expired"
+        ? "bg-warning-1 text-warning-7"
+        : "bg-bg-2 text-text-3";
+  return (
+    <span
+      className={cn(
+        "mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+        tone,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+/**
  * Full-page notification history. Mirrors the popover with more
  * room: filters across the top, full-width rows, no truncation on
  * the list. Used when the user clicks "View all" in the sidebar
@@ -93,7 +126,12 @@ export default function NotificationsPage() {
     if (filter === "unread") return items.filter((n) => n.readAt == null);
     if (filter === "actionable")
       return items.filter(
-        (n) => n.status === "pending" && n.type === "team_invite",
+        (n) =>
+          n.status === "pending" &&
+          n.type === "team_invite" &&
+          // Hide invites that already finalised through another
+          // channel — they're not actually actionable any more.
+          (n.inviteState === undefined || n.inviteState === "pending"),
       );
     return items;
   }, [items, filter]);
@@ -103,10 +141,24 @@ export default function NotificationsPage() {
 
   const acceptMutation = useMutation({
     mutationFn: (id: string) => acceptNotification(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidate();
       queryClient.invalidateQueries({ queryKey: ["teams"] });
-      toast.success("Invitation accepted.");
+      if (result?.alreadyResolved) {
+        // BE caught a terminal state (already accepted / expired /
+        // revoked) and resolved the notification idempotently.
+        // Mirror the popover's neutral wording — "Invitation
+        // accepted." would be a lie here.
+        const label =
+          result.terminalState === "expired"
+            ? "This invitation has expired."
+            : result.terminalState === "declined"
+              ? "This invitation has been declined."
+              : "This invitation was already accepted.";
+        toast.message(label);
+      } else {
+        toast.success("Invitation accepted.");
+      }
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to accept."),
@@ -224,28 +276,37 @@ export default function NotificationsPage() {
                   <span className="text-[11px] text-text-3">
                     {formatFull(n.createdAt)}
                   </span>
-                  {n.status === "pending" && n.type === "team_invite" && (
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        disabled={acceptMutation.isPending}
-                        onClick={() => acceptMutation.mutate(n.id)}
-                        className="cursor-pointer rounded-lg bg-primary-6 text-white hover:bg-primary-7"
-                      >
-                        Accept
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={declineMutation.isPending}
-                        onClick={() => declineMutation.mutate(n.id)}
-                        className="cursor-pointer rounded-lg"
-                      >
-                        Decline
-                      </Button>
-                    </div>
+                  {n.type === "team_invite" &&
+                    (n.inviteState === undefined ||
+                      n.inviteState === "pending") &&
+                    n.status === "pending" && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          disabled={acceptMutation.isPending}
+                          onClick={() => acceptMutation.mutate(n.id)}
+                          className="cursor-pointer rounded-lg bg-primary-6 text-white hover:bg-primary-7"
+                        >
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={declineMutation.isPending}
+                          onClick={() => declineMutation.mutate(n.id)}
+                          className="cursor-pointer rounded-lg"
+                        >
+                          Decline
+                        </Button>
+                      </div>
+                    )}
+                  {n.type === "team_invite" && (
+                    <InviteStateBadge state={n.inviteState} />
                   )}
-                  {n.status === "acted" && (
+                  {/* Fallback "Resolved" line for non-invite acted
+                      rows — invites carry a richer state pill so we
+                      skip the generic text for them. */}
+                  {n.status === "acted" && n.type !== "team_invite" && (
                     <span className="mt-1 text-[11px] italic text-text-3">
                       Resolved
                     </span>
