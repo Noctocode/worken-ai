@@ -100,9 +100,18 @@ export class UsersController {
       );
     }
 
-    const validRoles = ['basic', 'advanced'];
+    const validRoles = ['basic', 'advanced', 'admin'];
     if (!validRoles.includes(body.role)) {
-      throw new BadRequestException('Role must be basic or advanced.');
+      throw new BadRequestException(
+        'Role must be basic, advanced, or admin.',
+      );
+    }
+    // Promotion to admin is itself an admin-only action — an advanced
+    // user inviting a peer as admin would silently grant escalation,
+    // which the controller-level invite gate (admin OR advanced) is
+    // too loose to catch on its own.
+    if (body.role === 'admin' && callerUser.role !== 'admin') {
+      throw new ForbiddenException('Only admins can invite users as admin.');
     }
 
     const email = body.email.trim().toLowerCase();
