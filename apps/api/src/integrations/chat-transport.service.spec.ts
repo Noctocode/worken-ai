@@ -180,10 +180,10 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
       // `getOrgBudgetRecipients` would matter and both default to
       // empty (no recipients → no rows enqueued).
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as any,
     );
   }
@@ -322,10 +322,10 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
       // `getOrgBudgetRecipients` would matter and both default to
       // empty (no recipients → no rows enqueued).
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as any,
     );
   }
@@ -419,10 +419,10 @@ describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
       {} as never,
       {} as never,
       {
-        getTeamBudgetRecipients: async () => [] as string[],
-        getOrgBudgetRecipients: async () => [] as string[],
-        createIfNotExists: async () => null,
-        create: async () => null,
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
       } as never,
     );
   }

@@ -26,9 +26,9 @@ function svc() {
     // NotificationsService stub — validation tests don't reach the
     // alert fanout path, but the constructor requires the injection.
     {
-      getOrgBudgetRecipients: async () => [] as string[],
-      createIfNotExists: async () => null,
-      create: async () => null,
+      getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+      createIfNotExists: () => Promise.resolve(null),
+      create: () => Promise.resolve(null),
     } as never,
   );
 }
