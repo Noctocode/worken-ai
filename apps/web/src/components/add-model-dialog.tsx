@@ -226,7 +226,15 @@ export function AddModelDialog({
         ? updateModel(existingModel.id, payload)
         : createModel(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      // refetchType: 'all' so the ["models", "effective"] query that
+      // powers /compare-models and the project picker refetches even
+      // when those views aren't mounted — otherwise the cache stays
+      // stale until the user next navigates there and a background
+      // refetch flashes the "Add at least 2 models" empty state.
+      void queryClient.invalidateQueries({
+        queryKey: ["models"],
+        refetchType: "all",
+      });
       setCustomName("");
       setCustomNameTouched(false);
       setModelId("");

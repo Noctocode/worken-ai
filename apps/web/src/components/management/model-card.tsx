@@ -53,17 +53,26 @@ export function ModelCard({ model }: { model: ModelConfig }) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
+  // refetchType: 'all' on both mutations so the
+  // ["models", "effective"] cache that drives /compare-models and the
+  // project picker stays in sync even when those views are unmounted.
   const toggleMutation = useMutation({
     mutationFn: () => updateModel(model.id, { isActive: !model.isActive }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["models"],
+        refetchType: "all",
+      });
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteModel(model.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      void queryClient.invalidateQueries({
+        queryKey: ["models"],
+        refetchType: "all",
+      });
       setDeleteConfirmOpen(false);
       toast.success(`Deleted "${model.customName}".`);
     },
