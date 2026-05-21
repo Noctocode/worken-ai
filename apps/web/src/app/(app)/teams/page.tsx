@@ -16,7 +16,12 @@ import { InviteUserDialog } from "@/components/invite-user-dialog";
 import { AddModelDialog } from "@/components/add-model-dialog";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useAuth } from "@/components/providers";
-import { fetchTeams, fetchOrgUsers, fetchModels } from "@/lib/api";
+import {
+  fetchTeams,
+  fetchOrgUsers,
+  fetchModels,
+  fetchOrgSettings,
+} from "@/lib/api";
 import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
 import { TeamCard } from "@/components/management/team-card";
@@ -83,6 +88,20 @@ export default function TeamsPage() {
     (u) => u.pendingBudgetApproval,
   ).length;
 
+  // Share the org-settings query with CompanyTab via React Query's
+  // cache (same query key) so we don't fetch it twice. We only need
+  // the result to decide whether the Company tab trigger should show
+  // its "needs attention" red dot — when an admin has never set a
+  // company-wide cap. Non-admins see no prompt because they can't
+  // act on it, matching the users-tab pendingBudgetApproval gating.
+  const { data: orgSettings } = useQuery({
+    queryKey: ["org-settings"],
+    queryFn: fetchOrgSettings,
+    enabled: user?.role === "admin",
+  });
+  const companyBudgetUnset =
+    user?.role === "admin" && orgSettings?.monthlyBudgetCents === null;
+
   const {
     data: models = [],
     isLoading: modelsLoading,
@@ -105,7 +124,19 @@ export default function TeamsPage() {
         <PageTabsTrigger value="users">Users</PageTabsTrigger>
         <PageTabsTrigger value="models">Models</PageTabsTrigger>
         <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
-        <PageTabsTrigger value="company">Company</PageTabsTrigger>
+        <PageTabsTrigger value="company">
+          Company
+          {/* Red dot mirrors the per-row kebab indicator on
+              /teams?tab=users — same "budget not set" signal,
+              scoped to the org level so admins notice it even
+              from another tab. */}
+          {companyBudgetUnset ? (
+            <span
+              aria-label="Company budget not set"
+              className="ml-1.5 inline-block h-2 w-2 rounded-full bg-danger-6 align-middle"
+            />
+          ) : null}
+        </PageTabsTrigger>
         <PageTabsTrigger value="api">API</PageTabsTrigger>
         <PageTabsTrigger value="billing">Billing</PageTabsTrigger>
         <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
