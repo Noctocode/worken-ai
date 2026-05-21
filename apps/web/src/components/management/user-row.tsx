@@ -99,9 +99,11 @@ export function UserRow({ user }: { user: OrgUser }) {
 
   const openBudgetDialog = () => {
     // Pre-fill with the current value so the admin adjusts rather
-    // than re-types. Blank when there's no budget yet so the empty
-    // input cues "this is uninitialised, set it now".
-    setBudgetInput(budget > 0 ? budget.toFixed(2) : "");
+    // than re-types. Blank only when the budget is genuinely unset
+    // (pendingBudgetApproval) so the empty input cues "set it now";
+    // a deliberate $0 (suspended) keeps showing the value so it can
+    // be edited rather than silently re-entered.
+    setBudgetInput(needsBudget ? "" : budget.toFixed(2));
     setBudgetOpen(true);
   };
 
@@ -289,7 +291,7 @@ export function UserRow({ user }: { user: OrgUser }) {
                 ) : (
                   <Wallet className="h-4 w-4" />
                 )}
-                {budget > 0 ? "Change budget" : "Set budget"}
+                {needsBudget ? "Set budget" : "Change budget"}
               </DropdownMenuItem>
             </DisabledReasonTooltip>
             <DisabledReasonTooltip
@@ -322,7 +324,7 @@ export function UserRow({ user }: { user: OrgUser }) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {budget > 0 ? "Change monthly budget" : "Set monthly budget"}
+                {needsBudget ? "Set monthly budget" : "Change monthly budget"}
               </DialogTitle>
               <DialogDescription>
                 {user.name ? (

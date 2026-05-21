@@ -94,10 +94,14 @@ export default function TeamsPage() {
   // its "needs attention" red dot — when an admin has never set a
   // company-wide cap. Non-admins see no prompt because they can't
   // act on it, matching the users-tab pendingBudgetApproval gating.
+  // staleTime: the default QueryClient has none, so without this
+  // CompanyTab would refetch on mount despite the shared cache key —
+  // 60s matches the cadence other admin-settings queries use here.
   const { data: orgSettings } = useQuery({
     queryKey: ["org-settings"],
     queryFn: fetchOrgSettings,
     enabled: user?.role === "admin",
+    staleTime: 60 * 1000,
   });
   const companyBudgetUnset =
     user?.role === "admin" && orgSettings?.monthlyBudgetCents === null;
@@ -131,10 +135,16 @@ export default function TeamsPage() {
               scoped to the org level so admins notice it even
               from another tab. */}
           {companyBudgetUnset ? (
-            <span
-              aria-label="Company budget not set"
-              className="ml-1.5 inline-block h-2 w-2 rounded-full bg-danger-6 align-middle"
-            />
+            <>
+              {/* sr-only sibling carries the meaning into the tab's
+                  accessible name; the dot itself is decoration so it
+                  gets aria-hidden to avoid double-announcing. */}
+              <span className="sr-only"> (Company budget not set)</span>
+              <span
+                aria-hidden="true"
+                className="ml-1.5 inline-block h-2 w-2 rounded-full bg-danger-6 align-middle"
+              />
+            </>
           ) : null}
         </PageTabsTrigger>
         <PageTabsTrigger value="api">API</PageTabsTrigger>
