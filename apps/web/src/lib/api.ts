@@ -3176,6 +3176,20 @@ export type NotificationType =
 
 export type NotificationStatus = "pending" | "acted" | "dismissed";
 
+/**
+ * State of the underlying team_members row for a `team_invite`
+ * notification. The BE joins this on list so the popover can swap
+ * the Accept/Decline buttons for an Accepted/Declined/Expired pill
+ * even when the invite was finalised through a different channel
+ * (email link, owner revoke, expiry sweep). Undefined for non-
+ * invite types and orphaned rows.
+ */
+export type TeamInviteState =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "expired";
+
 export interface Notification {
   id: string;
   type: NotificationType;
@@ -3187,6 +3201,8 @@ export interface Notification {
   status: NotificationStatus;
   readAt: string | null;
   createdAt: string;
+  /** Set only for `type === 'team_invite'`. See TeamInviteState. */
+  inviteState?: TeamInviteState;
 }
 
 export async function fetchNotifications(): Promise<Notification[]> {
@@ -3216,6 +3232,15 @@ export async function markAllNotificationsRead(): Promise<{ markedCount: number 
 export async function acceptNotification(id: string): Promise<{
   type: NotificationType;
   teamId?: string;
+  /**
+   * True when the BE caught a terminal-state error from the
+   * underlying invite (already accepted via another channel,
+   * expired, revoked) and resolved the notification idempotently.
+   * Lets the caller swap the success toast for an "already resolved"
+   * variant instead of misleading the user.
+   */
+  alreadyResolved?: boolean;
+  terminalState?: TeamInviteState;
 }> {
   const res = await apiFetch(`/notifications/${id}/accept`, { method: "POST" });
   if (!res.ok) {

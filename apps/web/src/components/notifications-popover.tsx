@@ -81,6 +81,40 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
   return <Bell className="h-4 w-4 text-text-3" strokeWidth={2} />;
 }
 
+/**
+ * Pill for a team_invite notification whose underlying invite is no
+ * longer actionable. Surfaces the terminal state to the invitee
+ * (accepted via the email link in another tab, declined, expired,
+ * etc.) so the popover doesn't keep offering buttons that would
+ * just 4xx. Kept inline because the markup is tiny and the only
+ * caller is the list row below.
+ */
+function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
+  if (!state || state === "pending") return null;
+  const label =
+    state === "accepted"
+      ? "Accepted"
+      : state === "declined"
+        ? "Declined"
+        : "Expired";
+  const tone =
+    state === "accepted"
+      ? "bg-success-1 text-success-7"
+      : state === "expired"
+        ? "bg-warning-1 text-warning-7"
+        : "bg-bg-2 text-text-3";
+  return (
+    <span
+      className={cn(
+        "mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+        tone,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const sec = Math.floor(diff / 1000);
@@ -148,12 +182,30 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
 
   const acceptMutation = useMutation({
     mutationFn: (id: string) => acceptNotification(id),
-    onSuccess: () => {
+    onSuccess: (result) => {
       invalidate();
       // Accepting a team invite changes membership — refresh
-      // anything that lists teams the user belongs to.
+      // anything that lists teams the user belongs to. Still
+      // invalidate for the idempotent / already-resolved path: the
+      // membership row may have changed via the other channel and
+      // the local list needs to catch up either way.
       queryClient.invalidateQueries({ queryKey: ["teams"] });
-      toast.success("Invitation accepted.");
+      if (result?.alreadyResolved) {
+        // Terminal-state idempotency: BE didn't perform a new accept,
+        // it just marked the notification resolved because the invite
+        // had already finalised elsewhere. Match the toast to that
+        // reality instead of telling the user "Invitation accepted."
+        // when nothing was actually accepted on this click.
+        const label =
+          result.terminalState === "expired"
+            ? "This invitation has expired."
+            : result.terminalState === "declined"
+              ? "This invitation has been declined."
+              : "This invitation was already accepted.";
+        toast.message(label);
+      } else {
+        toast.success("Invitation accepted.");
+      }
     },
     onError: (err: Error) =>
       toast.error(err.message || "Failed to accept."),
@@ -251,29 +303,39 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                       {relativeTime(n.createdAt)}
                     </span>
                     {/* Action row — team_invite is the only type
-                        with Accept/Decline today. Other types show
-                        a passive "Dismiss" since there's nothing to
-                        confirm. Pending status drives whether the
-                        buttons are even meaningful. */}
-                    {n.status === "pending" && n.type === "team_invite" && (
-                      <div className="mt-1 flex gap-2">
-                        <button
-                          type="button"
-                          disabled={acceptMutation.isPending}
-                          onClick={() => acceptMutation.mutate(n.id)}
-                          className="cursor-pointer rounded bg-primary-6 px-2 py-1 text-[12px] font-medium text-white hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          disabled={declineMutation.isPending}
-                          onClick={() => declineMutation.mutate(n.id)}
-                          className="cursor-pointer rounded border border-border-3 px-2 py-1 text-[12px] font-medium text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          Decline
-                        </button>
-                      </div>
+                        with Accept/Decline today. Buttons render
+                        only when BOTH the notification is still
+                        pending AND the underlying invite is still
+                        actionable (inviteState 'pending' or absent).
+                        For terminal states we drop a pill instead
+                        so the user gets a clear "this was already
+                        Accepted / Declined / Expired" cue rather
+                        than a button that would 4xx. */}
+                    {n.type === "team_invite" &&
+                      (n.inviteState === undefined ||
+                        n.inviteState === "pending") &&
+                      n.status === "pending" && (
+                        <div className="mt-1 flex gap-2">
+                          <button
+                            type="button"
+                            disabled={acceptMutation.isPending}
+                            onClick={() => acceptMutation.mutate(n.id)}
+                            className="cursor-pointer rounded bg-primary-6 px-2 py-1 text-[12px] font-medium text-white hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            disabled={declineMutation.isPending}
+                            onClick={() => declineMutation.mutate(n.id)}
+                            className="cursor-pointer rounded border border-border-3 px-2 py-1 text-[12px] font-medium text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      )}
+                    {n.type === "team_invite" && (
+                      <InviteStateBadge state={n.inviteState} />
                     )}
                   </div>
                   <div className="flex shrink-0 gap-1">
