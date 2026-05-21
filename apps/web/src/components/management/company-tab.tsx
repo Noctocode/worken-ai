@@ -416,8 +416,46 @@ export function CompanyTab() {
   );
   const companyDisplay = profile.companyName?.trim() || "Unnamed company";
 
+  // Tri-state company target → `null` means an admin has never set a
+  // cap; chat passes silently, every spend/projected affordance on
+  // this tab is hidden, and the admin gets no implicit prompt that
+  // this exists. Surface it with a warning banner (same palette as
+  // the users-tab "awaiting budget approval" prompt) so the action
+  // is one click away from where they'd hand-roll it via the Pencil.
+  // Admin-only — non-admins can't mutate org settings and seeing
+  // this would just be noise.
+  const companyBudgetUnset = targetCents === null && isAdmin;
+
   return (
     <div className="py-6 space-y-6">
+      {/* "No company budget set" prompt. Warning palette
+          (border-warning-7/30 bg-warning-1) matches the per-user
+          equivalent on /teams?tab=users so the two prompts read as
+          a pair. Action button drops the admin into the same edit
+          mode the Pencil button does. Distinct from the danger-red
+          Suspended ($0) banner below: $0 is a deliberate kill switch
+          the admin chose; `null` means they never set anything. */}
+      {companyBudgetUnset && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-warning-7/30 bg-warning-1 px-4 py-3">
+          <p className="text-[13px] text-text-1">
+            <strong className="font-semibold">
+              No company-wide monthly budget set.
+            </strong>{" "}
+            Set a target so org-wide spend can be tracked against a
+            cap — without one, the over-budget guard rails on chat are
+            silently off.
+          </p>
+          <Button
+            type="button"
+            onClick={enterEdit}
+            disabled={isEditing}
+            className="shrink-0 h-8 bg-warning-7 text-white hover:bg-warning-7/90"
+          >
+            Set budget
+          </Button>
+        </div>
+      )}
+
       {/* Suspended banner — separate from over-budget because the
           fix is different (admin set a $0 kill switch on purpose;
           they need to clear it, not raise other caps). Shown when
