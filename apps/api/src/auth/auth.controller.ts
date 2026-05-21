@@ -33,6 +33,19 @@ function setSessionCookies(
   });
 }
 
+/**
+ * Wipe both auth cookies. Called from /refresh on any failure path
+ * (missing cookie, expired token, revoked in Redis) so the FE's
+ * follow-up redirect to /login isn't bounced back to "/" by the
+ * Next.js middleware — which only inspects cookie *presence*, not
+ * validity. Without this clear, a browser with stale cookies sat
+ * in a tight /↔/login loop (the user's reported flicker).
+ */
+function clearSessionCookies(res: Res) {
+  res.clearCookie('access_token', COOKIE_OPTIONS);
+  res.clearCookie('refresh_token', COOKIE_OPTIONS);
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -98,15 +111,33 @@ export class AuthController {
     const cookies = req.cookies as Record<string, string> | undefined;
     const refreshToken = cookies?.refresh_token;
     if (!refreshToken) {
+      // Defensive: middleware shouldn't reach this with no
+      // refresh_token, but if it does we still want to clear any
+      // stale access_token so the FE's resulting /login redirect
+      // isn't bounced back to "/" on the next middleware pass.
+      clearSessionCookies(res);
       res.status(401).json({ message: 'No refresh token' });
       return;
     }
-
-    const tokens = await this.authService.refreshAccessToken(refreshToken);
-
-    setSessionCookies(res, tokens);
-
-    res.json({ message: 'Tokens refreshed' });
+    try {
+      const tokens = await this.authService.refreshAccessToken(refreshToken);
+      setSessionCookies(res, tokens);
+      res.json({ message: 'Tokens refreshed' });
+    } catch (err) {
+      // Refresh path threw — token expired in Redis, signature bad,
+      // user row gone, etc. The browser cookie may still be unexpired
+      // (we mint 7-day cookies but the Redis TTL / DB state can
+      // invalidate them sooner), which deadlocks the FE: middleware
+      // sees cookies → lets the page in → all queries 401 → apiFetch
+      // redirects to /login → middleware sees cookies → bounces back
+      // to "/" → repeat. Clearing both cookies as part of the 401
+      // response breaks the loop because middleware sees nothing on
+      // the next hop and /login finally sticks.
+      clearSessionCookies(res);
+      const message =
+        err instanceof Error ? err.message : 'Refresh failed';
+      res.status(401).json({ message });
+    }
   }
 
   @Public()
