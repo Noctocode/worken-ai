@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { LogOut, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -73,24 +72,27 @@ export function OnboardingExit() {
 
   return (
     <>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 text-[13px] text-text-1">
         <button
           type="button"
           onClick={onSignOut}
           disabled={signingOut}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-text-2 transition-colors hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
+          className="cursor-pointer font-medium no-underline hover:no-underline disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <LogOut className="h-4 w-4" />
           Sign out
         </button>
-        <span className="text-text-3 select-none">·</span>
+        {/* Thin vertical separator so the two links read as a single
+            inline pair rather than two stacked actions. */}
+        <span
+          aria-hidden="true"
+          className="h-3.5 w-px bg-text-1 select-none"
+        />
         <button
           type="button"
           onClick={() => setConfirmOpen(true)}
-          className="inline-flex items-center gap-1.5 text-[13px] font-medium text-danger-6 transition-colors hover:text-danger-7"
+          className="cursor-pointer font-medium no-underline hover:no-underline"
         >
-          <Trash2 className="h-4 w-4" />
-          Cancel &amp; delete account
+          Cancel
         </button>
       </div>
 

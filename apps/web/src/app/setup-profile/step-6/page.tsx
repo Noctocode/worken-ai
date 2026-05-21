@@ -45,6 +45,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useOnboarding } from "../layout";
+import { OnboardingExit } from "../onboarding-exit";
 
 const CATEGORIES: Array<{
   title: string;
@@ -296,7 +297,7 @@ export default function SetupProfileStep6Page() {
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
     const allDone = phase === "done";
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+      <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
         <Card className="w-full max-w-[640px] flex flex-col items-center gap-8 p-[40px] bg-bg-white rounded-md">
           <Image
             src="/full-logo.png"
@@ -429,12 +430,13 @@ export default function SetupProfileStep6Page() {
             </div>
           ) : null}
         </Card>
+        <OnboardingExit />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[900px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -657,6 +659,7 @@ export default function SetupProfileStep6Page() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
 
       {/* Recovery dialog for /onboarding/complete failures.
           Without this a 500 just showed a toast and stranded the

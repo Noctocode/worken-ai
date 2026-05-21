@@ -19,7 +19,6 @@ import {
   type OnboardingDraft,
 } from "@/lib/api";
 import { Card } from "@/components/ui/card";
-import { OnboardingExit } from "./onboarding-exit";
 
 type ProfileType = "company" | "personal";
 type InfraChoice = "managed" | "on-premise";
@@ -308,14 +307,13 @@ export default function SetupProfileLayout({
 
   return (
     <OnboardingContext.Provider value={value}>
-      {/* Fixed escape-hatch in the corner so every step has a clear
-          way out. Without it the wizard is a trap: the sidebar's
-          Logout sits in the (app) layout which never renders here,
-          and a user who hits a non-recoverable BE error otherwise
-          has to clear cookies in DevTools to start over. */}
-      <div className="fixed right-4 top-4 z-50">
-        <OnboardingExit />
-      </div>
+      {/* OnboardingExit is rendered by each step *inside* its centered
+          column so the Sign out / Cancel & delete links sit directly
+          under the wizard Card. Keeping the escape hatch close to the
+          card matters because the wizard otherwise has no nav: the
+          sidebar's Logout sits in the (app) layout which never renders
+          here, and a user who hits a non-recoverable BE error would
+          have to clear cookies in DevTools to start over. */}
       {children}
     </OnboardingContext.Provider>
   );
