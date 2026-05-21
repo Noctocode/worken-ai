@@ -20,6 +20,7 @@ import { join } from 'path';
 import type { Response as ExpressResponse } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { COOKIE_OPTIONS } from '../auth/cookie-options.js';
 import {
   OnboardingService,
   type OnboardingDraft,
@@ -42,18 +43,6 @@ const ALLOWED_MIME_TYPES = new Set<string>([
 const UPLOAD_TMP_DIR = join(process.cwd(), 'uploads', 'tmp');
 // Multer expects the destination to exist synchronously at import time.
 mkdirSync(UPLOAD_TMP_DIR, { recursive: true });
-
-// Mirror of auth.controller.ts's COOKIE_OPTIONS — kept in sync so
-// /onboarding/abort clears the same cookies /auth/logout would.
-// Drift here would leave a dangling refresh_token pointing at a
-// just-deleted user.
-const AUTH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-  domain: process.env.COOKIE_DOMAIN || undefined,
-};
 
 @Controller('onboarding')
 export class OnboardingController {
@@ -128,8 +117,8 @@ export class OnboardingController {
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
     await this.onboardingService.abortOnboarding(user.id);
-    res.clearCookie('access_token', AUTH_COOKIE_OPTIONS);
-    res.clearCookie('refresh_token', AUTH_COOKIE_OPTIONS);
+    res.clearCookie('access_token', COOKIE_OPTIONS);
+    res.clearCookie('refresh_token', COOKIE_OPTIONS);
   }
 
   /**

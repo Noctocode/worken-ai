@@ -430,7 +430,12 @@ export default function SetupProfileStep6Page() {
             </div>
           ) : null}
         </Card>
-        <OnboardingExit />
+        {/* Cancel/delete here would 400 — the BE has already stamped
+            onboardingCompletedAt by the time we reach this screen.
+            Sign out stays available; the rest of the escape hatches
+            ("Skip and continue", "Continue anyway") cover the user
+            if ingestion stalls. */}
+        <OnboardingExit allowCancel={false} />
       </div>
     );
   }

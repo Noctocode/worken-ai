@@ -28,8 +28,18 @@ import { abortOnboarding, logout } from "@/lib/api";
  *     orphaned tenant row, frees the email for re-registration.
  *     Gated behind a "type DELETE to confirm" input so an
  *     accidental click can't nuke a half-completed signup.
+ *
+ * `allowCancel` defaults to true. Pass false on the post-submit
+ * "Setting up your AI…" / "Your AI is ready" screen — the BE has
+ * already stamped onboardingCompletedAt, so /onboarding/abort
+ * would 400 there and the Cancel button is just a footgun. Sign
+ * out still works on that screen, so the row stays visible.
  */
-export function OnboardingExit() {
+export function OnboardingExit({
+  allowCancel = true,
+}: {
+  allowCancel?: boolean;
+} = {}) {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [signingOut, setSigningOut] = useState(false);
@@ -81,19 +91,23 @@ export function OnboardingExit() {
         >
           Sign out
         </button>
-        {/* Thin vertical separator so the two links read as a single
-            inline pair rather than two stacked actions. */}
-        <span
-          aria-hidden="true"
-          className="h-3.5 w-px bg-text-1 select-none"
-        />
-        <button
-          type="button"
-          onClick={() => setConfirmOpen(true)}
-          className="cursor-pointer font-medium no-underline hover:no-underline"
-        >
-          Cancel
-        </button>
+        {allowCancel ? (
+          <>
+            {/* Thin vertical separator so the two links read as a single
+                inline pair rather than two stacked actions. */}
+            <span
+              aria-hidden="true"
+              className="h-3.5 w-px bg-text-1 select-none"
+            />
+            <button
+              type="button"
+              onClick={() => setConfirmOpen(true)}
+              className="cursor-pointer font-medium no-underline hover:no-underline"
+            >
+              Cancel
+            </button>
+          </>
+        ) : null}
       </div>
 
       <Dialog

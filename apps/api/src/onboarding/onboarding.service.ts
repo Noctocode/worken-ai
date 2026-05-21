@@ -35,6 +35,7 @@ import {
   conversations,
   projects,
   messages,
+  documents as documentsTable,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -200,24 +201,31 @@ export class OnboardingService {
    * `onboarding_completed_at` without touching `company_id`.
    */
   async abortOnboarding(userId: string): Promise<void> {
-    const [current] = await this.db
-      .select({
-        id: users.id,
-        companyId: users.companyId,
-        onboardingCompletedAt: users.onboardingCompletedAt,
-      })
-      .from(users)
-      .where(eq(users.id, userId));
-
-    if (!current) throw new NotFoundException('User not found');
-    if (current.onboardingCompletedAt) {
-      throw new BadRequestException(
-        'Onboarding already completed — this endpoint only covers interrupted setup. ' +
-          'Contact support to delete a fully-onboarded account.',
-      );
-    }
-
     await this.db.transaction(async (tx) => {
+      // Lock + re-check inside the transaction so a concurrent
+      // /onboarding/complete can't stamp onboardingCompletedAt
+      // between our gate and the cascade. Checking outside the tx
+      // left a window where a racing complete-then-abort would
+      // succeed against a now-fully-onboarded user — `FOR UPDATE`
+      // serialises the two writers on the users row.
+      const [current] = await tx
+        .select({
+          id: users.id,
+          companyId: users.companyId,
+          onboardingCompletedAt: users.onboardingCompletedAt,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+
+      if (!current) throw new NotFoundException('User not found');
+      if (current.onboardingCompletedAt) {
+        throw new BadRequestException(
+          'Onboarding already completed — this endpoint only covers interrupted setup. ' +
+            'Contact support to delete a fully-onboarded account.',
+        );
+      }
+
       const companyId = current.companyId;
 
       // Owned teams shouldn't exist mid-onboarding (team creation
@@ -252,6 +260,25 @@ export class OnboardingService {
       await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
       await tx.delete(guardrails).where(eq(guardrails.ownerId, userId));
       await tx.delete(conversations).where(eq(conversations.userId, userId));
+
+      // documents.project_id is ON DELETE NO ACTION, so a project
+      // with attached documents would 23503-fail the projects
+      // delete below. Nuke documents owned by this user's projects
+      // first. Mid-onboarding rows almost never have any (projects
+      // aren't reachable from the wizard), but a future flow or a
+      // support-cleared `onboardingCompletedAt` could leave some
+      // behind — the explicit cleanup keeps abort robust.
+      const ownedProjects = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.userId, userId));
+      const ownedProjectIds = ownedProjects.map((p) => p.id);
+      if (ownedProjectIds.length > 0) {
+        await tx
+          .delete(documentsTable)
+          .where(inArray(documentsTable.projectId, ownedProjectIds));
+      }
+
       await tx.delete(projects).where(eq(projects.userId, userId));
       await tx.delete(integrations).where(eq(integrations.ownerId, userId));
 
