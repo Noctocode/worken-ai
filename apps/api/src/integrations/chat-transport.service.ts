@@ -1,10 +1,10 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, eq, gte, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import {
+  companies,
   integrations,
   modelConfigs,
   observabilityEvents,
-  orgSettings,
   projects,
   teamIntegrationLinks,
   teamMembers,
@@ -800,31 +800,49 @@ export class ChatTransportService {
        */
       estimatedCostCents?: number;
       /**
-       * Caller's user id. Optional for back-compat with tests that
-       * exercise the gate without a user context. When set, lets us
-       * resolve company-scoped admin recipients for the budget-
-       * threshold notification fanout.
+       * Caller's user id. Required to resolve the *tenant* whose
+       * budget should be checked — without it we silent-pass the
+       * gate (back-compat for test call paths that don't model a
+       * caller). Production call sites always pass it.
        */
       callerUserId?: string;
     } = {},
   ): Promise<void> {
-    const [settings] = await this.db
-      .select({ monthlyBudgetCents: orgSettings.monthlyBudgetCents })
-      .from(orgSettings)
-      .orderBy(asc(orgSettings.createdAt))
-      .limit(1);
-    const targetCents = settings?.monthlyBudgetCents ?? null;
-    // null (or missing row) → no target set, gate is a silent pass.
-    // 0 → admin flipped the org-wide kill switch.
+    // No caller → can't identify a tenant → silent pass. Prod paths
+    // (chat / arena / evaluator) always wire callerUserId in.
+    if (!options.callerUserId) return;
+    const callerUserId = options.callerUserId;
+
+    // One round-trip resolves both the tenant pointer and its budget.
+    // LEFT JOIN so personal-profile / mid-onboarding callers (no
+    // companyId) come back with monthlyBudgetCents=null and the gate
+    // silent-passes — they have no tenant to charge.
+    const [row] = await this.db
+      .select({
+        companyId: users.companyId,
+        monthlyBudgetCents: companies.monthlyBudgetCents,
+      })
+      .from(users)
+      .leftJoin(companies, eq(companies.id, users.companyId))
+      .where(eq(users.id, callerUserId));
+    const tenantCompanyId = row?.companyId ?? null;
+    const targetCents = row?.monthlyBudgetCents ?? null;
+    // null (or no tenant) → no target set, gate is a silent pass.
+    // 0 → admin flipped the tenant-wide kill switch.
     // >0 → enforced below.
-    if (targetCents === null) return;
+    if (targetCents === null || tenantCompanyId === null) return;
     if (targetCents === 0) {
       throw new HttpException(
-        `${ORG_SUSPENDED_MARKER}: Org-wide chat is paused (Company Monthly Budget set to $0). Ask an admin to raise it in Management → Company.`,
+        `${ORG_SUSPENDED_MARKER}: Company chat is paused (Company Monthly Budget set to $0). Ask an admin to raise it in Management → Company.`,
         402,
       );
     }
 
+    // Spend aggregation is tenant-scoped via subquery — we sum only
+    // events from users sharing this caller's `company_id`. Replaces
+    // the legacy global SUM that cross-counted other tenants' spend
+    // against the cap (especially nasty during multi-tenant
+    // co-tenancy: tenant B's burst would suspend tenant A).
     const startOfMonth = sql`date_trunc('month', now())`;
     const [agg] = await this.db
       .select({
@@ -835,6 +853,13 @@ export class ChatTransportService {
         and(
           eq(observabilityEvents.success, true),
           gte(observabilityEvents.createdAt, startOfMonth),
+          inArray(
+            observabilityEvents.userId,
+            this.db
+              .select({ id: users.id })
+              .from(users)
+              .where(eq(users.companyId, tenantCompanyId)),
+          ),
         ),
       );
     const spentUsd = agg ? parseFloat(agg.total) : 0;
@@ -844,9 +869,10 @@ export class ChatTransportService {
     const projectedCents = spentCents + estimateCents;
 
     // 80% / 100% threshold alerts — same shape as the team-budget
-    // gate above. Recipients = every admin sharing the caller's
-    // company_name. Skipped when callerUserId is absent (test
-    // call path) or the user has no company (personal profile).
+    // gate above. Recipients = every admin in the caller's tenant
+    // (resolved by `users.company_id`). Skipped when callerUserId
+    // is absent (test call path) or the user has no tenant
+    // (personal profile / mid-onboarding).
     const eightyPct = Math.floor(targetCents * 0.8);
     if (
       options.callerUserId &&

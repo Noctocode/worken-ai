@@ -7,7 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import { createReadStream } from 'fs';
 import {
@@ -22,10 +22,20 @@ import { randomUUID } from 'crypto';
 import {
   users,
   teams,
+  teamMembers,
+  companies,
   integrations,
   knowledgeFiles,
   knowledgeFolders,
   onboardingDrafts,
+  tenders,
+  tenderTeamMembers,
+  modelConfigs,
+  guardrails,
+  conversations,
+  projects,
+  messages,
+  documents as documentsTable,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -170,6 +180,146 @@ export class OnboardingService {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
+  /**
+   * Escape hatch for a mid-onboarding user who can't (or won't)
+   * complete the wizard. Wipes their `users` row plus every
+   * row that would otherwise be FK-orphaned, freeing the email
+   * for re-registration.
+   *
+   * Hard-gated on `onboarding_completed_at IS NULL`: an already-
+   * onboarded user with real teams / chats / projects must go
+   * through the normal "delete my account" admin path (a future
+   * follow-up); this endpoint only covers the "I got stuck in
+   * the wizard" case where the row is mostly empty.
+   *
+   * Companies-row cleanup: in practice a mid-onboarding row has
+   * `company_id = NULL` because `completeInner` mints the
+   * `companies` row inside the same transaction that stamps
+   * `onboarding_completed_at`. But we defensively delete the
+   * tenant row anyway if the caller is the only member — protects
+   * against a future race or a support-action that cleared
+   * `onboarding_completed_at` without touching `company_id`.
+   */
+  async abortOnboarding(userId: string): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      // Lock + re-check inside the transaction so a concurrent
+      // /onboarding/complete can't stamp onboardingCompletedAt
+      // between our gate and the cascade. Checking outside the tx
+      // left a window where a racing complete-then-abort would
+      // succeed against a now-fully-onboarded user — `FOR UPDATE`
+      // serialises the two writers on the users row.
+      const [current] = await tx
+        .select({
+          id: users.id,
+          companyId: users.companyId,
+          onboardingCompletedAt: users.onboardingCompletedAt,
+        })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+
+      if (!current) throw new NotFoundException('User not found');
+      if (current.onboardingCompletedAt) {
+        throw new BadRequestException(
+          'Onboarding already completed — this endpoint only covers interrupted setup. ' +
+            'Contact support to delete a fully-onboarded account.',
+        );
+      }
+
+      const companyId = current.companyId;
+
+      // Owned teams shouldn't exist mid-onboarding (team creation
+      // requires a finished profile), but tear them down anyway in
+      // case a future flow or a support action created one.
+      // Mirrors UsersService.remove so the FK web stays consistent
+      // regardless of which path nukes a user.
+      const ownedTeams = await tx
+        .select({ id: teams.id })
+        .from(teams)
+        .where(eq(teams.ownerId, userId));
+      const ownedTeamIds = ownedTeams.map((t) => t.id);
+      if (ownedTeamIds.length > 0) {
+        await tx
+          .update(projects)
+          .set({ teamId: null })
+          .where(inArray(projects.teamId, ownedTeamIds));
+        await tx
+          .delete(teamMembers)
+          .where(inArray(teamMembers.teamId, ownedTeamIds));
+        await tx.delete(teams).where(inArray(teams.id, ownedTeamIds));
+      }
+
+      await tx.delete(teamMembers).where(eq(teamMembers.userId, userId));
+      await tx
+        .delete(tenderTeamMembers)
+        .where(eq(tenderTeamMembers.userId, userId));
+      await tx.delete(tenders).where(eq(tenders.ownerId, userId));
+      await tx
+        .delete(knowledgeFolders)
+        .where(eq(knowledgeFolders.ownerId, userId));
+      await tx.delete(modelConfigs).where(eq(modelConfigs.ownerId, userId));
+      await tx.delete(guardrails).where(eq(guardrails.ownerId, userId));
+      await tx.delete(conversations).where(eq(conversations.userId, userId));
+
+      // documents.project_id is ON DELETE NO ACTION, so a project
+      // with attached documents would 23503-fail the projects
+      // delete below. Nuke documents owned by this user's projects
+      // first. Mid-onboarding rows almost never have any (projects
+      // aren't reachable from the wizard), but a future flow or a
+      // support-cleared `onboardingCompletedAt` could leave some
+      // behind — the explicit cleanup keeps abort robust.
+      const ownedProjects = await tx
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.userId, userId));
+      const ownedProjectIds = ownedProjects.map((p) => p.id);
+      if (ownedProjectIds.length > 0) {
+        await tx
+          .delete(documentsTable)
+          .where(inArray(documentsTable.projectId, ownedProjectIds));
+      }
+
+      await tx.delete(projects).where(eq(projects.userId, userId));
+      await tx.delete(integrations).where(eq(integrations.ownerId, userId));
+
+      // Files uploaded mid-onboarding (e.g., the user reached step 6
+      // and attached docs before bailing) — null the FK so the row
+      // stays around if it was attached to a folder we just deleted
+      // cascades correctly. Folders are owned by the user and
+      // already deleted above; their files cascade out too. Keep
+      // this NULL-update for any straggler from a future flow.
+      await tx
+        .update(knowledgeFiles)
+        .set({ uploadedById: null })
+        .where(eq(knowledgeFiles.uploadedById, userId));
+
+      await tx
+        .update(messages)
+        .set({ userId: null })
+        .where(eq(messages.userId, userId));
+
+      await tx
+        .delete(onboardingDrafts)
+        .where(eq(onboardingDrafts.userId, userId));
+
+      await tx.delete(users).where(eq(users.id, userId));
+
+      // Tenant cleanup: drop the companies row if this user was the
+      // sole member. Check AFTER the user delete so the LIMIT 1
+      // probe doesn't accidentally count the deleted row.
+      if (companyId) {
+        const [otherMember] = await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.companyId, companyId))
+          .limit(1);
+        if (!otherMember) {
+          await tx.delete(companies).where(eq(companies.id, companyId));
+        }
+      }
+    });
+  }
+
   async complete(
     userId: string,
     payload: OnboardingPayload,
@@ -281,6 +431,34 @@ export class OnboardingService {
     // Single transaction so users row, credentials, and document rows are
     // all-or-nothing.
     await this.db.transaction(async (tx) => {
+      // Tenant identity for company-profile completions. We *always*
+      // mint a fresh `companies` row here — no name-based dedupe.
+      // Same display name on two different `company_id`s is the
+      // explicit design: two self-signups that happen to pick the
+      // same name are two distinct tenants, isolated from each
+      // other by UUID. Invitees never reach this branch because
+      // their `companies.id` is inherited at invite time and their
+      // first login lands them on /dashboard, not /setup-profile.
+      //
+      // Re-running onboarding (support-cleared
+      // `onboardingCompletedAt`) does still hit this branch and
+      // creates a *new* `companies` row — the prior row plus its
+      // teams already got torn down by the support action, so
+      // there's nothing to reconcile against.
+      let companyId: string | null = null;
+      if (payload.profileType === 'company' && payload.companyName?.trim()) {
+        const [created] = await tx
+          .insert(companies)
+          .values({
+            name: payload.companyName.trim(),
+            industry: payload.industry ?? null,
+            teamSize: payload.teamSize ?? null,
+            infraChoice: payload.infraChoice,
+          })
+          .returning({ id: companies.id });
+        companyId = created.id;
+      }
+
       await tx
         .update(users)
         .set({
@@ -289,11 +467,26 @@ export class OnboardingService {
             payload.profileType === 'personal' && payload.fullName
               ? payload.fullName
               : current.name,
+          // companyId is the tenant identifier; the columns below are
+          // display caches kept in sync on every write so /auth/me
+          // and tenant-scoped listings don't need to join companies.
+          companyId,
           companyName:
             payload.profileType === 'company' ? payload.companyName : null,
           industry: payload.profileType === 'company' ? payload.industry : null,
           teamSize: payload.profileType === 'company' ? payload.teamSize : null,
           infraChoice: payload.infraChoice,
+          // Self-signup → admin of the freshly-created tenant
+          // (company profile) OR sole owner of their own workspace
+          // (personal profile). Both branches arrive here from
+          // /setup-profile, which is reachable only by users who
+          // *weren't* pre-seeded by an invite flow (invitees get
+          // their role + companyId from the inviter and bypass the
+          // wizard entirely on first login). Default is 'basic' on
+          // the users row; we promote to 'admin' so the new tenant
+          // owner can immediately invite + manage their org without
+          // a second user having to grant them the role.
+          role: 'admin',
           onboardingCompletedAt: new Date(),
           updatedAt: new Date(),
         })
@@ -709,6 +902,7 @@ export class OnboardingService {
     const [current] = await this.db
       .select({
         profileType: users.profileType,
+        companyId: users.companyId,
       })
       .from(users)
       .where(eq(users.id, userId));
@@ -719,20 +913,30 @@ export class OnboardingService {
       );
     }
 
-    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    // Updates split across two rows:
+    //   - `userUpdates` writes the display-cache columns on the
+    //     caller's `users` row (so /auth/me reads cheap).
+    //   - `companyUpdates` mirrors the same change onto the tenant
+    //     row + every co-tenant's cached columns, so a rename or
+    //     industry change is visible to other members on next
+    //     refetch instead of going stale until they re-login.
+    const userUpdates: Record<string, unknown> = { updatedAt: new Date() };
+    const companyUpdates: Record<string, unknown> = {};
 
     if (input.name !== undefined) {
       const trimmed = input.name.trim();
       // Empty name is permitted — clears it. Onboarding "fullName"
       // wasn't required for company branch, so don't enforce here.
-      updates.name = trimmed.length > 0 ? trimmed : null;
+      // Personal display name only — not propagated to other members.
+      userUpdates.name = trimmed.length > 0 ? trimmed : null;
     }
     if (input.companyName !== undefined) {
       const trimmed = input.companyName.trim();
       if (!trimmed) {
         throw new BadRequestException('Company name cannot be empty.');
       }
-      updates.companyName = trimmed;
+      userUpdates.companyName = trimmed;
+      companyUpdates.name = trimmed;
     }
     if (input.industry !== undefined) {
       const trimmed = input.industry.trim();
@@ -744,7 +948,9 @@ export class OnboardingService {
           `industry must be one of: ${VALID_INDUSTRIES.join(', ')}`,
         );
       }
-      updates.industry = trimmed.length > 0 ? trimmed : null;
+      const normalised = trimmed.length > 0 ? trimmed : null;
+      userUpdates.industry = normalised;
+      companyUpdates.industry = normalised;
     }
     if (input.teamSize !== undefined) {
       const trimmed = input.teamSize.trim();
@@ -756,26 +962,69 @@ export class OnboardingService {
           `teamSize must be one of: ${VALID_TEAM_SIZES.join(', ')}`,
         );
       }
-      updates.teamSize = trimmed.length > 0 ? trimmed : null;
+      const normalised = trimmed.length > 0 ? trimmed : null;
+      userUpdates.teamSize = normalised;
+      companyUpdates.teamSize = normalised;
     }
 
-    await this.db.update(users).set(updates).where(eq(users.id, userId));
+    await this.db.transaction(async (tx) => {
+      await tx.update(users).set(userUpdates).where(eq(users.id, userId));
+
+      // Propagate the company-shaped fields to the tenant row and
+      // every co-tenant's display cache. Guarded on `companyId`
+      // because pre-migration users (or self-signups still
+      // mid-onboarding) may not have a tenant row yet — the patch
+      // still updates the caller's own cache columns, but there's
+      // nothing to mirror.
+      if (current.companyId && Object.keys(companyUpdates).length > 0) {
+        await tx
+          .update(companies)
+          .set({ ...companyUpdates, updatedAt: new Date() })
+          .where(eq(companies.id, current.companyId));
+
+        // Co-tenant cache refresh. Excludes the caller (already
+        // updated above) so we don't re-trigger their updatedAt.
+        const coTenantUpdates: Record<string, unknown> = {
+          updatedAt: new Date(),
+        };
+        if (companyUpdates.name !== undefined) {
+          coTenantUpdates.companyName = companyUpdates.name;
+        }
+        if (companyUpdates.industry !== undefined) {
+          coTenantUpdates.industry = companyUpdates.industry;
+        }
+        if (companyUpdates.teamSize !== undefined) {
+          coTenantUpdates.teamSize = companyUpdates.teamSize;
+        }
+        await tx
+          .update(users)
+          .set(coTenantUpdates)
+          .where(
+            and(
+              eq(users.companyId, current.companyId),
+              sql`${users.id} <> ${userId}`,
+            ),
+          );
+      }
+    });
+
     return this.getProfile(userId);
   }
 
   /**
    * "Delete company" tear-down for the Trash button on the Company
-   * tab. Single-tenant deployment, so there's no real company entity
-   * — instead we drop every workspace-shaped structure (teams,
-   * sub-teams, team members, team-scoped integrations) and clear the
-   * company-shaped onboarding fields (profileType, companyName,
-   * industry, teamSize, infraChoice, onboardingCompletedAt) on every
-   * user. User accounts, roles, plans, personal API keys, personal
-   * chats / conversations / projects all stay; the next admin login
-   * just lands on /setup-profile to set up a fresh company.
+   * tab. Tenant-scoped: wipes the *caller's* company only — other
+   * tenants on the same deployment are untouched. Drops the tenant's
+   * `companies` row, every team owned by a tenant member (cascades
+   * also nuke team_members + team-scoped integrations), and clears
+   * the company-shaped onboarding fields on every member so they
+   * land on /setup-profile next render. User accounts, roles, plans,
+   * personal API keys, personal chats / conversations / projects
+   * survive.
    *
-   * Admin-only and gated on profileType=company so a personal-profile
-   * caller can't accidentally wipe somebody else's workspace.
+   * Admin-only, company-profile-only, and requires the caller to
+   * actually have a `company_id` — a personal-profile caller or a
+   * mid-onboarding user has nothing to delete.
    */
   async deleteCompany(userId: string): Promise<{
     deletedTeamCount: number;
@@ -785,6 +1034,7 @@ export class OnboardingService {
       .select({
         role: users.role,
         profileType: users.profileType,
+        companyId: users.companyId,
       })
       .from(users)
       .where(eq(users.id, userId));
@@ -797,53 +1047,79 @@ export class OnboardingService {
         'Only company profiles can be deleted from this endpoint.',
       );
     }
+    if (!caller.companyId) {
+      throw new BadRequestException(
+        'No company tenant is linked to this account.',
+      );
+    }
+    const companyId = caller.companyId;
 
     // Atomic tear-down: wrapping the destructive sequence in one
-    // transaction keeps the workspace from landing in a half-deleted
+    // transaction keeps the tenant from landing in a half-deleted
     // state if any step fails (e.g. teams partially deleted but
     // users.profileType still set, or parentTeamId cleared but the
     // teams themselves still around because the DELETE timed out).
     return await this.db.transaction(async (tx) => {
-      // Snapshot counts before the destructive run so the success
-      // toast can show what was actually torn down. Cheaper than
-      // returning ids and sidesteps drizzle's loose typing on
-      // `.returning()`.
-      const [teamAgg] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(teams);
-      const [userAgg] = await tx
-        .select({ count: sql<number>`count(*)::int` })
-        .from(users);
+      // Snapshot the tenant's user ids first — needed both as the
+      // scope filter for the team delete (teams have no companyId
+      // column; their tenant is the owner's tenant) and for the
+      // post-deletion counts shown in the success toast.
+      const tenantUsers = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.companyId, companyId));
+      const tenantUserIds = tenantUsers.map((u) => u.id);
+      const affectedUserCount = tenantUserIds.length;
+
+      // No tenant users means the companies row is orphaned. Delete
+      // it and short-circuit — the team / user updates below have
+      // nothing to do.
+      if (tenantUserIds.length === 0) {
+        await tx.delete(companies).where(eq(companies.id, companyId));
+        return { deletedTeamCount: 0, affectedUserCount: 0 };
+      }
 
       // Break parent→child team edges before the bulk delete. PG can
       // trip on a single DELETE that touches both ends of the
       // self-reference even though parent_team_id is `set null`; pre-
-      // clearing keeps the cascade well-defined.
-      await tx.update(teams).set({ parentTeamId: null });
+      // clearing keeps the cascade well-defined. Scoped to teams
+      // whose owner sits in the tenant.
+      await tx
+        .update(teams)
+        .set({ parentTeamId: null })
+        .where(inArray(teams.ownerId, tenantUserIds));
 
-      // Bulk delete every team. Cascades wipe team_members and team-
-      // scoped integrations; projects.team_id is `set null`, so chat
-      // history under those projects survives but lands in personal
-      // scope.
-      await tx.delete(teams);
+      const deletedTeams = await tx
+        .delete(teams)
+        .where(inArray(teams.ownerId, tenantUserIds))
+        .returning({ id: teams.id });
 
-      // Reset company-shaped fields org-wide. profileType=null +
-      // onboardingCompletedAt=null means every user (admin and
-      // participant) hits /setup-profile on next render — fresh start.
-      // Bumping updatedAt so audit consumers see the change.
-      await tx.update(users).set({
-        profileType: null,
-        companyName: null,
-        industry: null,
-        teamSize: null,
-        infraChoice: null,
-        onboardingCompletedAt: null,
-        updatedAt: new Date(),
-      });
+      // Reset company-shaped fields for tenant members. profileType
+      // and onboardingCompletedAt cleared so each lands on
+      // /setup-profile on next render — fresh start. Bumping
+      // updatedAt so audit consumers see the change. companyId
+      // null'd explicitly even though the FK is ON DELETE SET NULL
+      // below, so the post-condition is uniform regardless of which
+      // path actually clears it.
+      await tx
+        .update(users)
+        .set({
+          profileType: null,
+          companyId: null,
+          companyName: null,
+          industry: null,
+          teamSize: null,
+          infraChoice: null,
+          onboardingCompletedAt: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.companyId, companyId));
+
+      await tx.delete(companies).where(eq(companies.id, companyId));
 
       return {
-        deletedTeamCount: teamAgg?.count ?? 0,
-        affectedUserCount: userAgg?.count ?? 0,
+        deletedTeamCount: deletedTeams.length,
+        affectedUserCount,
       };
     });
   }

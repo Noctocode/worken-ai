@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useOnboarding } from "../layout";
+import { OnboardingExit } from "../onboarding-exit";
 
 const INDUSTRIES = [
   { value: "technology", label: "Technology" },
@@ -45,7 +46,13 @@ export default function SetupProfileStep2Page() {
   // yelling at them the moment they land on the page. After the first
   // failed Continue, subsequent renders re-evaluate per-field so
   // filling a field clears its error live.
+  //
+  // No "is this company name taken" check here: the tenant is keyed
+  // by `companies.id` (UUID) now, not by the display name. Two
+  // self-signups with the same string are two distinct tenants —
+  // there's nothing to block at this step.
   const [attempted, setAttempted] = useState(false);
+
   const errors = {
     companyName: !companyName.trim(),
     industry: !industry,
@@ -59,14 +66,12 @@ export default function SetupProfileStep2Page() {
       setAttempted(true);
       return;
     }
-    // All fields already in context via individual onChanges, so a
-    // patchless saveDraft persists exactly what the user sees.
     saveDraft();
     router.push("/setup-profile/step-4");
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[500px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -113,7 +118,7 @@ export default function SetupProfileStep2Page() {
                   value={companyName}
                   onChange={(e) => update({ companyName: e.target.value })}
                   aria-invalid={attempted && errors.companyName}
-                  className="h-11 pl-10 text-base rounded-md border-border-3 placeholder:text-text-3"
+                  className="h-11 pl-10 text-base rounded-md placeholder:text-text-3 border-border-3"
                 />
               </div>
               {attempted && errors.companyName && (
@@ -193,6 +198,7 @@ export default function SetupProfileStep2Page() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
     </div>
   );
 }

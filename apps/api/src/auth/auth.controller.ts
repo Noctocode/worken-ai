@@ -16,22 +16,8 @@ import { MailService } from '../mail/mail.service.js';
 import { Public } from './public.decorator.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
+import { COOKIE_OPTIONS } from './cookie-options.js';
 import type { Request as Req, Response as Res } from 'express';
-
-// Cookie domain — set in prod to `.workenai.com` so the same access /
-// refresh tokens are available to both `app.workenai.com` (where the
-// Next.js middleware reads them server-side) and `api.workenai.com`
-// (where the API authenticates them). Leave unset in dev so cookies
-// stay host-only on `localhost`.
-const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
-
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-  domain: COOKIE_DOMAIN,
-};
 
 function setSessionCookies(
   res: Res,
@@ -45,6 +31,19 @@ function setSessionCookies(
     ...COOKIE_OPTIONS,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+}
+
+/**
+ * Wipe both auth cookies. Called from /refresh on any failure path
+ * (missing cookie, expired token, revoked in Redis) so the FE's
+ * follow-up redirect to /login isn't bounced back to "/" by the
+ * Next.js middleware — which only inspects cookie *presence*, not
+ * validity. Without this clear, a browser with stale cookies sat
+ * in a tight /↔/login loop (the user's reported flicker).
+ */
+function clearSessionCookies(res: Res) {
+  res.clearCookie('access_token', COOKIE_OPTIONS);
+  res.clearCookie('refresh_token', COOKIE_OPTIONS);
 }
 
 @Controller('auth')
@@ -112,15 +111,33 @@ export class AuthController {
     const cookies = req.cookies as Record<string, string> | undefined;
     const refreshToken = cookies?.refresh_token;
     if (!refreshToken) {
+      // Defensive: middleware shouldn't reach this with no
+      // refresh_token, but if it does we still want to clear any
+      // stale access_token so the FE's resulting /login redirect
+      // isn't bounced back to "/" on the next middleware pass.
+      clearSessionCookies(res);
       res.status(401).json({ message: 'No refresh token' });
       return;
     }
-
-    const tokens = await this.authService.refreshAccessToken(refreshToken);
-
-    setSessionCookies(res, tokens);
-
-    res.json({ message: 'Tokens refreshed' });
+    try {
+      const tokens = await this.authService.refreshAccessToken(refreshToken);
+      setSessionCookies(res, tokens);
+      res.json({ message: 'Tokens refreshed' });
+    } catch (err) {
+      // Refresh path threw — token expired in Redis, signature bad,
+      // user row gone, etc. The browser cookie may still be unexpired
+      // (we mint 7-day cookies but the Redis TTL / DB state can
+      // invalidate them sooner), which deadlocks the FE: middleware
+      // sees cookies → lets the page in → all queries 401 → apiFetch
+      // redirects to /login → middleware sees cookies → bounces back
+      // to "/" → repeat. Clearing both cookies as part of the 401
+      // response breaks the loop because middleware sees nothing on
+      // the next hop and /login finally sticks.
+      clearSessionCookies(res);
+      const message =
+        err instanceof Error ? err.message : 'Refresh failed';
+      res.status(401).json({ message });
+    }
   }
 
   @Public()

@@ -63,24 +63,33 @@ export class ModelsService {
    * and `listEffectiveForUser` (pickers / arena), so what a user
    * sees in management matches what they can actually pick.
    *
-   * Visibility model — mirrors how `knowledge_files.scope` works
-   * in the same single-tenant deployment:
-   *   - profileType = 'company': every `teamId IS NULL` alias is
-   *     the company-wide model pool (visible to every company
-   *     user, no matter who created it), plus team-scoped rows
-   *     for any team the caller is an accepted member of / owns.
-   *   - profileType = 'personal' (or NULL pre-onboarding): only
-   *     the caller's own `teamId IS NULL` aliases, plus their
-   *     team-scoped rows. Personal accounts don't share with anyone.
+   * Visibility model — mirrors how `knowledge_files.scope` works,
+   * keyed on the caller's tenant (`users.company_id` UUID):
+   *   - company-profile caller with a resolved `companyId`: every
+   *     `teamId IS NULL` alias owned by a tenant member is the
+   *     company-wide model pool, plus team-scoped rows for any
+   *     team the caller is an accepted member of / owns.
+   *   - personal / pre-onboarding / mid-onboarding caller (no
+   *     `companyId`): only the caller's own `teamId IS NULL`
+   *     aliases, plus their team-scoped rows. Personal accounts
+   *     don't share with anyone.
+   *
+   * Tenant key is `companyId` (UUID), not `profileType` alone —
+   * the prior code surfaced every `profileType='company' OR NULL`
+   * user across the whole deployment, which leaked model aliases
+   * across distinct tenants.
    *
    * Edit / delete permissions are not relaxed by this — they
    * still gate on `ownerId === caller` in `update` / `remove`.
-   * Company users can SEE every model_config, but only the owner
-   * (or admin in a follow-up PR) can mutate it.
+   * Company users can SEE every model_config in their tenant, but
+   * only the owner (or admin in a follow-up PR) can mutate it.
    */
   private async resolveAliasScopeFilter(callerId: string) {
     const [caller] = await this.db
-      .select({ profileType: users.profileType })
+      .select({
+        profileType: users.profileType,
+        companyId: users.companyId,
+      })
       .from(users)
       .where(eq(users.id, callerId));
 
@@ -104,30 +113,32 @@ export class ModelsService {
       ]),
     );
 
-    // Company users get the `teamId IS NULL` pool, but ONLY rows
-    // whose owner is also a company-profile user. Otherwise an
-    // independent Private Pro account on the same deployment would
-    // leak its private aliases into the company list. NULL-profile
-    // owners (pending invitees mid-flow) count as company-side too —
-    // they're on their way in, just haven't completed onboarding.
-    // Personal / pre-onboarding callers see only their own teamless
-    // rows; their account is isolated by definition.
+    // Company-tenant callers get the `teamId IS NULL` pool, but
+    // ONLY rows whose owner sits in the SAME tenant (`companyId`
+    // match). Without that filter, an independent Private Pro
+    // account on the same deployment — or any OTHER tenant's
+    // company users — would leak their teamless aliases into this
+    // caller's company list. Personal / pre-onboarding / mid-
+    // onboarding callers (no `companyId`) see only their own
+    // teamless rows; their account is isolated by definition.
     let orgPoolFilter;
-    if (caller?.profileType === 'company') {
-      const companyOwners = await this.db
+    const callerCompanyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    if (callerCompanyId) {
+      const tenantMembers = await this.db
         .select({ id: users.id })
         .from(users)
-        .where(or(eq(users.profileType, 'company'), isNull(users.profileType)));
-      const companyOwnerIds = companyOwners.map((u) => u.id);
-      // Defensive: if for some reason no company owners are found
-      // (shouldn't happen — the caller themselves is one), short-
-      // circuit to the personal filter so we never accidentally
+        .where(eq(users.companyId, callerCompanyId));
+      const tenantMemberIds = tenantMembers.map((u) => u.id);
+      // Defensive: if for some reason the tenant has no resolved
+      // members (shouldn't happen — the caller themselves is one),
+      // short-circuit to the personal filter so we never accidentally
       // pass an empty inArray (Postgres treats `IN ()` as always-
       // false but Drizzle's inArray rejects empty arrays loudly).
       orgPoolFilter =
-        companyOwnerIds.length > 0
+        tenantMemberIds.length > 0
           ? and(
-              inArray(modelConfigs.ownerId, companyOwnerIds),
+              inArray(modelConfigs.ownerId, tenantMemberIds),
               isNull(modelConfigs.teamId),
             )
           : and(

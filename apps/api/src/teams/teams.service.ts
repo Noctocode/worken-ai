@@ -924,6 +924,7 @@ export class TeamsService {
       const [owner] = await this.db
         .select({
           profileType: users.profileType,
+          companyId: users.companyId,
           companyName: users.companyName,
           industry: users.industry,
           teamSize: users.teamSize,
@@ -932,8 +933,12 @@ export class TeamsService {
         .from(users)
         .where(eq(users.id, team.ownerId));
 
+      // Tenant identity flows through `companyId` (UUID). The display
+      // name + dropdown fields are copied alongside as caches so the
+      // new row's /auth/me payload looks identical to a freshly
+      // self-onboarded company-profile user.
       const inheritsCompany =
-        owner?.profileType === 'company' && !!owner.companyName?.trim();
+        owner?.profileType === 'company' && !!owner.companyId;
       // onboardingCompletedAt stamped on inherit so /setup-profile's
       // guard bounces the invitee straight to the dashboard with the
       // "Joining …" loader — they don't need to walk the wizard
@@ -941,6 +946,7 @@ export class TeamsService {
       const inheritedFields = inheritsCompany
         ? {
             profileType: 'company' as const,
+            companyId: owner.companyId,
             companyName: owner.companyName,
             industry: owner.industry,
             teamSize: owner.teamSize,
@@ -1738,14 +1744,14 @@ export class TeamsService {
    *
    *  1. Rules explicitly linked via `guardrail_teams` — each gets
    *     `teamIsActive` from the link row (per-team pause toggle).
-   *  2. Org-wide rules whose owner shares this team's company —
+   *  2. Org-wide rules whose owner shares this team's tenant —
    *     surfaced with `teamIsActive=true` (org-wide can't be paused
    *     per-team) and `isOrgWide=true` so the FE can disable the
    *     per-team Switch + "Remove from team" affordances.
    *
-   * "Same company" resolved by joining users on `company_name`.
-   * Teams without a resolvable company (orphan teams from before the
-   * profile flow) silently skip the org-wide branch.
+   * "Same tenant" resolved by joining users on `company_id` (UUID).
+   * Teams whose owner has no resolvable tenant (orphan teams from
+   * before the profile flow) silently skip the org-wide branch.
    */
   async findGuardrails(teamId: string) {
     const linked = await this.db
@@ -1773,17 +1779,19 @@ export class TeamsService {
       .where(eq(guardrailTeams.teamId, teamId));
 
     // Resolve the team's company via its owner. The team rows have
-    // owner_id → users; users.company_name is the org boundary.
+    // owner_id → users; users.company_id is the tenant boundary
+    // (display `companyName` is just a cache, two different tenants
+    // can legitimately share one).
     const [teamRow] = await this.db
       .select({ ownerId: teams.ownerId })
       .from(teams)
       .where(eq(teams.id, teamId));
     if (!teamRow) return linked;
     const [teamOwner] = await this.db
-      .select({ companyName: users.companyName })
+      .select({ companyId: users.companyId })
       .from(users)
       .where(eq(users.id, teamRow.ownerId));
-    if (!teamOwner?.companyName) return linked;
+    if (!teamOwner?.companyId) return linked;
 
     const orgWide = await this.db
       .select({
@@ -1810,7 +1818,7 @@ export class TeamsService {
       .where(
         and(
           eq(guardrails.isOrgWide, true),
-          eq(users.companyName, teamOwner.companyName),
+          eq(users.companyId, teamOwner.companyId),
         ),
       );
 

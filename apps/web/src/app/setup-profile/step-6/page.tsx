@@ -30,12 +30,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  abortOnboarding,
   completeOnboarding,
   getOnboardingIngestionStatus,
   type IngestionStatusResponse,
   type KnowledgeFileVisibility,
 } from "@/lib/api";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useOnboarding } from "../layout";
+import { OnboardingExit } from "../onboarding-exit";
 
 const CATEGORIES: Array<{
   title: string;
@@ -81,6 +91,21 @@ export default function SetupProfileStep6Page() {
   const [knowledgeVisibility, setKnowledgeVisibility] =
     useState<KnowledgeFileVisibility>("all");
   const filesAtSubmitRef = useRef(0);
+
+  // Surfaces a recovery dialog when `/onboarding/complete` fails so
+  // the user has a clear path out: retry the same submit, or hard-
+  // reset (deletes their account, frees the email). Without this,
+  // a 500 just showed a toast and stranded the user in step 6 with
+  // no obvious next move.
+  const [failOpen, setFailOpen] = useState(false);
+  const [failMessage, setFailMessage] = useState<string>("");
+  const [abortingAccount, setAbortingAccount] = useState(false);
+
+  // Elapsed time on the "Setting up your AI…" polling screen. After
+  // 60s we surface a "Continue anyway" CTA so a hung ingestion
+  // worker can't strand the user indefinitely — they can land on
+  // the dashboard and retry failed files from Knowledge Core later.
+  const [preparingElapsedSec, setPreparingElapsedSec] = useState(0);
 
   const handleFiles = (incoming: FileList | File[] | null) => {
     if (!incoming || incoming.length === 0) return;
@@ -178,9 +203,31 @@ export default function SetupProfileStep6Page() {
       }
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't save your setup. Please try again.");
+      // Show both a transient toast (for context) AND a recovery
+      // dialog that exposes the only two sensible next moves: retry
+      // the same submit, or hard-reset by deleting the account.
+      const msg = err.message || "Couldn't save your setup. Please try again.";
+      toast.error(msg);
+      setFailMessage(msg);
+      setFailOpen(true);
     },
   });
+
+  const onStartOver = async () => {
+    if (abortingAccount) return;
+    setAbortingAccount(true);
+    try {
+      await abortOnboarding();
+      toast.success(
+        "Account deleted. You can register again with the same email.",
+      );
+      window.location.href = "/register";
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || "Couldn't delete your account. Try again.");
+      setAbortingAccount(false);
+    }
+  };
 
   const finishAndRedirect = () => {
     reset();
@@ -228,6 +275,21 @@ export default function SetupProfileStep6Page() {
     return () => clearTimeout(t);
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Tick a 1-second elapsed counter while we wait on ingestion so
+  // the "Continue anyway" escape after 60s becomes visible without
+  // needing the server to send anything. Reset whenever we leave
+  // the preparing phase so a retry starts the timer fresh.
+  useEffect(() => {
+    if (phase !== "preparing") {
+      setPreparingElapsedSec(0);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setPreparingElapsedSec((s) => s + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
   if (phase === "preparing" || phase === "done") {
     const data = ingestionQuery.data;
     const total = data?.total ?? filesAtSubmitRef.current;
@@ -235,7 +297,7 @@ export default function SetupProfileStep6Page() {
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
     const allDone = phase === "done";
     return (
-      <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+      <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
         <Card className="w-full max-w-[640px] flex flex-col items-center gap-8 p-[40px] bg-bg-white rounded-md">
           <Image
             src="/full-logo.png"
@@ -327,8 +389,12 @@ export default function SetupProfileStep6Page() {
 
           {/* Escape hatch in case ingestion stalls — the user is
               already onboarded, so we can let them through manually
-              and the dashboard banner will surface remaining work. */}
-          {!allDone ? (
+              and the dashboard banner will surface remaining work.
+              We surface this as a subtle link by default, then
+              promote to a prominent warning + primary CTA after 60s
+              so a hung ingestion worker can't trap a user staring
+              at a stalled progress bar. */}
+          {!allDone && preparingElapsedSec < 60 ? (
             <button
               type="button"
               onClick={finishAndRedirect}
@@ -337,13 +403,45 @@ export default function SetupProfileStep6Page() {
               Skip and continue to dashboard
             </button>
           ) : null}
+          {!allDone && preparingElapsedSec >= 60 ? (
+            <div className="w-full flex flex-col gap-3 rounded border border-warning-3 bg-warning-1/40 p-4 text-left">
+              <div className="flex items-start gap-3">
+                <AlertTriangle
+                  className="h-5 w-5 shrink-0 text-warning-7"
+                  strokeWidth={2}
+                />
+                <div className="flex flex-col gap-1">
+                  <p className="text-[14px] font-semibold text-text-1">
+                    This is taking longer than expected.
+                  </p>
+                  <p className="text-[13px] font-normal text-text-2">
+                    Onboarding is already saved — you can continue to your
+                    workspace and any unfinished files will stay queued.
+                    Retry them anytime from Knowledge Core.
+                  </p>
+                </div>
+              </div>
+              <Button
+                onClick={finishAndRedirect}
+                className="self-start bg-primary-6 hover:bg-primary-7 text-white"
+              >
+                Continue anyway
+              </Button>
+            </div>
+          ) : null}
         </Card>
+        {/* Cancel/delete here would 400 — the BE has already stamped
+            onboardingCompletedAt by the time we reach this screen.
+            Sign out stays available; the rest of the escape hatches
+            ("Skip and continue", "Continue anyway") cover the user
+            if ingestion stalls. */}
+        <OnboardingExit allowCancel={false} />
       </div>
     );
   }
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[900px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -566,6 +664,54 @@ export default function SetupProfileStep6Page() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
+
+      {/* Recovery dialog for /onboarding/complete failures.
+          Without this a 500 just showed a toast and stranded the
+          user in step 6 with no clear next move. Two explicit
+          options: retry the same submit, or hard-reset (deletes
+          the user row + any orphan tenant row, frees the email
+          for re-registration). */}
+      <Dialog
+        open={failOpen}
+        onOpenChange={(next) => {
+          if (abortingAccount || mutation.isPending) return;
+          setFailOpen(next);
+        }}
+      >
+        <DialogContent className="sm:max-w-[460px]">
+          <DialogHeader>
+            <DialogTitle>Setup couldn&apos;t finish</DialogTitle>
+            <DialogDescription>{failMessage}</DialogDescription>
+          </DialogHeader>
+          <p className="text-[13px] text-text-2">
+            Your progress through the wizard is saved. You can retry the same
+            submit, or start over by deleting this half-created account.
+          </p>
+          <DialogFooter className="flex-col gap-2 sm:flex-row">
+            <Button
+              variant="ghost"
+              onClick={onStartOver}
+              disabled={abortingAccount || mutation.isPending}
+              className="text-danger-6 hover:text-danger-7 hover:bg-danger-1/40"
+            >
+              {abortingAccount
+                ? "Deleting account…"
+                : "Start over (delete account)"}
+            </Button>
+            <Button
+              onClick={() => {
+                setFailOpen(false);
+                mutation.mutate();
+              }}
+              disabled={mutation.isPending || abortingAccount}
+              className="bg-primary-6 hover:bg-primary-7 text-white"
+            >
+              {mutation.isPending ? "Retrying…" : "Try again"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { Cloud, Server, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useOnboarding } from "../layout";
+import { OnboardingExit } from "../onboarding-exit";
 
 type Infra = "managed" | "on-premise";
 
@@ -51,7 +52,7 @@ export default function SetupProfileStep4Page() {
   const selected: Infra = state.infraChoice ?? "managed";
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[900px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -142,6 +143,7 @@ export default function SetupProfileStep4Page() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useOnboarding } from "./layout";
+import { OnboardingExit } from "./onboarding-exit";
 
 type ProfileType = "company" | "personal";
 
@@ -45,7 +46,7 @@ export default function SetupProfilePage() {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[500px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -90,6 +91,7 @@ export default function SetupProfilePage() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
     </div>
   );
 }

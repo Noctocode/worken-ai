@@ -307,6 +307,13 @@ export default function SetupProfileLayout({
 
   return (
     <OnboardingContext.Provider value={value}>
+      {/* OnboardingExit is rendered by each step *inside* its centered
+          column so the Sign out / Cancel & delete links sit directly
+          under the wizard Card. Keeping the escape hatch close to the
+          card matters because the wizard otherwise has no nav: the
+          sidebar's Logout sits in the (app) layout which never renders
+          here, and a user who hits a non-recoverable BE error would
+          have to clear cookies in DevTools to start over. */}
       {children}
     </OnboardingContext.Provider>
   );

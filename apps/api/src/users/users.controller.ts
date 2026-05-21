@@ -72,7 +72,7 @@ export class UsersController {
     }
     const page = Math.max(1, Number(pageRaw) || 1);
     const pageSize = Math.max(1, Math.min(Number(pageSizeRaw) || 50, 200));
-    return this.observabilityService.listEvents({
+    return this.observabilityService.listEvents(caller.id, {
       from: new Date(0),
       to: new Date(),
       userId: id,
@@ -100,9 +100,18 @@ export class UsersController {
       );
     }
 
-    const validRoles = ['basic', 'advanced'];
+    const validRoles = ['basic', 'advanced', 'admin'];
     if (!validRoles.includes(body.role)) {
-      throw new BadRequestException('Role must be basic or advanced.');
+      throw new BadRequestException(
+        'Role must be basic, advanced, or admin.',
+      );
+    }
+    // Promotion to admin is itself an admin-only action — an advanced
+    // user inviting a peer as admin would silently grant escalation,
+    // which the controller-level invite gate (admin OR advanced) is
+    // too loose to catch on its own.
+    if (body.role === 'admin' && callerUser.role !== 'admin') {
+      throw new ForbiddenException('Only admins can invite users as admin.');
     }
 
     const email = body.email.trim().toLowerCase();
@@ -119,15 +128,21 @@ export class UsersController {
     // Company fields the invitee inherits from the inviter so they
     // can skip the wizard on first login — they're joining an
     // existing workspace, the company identity is already known.
-    // Only kicks in when the inviter themselves is a fully-onboarded
-    // company-profile admin/advanced; otherwise we leave the new
-    // user blank and let onboarding fill those fields normally.
-    const inviterCompany = callerUser.companyName?.trim();
+    // Only kicks in when the inviter is a fully-onboarded company-
+    // profile admin/advanced with a resolved tenant `companyId`;
+    // otherwise we leave the new user blank and let onboarding fill
+    // those fields normally.
+    //
+    // `companyId` (UUID) is the tenant identifier — the display
+    // `companyName` cache is copied alongside so the new row reads
+    // identically to a freshly self-onboarded row.
+    const inviterCompanyId = callerUser.companyId;
     const inheritsCompany =
-      callerUser.profileType === 'company' && !!inviterCompany;
+      callerUser.profileType === 'company' && !!inviterCompanyId;
     const inheritedFields = inheritsCompany
       ? {
           profileType: 'company' as const,
+          companyId: inviterCompanyId,
           companyName: callerUser.companyName,
           industry: callerUser.industry,
           teamSize: callerUser.teamSize,
@@ -140,30 +155,50 @@ export class UsersController {
       : {};
 
     if (existing) {
-      // Block cross-company invites: if the target already onboarded
-      // under a different `companyName`, we can't quietly absorb them
-      // into this org without overwriting their workspace identity.
-      // Pre-onboarding rows (companyName=null) and matching companies
-      // pass through. The admin sees a clean 409 instead of two users
-      // ending up with mismatched Company-tab views.
-      const existingCompany = existing.companyName?.trim();
+      // Block cross-tenant invites: if the target already onboarded
+      // under a *different* tenant UUID, we can't quietly absorb
+      // them into this org without overwriting their workspace
+      // identity. Pre-onboarding rows (companyId=null) and same-
+      // tenant rows pass through. The admin sees a clean 409 instead
+      // of two users ending up with mismatched Company-tab views.
+      //
+      // Comparing by UUID — not display name — means two distinct
+      // tenants that happen to share a display name stay isolated:
+      // an invite from tenant A to a user already in tenant B is
+      // rejected even when both companies are called "Acme".
+      const existingCompanyId = existing.companyId;
       if (
-        inviterCompany &&
-        existingCompany &&
-        inviterCompany !== existingCompany
+        inviterCompanyId &&
+        existingCompanyId &&
+        inviterCompanyId !== existingCompanyId
       ) {
         throw new ConflictException(
-          `${email} already belongs to another company (${existingCompany}). Ask them to leave it before re-inviting.`,
+          `${email} already belongs to another company (${
+            existing.companyName ?? 'unknown'
+          }). Ask them to leave it before re-inviting.`,
         );
       }
 
-      // Build the patch: always allow the role update; additionally
-      // backfill company fields when the existing row is unsealed
-      // (no companyName yet — likely a stale invite that never
-      // completed onboarding) and the inviter can supply them.
+      // Role changes on an existing user are an admin-only action —
+      // the /users/:id/role endpoint is the proper path and it's
+      // already gated to admins. Letting an advanced caller flip
+      // roles through /users/invite would silently bypass that gate
+      // (e.g. an advanced user re-invites an admin as 'basic' to
+      // demote them). Allow the invite to proceed as a re-send /
+      // notification, but refuse the role mutation.
+      if (existing.role !== body.role && callerUser.role !== 'admin') {
+        throw new ForbiddenException(
+          "Only admins can change an existing user's role.",
+        );
+      }
+
+      // Build the patch: role updates are admin-only (gated above);
+      // additionally backfill company fields when the existing row
+      // is unsealed (no companyId yet — likely a stale invite that
+      // never completed onboarding) and the inviter can supply them.
       const patch: Record<string, unknown> = {};
       if (existing.role !== body.role) patch.role = body.role;
-      if (inheritsCompany && !existingCompany) {
+      if (inheritsCompany && !existingCompanyId) {
         Object.assign(patch, inheritedFields);
       }
       if (Object.keys(patch).length > 0) {
@@ -172,16 +207,17 @@ export class UsersController {
       // Existing user re-invited / role updated — surface it in
       // their inbox so they know what changed. Info-only; no
       // Accept/Decline since the role flip already happened.
+      const inviterCompanyName = callerUser.companyName?.trim() ?? null;
       await this.notifications.create({
         userId: existing.id,
         type: 'org_invite',
         title: `${inviterName} updated your access to ${
-          inviterCompany ?? 'the workspace'
+          inviterCompanyName ?? 'the workspace'
         }`,
         body: `Your role is now ${body.role}.`,
         data: {
           role: body.role,
-          companyName: inviterCompany ?? null,
+          companyName: inviterCompanyName,
           inviterName,
         },
       });
@@ -200,11 +236,21 @@ export class UsersController {
       })
       .returning();
 
-    await this.mailService.sendOrgInvitation({
-      to: email,
-      inviterName,
-      role: body.role,
-    });
+    // Fire-and-forget: a slow SMTP relay (200-3000ms typical) used to
+    // freeze the admin's "Inviting…" button until the mail returned.
+    // The row is already persisted, so the invite is real even if the
+    // mail bounces — admin can re-invite to re-send.
+    this.mailService
+      .sendOrgInvitation({
+        to: email,
+        inviterName,
+        role: body.role,
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        // eslint-disable-next-line no-console
+        console.error(`sendOrgInvitation to ${email} failed: ${msg}`);
+      });
 
     return { status: 'invited', email: created.email, role: created.role };
   }

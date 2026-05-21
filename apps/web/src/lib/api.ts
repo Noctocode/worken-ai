@@ -9,41 +9,101 @@ export interface ApiFetchOptions extends RequestInit {
   skipAuthRedirect?: boolean;
 }
 
+// Module-level coordination for the 401 → /auth/refresh recovery path.
+// The app can have many concurrent in-flight queries (notifications poll
+// at 5s + 30s, /auth/me, plus whatever the current page is fetching);
+// when the access_token expires they all 401 at roughly the same moment.
+// Without coalescing here, each one fired its own /auth/refresh, the BE
+// rotated the refresh_token N times, and the FE thrashed.
+//
+// `refreshPromise` is a singleton for the in-flight refresh — every 401
+// awaits the same promise.
+//
+// `sessionDead` latches once a refresh has terminally failed (BE 401'd
+// the /auth/refresh call). Subsequent 401s skip the refresh attempt
+// entirely and just route to /login. Without this, every still-in-
+// flight query fired its own redundant refresh while the navigation
+// was being scheduled, and the BE cookie-clear on the first 401 would
+// race with the cookie-set from a stale parallel refresh.
+let refreshPromise: Promise<boolean> | null = null;
+let sessionDead = false;
+let loginRedirectScheduled = false;
+
+async function attemptRefresh(): Promise<boolean> {
+  if (sessionDead) return false;
+  if (refreshPromise) return refreshPromise;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        // BE has cleared the auth cookies as part of this 401 — see
+        // apps/api/src/auth/auth.controller.ts:refresh. Latch the
+        // dead flag so the next 401 doesn't waste another round-trip.
+        sessionDead = true;
+        return false;
+      }
+      return true;
+    } catch {
+      // Network error during refresh — treat as terminal so the
+      // user lands on /login instead of looping on a flaky link.
+      sessionDead = true;
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+  return refreshPromise;
+}
+
+function scheduleLoginRedirect() {
+  if (loginRedirectScheduled || typeof window === "undefined") return;
+  loginRedirectScheduled = true;
+  // `replace` instead of `href` so the dead-session page doesn't sit
+  // on the back-stack — back button would otherwise re-enter the loop.
+  window.location.replace("/login");
+}
+
 export async function apiFetch(
   input: string,
   init?: ApiFetchOptions,
 ): Promise<Response> {
   const { skipAuthRedirect, ...fetchInit } = init ?? {};
+
+  // Short-circuit once the session has been declared dead. Polling
+  // queries that fire between the first failed refresh and the actual
+  // /login navigation would otherwise queue up a flood of redundant
+  // /auth/refresh calls — the user's "flickering" symptom.
+  if (sessionDead && !skipAuthRedirect) {
+    scheduleLoginRedirect();
+    throw new Error("Session expired");
+  }
+
   const res = await fetch(`${BASE_URL}${input}`, {
     ...fetchInit,
     credentials: "include",
   });
 
-  if (res.status === 401) {
-    // Try refreshing the token
-    const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
-      method: "POST",
+  if (res.status !== 401) return res;
+
+  // Single-flight the refresh: N concurrent 401s share one attempt.
+  const refreshed = await attemptRefresh();
+  if (refreshed) {
+    return fetch(`${BASE_URL}${input}`, {
+      ...fetchInit,
       credentials: "include",
     });
-
-    if (refreshRes.ok) {
-      // Retry the original request
-      return fetch(`${BASE_URL}${input}`, {
-        ...fetchInit,
-        credentials: "include",
-      });
-    }
-
-    if (skipAuthRedirect) {
-      return res;
-    }
-
-    // Refresh failed — redirect to login
-    window.location.href = "/login";
-    throw new Error("Session expired");
   }
 
-  return res;
+  if (skipAuthRedirect) return res;
+
+  // Refresh failed terminally. BE has already cleared the cookies on
+  // its 401 response, so the middleware will let /login through this
+  // time instead of bouncing back to "/".
+  scheduleLoginRedirect();
+  throw new Error("Session expired");
 }
 
 export interface User {
@@ -606,8 +666,8 @@ export interface InviteTeamMemberResult extends TeamMember {
 
 export async function inviteUser(
   email: string,
-  role: "basic" | "advanced",
-): Promise<{ status: string; email: string; role: string }> {
+  role: OrgRole,
+): Promise<{ status: string; email: string; role: OrgRole }> {
   const res = await apiFetch("/users/invite", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2675,6 +2735,20 @@ export async function updateOnboardingDraft(
 
 export async function deleteOnboardingDraft(): Promise<void> {
   await apiFetch("/onboarding/draft", { method: "DELETE" });
+}
+
+/**
+ * Escape hatch for a user stuck mid-onboarding. Wipes the BE user
+ * row + clears the auth cookies; the caller is responsible for the
+ * client-side redirect (typically to /register so the freed email
+ * can be re-used).
+ */
+export async function abortOnboarding(): Promise<void> {
+  const res = await apiFetch("/onboarding/abort", { method: "DELETE" });
+  if (!res.ok) {
+    const err = (await res.json().catch(() => ({}))) as { message?: string };
+    throw new Error(err.message || "Failed to abort onboarding");
+  }
 }
 
 export interface CompleteOnboardingPayload {
