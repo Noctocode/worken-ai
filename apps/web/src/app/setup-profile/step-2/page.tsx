@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useOnboarding } from "../layout";
+import { OnboardingExit } from "../onboarding-exit";
 
 const INDUSTRIES = [
   { value: "technology", label: "Technology" },
@@ -70,7 +71,7 @@ export default function SetupProfileStep2Page() {
   };
 
   return (
-    <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+    <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
       <Card className="w-full max-w-[500px] flex flex-col items-center gap-8 p-[30px] bg-bg-white rounded-md">
         <Image
           src="/full-logo.png"
@@ -197,6 +198,7 @@ export default function SetupProfileStep2Page() {
           </div>
         </div>
       </Card>
+      <OnboardingExit />
     </div>
   );
 }

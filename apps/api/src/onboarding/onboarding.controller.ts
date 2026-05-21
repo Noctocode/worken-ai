@@ -20,6 +20,7 @@ import { join } from 'path';
 import type { Response as ExpressResponse } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { COOKIE_OPTIONS } from '../auth/cookie-options.js';
 import {
   OnboardingService,
   type OnboardingDraft,
@@ -96,6 +97,28 @@ export class OnboardingController {
   @Delete('company')
   deleteCompany(@CurrentUser() user: AuthenticatedUser) {
     return this.onboardingService.deleteCompany(user.id);
+  }
+
+  /**
+   * Escape hatch for a user stuck mid-onboarding (failed
+   * `/onboarding/complete`, indecisive about profile type,
+   * registered the wrong email, etc.). Wipes the user row and
+   * clears the auth cookies so they can re-register with the
+   * same email. Refuses to run for an already-completed user —
+   * those go through the regular "delete account" admin flow.
+   *
+   * Same cookie-clear shape as `/auth/logout` so we don't leave a
+   * dangling `refresh_token` pointing at a now-deleted user.
+   */
+  @Delete('abort')
+  @HttpCode(204)
+  async abortOnboarding(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) res: ExpressResponse,
+  ) {
+    await this.onboardingService.abortOnboarding(user.id);
+    res.clearCookie('access_token', COOKIE_OPTIONS);
+    res.clearCookie('refresh_token', COOKIE_OPTIONS);
   }
 
   /**
