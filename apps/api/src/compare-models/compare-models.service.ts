@@ -140,9 +140,6 @@ export class CompareModelsService {
     }
 
     // Extract response with reasoning_details
-    type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
-      reasoning_details?: unknown;
-    };
     const response = completion.choices[0].message;
 
     const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
@@ -234,9 +231,6 @@ export class CompareModelsService {
     }
 
     // Extract response with reasoning_details
-    type ORChatMessage = (typeof completion)['choices'][number]['message'] & {
-      reasoning_details?: unknown;
-    };
     const response = completion.choices[0].message;
 
     return {

@@ -133,10 +133,8 @@ function makeChainableDb(rowSets: unknown[][]) {
 
   const makeChain = (rows: unknown[]) => {
     const promiseLike: Record<string, unknown> & PromiseLike<unknown[]> = {
-      then: (
-        onFulfilled?: (value: unknown[]) => unknown,
-        _onRejected?: (reason: unknown) => unknown,
-      ) => Promise.resolve(rows).then(onFulfilled),
+      then: (onFulfilled?: (value: unknown[]) => unknown) =>
+        Promise.resolve(rows).then(onFulfilled),
       catch: (onRejected?: (reason: unknown) => unknown) =>
         Promise.resolve(rows).catch(onRejected),
     } as unknown as Record<string, unknown> & PromiseLike<unknown[]>;
@@ -344,18 +342,14 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
     // LEFT JOIN companies onto users — personal callers land here
     // with companyId=null and monthlyBudgetCents=null and the gate
     // skips.
-    const svc = makeService([
-      [{ companyId: null, monthlyBudgetCents: null }],
-    ]);
+    const svc = makeService([[{ companyId: null, monthlyBudgetCents: null }]]);
     await expect(
       svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
     ).resolves.toBeUndefined();
   });
 
   it('passes when tenant monthlyBudgetCents is null ("no target set")', async () => {
-    const svc = makeService([
-      [{ companyId: 'c1', monthlyBudgetCents: null }],
-    ]);
+    const svc = makeService([[{ companyId: 'c1', monthlyBudgetCents: null }]]);
     await expect(
       svc.assertOrgBudgetNotExceeded({ callerUserId: 'u1' }),
     ).resolves.toBeUndefined();

@@ -5,12 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, asc, desc, eq, isNull, inArray, or } from 'drizzle-orm';
-import {
-  projects,
-  teamMembers,
-  teams,
-  users,
-} from '@worken/database/schema';
+import { projects, teamMembers, teams, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
@@ -113,10 +108,16 @@ export class ProjectsService {
    */
   private async enrichWithTeamMembers<
     T extends { id: string; teamId: string | null },
-  >(rows: T[]): Promise<Array<T & {
-    teamMembers?: ProjectMemberPreview[];
-    teamMembersCount?: number;
-  }>> {
+  >(
+    rows: T[],
+  ): Promise<
+    Array<
+      T & {
+        teamMembers?: ProjectMemberPreview[];
+        teamMembersCount?: number;
+      }
+    >
+  > {
     const distinctTeamIds = Array.from(
       new Set(
         rows.map((r) => r.teamId).filter((id): id is string => id != null),

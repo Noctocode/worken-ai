@@ -6,11 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, gte, inArray, sql } from 'drizzle-orm';
-import {
-  companies,
-  observabilityEvents,
-  users,
-} from '@worken/database/schema';
+import { companies, observabilityEvents, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 

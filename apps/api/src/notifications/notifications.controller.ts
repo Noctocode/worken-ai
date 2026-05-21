@@ -11,10 +11,7 @@ import {
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
-import {
-  INVITE_ERROR_MESSAGES,
-  TeamsService,
-} from '../teams/teams.service.js';
+import { INVITE_ERROR_MESSAGES, TeamsService } from '../teams/teams.service.js';
 import { NotificationsService } from './notifications.service.js';
 
 @Controller('notifications')

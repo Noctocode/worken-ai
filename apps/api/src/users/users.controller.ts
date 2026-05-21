@@ -102,9 +102,7 @@ export class UsersController {
 
     const validRoles = ['basic', 'advanced', 'admin'];
     if (!validRoles.includes(body.role)) {
-      throw new BadRequestException(
-        'Role must be basic, advanced, or admin.',
-      );
+      throw new BadRequestException('Role must be basic, advanced, or admin.');
     }
     // Promotion to admin is itself an admin-only action — an advanced
     // user inviting a peer as admin would silently grant escalation,
@@ -248,7 +246,6 @@ export class UsersController {
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        // eslint-disable-next-line no-console
         console.error(`sendOrgInvitation to ${email} failed: ${msg}`);
       });
 
