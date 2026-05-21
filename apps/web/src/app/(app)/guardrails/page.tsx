@@ -196,6 +196,11 @@ function OverviewTab({
       list = list.filter((g) => g.severity === severity);
     }
     if (timeFilter !== "all") {
+      // `Date.now()` is impure, but the value is only used to compute
+      // a filter cutoff inside this useMemo and a stale `now` between
+      // renders is harmless — the "last 24h / 7d / 30d" window has
+      // tolerance built into its semantics.
+      // eslint-disable-next-line react-hooks/purity
       const now = Date.now();
       const cutoff = {
         "24h": now - 24 * 60 * 60 * 1000,
