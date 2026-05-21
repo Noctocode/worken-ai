@@ -146,6 +146,11 @@ function sanitizeFilename(raw: string): string {
   const lastSegment = raw.replace(/^.*[\\/]/, '');
 
   const cleaned = lastSegment
+    // \x00-\x1f are exactly what we want to strip — control bytes can
+    // hide path-traversal payloads and are filesystem-illegal on
+    // Windows, so the control-char range is the entire point of this
+    // class.
+    // eslint-disable-next-line no-control-regex
     .replace(/[\x00-\x1f<>:"/\\|?*]/g, '_')
     .replace(/^\.+/, '');
   return cleaned || 'file';
