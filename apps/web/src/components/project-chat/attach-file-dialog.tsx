@@ -133,9 +133,12 @@ export function AttachFileDialog({
       nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
       uploadProjectKnowledgeFiles(projectId, files, {
-        // Defer folder + visibility to the BE: it picks the caller's
-        // "Projects" folder and a scope-aware visibility (team
-        // project → 'teams' with the team pre-set; personal → 'all').
+        // Scope the upload to THIS project: visibility='project'
+        // linked to projectId — not the wider 'all' / 'teams'
+        // default. Matches the Manage Context dialog. Folder is
+        // still deferred to the BE smart-default ("Projects").
+        visibility: "project",
+        projectIds: [projectId],
         nameConflictActions,
       }),
     onSuccess: (result, vars) => {
