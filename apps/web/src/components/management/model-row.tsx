@@ -36,6 +36,7 @@ import {
 } from "@/lib/api";
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
+import { useAuth } from "@/components/providers";
 
 function providerOf(modelId: string): string | null {
   const idx = modelId.indexOf("/");
@@ -44,6 +45,8 @@ function providerOf(modelId: string): string | null {
 
 export function ModelRow({ model }: { model: ModelConfig }) {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   // Edit + delete-confirm dialogs are owned per row so opening one
   // row's editor doesn't bleed into another. Both stay closed by
@@ -97,13 +100,16 @@ export function ModelRow({ model }: { model: ModelConfig }) {
       <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         {model.customName}
       </td>
-      {/* Status */}
+      {/* Status — basic users can see the toggle state but can't
+          flip it; admin role is required to mutate the catalog. */}
       <td className="px-4 align-middle">
         <div className="flex items-center gap-2 min-w-[100px]">
           <Switch
             checked={model.isActive}
             onCheckedChange={() => toggleMutation.mutate()}
-            disabled={toggleMutation.isPending}
+            disabled={toggleMutation.isPending || !isAdmin}
+            title={isAdmin ? undefined : "Only admins can change models"}
+            className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
           />
           <span className="text-sm text-black-700 whitespace-nowrap">
             {model.isActive ? "Active" : "Inactive"}
@@ -171,6 +177,8 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             <DropdownMenuItem
               className="gap-2"
               onClick={() => setEditOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : "Only admins can edit models"}
             >
               <Pencil className="h-4 w-4" />
               Edit model
@@ -178,6 +186,8 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
               onClick={() => setDeleteConfirmOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : "Only admins can delete models"}
             >
               <Trash2 className="h-4 w-4" />
               Delete model

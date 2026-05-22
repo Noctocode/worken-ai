@@ -36,6 +36,13 @@ interface OrgInvitationParams {
   role: string;
 }
 
+interface AccountRemovedParams {
+  to: string;
+  name: string | null;
+  byName: string;
+  companyName: string | null;
+}
+
 @Injectable()
 export class MailService {
   private transporter: Transporter;
@@ -270,6 +277,58 @@ export class MailService {
       from: this.config.get<string>('MAIL_FROM'),
       to,
       subject: `${inviterName} invited you to join WorkenAI`,
+      html,
+    });
+  }
+
+  /**
+   * Final-state notification — sent AFTER the user row has been
+   * deleted, so we can't link the recipient to anything inside the
+   * workspace (they have no account to log into anymore). Plain
+   * "your account was removed" copy + the actor's name for audit.
+   */
+  async sendAccountRemovedEmail({
+    to,
+    name,
+    byName,
+    companyName,
+  }: AccountRemovedParams) {
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+    const greeting = name?.trim() ? `Hi ${escapeHtml(name)},` : 'Hi,';
+    const orgCopy = companyName?.trim()
+      ? `the <strong>${escapeHtml(companyName)}</strong> workspace on WorkenAI`
+      : 'a WorkenAI workspace';
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[dev] account-removed mail to ${to}`);
+    }
+
+    const html = `
+      <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
+        ${this.brandedHeader(frontendUrl)}
+        <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
+          <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Your access has been removed</h1>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 16px; line-height: 1.6; text-align: left;">${greeting}</p>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 16px; line-height: 1.6; text-align: left;">
+            <strong>${escapeHtml(byName)}</strong> removed your account from ${orgCopy}. Your projects, chats, and personal data on this workspace have been deleted.
+          </p>
+          <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.6; text-align: left;">
+            If this looks like a mistake, get in touch with ${escapeHtml(byName)} directly — we don't process restore requests via support.
+          </p>
+          <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
+        </div>
+        <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 24px;">
+          This email was sent to ${escapeHtml(to)}.
+        </p>
+        ${this.brandedFooter()}
+      </div>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.config.get<string>('MAIL_FROM'),
+      to,
+      subject: `Your WorkenAI account has been removed`,
       html,
     });
   }

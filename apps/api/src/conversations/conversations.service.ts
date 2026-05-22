@@ -1,8 +1,15 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { and, desc, eq, asc } from 'drizzle-orm';
 import {
   conversations,
+  messageFeedback,
   messages,
+  projectMembers,
   projects,
   users,
 } from '@worken/database/schema';
@@ -16,7 +23,18 @@ export class ConversationsService {
     private readonly teamsService: TeamsService,
   ) {}
 
-  /** Verify the user has access to a project (owner or team member). Returns the project. */
+  /**
+   * Verify the user can act on a project. Access sources (any one is
+   * sufficient) — strictly additive over the legacy model:
+   *  1. Project owner (`projects.user_id`).
+   *  2. Member of the project's team (`projects.team_id` -> teams).
+   *  3. Direct project membership (`project_members` row). The Figma
+   *     invite modal (179:16073) "Other" group surfaces these — users
+   *     pulled into a single chat from outside the project's team.
+   *
+   * Returns the project on success; throws NotFound (we deliberately
+   * mask Forbidden as NotFound so callers can't enumerate IDs).
+   */
   private async verifyProjectAccess(projectId: string, userId: string) {
     const [project] = await this.db
       .select()
@@ -27,15 +45,31 @@ export class ConversationsService {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
+    if (project.userId === userId) return project;
+
     if (project.teamId) {
       const role = await this.teamsService.getUserTeamRole(
         project.teamId,
         userId,
       );
-      if (!role) {
-        throw new NotFoundException(`Project ${projectId} not found`);
-      }
-    } else if (project.userId !== userId) {
+      if (role) return project;
+    }
+
+    // Fall through to the direct-membership table. One extra round-
+    // trip on the miss-path only; team-member users hit the early
+    // return above.
+    const [directMember] = await this.db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!directMember) {
       throw new NotFoundException(`Project ${projectId} not found`);
     }
 
@@ -225,5 +259,57 @@ export class ConversationsService {
       .where(eq(conversations.id, conversationId));
 
     return { deleted: true };
+  }
+
+  /**
+   * Persist a 👍 / 👎 vote on a single message.
+   *
+   * Access is gated on the user being a participant in the message's
+   * project (same gate as reading the conversation). `score === null`
+   * (or the caller toggling the same thumb twice on the FE) deletes
+   * the row so aggregates stay simple — `sum(score)` skips un-voted
+   * messages without NULL handling.
+   */
+  async submitFeedback(
+    messageId: string,
+    userId: string,
+    score: 1 | -1 | null,
+  ) {
+    const [msg] = await this.db
+      .select({ conversationId: messages.conversationId })
+      .from(messages)
+      .where(eq(messages.id, messageId))
+      .limit(1);
+    if (!msg) {
+      throw new NotFoundException(`Message ${messageId} not found`);
+    }
+    // Access check chains through the project's verifyProjectAccess.
+    await this.verifyConversationAccess(msg.conversationId, userId);
+
+    if (score === null) {
+      await this.db
+        .delete(messageFeedback)
+        .where(
+          and(
+            eq(messageFeedback.messageId, messageId),
+            eq(messageFeedback.userId, userId),
+          ),
+        );
+      return { score: null };
+    }
+
+    if (score !== 1 && score !== -1) {
+      throw new BadRequestException('score must be 1, -1, or null');
+    }
+
+    await this.db
+      .insert(messageFeedback)
+      .values({ messageId, userId, score })
+      .onConflictDoUpdate({
+        target: [messageFeedback.messageId, messageFeedback.userId],
+        set: { score, updatedAt: new Date() },
+      });
+
+    return { score };
   }
 }

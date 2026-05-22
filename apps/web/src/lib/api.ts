@@ -894,6 +894,127 @@ export async function deleteConversation(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete conversation");
 }
 
+/**
+ * Persist 👍 / 👎 on an assistant message. `score` is 1 or -1; pass
+ * null to remove an existing vote (the FE's toggle-off semantics —
+ * clicking the same thumb twice). Returns the final stored score
+ * (echoed back so the FE can confirm without a refetch).
+ */
+export async function submitMessageFeedback(
+  messageId: string,
+  score: 1 | -1 | null,
+): Promise<{ score: 1 | -1 | null }> {
+  const res = await apiFetch(`/messages/${messageId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ score }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to save feedback");
+  }
+  return res.json();
+}
+
+export interface ProjectMember {
+  /** For pending team invites this is `invite:<team_members.id>` so
+   *  the FE has a stable React key even before the invitee accepts.
+   *  Don't try to look this up as a user id — only meaningful for
+   *  in-list rendering when status === 'pending'. */
+  userId: string;
+  userName: string | null;
+  userEmail: string;
+  userPicture: string | null;
+  role: "admin" | "editor" | "viewer";
+  /** "team" rows come from the project's team; "direct" rows are
+   *  ad-hoc invites stored in `project_members`. Pending team
+   *  invites also flow under "direct" so they show up immediately in
+   *  the Figma "Other" group after Send Invite — distinguish them
+   *  by `status`. */
+  source: "team" | "direct";
+  status: "pending" | "accepted";
+  addedAt: string;
+}
+
+export async function fetchProjectMembers(
+  projectId: string,
+): Promise<ProjectMember[]> {
+  const res = await apiFetch(`/projects/${projectId}/members`);
+  if (!res.ok) throw new Error("Failed to load project members");
+  return res.json();
+}
+
+export async function addProjectMember(
+  projectId: string,
+  userId: string,
+  role: "admin" | "editor" | "viewer" = "editor",
+): Promise<ProjectMember> {
+  const res = await apiFetch(`/projects/${projectId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ userId, role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to add member");
+  }
+  return res.json();
+}
+
+/**
+ * Add by email — server-side path that creates the org user (if
+ * missing) AND adds them to the project's direct-membership table,
+ * skipping team_members entirely. Used by the chat-side
+ * InviteMembersDialog so invitees show under the "Other" group.
+ */
+export async function inviteProjectMemberByEmail(
+  projectId: string,
+  email: string,
+  role: "admin" | "editor" | "viewer" = "editor",
+): Promise<ProjectMember> {
+  const res = await apiFetch(`/projects/${projectId}/members/invite`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to invite member");
+  }
+  return res.json();
+}
+
+export async function updateProjectMemberRole(
+  projectId: string,
+  userId: string,
+  role: "admin" | "editor" | "viewer",
+): Promise<{ updated: true; role: string }> {
+  const res = await apiFetch(`/projects/${projectId}/members/${userId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to update role");
+  }
+  return res.json();
+}
+
+export async function removeProjectMember(
+  projectId: string,
+  userId: string,
+): Promise<{ removed: true }> {
+  const res = await apiFetch(`/projects/${projectId}/members/${userId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to remove member");
+  }
+  return res.json();
+}
+
 // Non-streaming sendChatMessage has been removed in favour of
 // streamChatMessage (below). The streaming endpoint is the only
 // chat path; consumers walk the SSE event iterable and concatenate
@@ -905,6 +1026,18 @@ export async function deleteConversation(id: string): Promise<void> {
  * drive UI state (delta appends, replace overwrites, reasoning pane,
  * done finalizer, blocked/error humanization).
  */
+/**
+ * Optional follow-up suggestion the BE may attach to the `done`
+ * event. When set, the FE renders a small "we think X would work
+ * better — Try It" bubble below the assistant turn. Field is purely
+ * additive on the SSE shape; absent / undefined means no suggestion.
+ */
+export interface AlternativeModelSuggestion {
+  id: string;
+  label: string;
+  reason: string;
+}
+
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "reasoning"; text: string }
@@ -916,6 +1049,7 @@ export type ChatStreamEvent =
       totalTokens?: number;
       costUsd?: number | null;
       partial?: boolean;
+      alternativeModel?: AlternativeModelSuggestion;
     };
 
 /**

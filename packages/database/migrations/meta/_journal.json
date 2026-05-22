@@ -15,6 +15,13 @@
       "when": 1779380000000,
       "tag": "0001_company_tenancy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1779550000000,
+      "tag": "0002_project_members_and_feedback",
+      "breakpoints": true
     }
   ]
 }

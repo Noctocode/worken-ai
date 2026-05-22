@@ -191,6 +191,50 @@ export const projects = pgTable("projects", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+/**
+ * Direct, ad-hoc project membership.
+ *
+ * The original access model was *transitive only*: a user could chat
+ * on a project iff they were an accepted member of `projects.teamId`'s
+ * team. That works for the common "every project belongs to a team
+ * and every team member sees every project" case, but it can't
+ * express "I want Sam from another team to join this single chat".
+ * The Figma invite modal (179:16073) shows exactly that — a "Members"
+ * group for the project's team plus an "Other" group for anyone else
+ * the owner has pulled in.
+ *
+ * `ConversationsService.verifyProjectAccess` accepts either source —
+ * team membership OR a row here — so adding rows is purely additive
+ * and never narrows the existing access set.
+ *
+ * Roles mirror the team-member set ('admin', 'editor', 'viewer') so
+ * the FE can render a single role dropdown shape regardless of where
+ * a member came from. `addedBy` is a soft FK with `set null` so a
+ * deactivated inviter doesn't yank everyone they ever added.
+ */
+export const projectMembers = pgTable(
+  "project_members",
+  {
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    role: text("role").notNull().default("editor"),
+    addedBy: uuid("added_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.userId] }),
+    // Reverse lookup: "which projects does this user have direct
+    // access to?" — drives the future /users/me/projects scope.
+    index("project_members_user_idx").on(table.userId),
+  ],
+);
+
 export const documents = pgTable(
   "documents",
   {
@@ -236,6 +280,43 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+/**
+ * Per-message 👍 / 👎 feedback from a chat participant.
+ *
+ * Composite PK on (messageId, userId) so the FE thumbs row reads as
+ * "your vote on this message" — upsert semantics, one row per user
+ * per message. The toggle-off case (clicking the same thumb twice)
+ * is modelled by deleting the row rather than storing a null score,
+ * so aggregates stay simple (`sum(score)` is a no-op for un-voted
+ * messages, no NULL handling).
+ *
+ * `note` is reserved for a future "tell us more" prompt the FE could
+ * surface after a thumbs-down. Nullable for now — wire-up later.
+ */
+export const messageFeedback = pgTable(
+  "message_feedback",
+  {
+    messageId: uuid("message_id")
+      .references(() => messages.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // -1 (thumbs down) or 1 (thumbs up). Kept as integer rather than
+    // enum so a future "neutral / mixed" doesn't need a migration.
+    score: integer("score").notNull(),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.messageId, table.userId] }),
+    // Aggregate by message — drives the future "this answer scored
+    // +X / -Y across the team" badge on /observability.
+    index("message_feedback_message_idx").on(table.messageId),
+  ],
+);
 
 export const observabilityEvents = pgTable(
   "observability_events",

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ChatService } from './chat.service.js';
 import { ChatController } from './chat.controller.js';
+import { ModelSuggestionService } from './model-suggestion.service.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
 import { GuardrailsSectionModule } from '../guardrails/guardrails-section.module.js';
@@ -24,7 +25,7 @@ import { ProjectsModule } from '../projects/projects.module.js';
     ProjectsModule, // ProjectKnowledgeService for project-attached KC RAG
   ],
   controllers: [ChatController],
-  providers: [ChatService],
+  providers: [ChatService, ModelSuggestionService],
   // CompareModelsModule consumes ChatService.sendMessageStream for the
   // arena fan-out so it doesn't need a parallel streaming primitive.
   exports: [ChatService],

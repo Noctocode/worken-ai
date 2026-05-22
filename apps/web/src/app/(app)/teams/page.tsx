@@ -40,8 +40,15 @@ export default function TeamsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
+  // Tabs always render for everyone — basic users keep visibility
+  // into management surfaces but the action buttons inside each tab
+  // are individually disabled by their components (Add New Model,
+  // Generate API Link, integration add/remove, etc.).
+  const isAdmin = user?.role === "admin";
   const rawTab = searchParams.get("tab");
-  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number]) ? rawTab! : "teams";
+  const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
+    ? rawTab!
+    : "teams";
   const setActiveTab = (tab: string) => {
     router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };
@@ -467,12 +474,29 @@ export default function TeamsPage() {
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
               Models
             </span>
-            <AddModelDialog>
-              <Button variant="plusAction" className="lg:order-last">
-                <Plus className="h-4 w-4 text-white" />
-                Add New Model
-              </Button>
-            </AddModelDialog>
+            {isAdmin ? (
+              <AddModelDialog>
+                <Button variant="plusAction" className="lg:order-last">
+                  <Plus className="h-4 w-4 text-white" />
+                  Add New Model
+                </Button>
+              </AddModelDialog>
+            ) : (
+              <DisabledReasonTooltip
+                disabled
+                reason="Only admins can add models"
+                className="lg:order-last"
+              >
+                <Button
+                  variant="plusAction"
+                  className="disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  <Plus className="h-4 w-4 text-white" />
+                  Add New Model
+                </Button>
+              </DisabledReasonTooltip>
+            )}
           </div>
           <SearchInput
             className="flex-1"

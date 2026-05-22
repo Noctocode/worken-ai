@@ -36,11 +36,11 @@ import { ChatTransportService } from '../integrations/chat-transport.service.js'
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
+import { OcrFallbackService } from '../openrouter/ocr-fallback.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
 const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
-const OCR_MODEL = 'baidu/qianfan-ocr-fast:free';
 const IMAGE_MIMETYPES = new Set([
   'image/png',
   'image/jpeg',
@@ -101,6 +101,7 @@ export class CompareModelsController {
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
+    private readonly ocrFallback: OcrFallbackService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -761,18 +762,17 @@ export class CompareModelsController {
 
       const dataUrl = `data:${mimetype};base64,${file.buffer.toString('base64')}`;
       let extracted: string;
+      let resolvedModel = this.ocrFallback.modelChain[0] ?? 'ocr-unknown';
       const ocrStart = Date.now();
       try {
-        extracted = await this.compareModelsService.extractTextFromImage(
-          dataUrl,
-          OCR_MODEL,
-          apiKey,
-        );
+        const result = await this.ocrFallback.extractText(dataUrl, apiKey);
+        extracted = result.text;
+        resolvedModel = result.model;
         void this.observabilityService.recordLLMCall({
           userId: user.id,
           teamId,
           eventType: 'arena_attachment_ocr',
-          model: OCR_MODEL,
+          model: resolvedModel,
           latencyMs: Date.now() - ocrStart,
           success: true,
           metadata: { filename: name, mimetype },
@@ -783,7 +783,7 @@ export class CompareModelsController {
           userId: user.id,
           teamId,
           eventType: 'arena_attachment_ocr',
-          model: OCR_MODEL,
+          model: resolvedModel,
           latencyMs: Date.now() - ocrStart,
           success: false,
           errorMessage: msg,
@@ -792,7 +792,7 @@ export class CompareModelsController {
         this.logger.error(`OCR failed for "${name}": ${msg}`);
         throw new BadGatewayException(msg);
       }
-      content = extracted === 'NO_TEXT_FOUND' ? '' : extracted;
+      content = extracted;
     } else {
       try {
         if (mimetype === 'application/pdf' || lowerName.endsWith('.pdf')) {

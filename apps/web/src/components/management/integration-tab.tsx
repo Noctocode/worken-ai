@@ -14,6 +14,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { useAuth } from "@/components/providers";
 import { SearchInput } from "@/components/ui/search-input";
 import { Switch } from "@/components/ui/switch";
 import { SettingsDialog } from "@/components/settings-dialog";
@@ -483,6 +485,8 @@ function DeleteCustomLLMDialog({
 
 export function IntegrationTab() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<IntegrationCard | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -568,10 +572,26 @@ export function IntegrationTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Button variant="plusAction" onClick={() => setShowAddDialog(true)}>
-          <Plus className="h-4 w-4 text-white" />
-          Add Custom LLM
-        </Button>
+        {isAdmin ? (
+          <Button variant="plusAction" onClick={() => setShowAddDialog(true)}>
+            <Plus className="h-4 w-4 text-white" />
+            Add Custom LLM
+          </Button>
+        ) : (
+          <DisabledReasonTooltip
+            disabled
+            reason="Only admins can add integrations"
+          >
+            <Button
+              variant="plusAction"
+              disabled
+              className="disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Plus className="h-4 w-4 text-white" />
+              Add Custom LLM
+            </Button>
+          </DisabledReasonTooltip>
+        )}
       </div>
 
       {/* Loading / error states */}
@@ -600,8 +620,13 @@ export function IntegrationTab() {
             return (
             <div
               key={cardKey}
-              className="flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] cursor-pointer hover:border-border-4 transition-colors"
-              onClick={() => setSelected(card)}
+              className={`flex flex-col rounded-[4px] border border-border-3 bg-bg-white p-5 h-[165px] transition-colors ${
+                isAdmin
+                  ? "cursor-pointer hover:border-border-4"
+                  : "cursor-not-allowed opacity-80"
+              }`}
+              onClick={() => isAdmin && setSelected(card)}
+              title={isAdmin ? undefined : "Only admins can change integrations"}
             >
               {/* Header: icon + name + toggle */}
               <div className="flex items-center justify-between">
@@ -617,6 +642,13 @@ export function IntegrationTab() {
                     onCheckedChange={(next) =>
                       toggleMutation.mutate({ card, next })
                     }
+                    disabled={!isAdmin}
+                    title={
+                      isAdmin
+                        ? undefined
+                        : "Only admins can change integrations"
+                    }
+                    className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
                   />
                 </span>
               </div>
@@ -646,10 +678,20 @@ export function IntegrationTab() {
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
+                      if (!isAdmin) return;
                       setPendingDelete(card);
                     }}
-                    className="text-[13px] text-danger-6 hover:underline inline-flex items-center gap-1"
-                    title="Delete custom LLM"
+                    disabled={!isAdmin}
+                    className={`text-[13px] inline-flex items-center gap-1 ${
+                      isAdmin
+                        ? "text-danger-6 hover:underline"
+                        : "text-danger-6/50 cursor-not-allowed"
+                    }`}
+                    title={
+                      isAdmin
+                        ? "Delete custom LLM"
+                        : "Only admins can delete integrations"
+                    }
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                     Delete

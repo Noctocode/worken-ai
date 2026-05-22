@@ -39,6 +39,8 @@ import {
   type ApiKeySummary,
   type MintedApiKey,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -56,6 +58,8 @@ function maskedKey(prefix: string): string {
 
 export function ApiTab() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [linkName, setLinkName] = useState("");
   const [revealed, setRevealed] = useState<MintedApiKey | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<ApiKeySummary | null>(
@@ -152,23 +156,42 @@ export function ApiTab() {
             placeholder="e.g. GitHub Actions Bot"
             value={linkName}
             onChange={(e) => setLinkName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleGenerate()}
+            onKeyDown={(e) =>
+              e.key === "Enter" && isAdmin && handleGenerate()
+            }
             className="flex-1"
-            disabled={mintMutation.isPending}
+            disabled={mintMutation.isPending || !isAdmin}
             maxLength={80}
+            title={isAdmin ? undefined : "Only admins can mint API keys"}
           />
-          <Button
-            onClick={handleGenerate}
-            disabled={!linkName.trim() || mintMutation.isPending}
-            className="shrink-0 gap-2 bg-primary-6 hover:bg-primary-6/90 text-white w-full sm:w-auto"
-          >
-            {mintMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Link2 className="h-4 w-4" />
-            )}
-            Generate Link
-          </Button>
+          {isAdmin ? (
+            <Button
+              onClick={handleGenerate}
+              disabled={!linkName.trim() || mintMutation.isPending}
+              className="shrink-0 gap-2 bg-primary-6 hover:bg-primary-6/90 text-white w-full sm:w-auto"
+            >
+              {mintMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Link2 className="h-4 w-4" />
+              )}
+              Generate Link
+            </Button>
+          ) : (
+            <DisabledReasonTooltip
+              disabled
+              reason="Only admins can mint API keys"
+              className="w-full sm:w-auto"
+            >
+              <Button
+                disabled
+                className="shrink-0 gap-2 bg-primary-6 text-white w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Link2 className="h-4 w-4" />
+                Generate Link
+              </Button>
+            </DisabledReasonTooltip>
+          )}
         </div>
         {mintMutation.isError && (
           <p className="mt-2 text-[12px] text-danger-6">
@@ -268,6 +291,12 @@ export function ApiTab() {
                         <DropdownMenuItem
                           className="gap-2 text-danger-6 focus:text-danger-6"
                           onClick={() => setConfirmRevoke(key)}
+                          disabled={!isAdmin}
+                          title={
+                            isAdmin
+                              ? undefined
+                              : "Only admins can revoke API keys"
+                          }
                         >
                           <Trash2 className="h-4 w-4" />
                           Revoke

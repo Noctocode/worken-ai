@@ -4,8 +4,14 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, inArray, or } from 'drizzle-orm';
-import { projects, teamMembers, teams, users } from '@worken/database/schema';
+import { and, asc, desc, eq, isNull, inArray, or, type SQL } from 'drizzle-orm';
+import {
+  projectMembers,
+  projects,
+  teamMembers,
+  teams,
+  users,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
@@ -66,25 +72,57 @@ export class ProjectsService {
 
     let rows;
     if (filter === 'personal') {
+      // Personal projects are owner-only and team-less; direct
+      // project_members rows never apply here, so we skip the
+      // direct-membership lookup entirely rather than querying for
+      // IDs we'd immediately discard.
       rows = await this.selectWithTeamName()
         .where(and(eq(projects.userId, userId), isNull(projects.teamId)))
         .orderBy(desc(projects.createdAt));
-    } else if (filter === 'team') {
-      if (teamIds.length === 0) return [];
-      rows = await this.selectWithTeamName()
-        .where(inArray(projects.teamId, teamIds))
-        .orderBy(desc(projects.createdAt));
     } else {
-      // 'all' — personal + team projects
-      const conditions = [
-        and(eq(projects.userId, userId), isNull(projects.teamId)),
-      ];
-      if (teamIds.length > 0) {
-        conditions.push(inArray(projects.teamId, teamIds));
+      // Projects the user has *direct* access to via `project_members`
+      // (the "Other" group in the invite dialog). These are projects
+      // they were pulled into individually — not via team membership.
+      // The chat surface should treat them as first-class so the
+      // invitee actually sees the project they were invited to.
+      //   - 'team': include — the project IS team-bound in the data
+      //     model, the user just got there through a different gate.
+      //   - 'all': include.
+      //   - 'personal': omitted (handled above) — these are typically
+      //     team-bound projects, so the 'all' tab is their home.
+      const directProjectIdRows = await this.db
+        .select({ projectId: projectMembers.projectId })
+        .from(projectMembers)
+        .where(eq(projectMembers.userId, userId));
+      const directProjectIds = directProjectIdRows.map((r) => r.projectId);
+
+      if (filter === 'team') {
+        const conditions: SQL[] = [];
+        if (teamIds.length > 0) {
+          conditions.push(inArray(projects.teamId, teamIds));
+        }
+        if (directProjectIds.length > 0) {
+          conditions.push(inArray(projects.id, directProjectIds));
+        }
+        if (conditions.length === 0) return [];
+        rows = await this.selectWithTeamName()
+          .where(or(...conditions))
+          .orderBy(desc(projects.createdAt));
+      } else {
+        // 'all' — personal + team projects + direct-invite projects.
+        const conditions = [
+          and(eq(projects.userId, userId), isNull(projects.teamId)),
+        ];
+        if (teamIds.length > 0) {
+          conditions.push(inArray(projects.teamId, teamIds));
+        }
+        if (directProjectIds.length > 0) {
+          conditions.push(inArray(projects.id, directProjectIds));
+        }
+        rows = await this.selectWithTeamName()
+          .where(or(...conditions))
+          .orderBy(desc(projects.createdAt));
       }
-      rows = await this.selectWithTeamName()
-        .where(or(...conditions))
-        .orderBy(desc(projects.createdAt));
     }
 
     return this.enrichWithTeamMembers(rows);
@@ -174,29 +212,43 @@ export class ProjectsService {
   }
 
   async findOne(id: string, userId: string) {
-    const [project] = await this.db
-      .select()
-      .from(projects)
-      .where(eq(projects.id, id));
+    // selectWithTeamName left-joins teams so the response carries the
+    // team's display name. The simpler .select().from(projects) call
+    // we used before only returned the FK and the FE then rendered
+    // "Team" as a hard-coded fallback in the Invite Members dialog.
+    const [project] = await this.selectWithTeamName().where(
+      eq(projects.id, id),
+    );
 
     if (!project) {
       throw new NotFoundException(`Project ${id} not found`);
     }
 
-    // If team project, allow any team member
+    // Access sources (any one is sufficient), strictly additive over
+    // the legacy model so a row in `project_members` widens the gate
+    // but never narrows it: owner, team membership, direct invite.
+    if (project.userId === userId) return project;
+
     if (project.teamId) {
       const role = await this.teamsService.getUserTeamRole(
         project.teamId,
         userId,
       );
-      if (!role) {
-        throw new NotFoundException(`Project ${id} not found`);
-      }
-      return project;
+      if (role) return project;
     }
 
-    // Personal project — owner only
-    if (project.userId !== userId) {
+    const [direct] = await this.db
+      .select({ userId: projectMembers.userId })
+      .from(projectMembers)
+      .where(
+        and(
+          eq(projectMembers.projectId, id),
+          eq(projectMembers.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    if (!direct) {
       throw new NotFoundException(`Project ${id} not found`);
     }
     return project;
