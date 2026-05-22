@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
+  ImageIcon,
   Loader2,
   Plus,
   Search,
@@ -283,7 +284,14 @@ export function AttachFileDialog({
             )}
             {!isLoading && filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
+                {imagesOnly ? (
+                  <ImageIcon
+                    className="h-8 w-8 text-text-3"
+                    strokeWidth={1.5}
+                  />
+                ) : (
+                  <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
+                )}
                 <p className="text-[13px] text-text-2">
                   {scoped.length === 0
                     ? imagesOnly
@@ -305,7 +313,11 @@ export function AttachFileDialog({
                         onChange={() => toggle(f.fileId)}
                         className="h-4 w-4 cursor-pointer accent-primary-6"
                       />
-                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                      {IMAGE_FILE.test(f.name) ? (
+                        <ImageIcon className="h-4 w-4 shrink-0 text-text-3" />
+                      ) : (
+                        <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-medium text-text-1">
                           {f.name}
