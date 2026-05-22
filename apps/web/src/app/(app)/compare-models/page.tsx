@@ -160,8 +160,12 @@ function slotLabel(index: number): string {
 }
 
 export default function CompareModelsPage() {
-  const { models: availableModels, isLoading: modelsLoading, getLabel: getModelLabel } =
-    useUserModels();
+  const {
+    models: availableModels,
+    isLoading: modelsLoading,
+    isFetching: modelsFetching,
+    getLabel: getModelLabel,
+  } = useUserModels();
   // Persist the picked model set across navigation / reload via
   // localStorage. Server-render returns [] (no window), then the
   // first client effect rehydrates from storage if anything was
@@ -721,7 +725,16 @@ export default function CompareModelsPage() {
   // Gate: arena needs at least MIN_MODELS active aliases under
   // Management → Models. Without that we can't even seed the comparison,
   // and silently rendering an empty rail looks broken.
-  if (!modelsLoading && availableModels.length < MIN_MODELS) {
+  //
+  // Wait for BOTH the initial load AND any in-flight background refetch
+  // before deciding the user really has no models. A model mutation
+  // elsewhere runs invalidateModelMutations(), which force-refetches
+  // our ["models", "effective"] query even while this page is
+  // unmounted. On navigating back, that refetch may still be in flight
+  // over a stale cached `[]` — `isLoading` reports false because there
+  // IS cached data, so without the `isFetching` gate the empty state
+  // flashes before the real list lands.
+  if (!modelsLoading && !modelsFetching && availableModels.length < MIN_MODELS) {
     return (
       <div className="flex h-0 min-h-0 flex-1 items-center justify-center pb-6">
         <div className="flex max-w-[480px] flex-col items-center gap-4 rounded-[20px] bg-bg-white p-8 text-center">
