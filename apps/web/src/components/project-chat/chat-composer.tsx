@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 import { BookOpen, ImageIcon, Loader2, Paperclip, Send, Square } from "lucide-react";
-import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 
@@ -32,10 +31,10 @@ interface Props {
  *    fires the AbortController back in page.tsx — exact same plumbing
  *    as before, just wrapped in a tidier shell.
  *
- * Upload Image is intentionally a toast-stub for now: surfacing the
- * affordance without wiring an inline image-upload pipeline keeps
- * scope tight while still telling the user the feature is on the
- * roadmap. The composer is otherwise fully functional.
+ * Attach File and Upload Image both open the same AttachFileDialog;
+ * Upload Image just passes `imagesOnly` so the picker + list are
+ * scoped to image formats. Uploads land in the project's Knowledge
+ * Core either way.
  */
 export function ChatComposer({
   projectId,
@@ -45,7 +44,6 @@ export function ChatComposer({
   onStop,
   isSending,
 }: Props) {
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -110,36 +108,12 @@ export function ChatComposer({
             <AttachFileDialog projectId={projectId}>
               <ComposerPill icon={Paperclip}>Attach File</ComposerPill>
             </AttachFileDialog>
-            <ComposerPill
-              icon={ImageIcon}
-              onClick={() => imageInputRef.current?.click()}
-            >
-              Upload Image
-            </ComposerPill>
+            <AttachFileDialog projectId={projectId} imagesOnly>
+              <ComposerPill icon={ImageIcon}>Upload Image</ComposerPill>
+            </AttachFileDialog>
             <PromptLibraryDialog onPick={insertPromptBody}>
               <ComposerPill icon={BookOpen}>Prompt Library</ComposerPill>
             </PromptLibraryDialog>
-            {/* Hidden file input for the Upload Image pill. We
-                intentionally keep the multi-step upload + inline
-                rendering for a follow-up — surfacing an explicit
-                "coming soon" toast lets users notice the affordance
-                without us silently swallowing their click. */}
-            <input
-              ref={imageInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => {
-                if (e.target.files && e.target.files.length > 0) {
-                  toast.info(
-                    "Inline image attachments are coming soon — for now, upload via Knowledge Core and attach the file.",
-                  );
-                  // Reset so picking the same file twice still fires
-                  // onChange (browsers debounce identical selections).
-                  e.target.value = "";
-                }
-              }}
-            />
           </div>
           {isSending ? (
             <Button
@@ -196,7 +170,7 @@ function ComposerPill({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 items-center gap-2 rounded-lg border border-border-2 bg-bg-white px-3 text-[12px] font-medium text-text-2 transition-colors hover:border-primary-5 hover:text-text-1"
+      className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-border-2 bg-bg-white px-3 text-[12px] font-medium text-text-2 transition-colors hover:border-primary-5 hover:text-text-1"
     >
       <Icon className="h-3.5 w-3.5" />
       {children}
