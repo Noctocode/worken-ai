@@ -82,16 +82,20 @@ export function useUserModels(): {
 /**
  * Refresh every query that depends on the user's model_configs after a
  * create/update/delete mutation. Two keys to touch:
- *   - `["models"]` (exact): drives Manage Models. Usually mounted when
- *     the mutation fires; default `refetchType: 'active'` is enough.
+ *   - `["models"]` (exact): drives Manage Models.
  *   - `["models", "effective"]`: drives /compare-models, the project
  *     model picker, and anything else that asks "what can the user
- *     chat with right now?". These views are usually NOT mounted at
- *     mutation time, so React Query's default active-only refetch
- *     skips them. `refetchType: 'all'` forces an inactive refetch so
- *     the cache is warm before the user navigates over — without it
- *     `/compare-models` would show "Add at least 2 models" until its
- *     own background refetch landed.
+ *     chat with right now?".
+ *
+ * Both use `refetchType: 'all'`. AddModelDialog fires from BOTH the
+ * Models tab and /compare-models, so at mutation time either consumer
+ * may be unmounted. React Query's default active-only refetch would
+ * then just mark the inactive query stale and leave its cached data in
+ * place — so the next visit renders that stale list (a cached `[]`
+ * flashing "Add at least 2 models" on /compare-models, or the Models
+ * tab missing a just-added alias) until its own background refetch
+ * lands. Forcing an inactive refetch warms the cache before the user
+ * navigates over.
  *
  * Deliberately NOT a prefix invalidation on `["models"]` — that would
  * also catch `["models", "available"]` (the read-only OpenRouter
@@ -99,7 +103,11 @@ export function useUserModels(): {
  * and only churns network for nothing.
  */
 export function invalidateModelMutations(queryClient: QueryClient): void {
-  void queryClient.invalidateQueries({ queryKey: ["models"], exact: true });
+  void queryClient.invalidateQueries({
+    queryKey: ["models"],
+    exact: true,
+    refetchType: "all",
+  });
   void queryClient.invalidateQueries({
     queryKey: ["models", "effective"],
     refetchType: "all",

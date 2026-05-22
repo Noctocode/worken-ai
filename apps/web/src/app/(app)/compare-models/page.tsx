@@ -727,12 +727,13 @@ export default function CompareModelsPage() {
   // and silently rendering an empty rail looks broken.
   //
   // Wait for BOTH the initial load AND any in-flight background refetch
-  // before deciding the user really has no models. Without that, the
-  // Models tab's invalidation of ["models"] (prefix-matches our
-  // ["models", "effective"] key) leaves a stale cached `[]` here while
-  // the refetch is still in flight — `isLoading` reports false because
-  // there IS cached data, and the empty state flashes before the real
-  // list lands.
+  // before deciding the user really has no models. A model mutation
+  // elsewhere runs invalidateModelMutations(), which force-refetches
+  // our ["models", "effective"] query even while this page is
+  // unmounted. On navigating back, that refetch may still be in flight
+  // over a stale cached `[]` — `isLoading` reports false because there
+  // IS cached data, so without the `isFetching` gate the empty state
+  // flashes before the real list lands.
   if (!modelsLoading && !modelsFetching && availableModels.length < MIN_MODELS) {
     return (
       <div className="flex h-0 min-h-0 flex-1 items-center justify-center pb-6">
