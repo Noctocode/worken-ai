@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { MoreVertical, UserX, Eye } from "lucide-react";
+import { MoreVertical, UserX, Eye, Wallet, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,8 +22,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers";
-import { removeOrgUser, type OrgUser } from "@/lib/api";
+import { removeOrgUser, updateUserBudget, type OrgUser } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
@@ -44,7 +46,16 @@ export function UserRow({ user }: { user: OrgUser }) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const canRemove = currentUser?.role === "admin";
+  // Mirrors the BE rule on PATCH /users/:id/budget: admin can edit
+  // anyone; everyone else can edit their OWN row unless they're
+  // explicitly 'company'-profile (where the org admin owns the cap).
+  const isSelf = currentUser?.id === user.id;
+  const canEditBudget =
+    currentUser?.role === "admin" ||
+    (isSelf && currentUser?.profileType !== "company");
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
+  const [budgetInput, setBudgetInput] = useState("");
   const detailHref = `/users/${user.id}`;
 
   const removeMutation = useMutation({
@@ -65,6 +76,45 @@ export function UserRow({ user }: { user: OrgUser }) {
   const remaining = budget - spent;
   const projected = user.projectedCents / 100;
   const overBudget = projected > budget;
+  // Same flag that powers the "N users awaiting budget approval"
+  // banner — true when a managed-cloud user finished onboarding
+  // without a cap and is blocked from AI calls until one is set.
+  // Surfacing it on the row's actions column lets admins jump
+  // straight from a scan of the table into the fix.
+  const needsBudget = user.pendingBudgetApproval;
+
+  const budgetMutation = useMutation({
+    mutationFn: (budgetUsd: number) => updateUserBudget(user.id, budgetUsd),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-users"] });
+      queryClient.invalidateQueries({ queryKey: ["users", user.id] });
+      toast.success("Monthly budget updated.");
+      setBudgetOpen(false);
+      setBudgetInput("");
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Couldn't update budget.");
+    },
+  });
+
+  const openBudgetDialog = () => {
+    // Pre-fill with the current value so the admin adjusts rather
+    // than re-types. Blank only when the budget is genuinely unset
+    // (pendingBudgetApproval) so the empty input cues "set it now";
+    // a deliberate $0 (suspended) keeps showing the value so it can
+    // be edited rather than silently re-entered.
+    setBudgetInput(needsBudget ? "" : budget.toFixed(2));
+    setBudgetOpen(true);
+  };
+
+  const submitBudget = () => {
+    const parsed = parseFloat(budgetInput);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      toast.error("Budget must be a non-negative number.");
+      return;
+    }
+    budgetMutation.mutate(parsed);
+  };
 
   return (
     <tr
@@ -192,9 +242,24 @@ export function UserRow({ user }: { user: OrgUser }) {
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 text-text-3 hover:text-text-1"
+              className="relative h-7 w-7 text-text-3 hover:text-text-1"
+              aria-label={
+                needsBudget
+                  ? `Actions for ${user.name ?? user.email} — budget not set`
+                  : `Actions for ${user.name ?? user.email}`
+              }
             >
               <MoreVertical className="h-4 w-4" />
+              {/* Red dot when this user is blocked on a missing
+                  budget — same signal that drives the page-level
+                  awaiting-approval banner, scoped to the row so
+                  admins can locate the affected user at a glance. */}
+              {needsBudget ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-danger-6 ring-1 ring-bg-white"
+                />
+              ) : null}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
@@ -204,6 +269,31 @@ export function UserRow({ user }: { user: OrgUser }) {
                 View user
               </Link>
             </DropdownMenuItem>
+            <DisabledReasonTooltip
+              disabled={!canEditBudget}
+              reason={
+                isSelf
+                  ? "Your admin manages your budget"
+                  : "Only admins can change another user's budget"
+              }
+            >
+              <DropdownMenuItem
+                className={`gap-2 ${needsBudget ? "text-danger-6 focus:text-danger-6" : ""}`}
+                disabled={!canEditBudget || budgetMutation.isPending}
+                onSelect={(e) => {
+                  e.preventDefault();
+                  if (!canEditBudget) return;
+                  openBudgetDialog();
+                }}
+              >
+                {needsBudget ? (
+                  <AlertCircle className="h-4 w-4" />
+                ) : (
+                  <Wallet className="h-4 w-4" />
+                )}
+                {needsBudget ? "Set budget" : "Change budget"}
+              </DropdownMenuItem>
+            </DisabledReasonTooltip>
             <DisabledReasonTooltip
               disabled={!canRemove}
               reason="Only admins can remove users"
@@ -223,6 +313,86 @@ export function UserRow({ user }: { user: OrgUser }) {
             </DisabledReasonTooltip>
           </DropdownMenuContent>
         </DropdownMenu>
+        <Dialog
+          open={budgetOpen}
+          onOpenChange={(next) => {
+            if (budgetMutation.isPending) return;
+            setBudgetOpen(next);
+            if (!next) setBudgetInput("");
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {needsBudget ? "Set monthly budget" : "Change monthly budget"}
+              </DialogTitle>
+              <DialogDescription>
+                {user.name ? (
+                  <>
+                    {user.name}{" "}
+                    <span className="text-text-3">· {user.email}</span>
+                  </>
+                ) : (
+                  user.email
+                )}
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                submitBudget();
+              }}
+              className="space-y-4"
+            >
+              <div className="space-y-2">
+                <Label htmlFor={`user-row-budget-${user.id}`}>
+                  Monthly cap (USD)
+                </Label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-text-3">
+                    $
+                  </span>
+                  <Input
+                    id={`user-row-budget-${user.id}`}
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={budgetInput}
+                    onChange={(e) => setBudgetInput(e.target.value)}
+                    autoFocus
+                    disabled={budgetMutation.isPending}
+                    className="pl-7"
+                  />
+                </div>
+                <p className="text-[12px] text-text-3">
+                  Caps the user&apos;s personal-project and arena spend.
+                  Enter <strong>0</strong> to suspend AI access until the
+                  cap is raised again.
+                </p>
+              </div>
+              <DialogFooter className="gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setBudgetOpen(false)}
+                  disabled={budgetMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={
+                    budgetMutation.isPending || budgetInput.trim() === ""
+                  }
+                  className="bg-primary-6 text-white hover:bg-primary-7"
+                >
+                  {budgetMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>

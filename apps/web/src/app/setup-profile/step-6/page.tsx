@@ -90,7 +90,12 @@ export default function SetupProfileStep6Page() {
   // final step; if the user reloads, they restart this step anyway.
   const [knowledgeVisibility, setKnowledgeVisibility] =
     useState<KnowledgeFileVisibility>("all");
-  const filesAtSubmitRef = useRef(0);
+  // The file count we snapshotted at submit time, used as the
+  // fallback denominator for the progress bar before the server's
+  // ingestion-status response lands. Lives in state (not a ref)
+  // because it's read during render — React 19's react-hooks/refs
+  // rule correctly flags ref.current accesses in the render body.
+  const [filesAtSubmit, setFilesAtSubmit] = useState(0);
 
   // Surfaces a recovery dialog when `/onboarding/complete` fails so
   // the user has a clear path out: retry the same submit, or hard-
@@ -168,7 +173,15 @@ export default function SetupProfileStep6Page() {
       if (state.profileType === "personal" && !state.fullName?.trim()) {
         throw new Error("Full name is required.");
       }
-      filesAtSubmitRef.current = files.length;
+      // Capture the snapshot count in a local — onSuccess gets it via
+      // the mutation's return value (synchronous, race-free), while
+      // setFilesAtSubmit feeds the render-time progress denominator.
+      // Reading `filesAtSubmit` state in onSuccess would race with the
+      // setState here because state updates don't apply until the next
+      // render, and onSuccess fires synchronously after mutationFn
+      // resolves.
+      const submittedCount = files.length;
+      setFilesAtSubmit(submittedCount);
       await completeOnboarding(
         {
           profileType: state.profileType,
@@ -186,12 +199,13 @@ export default function SetupProfileStep6Page() {
         },
         files,
       );
+      return submittedCount;
     },
-    onSuccess: () => {
+    onSuccess: (submittedCount) => {
       // Auth side-effects fire immediately so the dashboard the user
       // lands on later sees the completed onboarding state.
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      if (filesAtSubmitRef.current === 0) {
+      if (submittedCount === 0) {
         // No files = no ingestion work. Skip the progress UI and
         // redirect right away so the path stays as fast as it was.
         finishAndRedirect();
@@ -292,7 +306,7 @@ export default function SetupProfileStep6Page() {
 
   if (phase === "preparing" || phase === "done") {
     const data = ingestionQuery.data;
-    const total = data?.total ?? filesAtSubmitRef.current;
+    const total = data?.total ?? filesAtSubmit;
     const completed = (data?.done ?? 0) + (data?.failed ?? 0);
     const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
     const allDone = phase === "done";

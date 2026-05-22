@@ -15,6 +15,18 @@ import { and, eq, gte, inArray, sql } from 'drizzle-orm';
 const INVITE_EXPIRY_DAYS = 7;
 const inviteExpiry = () =>
   new Date(Date.now() + INVITE_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+// Exact messages thrown by getInviteByToken / acceptInviteByToken for
+// terminal-state invites. Exported so the notifications controller can
+// match on identity (===) instead of substring-grepping err.message —
+// renaming the literal in one place breaks the comparison loudly at
+// type-check time rather than silently routing terminal errors to the
+// fallback re-throw path.
+export const INVITE_ERROR_MESSAGES = {
+  ALREADY_ACCEPTED: 'Invitation has already been accepted',
+  REVOKED: 'Invitation has been revoked',
+  EXPIRED: 'Invitation has expired',
+} as const;
 import {
   teams,
   teamMembers,
@@ -843,7 +855,26 @@ export class TeamsService {
       // expiry, resend email. Overwrite the cap when the caller
       // explicitly passed one (so admins can adjust during a resend);
       // leave it untouched on undefined.
-      const token = existing.invitationToken ?? randomBytes(32).toString('hex');
+      //
+      // Terminal-state rows (revoked / expired) ALWAYS mint a fresh
+      // token rather than re-arming the existing one. The decline /
+      // expiry paths intentionally keep the old token on the row so
+      // the email-link landing page can surface "has been revoked"
+      // / "has expired" instead of a misleading 404 — but reusing
+      // that same token on resend would resurrect a link the
+      // invitee (or owner) already considered invalid. A pending row
+      // still reuses its token so an in-flight email link survives
+      // a cap/role tweak resend.
+      const isTerminalState =
+        existing.invitationStatus === 'revoked' ||
+        existing.invitationStatus === 'expired' ||
+        !!existing.invitationRevokedAt ||
+        (existing.invitationExpiresAt !== null &&
+          existing.invitationExpiresAt.getTime() < Date.now());
+      const token =
+        isTerminalState || !existing.invitationToken
+          ? randomBytes(32).toString('hex')
+          : existing.invitationToken;
       const updates: Record<string, unknown> = {
         role,
         status: 'pending',
@@ -1514,11 +1545,11 @@ export class TeamsService {
     }
 
     if (member.status === 'accepted') {
-      throw new BadRequestException('Invitation has already been accepted');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.ALREADY_ACCEPTED);
     }
 
     if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
-      throw new BadRequestException('Invitation has been revoked');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.REVOKED);
     }
 
     if (
@@ -1530,7 +1561,7 @@ export class TeamsService {
         .update(teamMembers)
         .set({ invitationStatus: 'expired' })
         .where(eq(teamMembers.id, member.id));
-      throw new BadRequestException('Invitation has expired');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.EXPIRED);
     }
 
     // Does this email already map to a USABLE account? The /invite
@@ -1577,11 +1608,11 @@ export class TeamsService {
     }
 
     if (member.status === 'accepted') {
-      throw new BadRequestException('Invitation has already been accepted');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.ALREADY_ACCEPTED);
     }
 
     if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
-      throw new BadRequestException('Invitation has been revoked');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.REVOKED);
     }
 
     if (
@@ -1592,7 +1623,7 @@ export class TeamsService {
         .update(teamMembers)
         .set({ invitationStatus: 'expired' })
         .where(eq(teamMembers.id, member.id));
-      throw new BadRequestException('Invitation has expired');
+      throw new BadRequestException(INVITE_ERROR_MESSAGES.EXPIRED);
     }
 
     if (member.email.toLowerCase() !== userEmail.toLowerCase()) {
@@ -1606,8 +1637,16 @@ export class TeamsService {
       .set({
         userId,
         status: 'accepted',
-        invitationToken: null,
         invitationStatus: 'accepted',
+        // Intentionally NOT nulling invitationToken here. The token
+        // stays on the row so `getInviteByToken` can still resolve
+        // it after acceptance and surface the "already accepted"
+        // screen on the email-link landing page — without this, a
+        // user who accepts via the in-app notification and later
+        // clicks the email link saw "Invitation not found" instead.
+        // Re-use as an accept vector is blocked by the
+        // `status === 'accepted'` check above, so keeping the token
+        // is purely a lookup convenience, not a new attack surface.
       })
       .where(eq(teamMembers.id, member.id))
       .returning();

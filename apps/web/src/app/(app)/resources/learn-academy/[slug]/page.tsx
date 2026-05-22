@@ -160,17 +160,20 @@ export default function LessonDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
-  const module = getModuleBySlug(slug);
+  // Named `lessonModule` rather than `module` because Next's
+  // no-assign-module-variable rule treats `module` as a reserved
+  // identifier (collides with the CommonJS-style global).
+  const lessonModule = getModuleBySlug(slug);
 
   const [activeTime, setActiveTime] = useState(
-    module?.currentLesson.chapters[0]?.time ?? "00:00",
+    lessonModule?.currentLesson.chapters[0]?.time ?? "00:00",
   );
 
-  if (!module) {
+  if (!lessonModule) {
     notFound();
   }
 
-  const lesson = module.currentLesson;
+  const lesson = lessonModule.currentLesson;
 
   return (
     <div className="flex flex-col gap-6 py-6">
@@ -184,7 +187,7 @@ export default function LessonDetailPage({
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <h1 className="text-[20px] sm:text-[26px] font-bold leading-[1.3] text-text-1">
-          {module.title}
+          {lessonModule.title}
         </h1>
       </div>
 
@@ -194,7 +197,7 @@ export default function LessonDetailPage({
           <VideoPlayer
             lesson={lesson}
             lessonIndex={lesson.number}
-            totalLessons={module.lessons}
+            totalLessons={lessonModule.lessons}
           />
 
           {/* Example: Bad vs Enterprise-Grade Prompt */}

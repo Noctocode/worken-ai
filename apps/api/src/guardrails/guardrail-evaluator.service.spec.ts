@@ -10,10 +10,8 @@ function makeChainableDb(rowSets: unknown[][]) {
   const queue = [...rowSets];
   const makeChain = (rows: unknown[]) => {
     const promiseLike: Record<string, unknown> & PromiseLike<unknown[]> = {
-      then: (
-        onFulfilled?: (value: unknown[]) => unknown,
-        _onRejected?: (reason: unknown) => unknown,
-      ) => Promise.resolve(rows).then(onFulfilled),
+      then: (onFulfilled?: (value: unknown[]) => unknown) =>
+        Promise.resolve(rows).then(onFulfilled),
       catch: (onRejected?: (reason: unknown) => unknown) =>
         Promise.resolve(rows).catch(onRejected),
     } as unknown as Record<string, unknown> & PromiseLike<unknown[]>;

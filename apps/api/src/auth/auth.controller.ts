@@ -134,8 +134,7 @@ export class AuthController {
       // response breaks the loop because middleware sees nothing on
       // the next hop and /login finally sticks.
       clearSessionCookies(res);
-      const message =
-        err instanceof Error ? err.message : 'Refresh failed';
+      const message = err instanceof Error ? err.message : 'Refresh failed';
       res.status(401).json({ message });
     }
   }

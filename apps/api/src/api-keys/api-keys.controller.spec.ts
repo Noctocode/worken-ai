@@ -49,7 +49,7 @@ describe('ApiKeysController auth gates', () => {
       );
     });
 
-    it('apikey-authenticated caller is blocked (privilege-escalation guard)', async () => {
+    it('apikey-authenticated caller is blocked (privilege-escalation guard)', () => {
       // A leaked sk-wai-… token must not be usable to mint replacement
       // tokens that survive the original being revoked. Mirrors the
       // explicit 403 in api-keys.controller.ts.

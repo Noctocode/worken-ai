@@ -62,12 +62,16 @@ function truncatePreview(prompt: string | null | undefined): string | null {
 export interface RecordLLMCallInput {
   userId: string;
   teamId?: string | null;
+  // `string & {}` keeps IDE autocomplete on the known eventType
+  // literals while still accepting future ad-hoc strings — plain
+  // `| string` would let TS collapse the union into just `string`
+  // and lose the autocomplete signal.
   eventType:
     | 'arena_call'
     | 'evaluator_call'
     | 'arena_attachment_ocr'
     | 'guardrail_trigger'
-    | string;
+    | (string & {});
   model?: string | null;
   provider?: string | null;
   promptTokens?: number | null;

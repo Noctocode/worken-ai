@@ -43,6 +43,18 @@ export type NotificationType =
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 
 /**
+ * Derived state of the underlying team_members row for a
+ * `team_invite` notification. Surfaced alongside the notification's
+ * own `status` so the FE can show the right pill (Accepted /
+ * Declined / Expired) and gate the Accept/Decline buttons even when
+ * the invite was finalised through a different channel — e.g. the
+ * user accepted via the email link and only later opened the
+ * notification popover. Undefined for non-invite types and for
+ * orphaned rows where the team_members row has been deleted.
+ */
+export type TeamInviteState = 'pending' | 'accepted' | 'declined' | 'expired';
+
+/**
  * Shape returned to the FE. `data` is intentionally loose — each
  * type carries its own payload (team invite: invitationToken /
  * memberId / teamName; budget alert: threshold / scope / period).
@@ -56,6 +68,13 @@ export interface NotificationView {
   status: NotificationStatus;
   readAt: string | null;
   createdAt: string;
+  /**
+   * For `team_invite` notifications only: the current state of the
+   * referenced team_members row, joined at list time. Lets the FE
+   * render an Accepted/Declined/Expired pill and hide the action
+   * buttons when the invite has been resolved elsewhere.
+   */
+  inviteState?: TeamInviteState;
 }
 
 /**
@@ -164,7 +183,45 @@ export class NotificationsService {
       )
       .orderBy(desc(notifications.createdAt))
       .limit(50);
-    return rows.map((r) => this.toView(r));
+
+    // Decorate team_invite rows with the current state of their
+    // referenced team_members row. Without this the FE only knows
+    // the notification's own status — but an invite can transition
+    // to accepted / declined / expired via a *different* channel
+    // (email link, owner revoke, expiry sweep) after the
+    // notification was created, and the popover has to reflect that.
+    // Batched into one IN(...) query so this stays O(1) regardless
+    // of how many invites are in the list.
+    const inviteMemberIds = new Set<string>();
+    for (const r of rows) {
+      if (r.type !== 'team_invite') continue;
+      const data = (r.data ?? {}) as Record<string, unknown>;
+      const memberId = typeof data.memberId === 'string' ? data.memberId : null;
+      if (memberId) inviteMemberIds.add(memberId);
+    }
+    const stateByMemberId = new Map<string, TeamInviteState>();
+    if (inviteMemberIds.size > 0) {
+      const members = await this.db
+        .select({
+          id: teamMembers.id,
+          status: teamMembers.status,
+          invitationStatus: teamMembers.invitationStatus,
+          // invitationRevokedAt is part of the revocation signal in
+          // getInviteByToken / acceptInviteByToken (either it OR
+          // invitationStatus='revoked' counts). Selecting just the
+          // status column would misreport legacy rows that only have
+          // the timestamp set — keep the two paths consistent.
+          invitationRevokedAt: teamMembers.invitationRevokedAt,
+          expiresAt: teamMembers.invitationExpiresAt,
+        })
+        .from(teamMembers)
+        .where(inArray(teamMembers.id, Array.from(inviteMemberIds)));
+      for (const m of members) {
+        stateByMemberId.set(m.id, deriveInviteState(m));
+      }
+    }
+
+    return rows.map((r) => this.toView(r, stateByMemberId));
   }
 
   /**
@@ -280,7 +337,14 @@ export class NotificationsService {
           .set({
             invitationStatus: 'revoked',
             invitationRevokedAt: new Date(),
-            invitationToken: null,
+            // Intentionally keep invitationToken so a follow-up
+            // email-link click can still resolve the row via
+            // getInviteByToken and see the "has been revoked"
+            // screen instead of a misleading "Invitation not
+            // found". Re-use as an accept vector is blocked by
+            // the `invitationStatus === 'revoked'` guard on
+            // acceptInviteByToken — keeping the token is a
+            // lookup convenience only.
           })
           .where(
             and(
@@ -406,16 +470,62 @@ export class NotificationsService {
     return rows.map((r) => r.id);
   }
 
-  private toView(row: typeof notifications.$inferSelect): NotificationView {
+  private toView(
+    row: typeof notifications.$inferSelect,
+    stateByMemberId?: Map<string, TeamInviteState>,
+  ): NotificationView {
+    const data = (row.data ?? {}) as Record<string, unknown>;
+    let inviteState: TeamInviteState | undefined;
+    if (row.type === 'team_invite' && stateByMemberId) {
+      const memberId = typeof data.memberId === 'string' ? data.memberId : null;
+      if (memberId) inviteState = stateByMemberId.get(memberId);
+    }
     return {
       id: row.id,
       type: row.type as NotificationType,
       title: row.title,
       body: row.body,
-      data: (row.data ?? {}) as Record<string, unknown>,
+      data,
       status: row.status as NotificationStatus,
       readAt: row.readAt ? row.readAt.toISOString() : null,
       createdAt: row.createdAt.toISOString(),
+      inviteState,
     };
   }
+}
+
+/**
+ * Map a team_members row to the invite state surfaced on the
+ * notification view. Matches the same lifecycle TeamsService /
+ * NotificationsService.declineTeamInvite already write to the
+ * column:
+ *   - status='accepted'                   → 'accepted'
+ *   - invitationStatus='revoked' OR
+ *     invitationRevokedAt is set          → 'declined' (invitee
+ *     decline OR owner revoke — both leave the invite unactionable
+ *     for the invitee, so we collapse them under the invitee-
+ *     facing label). Both signals matter because legacy rows may
+ *     have only the timestamp; getInviteByToken / acceptInviteByToken
+ *     use the same OR-combined check.
+ *   - invitationStatus='expired' OR the
+ *     deadline has passed                 → 'expired'
+ *   - everything else                     → 'pending'
+ */
+function deriveInviteState(member: {
+  status: string;
+  invitationStatus: string | null;
+  invitationRevokedAt: Date | null;
+  expiresAt: Date | null;
+}): TeamInviteState {
+  if (member.status === 'accepted') return 'accepted';
+  if (member.invitationStatus === 'revoked' || member.invitationRevokedAt) {
+    return 'declined';
+  }
+  if (
+    member.invitationStatus === 'expired' ||
+    (member.expiresAt && member.expiresAt.getTime() < Date.now())
+  ) {
+    return 'expired';
+  }
+  return 'pending';
 }
