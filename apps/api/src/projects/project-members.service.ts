@@ -115,7 +115,13 @@ export class ProjectMembersService {
         .limit(1);
 
       const seenUserIds = new Set<string>(directIds);
-      const seenEmails = new Set<string>();
+      // Seed with the direct members' emails too — a pending team
+      // invite (userId null, matched only by email) for someone who
+      // is already a direct project member must be suppressed, or the
+      // dialog renders the same person twice.
+      const seenEmails = new Set<string>(
+        direct.map((r) => r.userEmail.toLowerCase()),
+      );
       if (owner && !seenUserIds.has(owner.userId)) {
         seenUserIds.add(owner.userId);
         seenEmails.add(owner.userEmail.toLowerCase());
@@ -162,7 +168,9 @@ export class ProjectMembersService {
         .where(eq(teamMembers.teamId, project.teamId));
 
       for (const r of rows) {
-        const role: DirectRole = (VALID_ROLES as readonly string[]).includes(r.role)
+        const role: DirectRole = (VALID_ROLES as readonly string[]).includes(
+          r.role,
+        )
           ? (r.role as DirectRole)
           : 'editor';
         const addedAt =
@@ -419,7 +427,12 @@ export class ProjectMembersService {
       .where(eq(users.email, rawEmail))
       .limit(1);
 
-    let target: { id: string; email: string; name: string | null; picture: string | null };
+    let target: {
+      id: string;
+      email: string;
+      name: string | null;
+      picture: string | null;
+    };
     const isNewUser = !existing;
     if (existing) {
       target = existing;
@@ -430,7 +443,8 @@ export class ProjectMembersService {
       const inheritFromUserId = project.teamId
         ? await this.getTeamOwnerId(project.teamId)
         : project.userId;
-      const inheritedFields = await this.companyInheritFields(inheritFromUserId);
+      const inheritedFields =
+        await this.companyInheritFields(inheritFromUserId);
 
       const [created] = await this.db
         .insert(users)
@@ -533,6 +547,12 @@ export class ProjectMembersService {
     const [owner] = await this.db
       .select({
         profileType: users.profileType,
+        // `companyId` is the authoritative tenant key — companyName &
+        // friends are just display caches on the user row. The
+        // invitee MUST inherit it or they'd be created with
+        // companyId = NULL and drop out of every tenant-scoped query
+        // (e.g. the /teams?tab=users org-users list).
+        companyId: users.companyId,
         companyName: users.companyName,
         industry: users.industry,
         teamSize: users.teamSize,
@@ -544,6 +564,7 @@ export class ProjectMembersService {
     if (
       !owner ||
       owner.profileType !== 'company' ||
+      !owner.companyId ||
       !owner.companyName?.trim()
     ) {
       return {};
@@ -553,6 +574,7 @@ export class ProjectMembersService {
     // existing workspace, not seeing the wizard fresh.
     return {
       profileType: 'company',
+      companyId: owner.companyId,
       companyName: owner.companyName,
       industry: owner.industry,
       teamSize: owner.teamSize,
