@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import {
   fetchEffectiveModels,
   type AvailableModel,
@@ -77,4 +77,31 @@ export function useUserModels(): {
   );
 
   return { models, effective, isLoading, isFetching, error, getLabel };
+}
+
+/**
+ * Refresh every query that depends on the user's model_configs after a
+ * create/update/delete mutation. Two keys to touch:
+ *   - `["models"]` (exact): drives Manage Models. Usually mounted when
+ *     the mutation fires; default `refetchType: 'active'` is enough.
+ *   - `["models", "effective"]`: drives /compare-models, the project
+ *     model picker, and anything else that asks "what can the user
+ *     chat with right now?". These views are usually NOT mounted at
+ *     mutation time, so React Query's default active-only refetch
+ *     skips them. `refetchType: 'all'` forces an inactive refetch so
+ *     the cache is warm before the user navigates over — without it
+ *     `/compare-models` would show "Add at least 2 models" until its
+ *     own background refetch landed.
+ *
+ * Deliberately NOT a prefix invalidation on `["models"]` — that would
+ * also catch `["models", "available"]` (the read-only OpenRouter
+ * catalog), which can't change as a side-effect of an alias mutation
+ * and only churns network for nothing.
+ */
+export function invalidateModelMutations(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ["models"], exact: true });
+  void queryClient.invalidateQueries({
+    queryKey: ["models", "effective"],
+    refetchType: "all",
+  });
 }

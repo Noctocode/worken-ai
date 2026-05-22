@@ -34,6 +34,7 @@ import {
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
 
 function providerOf(modelId: string): string | null {
@@ -50,26 +51,15 @@ export function ModelRow({ model }: { model: ModelConfig }) {
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  // refetchType: 'all' on both mutations so the
-  // ["models", "effective"] cache that drives /compare-models and the
-  // project picker stays in sync even when those views are unmounted.
   const toggleMutation = useMutation({
     mutationFn: () => updateModel(model.id, { isActive: !model.isActive }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["models"],
-        refetchType: "all",
-      });
-    },
+    onSuccess: () => invalidateModelMutations(queryClient),
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteModel(model.id),
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: ["models"],
-        refetchType: "all",
-      });
+      invalidateModelMutations(queryClient);
       setDeleteConfirmOpen(false);
       toast.success(`Deleted "${model.customName}".`);
     },

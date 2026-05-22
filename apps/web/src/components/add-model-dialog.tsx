@@ -9,6 +9,7 @@ import {
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -226,15 +227,7 @@ export function AddModelDialog({
         ? updateModel(existingModel.id, payload)
         : createModel(payload),
     onSuccess: () => {
-      // refetchType: 'all' so the ["models", "effective"] query that
-      // powers /compare-models and the project picker refetches even
-      // when those views aren't mounted — otherwise the cache stays
-      // stale until the user next navigates there and a background
-      // refetch flashes the "Add at least 2 models" empty state.
-      void queryClient.invalidateQueries({
-        queryKey: ["models"],
-        refetchType: "all",
-      });
+      invalidateModelMutations(queryClient);
       setCustomName("");
       setCustomNameTouched(false);
       setModelId("");
