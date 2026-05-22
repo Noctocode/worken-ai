@@ -218,28 +218,10 @@ export function AttachFileDialog({
         <DialogTrigger asChild>{children}</DialogTrigger>
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col gap-1">
-                <DialogTitle>Knowledge attached to this chat</DialogTitle>
-                <DialogDescription>
-                  These files feed the model as context on every message.
-                </DialogDescription>
-              </div>
-              <Button
-                type="button"
-                variant="plusAction"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="shrink-0"
-              >
-                {isUploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Plus className="h-4 w-4 text-white" />
-                )}
-                Upload files
-              </Button>
-            </div>
+            <DialogTitle>Knowledge attached to this chat</DialogTitle>
+            <DialogDescription>
+              These files feed the model as context on every message.
+            </DialogDescription>
           </DialogHeader>
 
           <input
@@ -272,7 +254,7 @@ export function AttachFileDialog({
                 <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <p className="text-[13px] text-text-2">
                   {attached.length === 0
-                    ? "No knowledge yet. Upload one with the Upload files button above."
+                    ? "No knowledge yet. Upload one with the Upload files button below."
                     : "No attached files match your search."}
                 </p>
               </div>
@@ -309,7 +291,7 @@ export function AttachFileDialog({
             </ul>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-2">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -320,10 +302,9 @@ export function AttachFileDialog({
             </Button>
             <Button
               type="button"
-              variant="outline"
+              variant="destructive"
               disabled={selected.size === 0 || isDetaching}
               onClick={() => detachMutation.mutate([...selected])}
-              className="border-danger-2 text-danger-6 hover:bg-danger-1 hover:text-danger-7"
             >
               {isDetaching ? (
                 <>
@@ -336,6 +317,24 @@ export function AttachFileDialog({
                   {selected.size > 0
                     ? `Detach ${selected.size}`
                     : "Detach selected"}
+                </>
+              )}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="bg-primary-6 hover:bg-primary-7"
+            >
+              {isUploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading…
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4" />
+                  Upload files
                 </>
               )}
             </Button>
