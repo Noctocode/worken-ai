@@ -34,6 +34,7 @@ import {
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
 
 function providerOf(modelId: string): string | null {
@@ -55,15 +56,13 @@ export function ModelCard({ model }: { model: ModelConfig }) {
 
   const toggleMutation = useMutation({
     mutationFn: () => updateModel(model.id, { isActive: !model.isActive }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
-    },
+    onSuccess: () => invalidateModelMutations(queryClient),
   });
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteModel(model.id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      invalidateModelMutations(queryClient);
       setDeleteConfirmOpen(false);
       toast.success(`Deleted "${model.customName}".`);
     },

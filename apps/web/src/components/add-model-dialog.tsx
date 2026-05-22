@@ -9,6 +9,7 @@ import {
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { SettingsDialog } from "@/components/settings-dialog";
 import { Button } from "@/components/ui/button";
 import {
@@ -226,7 +227,7 @@ export function AddModelDialog({
         ? updateModel(existingModel.id, payload)
         : createModel(payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      invalidateModelMutations(queryClient);
       setCustomName("");
       setCustomNameTouched(false);
       setModelId("");
