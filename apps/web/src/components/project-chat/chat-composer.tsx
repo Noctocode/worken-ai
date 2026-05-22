@@ -45,11 +45,15 @@ export function ChatComposer({
   isSending,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      onSubmit(e);
+      // Fire a real form submit rather than calling onSubmit with the
+      // KeyboardEvent — onSubmit expects a FormEvent, and requestSubmit
+      // also runs native validation and the form's onSubmit path once.
+      formRef.current?.requestSubmit();
     }
   };
 
@@ -71,6 +75,7 @@ export function ChatComposer({
   return (
     <div className="shrink-0 bg-bg-1 px-4 pb-4 pt-2 sm:px-6 sm:pb-6">
       <form
+        ref={formRef}
         onSubmit={onSubmit}
         // Full-width composer (no max-w cap) so the input spans the
         // chat column edge-to-edge. The shadowed white card sits

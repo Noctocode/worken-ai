@@ -96,8 +96,10 @@ function initials(name: string | null | undefined, email: string): string {
  *  - Other group: direct project members (project_members table).
  *    Role is editable inline; the kebab has Remove from project.
  *
- * Personal projects skip the invite row and the Members group; only
- * "Other" appears so direct invites are still possible.
+ * Personal projects (no `teamId`) skip the invite row entirely and
+ * render only the direct-members group. That group currently just
+ * shows a "coming soon" placeholder — direct invites for personal
+ * projects are not wired up yet.
  */
 export function InviteMembersDialog({
   project,

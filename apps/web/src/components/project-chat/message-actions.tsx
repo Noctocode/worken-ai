@@ -16,9 +16,11 @@ interface Props {
    *  itself rather than rendering as a dead control. */
   onRegenerate?: () => void;
   /** Optional feedback hook — `score` is -1 for thumbs-down, +1 for
-   *  thumbs-up. The toast confirmation is rendered by this component
+   *  thumbs-up, or `null` when the user toggles their vote back off
+   *  (clicking the same thumb twice) so the caller can clear the
+   *  stored row. The toast confirmation is rendered by this component
    *  so the caller only needs to persist the score. */
-  onFeedback?: (score: 1 | -1) => void;
+  onFeedback?: (score: 1 | -1 | null) => void;
 }
 
 /**
@@ -55,8 +57,12 @@ export function MessageActions({
     // read as radio-like state instead of fire-and-forget telemetry.
     const final = score === next ? null : next;
     setScore(final);
-    if (final !== null) {
-      onFeedback?.(final);
+    // Always notify: `null` is the "remove my vote" signal so the
+    // caller can delete the persisted row, not just a no-op.
+    onFeedback?.(final);
+    if (final === null) {
+      toast.success("Feedback removed.");
+    } else {
       toast.success(
         final === 1 ? "Thanks for the feedback." : "Got it — we'll do better.",
       );
