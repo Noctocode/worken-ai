@@ -12,6 +12,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { uploadFileFilter } from '../knowledge-core/upload-allowlist.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { DocumentsService } from './documents.service.js';
 
@@ -40,8 +41,22 @@ export class DocumentsController {
     );
   }
 
+  /**
+   * Legacy per-project document upload — the FE no longer calls this
+   * route (Knowledge Core supersedes it), but the endpoint is still
+   * mounted, so the same upload allowlist that gates KC and the
+   * project-scoped chat upload also applies here. Without it, anyone
+   * with a token + the URL could push arbitrary files (.zip, .png,
+   * .exe) past the multipart layer; the parser would then throw, but
+   * the request would already have been buffered.
+   */
   @Post('projects/:projectId/documents/upload')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: uploadFileFilter,
+    }),
+  )
   async upload(
     @Param('projectId') projectId: string,
     @UploadedFile() file: Express.Multer.File,
