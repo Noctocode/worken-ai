@@ -3453,10 +3453,15 @@ export async function fetchDriveStatus(): Promise<DriveStatus> {
  * connect endpoint, which 302s on to Google's consent screen. Google
  * sends the user back to /google-drive/callback, and the API in turn
  * 302s back to `/knowledge-core?drive=connected | ?drive=error=...`.
+ *
+ * Uses the same BASE_URL the rest of api.ts uses (with the same
+ * `http://localhost:3001` dev fallback) so this routes to the API
+ * even when NEXT_PUBLIC_API_URL isn't set — a missing env var would
+ * otherwise resolve to the FE's own origin and the user would land
+ * on a Next.js 404 instead of Google's consent screen.
  */
 export function connectDrive(): void {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
-  window.location.href = `${apiUrl}/google-drive/connect`;
+  window.location.href = `${BASE_URL}/google-drive/connect`;
 }
 
 export async function disconnectDrive(): Promise<void> {
