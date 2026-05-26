@@ -76,9 +76,6 @@ const TYPE_STYLES: Record<string, string> = {
   DOC: "bg-primary-1 text-primary-7",
   XLSX: "bg-success-1 text-success-7",
   XLS: "bg-success-1 text-success-7",
-  PNG: "bg-warning-1 text-warning-6",
-  JPG: "bg-warning-1 text-warning-6",
-  JPEG: "bg-warning-1 text-warning-6",
 };
 
 function formatBytes(bytes: number): string {
@@ -801,7 +798,7 @@ export default function FolderDetailPage({
           <input
             type="file"
             multiple
-            accept=".pdf,.docx,.xlsx,.doc,.xls,.png,.jpg,.jpeg"
+            accept=".pdf,.doc,.docx,.xls,.xlsx"
             className="hidden"
             onChange={handleBrowse}
           />

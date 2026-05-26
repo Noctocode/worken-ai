@@ -667,7 +667,7 @@ function DocumentsStep({
           Drop files here or click to browse
         </p>
         <p className="text-[12px] text-text-3">
-          Supports PDF, DOCX, XLSX (Max 50MB per file)
+          Supports PDF, DOC, DOCX, XLS, XLSX (Max 50MB per file)
         </p>
         <label>
           <input

@@ -595,7 +595,7 @@ export function AddDocumentDialog({
                           : "Click to browse or drag files here"}
                       </p>
                       <p className="text-[11px] text-text-3">
-                        PDF, DOCX, XLSX, PNG, JPG
+                        PDF, DOC, DOCX, XLS, XLSX
                       </p>
                     </div>
                   </div>
@@ -603,7 +603,7 @@ export function AddDocumentDialog({
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.docx,.xlsx,.xls,.png,.jpg,.jpeg"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx"
                     className="hidden"
                     onChange={(e) => {
                       const picked = Array.from(e.target.files ?? []);
