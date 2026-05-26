@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   Body,
   Controller,
@@ -36,18 +35,10 @@ import { ChatTransportService } from '../integrations/chat-transport.service.js'
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
-import { OcrFallbackService } from '../openrouter/ocr-fallback.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
 const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
-const IMAGE_MIMETYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/webp',
-  'image/gif',
-]);
 
 const MAX_COMPARE_ATTEMPTS = 3;
 
@@ -101,7 +92,6 @@ export class CompareModelsController {
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
-    private readonly ocrFallback: OcrFallbackService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -732,16 +722,10 @@ export class CompareModelsController {
   )
   async parseAttachment(
     @UploadedFile() file: Express.Multer.File | undefined,
-    @CurrentUser() user: AuthenticatedUser,
   ): Promise<{ name: string; content: string }> {
     if (!file) {
       throw new BadRequestException('No file was uploaded.');
     }
-
-    // Arena is Personal-only — OCR / parse events are tagged with the
-    // user and no team scope. Team attribution was removed alongside
-    // the team budget option for arena.
-    const teamId: string | null = null;
 
     const mimetype = file.mimetype;
     const name = file.originalname;
@@ -749,95 +733,47 @@ export class CompareModelsController {
 
     let content: string;
 
-    if (IMAGE_MIMETYPES.has(mimetype)) {
-      let apiKey: string;
-      try {
-        apiKey = await this.keyResolverService.resolveUserKey(user.id);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new ServiceUnavailableException(
-          `AI gateway key unavailable for OCR: ${msg}`,
+    try {
+      if (mimetype === 'application/pdf' || lowerName.endsWith('.pdf')) {
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: file.buffer });
+        const result = await parser.getText();
+        content = result.text;
+      } else if (
+        mimetype ===
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        lowerName.endsWith('.docx')
+      ) {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        content = result.value;
+      } else if (
+        mimetype.startsWith('text/') ||
+        mimetype === 'application/json' ||
+        mimetype === 'application/xml'
+      ) {
+        content = file.buffer.toString('utf8');
+      } else {
+        const dot = lowerName.lastIndexOf('.');
+        const ext =
+          dot !== -1 && dot < lowerName.length - 1 ? lowerName.slice(dot) : '';
+        const detail = ext
+          ? `"${ext}" (${mimetype || 'no MIME type'})`
+          : `"${mimetype || 'unknown type'}"`;
+        throw new BadRequestException(
+          `Unsupported file type ${detail}. Only PDF, DOCX, and text-based files (TXT, MD, CSV, JSON, code) are allowed.`,
         );
       }
-
-      const dataUrl = `data:${mimetype};base64,${file.buffer.toString('base64')}`;
-      let extracted: string;
-      let resolvedModel = this.ocrFallback.modelChain[0] ?? 'ocr-unknown';
-      const ocrStart = Date.now();
-      try {
-        const result = await this.ocrFallback.extractText(dataUrl, apiKey);
-        extracted = result.text;
-        resolvedModel = result.model;
-        void this.observabilityService.recordLLMCall({
-          userId: user.id,
-          teamId,
-          eventType: 'arena_attachment_ocr',
-          model: resolvedModel,
-          latencyMs: Date.now() - ocrStart,
-          success: true,
-          metadata: { filename: name, mimetype },
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        void this.observabilityService.recordLLMCall({
-          userId: user.id,
-          teamId,
-          eventType: 'arena_attachment_ocr',
-          model: resolvedModel,
-          latencyMs: Date.now() - ocrStart,
-          success: false,
-          errorMessage: msg,
-          metadata: { filename: name, mimetype },
-        });
-        this.logger.error(`OCR failed for "${name}": ${msg}`);
-        throw new BadGatewayException(msg);
-      }
-      content = extracted;
-    } else {
-      try {
-        if (mimetype === 'application/pdf' || lowerName.endsWith('.pdf')) {
-          const { PDFParse } = await import('pdf-parse');
-          const parser = new PDFParse({ data: file.buffer });
-          const result = await parser.getText();
-          content = result.text;
-        } else if (
-          mimetype ===
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-          lowerName.endsWith('.docx')
-        ) {
-          const mammoth = await import('mammoth');
-          const result = await mammoth.extractRawText({ buffer: file.buffer });
-          content = result.value;
-        } else if (
-          mimetype.startsWith('text/') ||
-          mimetype === 'application/json' ||
-          mimetype === 'application/xml'
-        ) {
-          content = file.buffer.toString('utf8');
-        } else {
-          const dot = lowerName.lastIndexOf('.');
-          const ext =
-            dot !== -1 && dot < lowerName.length - 1
-              ? lowerName.slice(dot)
-              : '';
-          const detail = ext
-            ? `"${ext}" (${mimetype || 'no MIME type'})`
-            : `"${mimetype || 'unknown type'}"`;
-          throw new BadRequestException(
-            `Unsupported file type ${detail}. Only PDF, DOCX, images (PNG, JPG, JPEG, WebP, GIF), and text-based files (TXT, MD, CSV, JSON, code) are allowed.`,
-          );
-        }
-      } catch (err) {
-        if (err instanceof BadRequestException) throw err;
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Failed to parse attachment "${name}": ${msg}`);
-        throw new BadRequestException(`Failed to parse "${name}": ${msg}`);
-      }
+    } catch (err) {
+      if (err instanceof BadRequestException) throw err;
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.error(`Failed to parse attachment "${name}": ${msg}`);
+      throw new BadRequestException(`Failed to parse "${name}": ${msg}`);
     }
 
     if (!content.trim()) {
       throw new BadRequestException(
-        `No text could be extracted from "${name}". The file may be scanned, image-only or empty.`,
+        `No text could be extracted from "${name}". The file may be empty or unreadable.`,
       );
     }
 

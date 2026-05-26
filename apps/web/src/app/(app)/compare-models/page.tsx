@@ -9,7 +9,6 @@ import {
   ChevronRight,
   Clipboard,
   LayoutGrid,
-  Image as ImageIcon,
   Info,
   Library,
   Loader2,
@@ -296,9 +295,6 @@ export default function CompareModelsPage() {
   const [attachedFile, setAttachedFile] = useState<
     { name: string; content: string } | null
   >(null);
-  const [attachedImage, setAttachedImage] = useState<
-    { name: string; content: string } | null
-  >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
@@ -406,11 +402,6 @@ export default function CompareModelsPage() {
     if (attachedFile) {
       contextParts.push(
         `Attached file "${attachedFile.name}":\n${attachedFile.content}`,
-      );
-    }
-    if (attachedImage) {
-      contextParts.push(
-        `Attached image "${attachedImage.name}":\n${attachedImage.content}`,
       );
     }
     const context = contextParts.length ? contextParts.join("\n\n") : undefined;
@@ -612,7 +603,6 @@ export default function CompareModelsPage() {
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
     setAttachedFile(null);
-    setAttachedImage(null);
   }, []);
 
   const changeModel = (index: number, newId: string) => {
@@ -1037,8 +1027,6 @@ export default function CompareModelsPage() {
             onStop={handleStopArena}
             attachedFile={attachedFile}
             setAttachedFile={setAttachedFile}
-            attachedImage={attachedImage}
-            setAttachedImage={setAttachedImage}
             onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
           />
         </section>
@@ -1460,42 +1448,17 @@ const ATTACH_FILE_EXTENSIONS = [
 const ATTACH_FILE_ACCEPT = ATTACH_FILE_EXTENSIONS.join(",");
 const ATTACH_FILE_MAX_BYTES = 30 * 1024 * 1024;
 
-const ATTACH_IMAGE_MIMETYPES = [
-  "image/png", "image/jpeg", "image/webp", "image/gif",
-] as const;
-const ATTACH_IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".webp", ".gif"] as const;
-const ATTACH_IMAGE_ACCEPT = ATTACH_IMAGE_MIMETYPES.join(",");
-const ATTACH_IMAGE_MAX_BYTES = 20 * 1024 * 1024;
-
-type AttachKind = "file" | "image";
-
 function fileExtension(name: string): string {
   const dot = name.lastIndexOf(".");
   if (dot === -1 || dot === name.length - 1) return "";
   return name.slice(dot).toLowerCase();
 }
 
-function describeFileType(file: File): string {
-  const ext = fileExtension(file.name);
-  if (ext) return ext;
-  if (file.type) return `(${file.type})`;
-  return "(no extension)";
-}
-
-const IMAGE_ALLOWED_LABEL = "PNG, JPG, JPEG, WebP, GIF";
 const FILE_ALLOWED_LABEL =
   "PDF, DOCX, TXT, MD, MARKDOWN, CSV, JSON, LOG, TS, TSX, JS, JSX, PY, HTML, CSS, YML, YAML, XML, SQL, SH, RB, GO, RS, JAVA, C, CPP, H, HPP, TOML, INI, ENV";
 
-function validateAttachment(file: File, kind: AttachKind): string | null {
+function validateAttachment(file: File): string | null {
   const ext = fileExtension(file.name);
-
-  if (kind === "image") {
-    // Extension-only check: some systems mis-report MIME (e.g. Windows maps
-    // .jiff → image/jpeg), so trusting MIME would let unsupported formats through.
-    if ((ATTACH_IMAGE_EXTENSIONS as readonly string[]).includes(ext)) return null;
-    return `Image type ${describeFileType(file)} isn't allowed. Only ${IMAGE_ALLOWED_LABEL} are allowed.`;
-  }
-
   if (!ext) {
     return `"${file.name}" has no file extension, so we can't tell its type. Only ${FILE_ALLOWED_LABEL} are allowed.`;
   }
@@ -1509,14 +1472,9 @@ function needsServerParse(file: File): boolean {
     file.type === "application/pdf" ||
     file.type ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-    file.type.startsWith("image/") ||
     lower.endsWith(".pdf") ||
     lower.endsWith(".docx")
   );
-}
-
-function isImageFile(file: File): boolean {
-  return file.type.startsWith("image/");
 }
 
 function Composer({
@@ -1530,8 +1488,6 @@ function Composer({
   onStop,
   attachedFile,
   setAttachedFile,
-  attachedImage,
-  setAttachedImage,
   onOpenPromptLibrary,
 }: {
   question: string;
@@ -1547,12 +1503,9 @@ function Composer({
   onStop: () => void;
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
-  attachedImage: { name: string; content: string } | null;
-  setAttachedImage: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-grow the question textarea to fit its content, capped so a
@@ -1594,34 +1547,27 @@ function Composer({
     });
   }
 
-  async function ingestFile(
-    file: File,
-    kind: AttachKind,
-    maxBytes: number,
-    setTarget: (f: { name: string; content: string } | null) => void,
-  ) {
-    const validationError = validateAttachment(file, kind);
+  async function ingestFile(file: File) {
+    const validationError = validateAttachment(file);
     if (validationError) {
       toast.error(validationError);
       return;
     }
 
-    if (file.size > maxBytes) {
-      const limitMb = (maxBytes / 1024 / 1024).toFixed(0);
+    if (file.size > ATTACH_FILE_MAX_BYTES) {
+      const limitMb = (ATTACH_FILE_MAX_BYTES / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
-      const target = kind === "image" ? "Images are" : "Attachments are";
       toast.error(
-        `"${file.name}" is too large (${sizeMb} MB). ${target} capped at ${limitMb} MB.`,
+        `"${file.name}" is too large (${sizeMb} MB). Attachments are capped at ${limitMb} MB.`,
       );
       return;
     }
 
     if (needsServerParse(file)) {
-      const verb = isImageFile(file) ? "Reading" : "Parsing";
-      const toastId = toast.loading(`${verb} ${file.name}…`);
+      const toastId = toast.loading(`Parsing ${file.name}…`);
       try {
         const parsed = await parseArenaAttachment(file);
-        setTarget(parsed);
+        setAttachedFile(parsed);
         toast.success(`Attached ${parsed.name}.`, { id: toastId });
       } catch (err) {
         toast.error(humanizeChatError(err), { id: toastId });
@@ -1631,7 +1577,7 @@ function Composer({
 
     try {
       const content = await file.text();
-      setTarget({ name: file.name, content });
+      setAttachedFile({ name: file.name, content });
     } catch (err) {
       toast.error(humanizeChatError(err));
     }
@@ -1641,14 +1587,7 @@ function Composer({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    await ingestFile(file, "file", ATTACH_FILE_MAX_BYTES, setAttachedFile);
-  }
-
-  async function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    await ingestFile(file, "image", ATTACH_IMAGE_MAX_BYTES, setAttachedImage);
+    await ingestFile(file);
   }
 
   return (
@@ -1661,13 +1600,6 @@ function Composer({
         type="file"
         accept={ATTACH_FILE_ACCEPT}
         onChange={handleFileChange}
-        className="hidden"
-      />
-      <input
-        ref={imageInputRef}
-        type="file"
-        accept={ATTACH_IMAGE_ACCEPT}
-        onChange={handleImageChange}
         className="hidden"
       />
       <div className="flex flex-col rounded-[16px] border border-border-4 bg-bg-white">
@@ -1702,49 +1634,27 @@ function Composer({
           className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
-        {/* Attachment pills — one per slot, both can coexist */}
-        {(attachedFile || attachedImage) && (
+        {/* Attached file pill — single slot. */}
+        {attachedFile && (
           <div className="flex flex-wrap items-center gap-2 border-t border-border-2 px-4 py-2">
-            {attachedFile && (
-              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
-                <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-[320px] truncate" title={attachedFile.name}>
-                  {attachedFile.name}
-                </span>
-                <span className="text-[11px] text-text-3">
-                  {(attachedFile.content.length / 1024).toFixed(1)} KB
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAttachedFile(null)}
-                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                  title="Remove file"
-                  aria-label="Remove file"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+            <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
+              <Paperclip className="h-3.5 w-3.5 shrink-0" />
+              <span className="max-w-[320px] truncate" title={attachedFile.name}>
+                {attachedFile.name}
               </span>
-            )}
-            {attachedImage && (
-              <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-border-2 bg-bg-1 px-3 py-1.5 text-[13px] text-text-1">
-                <ImageIcon className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-[320px] truncate" title={attachedImage.name}>
-                  {attachedImage.name}
-                </span>
-                <span className="text-[11px] text-text-3">
-                  {(attachedImage.content.length / 1024).toFixed(1)} KB
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAttachedImage(null)}
-                  className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                  title="Remove image"
-                  aria-label="Remove image"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
+              <span className="text-[11px] text-text-3">
+                {(attachedFile.content.length / 1024).toFixed(1)} KB
               </span>
-            )}
+              <button
+                type="button"
+                onClick={() => setAttachedFile(null)}
+                className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
+                title="Remove file"
+                aria-label="Remove file"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </span>
           </div>
         )}
         {/* Chips + actions row */}
@@ -1754,12 +1664,6 @@ function Composer({
               icon={Paperclip}
               label="Attach File"
               onClick={() => fileInputRef.current?.click()}
-              disabled={loading}
-            />
-            <ComposerChip
-              icon={ImageIcon}
-              label="Upload Image"
-              onClick={() => imageInputRef.current?.click()}
               disabled={loading}
             />
             <ComposerChip

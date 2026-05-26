@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { BookOpen, ImageIcon, Loader2, Paperclip, Send, Square } from "lucide-react";
+import { BookOpen, Loader2, Paperclip, Send, Square } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
@@ -24,17 +24,16 @@ interface Props {
  *  - Row 1: the textarea (the original autoresizing one, identical
  *    behavior — Enter to send, Shift+Enter for newline, max-height
  *    clamp, disabled-while-sending).
- *  - Row 2: three outline pill buttons on the left ([Attach File]
- *    [Upload Image] [Prompt Library]) and the send/stop icon on the
- *    right. The icon swaps to a destructive-red Square mid-stream so
- *    the user can interrupt the model. Stop calls `onStop()` which
- *    fires the AbortController back in page.tsx — exact same plumbing
- *    as before, just wrapped in a tidier shell.
+ *  - Row 2: two outline pill buttons on the left ([Attach File]
+ *    [Prompt Library]) and the send/stop icon on the right. The icon
+ *    swaps to a destructive-red Square mid-stream so the user can
+ *    interrupt the model. Stop calls `onStop()` which fires the
+ *    AbortController back in page.tsx — exact same plumbing as
+ *    before, just wrapped in a tidier shell.
  *
- * Attach File and Upload Image both open the same AttachFileDialog;
- * Upload Image just passes `imagesOnly` so the picker + list are
- * scoped to image formats. Uploads land in the project's Knowledge
- * Core either way.
+ * Attach File opens the AttachFileDialog. Uploads are restricted to
+ * Word / Excel / PDF documents and land in the project's Knowledge
+ * Core.
  */
 export function ChatComposer({
   projectId,
@@ -112,9 +111,6 @@ export function ChatComposer({
           <div className="flex flex-wrap items-center gap-2">
             <AttachFileDialog projectId={projectId}>
               <ComposerPill icon={Paperclip}>Attach File</ComposerPill>
-            </AttachFileDialog>
-            <AttachFileDialog projectId={projectId} imagesOnly>
-              <ComposerPill icon={ImageIcon}>Upload Image</ComposerPill>
             </AttachFileDialog>
             <PromptLibraryDialog onPick={insertPromptBody}>
               <ComposerPill icon={BookOpen}>Prompt Library</ComposerPill>

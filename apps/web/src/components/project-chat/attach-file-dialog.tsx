@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   FileText,
-  ImageIcon,
   Loader2,
   Plus,
   Search,
@@ -36,12 +35,10 @@ import {
   type ProjectKnowledgeFile,
 } from "@/lib/api";
 
-const ACCEPTED_FILE_TYPES = ".pdf,.docx,.xls,.xlsx,.png,.jpg,.jpeg";
-const ACCEPTED_IMAGE_TYPES = ".png,.jpg,.jpeg";
-
-/** Filename test for the `imagesOnly` variant — scopes the listed
- *  rows to images so "Upload Image" never surfaces a stray PDF. */
-const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+/** Accept attribute for the picker. Restricted to Word, Excel and PDF
+ *  documents — the only formats the chat upload path supports now
+ *  that image OCR has been removed from the app. */
+const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.xls,.xlsx";
 
 /**
  * "Knowledge attached to this chat" dialog.
@@ -61,21 +58,13 @@ const IMAGE_FILE = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
  * Both actions invalidate the project-knowledge-files query so the
  * list refreshes in place. The dialog stays open so the user can
  * see the result before closing.
- *
- * The `imagesOnly` variant powers the composer's "Upload Image" pill:
- * identical flow, but the upload picker and the listed rows are both
- * scoped to image formats.
  */
 export function AttachFileDialog({
   children,
   projectId,
-  imagesOnly = false,
 }: {
   children: React.ReactNode;
   projectId: string;
-  /** Scope the picker + list to image formats — used by the
-   *  composer's "Upload Image" pill. */
-  imagesOnly?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -86,9 +75,6 @@ export function AttachFileDialog({
   const [pendingRetryFiles, setPendingRetryFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const qc = useQueryClient();
-
-  const accept = imagesOnly ? ACCEPTED_IMAGE_TYPES : ACCEPTED_FILE_TYPES;
-  const noun = imagesOnly ? "image" : "file";
 
   const { data: attached = [], isLoading } = useQuery({
     queryKey: ["project-knowledge-files", projectId],
@@ -108,21 +94,13 @@ export function AttachFileDialog({
     },
   });
 
-  // In `imagesOnly` mode the list mirrors the picker — only image
-  // rows show, so "Upload Image" never surfaces a stray PDF.
-  const scoped = useMemo<ProjectKnowledgeFile[]>(
-    () =>
-      imagesOnly ? attached.filter((f) => IMAGE_FILE.test(f.name)) : attached,
-    [attached, imagesOnly],
-  );
-
   const filtered = useMemo<ProjectKnowledgeFile[]>(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return scoped;
-    return scoped.filter((f) =>
+    if (!q) return attached;
+    return attached.filter((f) =>
       `${f.name} ${f.folderName}`.toLowerCase().includes(q),
     );
-  }, [scoped, query]);
+  }, [attached, query]);
 
   const uploadMutation = useMutation({
     mutationFn: ({
@@ -157,15 +135,15 @@ export function AttachFileDialog({
       if (uploaded > 0) {
         toast.success(
           uploaded === 1
-            ? `Uploaded 1 ${noun}.`
-            : `Uploaded ${uploaded} ${noun}s.`,
+            ? `Uploaded 1 file.`
+            : `Uploaded ${uploaded} files.`,
         );
       }
       if (dup > 0) {
         toast.info(
           dup === 1
-            ? `1 ${noun} was already in your Knowledge Core — re-attached.`
-            : `${dup} ${noun}s were already in your Knowledge Core — re-attached.`,
+            ? `1 file was already in your Knowledge Core — re-attached.`
+            : `${dup} files were already in your Knowledge Core — re-attached.`,
         );
       }
       setPendingRetryFiles([]);
@@ -192,8 +170,8 @@ export function AttachFileDialog({
       });
       toast.success(
         count === 1
-          ? `Detached 1 ${noun}.`
-          : `Detached ${count} ${noun}s.`,
+          ? `Detached 1 file.`
+          : `Detached ${count} files.`,
       );
       setSelected(new Set());
     },
@@ -248,15 +226,10 @@ export function AttachFileDialog({
         <DialogTrigger asChild>{children}</DialogTrigger>
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>
-              {imagesOnly
-                ? "Images attached to this chat"
-                : "Knowledge attached to this chat"}
-            </DialogTitle>
+            <DialogTitle>Knowledge attached to this chat</DialogTitle>
             <DialogDescription>
-              {imagesOnly
-                ? "These images feed the model as visual context on every message."
-                : "These files feed the model as context on every message."}
+              These files feed the model as context on every message.
+              Word, Excel and PDF documents are supported.
             </DialogDescription>
           </DialogHeader>
 
@@ -264,7 +237,7 @@ export function AttachFileDialog({
             ref={fileInputRef}
             type="file"
             multiple
-            accept={accept}
+            accept={ACCEPTED_FILE_TYPES}
             className="hidden"
             onChange={(e) => handleFiles(e.target.files)}
           />
@@ -272,7 +245,7 @@ export function AttachFileDialog({
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
-              placeholder={`Search attached ${noun}s…`}
+              placeholder="Search attached files…"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-9"
@@ -287,20 +260,11 @@ export function AttachFileDialog({
             )}
             {!isLoading && filtered.length === 0 && (
               <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
-                {imagesOnly ? (
-                  <ImageIcon
-                    className="h-8 w-8 text-text-3"
-                    strokeWidth={1.5}
-                  />
-                ) : (
-                  <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
-                )}
+                <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <p className="text-[13px] text-text-2">
-                  {scoped.length === 0
-                    ? imagesOnly
-                      ? "No images yet. Upload one with the Upload images button below."
-                      : "No knowledge yet. Upload one with the Upload files button below."
-                    : `No attached ${noun}s match your search.`}
+                  {attached.length === 0
+                    ? "No knowledge yet. Upload one with the Upload files button below."
+                    : "No attached files match your search."}
                 </p>
               </div>
             )}
@@ -316,11 +280,7 @@ export function AttachFileDialog({
                         onChange={() => toggle(f.fileId)}
                         className="h-4 w-4 cursor-pointer accent-primary-6"
                       />
-                      {IMAGE_FILE.test(f.name) ? (
-                        <ImageIcon className="h-4 w-4 shrink-0 text-text-3" />
-                      ) : (
-                        <FileText className="h-4 w-4 shrink-0 text-text-3" />
-                      )}
+                      <FileText className="h-4 w-4 shrink-0 text-text-3" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-[13px] font-medium text-text-1">
                           {f.name}
@@ -383,7 +343,7 @@ export function AttachFileDialog({
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  {imagesOnly ? "Upload images" : "Upload files"}
+                  Upload files
                 </>
               )}
             </Button>
@@ -409,8 +369,8 @@ export function AttachFileDialog({
  *   untrained            → unplug, "Excluded"
  *   failed               → warning, "Skipped" + tooltip with the
  *                          underlying ingestion error so the user
- *                          knows WHY (OCR provider down, scan with
- *                          no text, password-protected PDF, …)
+ *                          knows WHY (unsupported variant, empty
+ *                          workbook, password-protected PDF, …)
  *
  * Inline-duplicated rather than imported from the KC folder page —
  * those pages don't share a components module for this domain yet

@@ -81,22 +81,23 @@ export class KnowledgeCoreController {
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
-        // Allowlist must match what documents.service.parseFile +
-        // KnowledgeIngestionService.ingestOneFile can actually handle.
-        // Dropping legacy .doc (application/msword) — mammoth is
-        // .docx-only, so accepting .doc here just guarantees a
-        // "Skipped" badge later. Reject up front with a clearer
-        // message instead.
-        const allowedExt = /\.(pdf|docx|xlsx?|png|jpe?g)$/i;
+        // Allowlist: Word (.doc, .docx), Excel (.xls, .xlsx), PDF.
+        // Anything else is rejected up front with a clear message
+        // (image OCR has been removed; legacy .doc is accepted by
+        // the upload — parseFile may still flag it as unsupported
+        // and surface a "Skipped" badge, which the user sees and
+        // can act on).
+        const allowedExt = /\.(pdf|docx?|xlsx?)$/i;
         const allowedMime =
-          /^(application\/(pdf|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
+          /^application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)/i;
         if (
           !allowedExt.test(file.originalname) ||
           !allowedMime.test(file.mimetype)
         ) {
           cb(
             new BadRequestException(
-              `Unsupported file type: ${file.originalname}`,
+              `Unsupported file type: ${file.originalname}. ` +
+                `Allowed: Word (.doc, .docx), Excel (.xls, .xlsx), PDF (.pdf).`,
             ),
             false,
           );

@@ -14,10 +14,9 @@
 --   arena_call           ~120
 --   evaluator_call       ~30
 --   chat_call            ~90
---   arena_attachment_ocr ~15
 --   document_title       ~10
 --   guardrail_trigger    ~15
--- ≈ 280 events per user. Multiplies by user count.
+-- ≈ 265 events per user. Multiplies by user count.
 
 DO $$
 DECLARE
@@ -61,7 +60,6 @@ BEGIN
         ('meta-llama/llama-3.1-70b-instruct',             'meta-llama', 0.00400, 1000, 1500),
         ('mistralai/mistral-large',                       'mistralai',  0.00800, 1100, 1700),
         ('liquid/lfm-2.5-1.2b-thinking:free',             'liquid',     0.00000,  500,  450),
-        ('baidu/qianfan-ocr-fast:free',                   'baidu',      0.00000,  300,  900),
         ('stepfun/step-3.5-flash:free',                   'stepfun',    0.00000,  900, 1100)
     ),
     -- 30 days × ~10 events/day per user, jittered.
@@ -120,27 +118,10 @@ BEGIN
       LEFT JOIN primary_team pt ON pt.user_id = u.id
       CROSS JOIN LATERAL (
         SELECT * FROM model_pool
-        WHERE model NOT LIKE 'baidu/%'  -- OCR model excluded from chat
         ORDER BY random()
         LIMIT 1
       ) m
       CROSS JOIN generate_series(1, 90)
-    ),
-    ocr_events AS (
-      SELECT
-        u.id AS user_id,
-        pt.team_id,
-        'arena_attachment_ocr' AS event_type,
-        'baidu/qianfan-ocr-fast:free' AS model,
-        'baidu' AS provider,
-        NULL::int AS total_tokens,
-        NULL::numeric AS cost_usd,
-        round((900 * (0.6 + random() * 0.8))::numeric)::int AS latency_ms,
-        random() > 0.06 AS success,
-        now() - (random() * interval '30 days') AS created_at
-      FROM users u
-      LEFT JOIN primary_team pt ON pt.user_id = u.id
-      CROSS JOIN generate_series(1, 15)
     ),
     title_events AS (
       SELECT
@@ -231,13 +212,6 @@ BEGIN
              jsonb_build_object('seed', true),
              created_at
       FROM chat_events
-      UNION ALL
-      SELECT user_id, team_id, event_type, model, provider, total_tokens, cost_usd, latency_ms, success,
-             CASE WHEN success THEN NULL ELSE 'OCR could not extract text' END,
-             NULL,
-             jsonb_build_object('seed', true, 'filename', 'invoice.png'),
-             created_at
-      FROM ocr_events
       UNION ALL
       SELECT user_id, team_id, event_type, model, provider, total_tokens, cost_usd, latency_ms, success,
              NULL, NULL,
