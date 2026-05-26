@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,6 +20,7 @@ import { ProjectsService } from './projects.service.js';
 import type { CreateProjectDto, UpdateProjectDto } from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { ProjectMembersService } from './project-members.service.js';
+import { uploadFileFilter } from '../knowledge-core/upload-allowlist.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
@@ -145,31 +145,7 @@ export class ProjectsController {
         },
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        // Allowlist: Word (.doc, .docx), Excel (.xls, .xlsx), PDF.
-        // Mirrors KnowledgeCoreController.uploadFiles — both feed the
-        // same ingestion pipeline and need the same gate. Images are
-        // rejected up front (OCR has been removed from the app), so
-        // the user gets a clear "not allowed" instead of a silent
-        // "Skipped" badge after the upload finishes.
-        const allowedExt = /\.(pdf|docx?|xlsx?)$/i;
-        const allowedMime =
-          /^application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)/i;
-        if (
-          !allowedExt.test(file.originalname) ||
-          !allowedMime.test(file.mimetype)
-        ) {
-          cb(
-            new BadRequestException(
-              `Unsupported file type: ${file.originalname}. ` +
-                `Allowed: Word (.doc, .docx), Excel (.xls, .xlsx), PDF (.pdf).`,
-            ),
-            false,
-          );
-          return;
-        }
-        cb(null, true);
-      },
+      fileFilter: uploadFileFilter,
     }),
   )
   uploadKnowledgeFile(

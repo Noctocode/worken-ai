@@ -23,6 +23,7 @@ import {
   KnowledgeCoreService,
   type NameConflictAction,
 } from './knowledge-core.service.js';
+import { uploadFileFilter } from './upload-allowlist.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -80,31 +81,7 @@ export class KnowledgeCoreController {
         },
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        // Allowlist: Word (.doc, .docx), Excel (.xls, .xlsx), PDF.
-        // Anything else is rejected up front with a clear message
-        // (image OCR has been removed; legacy .doc is accepted by
-        // the upload — parseFile may still flag it as unsupported
-        // and surface a "Skipped" badge, which the user sees and
-        // can act on).
-        const allowedExt = /\.(pdf|docx?|xlsx?)$/i;
-        const allowedMime =
-          /^application\/(pdf|msword|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)/i;
-        if (
-          !allowedExt.test(file.originalname) ||
-          !allowedMime.test(file.mimetype)
-        ) {
-          cb(
-            new BadRequestException(
-              `Unsupported file type: ${file.originalname}. ` +
-                `Allowed: Word (.doc, .docx), Excel (.xls, .xlsx), PDF (.pdf).`,
-            ),
-            false,
-          );
-          return;
-        }
-        cb(null, true);
-      },
+      fileFilter: uploadFileFilter,
     }),
   )
   uploadFiles(
