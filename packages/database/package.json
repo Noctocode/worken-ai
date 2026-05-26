@@ -33,7 +33,8 @@
     "generate": "drizzle-kit generate",
     "migrate": "drizzle-kit migrate",
     "push": "drizzle-kit push",
-    "studio": "drizzle-kit studio"
+    "studio": "drizzle-kit studio",
+    "check:migrations": "node scripts/check-migration-coverage.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.38.0",
