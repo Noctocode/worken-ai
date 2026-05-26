@@ -73,7 +73,6 @@ import { Pagination } from "@/components/ui/pagination";
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
   DOCX: "bg-primary-1 text-primary-7",
-  DOC: "bg-primary-1 text-primary-7",
   XLSX: "bg-success-1 text-success-7",
   XLS: "bg-success-1 text-success-7",
 };
@@ -798,7 +797,7 @@ export default function FolderDetailPage({
           <input
             type="file"
             multiple
-            accept=".pdf,.doc,.docx,.xls,.xlsx"
+            accept=".pdf,.docx,.xls,.xlsx"
             className="hidden"
             onChange={handleBrowse}
           />

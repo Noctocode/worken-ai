@@ -667,13 +667,13 @@ function DocumentsStep({
           Drop files here or click to browse
         </p>
         <p className="text-[12px] text-text-3">
-          Supports PDF, DOC, DOCX, XLS, XLSX (Max 50MB per file)
+          Supports PDF, DOCX, XLS, XLSX (Max 50MB per file)
         </p>
         <label>
           <input
             type="file"
             multiple
-            accept=".pdf,.docx,.xlsx,.doc,.xls"
+            accept=".pdf,.docx,.xls,.xlsx"
             className="hidden"
             onChange={handleSelect}
           />

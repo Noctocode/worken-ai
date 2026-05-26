@@ -193,7 +193,7 @@ export class OnboardingController {
         } else {
           cb(
             new BadRequestException(
-              `Unsupported file type: ${file.mimetype}. Allowed: PDF, DOC, DOCX, TXT.`,
+              `Unsupported file type: ${file.mimetype}. Allowed: PDF, DOCX, TXT.`,
             ),
             false,
           );

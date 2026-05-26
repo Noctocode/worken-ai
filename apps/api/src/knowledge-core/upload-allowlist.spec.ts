@@ -29,7 +29,6 @@ describe('upload-allowlist', () => {
         'notes.docx',
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       ],
-      ['legacy.doc', 'application/msword'],
       [
         'sheet.xlsx',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -69,6 +68,10 @@ describe('upload-allowlist', () => {
       ['report.pdf', 'image/png'],
       // Mime is in the allowlist, extension isn't — must still reject.
       ['secret.exe', 'application/pdf'],
+      // Legacy Word .doc is not accepted: `mammoth` is .docx-only and
+      // accepting .doc here would end with a misleading "Skipped"
+      // badge — the very UX bug the allowlist exists to eliminate.
+      ['legacy.doc', 'application/msword'],
     ];
 
     it.each(REJECTED_OTHER)('rejects %s (%s)', (name, mime) => {

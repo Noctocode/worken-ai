@@ -35,10 +35,12 @@ import {
   type ProjectKnowledgeFile,
 } from "@/lib/api";
 
-/** Accept attribute for the picker. Restricted to Word, Excel and PDF
- *  documents — the only formats the chat upload path supports now
- *  that image OCR has been removed from the app. */
-const ACCEPTED_FILE_TYPES = ".pdf,.doc,.docx,.xls,.xlsx";
+/** Accept attribute for the picker. Restricted to the formats the
+ *  chat ingestion pipeline can actually parse: .docx (mammoth), .xls
+ *  / .xlsx (SheetJS), .pdf (pdf-parse). Legacy .doc is intentionally
+ *  NOT here — the parser is .docx-only, so accepting .doc would just
+ *  lead to a "Skipped" badge after upload. */
+const ACCEPTED_FILE_TYPES = ".pdf,.docx,.xls,.xlsx";
 
 /**
  * "Knowledge attached to this chat" dialog.
@@ -229,7 +231,7 @@ export function AttachFileDialog({
             <DialogTitle>Knowledge attached to this chat</DialogTitle>
             <DialogDescription>
               These files feed the model as context on every message.
-              Word, Excel and PDF documents are supported.
+              Supported formats: PDF, DOCX, XLS, XLSX.
             </DialogDescription>
           </DialogHeader>
 
