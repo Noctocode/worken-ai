@@ -704,14 +704,14 @@ export default function KnowledgeCorePage() {
             Drag and drop files here, or click to browse
           </p>
           <p className="text-[13px] text-text-3">
-            Supports PDF, DOCX, XLSX, PNG, JPG up to 50MB per file
+            Supports PDF, DOCX, XLS, XLSX up to 50MB per file
           </p>
         </div>
         <label>
           <input
             type="file"
             multiple
-            accept=".pdf,.docx,.xlsx,.doc,.xls,.png,.jpg,.jpeg"
+            accept=".pdf,.docx,.xls,.xlsx"
             className="hidden"
             onChange={handleBrowse}
           />

@@ -63,7 +63,6 @@ const EVENT_TYPE_OPTIONS = [
   { value: "all", label: "All events" },
   { value: "arena_call", label: "Model calls" },
   { value: "evaluator_call", label: "Evaluator calls" },
-  { value: "arena_attachment_ocr", label: "OCR" },
   { value: "guardrail_trigger", label: "Guardrail triggers" },
 ];
 

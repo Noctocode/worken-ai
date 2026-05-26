@@ -69,7 +69,6 @@ export interface RecordLLMCallInput {
   eventType:
     | 'arena_call'
     | 'evaluator_call'
-    | 'arena_attachment_ocr'
     | 'guardrail_trigger'
     | (string & {});
   model?: string | null;

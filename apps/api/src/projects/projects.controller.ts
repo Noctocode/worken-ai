@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -21,6 +20,7 @@ import { ProjectsService } from './projects.service.js';
 import type { CreateProjectDto, UpdateProjectDto } from './projects.service.js';
 import { ProjectKnowledgeService } from './project-knowledge.service.js';
 import { ProjectMembersService } from './project-members.service.js';
+import { uploadFileFilter } from '../knowledge-core/upload-allowlist.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 
@@ -145,24 +145,7 @@ export class ProjectsController {
         },
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        const allowedExt = /\.(pdf|docx|xlsx?|png|jpe?g)$/i;
-        const allowedMime =
-          /^(application\/(pdf|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
-        if (
-          !allowedExt.test(file.originalname) ||
-          !allowedMime.test(file.mimetype)
-        ) {
-          cb(
-            new BadRequestException(
-              `Unsupported file type: ${file.originalname}`,
-            ),
-            false,
-          );
-          return;
-        }
-        cb(null, true);
-      },
+      fileFilter: uploadFileFilter,
     }),
   )
   uploadKnowledgeFile(

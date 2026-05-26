@@ -13,27 +13,11 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
-import { KeyResolverService } from '../openrouter/key-resolver.service.js';
-import { OcrFallbackService } from '../openrouter/ocr-fallback.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
 // shared so the two modules stay decoupled. If you rename the onboarding
 // folder, update both.
 const ONBOARDING_FOLDER_NAME = 'Onboarding';
-
-// OCR is delegated to OcrFallbackService — model selection lives in
-// OCR_MODELS env var (chain of vision-capable models tried in order).
-// We still route through OpenRouter regardless of any BYOK keys the
-// user might have for chat — vision support varies across providers
-// and we don't want to surprise the user with an Anthropic-only key
-// failing on an image.
-const IMAGE_MIMETYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/jpg',
-  'image/webp',
-  'image/gif',
-]);
 
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
@@ -70,9 +54,7 @@ export class KnowledgeIngestionService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
-    private readonly keyResolver: KeyResolverService,
     private readonly notifications: NotificationsService,
-    private readonly ocrFallback: OcrFallbackService,
   ) {}
 
   /**
@@ -139,19 +121,13 @@ export class KnowledgeIngestionService {
       const buffer = await readFile(absolutePath);
 
       // Knowledge Core uploads don't store mimetype on the row; infer
-      // from the filename. Two paths:
-      //   - Image (PNG / JPG / WEBP / GIF) → OpenRouter OCR. The user's
-      //     resolveUserKey is required; the catch below records the
-      //     clear "no key" error if it isn't provisioned (typically
-      //     budget=0 on managed cloud) and the file row + disk copy
-      //     stay so the user can still download.
-      //   - Everything else → DocumentsService.parseFile (PDF, DOCX,
-      //     XLSX, TXT, MD, CSV). Unsupported types throw and land in
-      //     the same catch block.
+      // from the filename. Everything routes through
+      // DocumentsService.parseFile (PDF, DOCX, XLSX, TXT, MD, CSV).
+      // Unsupported types throw and land in the catch block below,
+      // which marks the row 'failed' with the parser's message so
+      // the FE renders a "Skipped" badge.
       const mimetype = this.inferMimeFromName(file.name);
-      const text = IMAGE_MIMETYPES.has(mimetype)
-        ? await this.extractTextFromImage(userId, buffer, mimetype)
-        : await this.documentsService.parseFile(buffer, mimetype);
+      const text = await this.documentsService.parseFile(buffer, mimetype);
       const chunks = this.documentsService.chunkText(text);
 
       if (chunks.length === 0) {
@@ -519,31 +495,6 @@ export class KnowledgeIngestionService {
       .limit(limit);
   }
 
-  /**
-   * Run OpenRouter OCR on a knowledge-file image so the extracted
-   * text can flow through the normal chunk + embed pipeline. We
-   * resolve the user's OpenRouter key the same way the chat /
-   * arena code paths do — so budget gates, lazy provisioning,
-   * and the `monthly budget is 0` error message are all consistent
-   * with what the user already sees elsewhere.
-   *
-   * Returns the OCR text (possibly empty when the model can't
-   * read the image — the caller flushes that as the "No extractable
-   * text" branch). NO_TEXT_FOUND sentinel from the OCR prompt is
-   * normalised to empty here so the chunker never sees the marker
-   * as content.
-   */
-  private async extractTextFromImage(
-    userId: string,
-    buffer: Buffer,
-    mimetype: string,
-  ): Promise<string> {
-    const apiKey = await this.keyResolver.resolveUserKey(userId);
-    const dataUrl = `data:${mimetype};base64,${buffer.toString('base64')}`;
-    const { text } = await this.ocrFallback.extractText(dataUrl, apiKey);
-    return text;
-  }
-
   private inferMimeFromName(filename: string): string {
     const lower = filename.toLowerCase();
     if (lower.endsWith('.pdf')) return 'application/pdf';
@@ -554,10 +505,6 @@ export class KnowledgeIngestionService {
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     }
     if (lower.endsWith('.xls')) return 'application/vnd.ms-excel';
-    if (lower.endsWith('.png')) return 'image/png';
-    if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
-    if (lower.endsWith('.webp')) return 'image/webp';
-    if (lower.endsWith('.gif')) return 'image/gif';
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.md')) return 'text/markdown';
     if (lower.endsWith('.csv')) return 'text/csv';

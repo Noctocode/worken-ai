@@ -23,6 +23,7 @@ import {
   KnowledgeCoreService,
   type NameConflictAction,
 } from './knowledge-core.service.js';
+import { uploadFileFilter } from './upload-allowlist.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
 fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -80,30 +81,7 @@ export class KnowledgeCoreController {
         },
       }),
       limits: { fileSize: 50 * 1024 * 1024 },
-      fileFilter: (_req, file, cb) => {
-        // Allowlist must match what documents.service.parseFile +
-        // KnowledgeIngestionService.ingestOneFile can actually handle.
-        // Dropping legacy .doc (application/msword) — mammoth is
-        // .docx-only, so accepting .doc here just guarantees a
-        // "Skipped" badge later. Reject up front with a clearer
-        // message instead.
-        const allowedExt = /\.(pdf|docx|xlsx?|png|jpe?g)$/i;
-        const allowedMime =
-          /^(application\/(pdf|vnd\.openxmlformats|vnd\.ms-excel|octet-stream)|image\/(png|jpe?g))/i;
-        if (
-          !allowedExt.test(file.originalname) ||
-          !allowedMime.test(file.mimetype)
-        ) {
-          cb(
-            new BadRequestException(
-              `Unsupported file type: ${file.originalname}`,
-            ),
-            false,
-          );
-          return;
-        }
-        cb(null, true);
-      },
+      fileFilter: uploadFileFilter,
     }),
   )
   uploadFiles(

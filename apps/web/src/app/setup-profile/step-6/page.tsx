@@ -58,7 +58,7 @@ const CATEGORIES: Array<{
   { title: "Certificates", subtitle: "Professional creds", icon: Award },
 ];
 
-const ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
+const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 
 function hasAllowedExtension(name: string) {
   const lower = name.toLowerCase();
@@ -125,7 +125,7 @@ export default function SetupProfileStep6Page() {
       .filter((f) => !existingKeys.has(`${f.name}:${f.size}`));
     if (rejected.length > 0) {
       toast.error(
-        `Unsupported file type: ${rejected.map((f) => f.name).join(", ")}. Allowed: PDF, DOC, DOCX, TXT.`,
+        `Unsupported file type: ${rejected.map((f) => f.name).join(", ")}. Allowed: PDF, DOCX, TXT.`,
       );
     }
     if (additions.length > 0) setFiles([...files, ...additions]);
@@ -584,7 +584,7 @@ export default function SetupProfileStep6Page() {
                 Drop files here or click to browse
               </span>
               <span className="text-[13px] font-medium text-text-3">
-                Supports PDF, DOC, DOCX, TXT (Max 50MB per file)
+                Supports PDF, DOCX, TXT (Max 50MB per file)
               </span>
             </div>
             <span className="pointer-events-none ml-auto inline-flex h-[42px] items-center rounded bg-primary-7 px-6 text-sm font-medium text-text-white">
@@ -593,7 +593,7 @@ export default function SetupProfileStep6Page() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf,.doc,.docx,.txt"
+              accept=".pdf,.docx,.txt"
               multiple
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
