@@ -3431,6 +3431,10 @@ export interface DriveImportResult {
   added: number;
   skippedDuplicates: number;
   skippedUnsupported: number;
+  /** Files skipped at import time because Drive reported a size above
+   *  the per-file cap. Surfaced in the post-import toast so the user
+   *  knows why fewer files than expected ended up in KC. */
+  skippedTooLarge: number;
   sources: { id: string; driveFolderName: string }[];
 }
 

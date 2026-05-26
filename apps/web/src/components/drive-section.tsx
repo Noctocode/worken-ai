@@ -122,6 +122,15 @@ export function DriveSection() {
           `Imported ${result.added} new file${result.added === 1 ? "" : "s"}.`,
         );
       }
+      // Surface the size-cap skip count separately — fires whenever
+      // Re-sync ran but some files were over the per-file cap. The
+      // user sees Re-sync as "I asked for new files; did I get all
+      // of them?", so a silent skip would be misleading.
+      if (result.skippedTooLarge > 0) {
+        toast.warning(
+          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+        );
+      }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
       // New files land in KC immediately as 'pending' — refresh the
       // file lists so the user sees them appear.

@@ -222,7 +222,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     },
     onSuccess: (result) => {
       const skipped =
-        result.skippedDuplicates + result.skippedUnsupported;
+        result.skippedDuplicates +
+        result.skippedUnsupported +
+        result.skippedTooLarge;
       if (result.added === 0 && skipped === 0) {
         toast.info("No files found to import.");
       } else if (result.added === 0) {
@@ -230,6 +232,13 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       } else {
         toast.success(
           `Importing ${result.added} file${result.added === 1 ? "" : "s"} from Drive. They'll appear as they finish ingesting.`,
+        );
+      }
+      // Size-cap skips are noisy enough to warrant their own warning
+      // toast — the user picked those files expecting them to come in.
+      if (result.skippedTooLarge > 0) {
+        toast.warning(
+          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });

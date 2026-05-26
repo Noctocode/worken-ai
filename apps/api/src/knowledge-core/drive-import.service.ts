@@ -31,6 +31,27 @@ import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
  */
 const DRIVE_KC_FOLDER_NAME = 'Google Drive';
 
+/**
+ * Per-import safety cap. Drive folders in real corporate accounts
+ * routinely hold 5k+ files; a naive "Entire Drive" import without
+ * a guard would queue thousands of downloads, eat disk + API quota,
+ * and time out the request. We reject above this with a clear
+ * "narrow your selection" message instead of silently truncating
+ * (which the user wouldn't notice until something they expected
+ * is missing).
+ */
+const MAX_DRIVE_IMPORT_FILES = 1000;
+
+/**
+ * Per-file size cap. Matches the existing 50MB multer limit on
+ * manual uploads — without this, the Drive path bypasses that limit
+ * and could download GB-sized binaries straight into a Node Buffer
+ * (process OOM). Native Google formats (Docs/Sheets/Slides) report
+ * sizeBytes=null from Drive, so they get a post-download check in
+ * KnowledgeIngestionService.fetchDriveBytes instead.
+ */
+const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
+
 export type ImportScope =
   | { kind: 'all' }
   | { kind: 'folders'; folderIds: string[] };
@@ -42,6 +63,13 @@ export interface ImportResult {
   skippedDuplicates: number;
   /** Files Drive returned with a MIME we can't ingest. */
   skippedUnsupported: number;
+  /**
+   * Files skipped at import time because Drive reported a size above
+   * MAX_DRIVE_FILE_BYTES. Native Google formats (size unknown until
+   * export) get a separate post-download check that lands in
+   * ingestion_error on the row, not in this counter.
+   */
+  skippedTooLarge: number;
   /** Source rows touched by this import (created or re-synced). */
   sources: { id: string; driveFolderName: string }[];
 }
@@ -114,11 +142,13 @@ export class DriveImportService {
       added: 0,
       skippedDuplicates: 0,
       skippedUnsupported: 0,
+      skippedTooLarge: 0,
       sources: [],
     };
 
     if (scope.kind === 'all') {
       const files = await this.drive.listFiles(userId, { kind: 'all' });
+      this.enforceImportCountCap(files.length);
       const inserted = await this.upsertFilesAndSource(userId, {
         files,
         sourceScope: 'all',
@@ -130,34 +160,49 @@ export class DriveImportService {
       });
       result.added += inserted.added;
       result.skippedDuplicates += inserted.skippedDuplicates;
+      result.skippedTooLarge += inserted.skippedTooLarge;
       result.sources.push({
         id: inserted.sourceId,
         driveFolderName: 'My Drive',
       });
     } else {
-      // Process each picked folder as its own source row. One Drive
-      // listing per folder — the FE rarely picks more than a handful
-      // so the sequential round-trips are fine.
+      // Aggregate count across all picked folders so a "20 small
+      // folders" pick doesn't quietly bypass the per-import cap.
+      // First pass: tally Drive files across every folder, then run
+      // the cap check once before any database writes.
+      const perFolder: {
+        folderId: string;
+        folderName: string;
+        files: DriveFileMeta[];
+      }[] = [];
+      let totalFiles = 0;
       for (const folderId of scope.folderIds) {
         const folderName = await this.resolveDriveFolderName(userId, folderId);
         const files = await this.drive.listFiles(userId, {
           kind: 'folders',
           folderIds: [folderId],
         });
+        perFolder.push({ folderId, folderName, files });
+        totalFiles += files.length;
+      }
+      this.enforceImportCountCap(totalFiles);
+
+      for (const entry of perFolder) {
         const inserted = await this.upsertFilesAndSource(userId, {
-          files,
+          files: entry.files,
           sourceScope: 'folder',
-          driveFolderId: folderId,
-          driveFolderName: folderName,
+          driveFolderId: entry.folderId,
+          driveFolderName: entry.folderName,
           connectionId: connection.id,
           kcFolderId: targetFolderId,
           kcFileScope: fileScope,
         });
         result.added += inserted.added;
         result.skippedDuplicates += inserted.skippedDuplicates;
+        result.skippedTooLarge += inserted.skippedTooLarge;
         result.sources.push({
           id: inserted.sourceId,
-          driveFolderName: folderName,
+          driveFolderName: entry.folderName,
         });
       }
     }
@@ -305,6 +350,21 @@ export class DriveImportService {
    * existing rows — Re-sync of the same source only adds files that
    * appeared since last sync.
    */
+  /**
+   * Refuse the import if the total file count would blow past the
+   * per-import cap. Hard error (BadRequestException → FE toast) is
+   * deliberately picked over silent truncation: a user who imported
+   * "Entire Drive" and got only the first 1000 files would assume
+   * everything went through, miss the rest, and trip over it later.
+   */
+  private enforceImportCountCap(totalFiles: number): void {
+    if (totalFiles > MAX_DRIVE_IMPORT_FILES) {
+      throw new BadRequestException(
+        `This import would bring in ${totalFiles} files — the cap is ${MAX_DRIVE_IMPORT_FILES} per import. Pick fewer folders, or contact support to raise the limit.`,
+      );
+    }
+  }
+
   private async upsertFilesAndSource(
     userId: string,
     args: {
@@ -316,10 +376,30 @@ export class DriveImportService {
       kcFolderId: string;
       kcFileScope: string;
     },
-  ): Promise<{ sourceId: string; added: number; skippedDuplicates: number }> {
+  ): Promise<{
+    sourceId: string;
+    added: number;
+    skippedDuplicates: number;
+    skippedTooLarge: number;
+  }> {
+    // Strip files Drive reports as larger than MAX_DRIVE_FILE_BYTES
+    // BEFORE we insert any KC row — saves a download round-trip + a
+    // failed-ingestion row per oversized binary. Native Google
+    // formats slip through here (size is null until export) and get
+    // a post-download check in KnowledgeIngestionService.fetchDriveBytes.
+    const sizeFilteredFiles: DriveFileMeta[] = [];
+    let skippedTooLarge = 0;
+    for (const f of args.files) {
+      if (f.sizeBytes != null && f.sizeBytes > MAX_DRIVE_FILE_BYTES) {
+        skippedTooLarge++;
+        continue;
+      }
+      sizeFilteredFiles.push(f);
+    }
+
     // De-dupe against existing rows. One probe with inArray over the
     // candidate set is O(N) Postgres-side and avoids N+1 queries.
-    const candidateIds = args.files.map((f) => f.id);
+    const candidateIds = sizeFilteredFiles.map((f) => f.id);
     const existingExternal = candidateIds.length
       ? await this.db
           .select({ externalId: knowledgeFiles.externalId })
@@ -337,7 +417,7 @@ export class DriveImportService {
         .filter((id): id is string => id !== null),
     );
 
-    const newFiles = args.files.filter((f) => !existingSet.has(f.id));
+    const newFiles = sizeFilteredFiles.filter((f) => !existingSet.has(f.id));
 
     // ON CONFLICT DO UPDATE for the source row so a second import of
     // the same folder folds in as a Re-sync. The partial unique index
@@ -384,7 +464,12 @@ export class DriveImportService {
     }
 
     if (newFiles.length === 0) {
-      return { sourceId, added: 0, skippedDuplicates: existingSet.size };
+      return {
+        sourceId,
+        added: 0,
+        skippedDuplicates: existingSet.size,
+        skippedTooLarge,
+      };
     }
 
     // Insert knowledge_files rows in a single batched insert. fileType
@@ -414,6 +499,7 @@ export class DriveImportService {
       sourceId,
       added: newFiles.length,
       skippedDuplicates: existingSet.size,
+      skippedTooLarge,
     };
   }
 

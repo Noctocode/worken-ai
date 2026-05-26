@@ -20,6 +20,16 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 // folder, update both.
 const ONBOARDING_FOLDER_NAME = 'Onboarding';
 
+/**
+ * Per-file size cap for Drive imports. Matches the import-time cap in
+ * DriveImportService (kept duplicated rather than shared to avoid an
+ * extra import cycle for two small constants). Both must stay in
+ * sync — if you change one, change the other.
+ *
+ * 50MB matches the existing multer limit on manual uploads.
+ */
+const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
+
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
@@ -535,6 +545,13 @@ export class KnowledgeIngestionService {
    * file on disk is silently overwritten — the only way to get here
    * twice for the same row is an explicit re-ingest, which intends
    * to refresh.
+   *
+   * Size cap belt-and-braces: DriveImportService strips files larger
+   * than this BEFORE inserting a KC row, but Google native formats
+   * (Doc/Sheet/Slide) report sizeBytes=null from Drive and slip past
+   * the import-time check — they get caught here post-export. The
+   * surrounding try/catch persists the message as ingestion_error so
+   * the user can see why a particular file was skipped.
    */
   private async fetchDriveBytes(
     userId: string,
@@ -547,6 +564,12 @@ export class KnowledgeIngestionService {
       userId,
       file.externalId,
     );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `File is ${mb}MB — Drive imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per file. Skipped.`,
+      );
+    }
     const ext = this.extFromName(file.name);
     const storagePath = `uploads/knowledge-core/drive/${file.id}${ext}`;
     const absolutePath = resolve(process.cwd(), storagePath);
