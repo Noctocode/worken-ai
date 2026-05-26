@@ -624,6 +624,21 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // uploaded before this column existed; those simply opt out of
   // duplicate detection until they're re-uploaded.
   contentSha256: text("content_sha256"),
+  // Provenance: 'upload' for files added via the KC dropzone, 'drive'
+  // for files imported from a connected Google Drive. Drives the
+  // ingestion path (drive-source rows download from Drive before
+  // parsing) and lets the FE render a small Drive badge next to the
+  // file row.
+  source: text("source").notNull().default("upload"),
+  // External system's ID for this file. For source='drive' this is
+  // Drive's `fileId`. Nullable for source='upload'. The partial
+  // unique index below makes the same Drive file unimportable twice
+  // by the same uploader.
+  externalId: text("external_id"),
+  // Direct link back to the file in its external system. For Drive
+  // this is the `webViewLink` ("Open in Drive" button). Nullable
+  // outside of source='drive'.
+  externalUrl: text("external_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   // Fast lookup for the upload-path dupe check: given an uploader and
@@ -633,6 +648,12 @@ export const knowledgeFiles = pgTable("knowledge_files", {
     table.uploadedById,
     table.contentSha256,
   ),
+  // De-dupe import of the same Drive file by the same user. Partial
+  // so upload-source rows (external_id NULL) don't collide. Probed
+  // on every Drive import to decide insert-vs-skip.
+  uniqueIndex("knowledge_files_owner_external_unique")
+    .on(table.uploadedById, table.externalId)
+    .where(sql`${table.externalId} IS NOT NULL`),
 ]);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets
@@ -973,3 +994,149 @@ export const orgSettings = pgTable("org_settings", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * Provider-agnostic OAuth token store. The first provider hooked up
+ * here is `google_drive` (Knowledge Core → "Connect Google Drive"),
+ * but the table is shaped for OneDrive / Dropbox / etc. to slot in
+ * later under the same row layout.
+ *
+ * Distinct from `integrations` (BYOK LLM keys): OAuth needs an
+ * access/refresh pair, an expiry timestamp, and a reauth-required
+ * state machine, none of which fit the single-string
+ * `apiKeyEncrypted` shape that BYOK uses. Tokens are encrypted at
+ * rest via the same `EncryptionService` (AES-256-GCM, `v1:` prefix)
+ * that wraps BYOK keys.
+ *
+ * The Google sign-in flow (auth/google.strategy.ts) is *separate*
+ * from this — sign-in requests only `email + profile` and stores
+ * the resulting `googleId` directly on `users`. This table is
+ * populated by an incremental-authorization flow that requests
+ * `drive.readonly` on top of the existing grant when the user
+ * clicks "Connect Google Drive".
+ */
+export const oauthConnections = pgTable(
+  "oauth_connections",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'google_drive' for now. New providers add their own string
+    // here (e.g. 'microsoft_graph', 'dropbox') — service code
+    // dispatches on this column.
+    provider: text("provider").notNull(),
+    accessTokenEncrypted: text("access_token_encrypted").notNull(),
+    // Drive may omit refresh_token on re-consent if the user already
+    // granted offline access for this client. We request
+    // `prompt=consent` on every connect to force a fresh refresh
+    // token, but the column stays nullable so the code path is safe
+    // under Google's edge cases.
+    refreshTokenEncrypted: text("refresh_token_encrypted"),
+    // Space-separated scopes that were ACTUALLY granted (Google can
+    // return a subset of what we requested). Compared against the
+    // provider's required scope set when deciding whether the
+    // connection is usable.
+    scope: text("scope").notNull(),
+    // When `accessToken` expires. Refresh fires automatically when
+    // expires_at < now() + 60s on the next API call — see
+    // `GoogleDriveOAuthService.getValidAccessToken`.
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // Display cache of the connected Google account's email. Shown
+    // in the FE status chip ("Connected as petra@…"). Not used for
+    // routing — `ownerId` is the source of truth.
+    accountEmail: text("account_email"),
+    // 'active' | 'reauth_required'. Flipped to `reauth_required`
+    // when a refresh attempt fails (user revoked the grant in
+    // Google account settings, etc.); FE shows a "Reconnect" prompt
+    // then instead of the normal "Import from Drive" button.
+    status: text("status").notNull().default("active"),
+    connectedAt: timestamp("connected_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // One connection per (owner, provider) — reconnecting replaces
+    // the existing row, doesn't accumulate duplicates.
+    uniqueIndex("oauth_connections_owner_provider_unique").on(
+      table.ownerId,
+      table.provider,
+    ),
+  ],
+);
+
+/**
+ * Per-folder (or whole-drive) record of what's been imported from a
+ * connected `oauthConnection`. Drives the FE Re-sync UI:
+ *   - One row per imported folder = one "Re-sync" button in the
+ *     Knowledge Core page.
+ *   - `scope = 'all'` represents a "whole Drive" import; capped at
+ *     one row per owner via the partial unique index.
+ *   - `scope = 'folder'` rows hold `driveFolderId`; capped at one
+ *     row per (owner, folder) so re-importing the same folder
+ *     becomes a no-op the second time and the FE collapses to a
+ *     single Re-sync entry.
+ *
+ * Detaching a source removes the record but leaves the imported
+ * `knowledge_files` rows in place — the user removes those via the
+ * normal KC delete path. Re-sync only adds NEW files (matched by
+ * `external_id`); existing rows are not re-ingested even if the
+ * Drive copy changed (an explicit "re-ingest" path can be added
+ * later if needed).
+ */
+export const driveImportSources = pgTable(
+  "drive_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'all' for "Entire Drive" imports, 'folder' for a specific
+    // folder. Keeps the FE dispatch simple (no NULL checks on the
+    // folder id, just a `scope === 'all'` branch).
+    scope: text("scope").notNull(),
+    // Drive's `fileId` for the imported folder. NULL when
+    // scope='all' — Drive's root doesn't have a stable `fileId` we
+    // can rely on across "My Drive" / "Shared with me", so we walk
+    // the tree from `about.get.user.rootFolderId` at sync time
+    // instead.
+    driveFolderId: text("drive_folder_id"),
+    // Display name shown in the Re-sync UI. 'My Drive' for
+    // scope='all'. Cached at import time; not refreshed on rename
+    // in Drive (a future PR can pull this on each Re-sync if it
+    // becomes a real complaint).
+    driveFolderName: text("drive_folder_name").notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // How many KC files this source produced on its last sync.
+    // Used by the FE chip ("12 files imported"). Recomputed on
+    // every Re-sync.
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one source per (owner, drive_folder_id). The second
+    // import of the same folder folds into the existing row as a
+    // Re-sync, not a duplicate.
+    uniqueIndex("drive_import_sources_owner_folder_unique")
+      .on(table.ownerId, table.driveFolderId)
+      .where(sql`${table.driveFolderId} IS NOT NULL`),
+    // At most one "Entire Drive" source per owner — same idea but
+    // for scope='all' where drive_folder_id is NULL.
+    uniqueIndex("drive_import_sources_owner_all_unique")
+      .on(table.ownerId)
+      .where(sql`${table.scope} = 'all'`),
+  ],
+);

@@ -29,6 +29,13 @@
       "when": 1779800000000,
       "tag": "0003_team_integration_links",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1779820000000,
+      "tag": "0004_google_drive_oauth",
+      "breakpoints": true
     }
   ]
 }

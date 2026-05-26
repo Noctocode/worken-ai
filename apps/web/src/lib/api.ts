@@ -3399,3 +3399,118 @@ export async function dismissNotification(id: string): Promise<{ id: string }> {
   return res.json();
 }
 
+// ──────────────────────────────────────────────────────────────────
+// Google Drive — Knowledge Core integration
+// ──────────────────────────────────────────────────────────────────
+
+export interface DriveStatus {
+  connected: boolean;
+  accountEmail?: string;
+  status?: "active" | "reauth_required";
+  scope?: string;
+  lastSyncedAt?: string;
+}
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  hasChildren: boolean;
+}
+
+export interface DriveSource {
+  id: string;
+  scope: "all" | "folder";
+  driveFolderId: string | null;
+  driveFolderName: string;
+  lastSyncedAt: string;
+  fileCountAtLastSync: number;
+  createdAt: string;
+}
+
+export interface DriveImportResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedUnsupported: number;
+  sources: { id: string; driveFolderName: string }[];
+}
+
+export type DriveImportScope =
+  | { kind: "all" }
+  | { kind: "folders"; folderIds: string[] };
+
+export async function fetchDriveStatus(): Promise<DriveStatus> {
+  const res = await apiFetch("/google-drive/status");
+  if (!res.ok) throw new Error("Failed to fetch Drive status");
+  return res.json();
+}
+
+/**
+ * Kick off the OAuth flow. Hard-redirects the browser to the API's
+ * connect endpoint, which 302s on to Google's consent screen. Google
+ * sends the user back to /google-drive/callback, and the API in turn
+ * 302s back to `/knowledge-core?drive=connected | ?drive=error=...`.
+ */
+export function connectDrive(): void {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  window.location.href = `${apiUrl}/google-drive/connect`;
+}
+
+export async function disconnectDrive(): Promise<void> {
+  const res = await apiFetch("/google-drive/connection", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to disconnect Google Drive");
+}
+
+export async function fetchDriveFolders(
+  parentId?: string,
+): Promise<DriveFolder[]> {
+  const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
+  const res = await apiFetch(`/google-drive/folders${qs}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list Drive folders");
+  }
+  return res.json();
+}
+
+export async function importFromDrive(
+  scope: DriveImportScope,
+): Promise<DriveImportResult> {
+  const res = await apiFetch("/knowledge-core/drive/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to import from Drive");
+  }
+  return res.json();
+}
+
+export async function fetchDriveSources(): Promise<DriveSource[]> {
+  const res = await apiFetch("/knowledge-core/drive/sources");
+  if (!res.ok) throw new Error("Failed to list Drive sources");
+  return res.json();
+}
+
+export async function resyncDriveSource(
+  sourceId: string,
+): Promise<DriveImportResult> {
+  const res = await apiFetch(
+    `/knowledge-core/drive/sources/${sourceId}/resync`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-sync Drive source");
+  }
+  return res.json();
+}
+
+export async function deleteDriveSource(sourceId: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/drive/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete Drive source");
+}
+

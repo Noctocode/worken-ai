@@ -23,6 +23,10 @@ import {
   KnowledgeCoreService,
   type NameConflictAction,
 } from './knowledge-core.service.js';
+import {
+  DriveImportService,
+  type ImportScope,
+} from './drive-import.service.js';
 import { uploadFileFilter } from './upload-allowlist.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
@@ -38,7 +42,10 @@ function sanitizeFilename(name: string): string {
 
 @Controller('knowledge-core')
 export class KnowledgeCoreController {
-  constructor(private readonly service: KnowledgeCoreService) {}
+  constructor(
+    private readonly service: KnowledgeCoreService,
+    private readonly driveImport: DriveImportService,
+  ) {}
 
   @Get('folders')
   findAllFolders(@CurrentUser() user: AuthenticatedUser) {
@@ -261,5 +268,59 @@ export class KnowledgeCoreController {
   @Get('recent')
   recentFiles(@CurrentUser() user: AuthenticatedUser) {
     return this.service.recentFiles(user.id);
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Google Drive import + Re-sync
+  //
+  // OAuth lifecycle + raw folder browsing live under /google-drive/*
+  // (GoogleDriveController). These endpoints handle the Drive→KC
+  // orchestration only — listing sources, importing, re-syncing,
+  // detaching.
+  // ────────────────────────────────────────────────────────────────
+
+  /**
+   * Pull files from the user's connected Drive into KC. Returns
+   * `{ added, skippedDuplicates, ... }` so the FE can toast a
+   * meaningful "Imported N new files" message.
+   */
+  @Post('drive/import')
+  importFromDrive(
+    @Body() body: ImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.driveImport.importFromDrive(user.id, body);
+  }
+
+  /** All Drive sources the user has imported, for the Re-sync UI. */
+  @Get('drive/sources')
+  listDriveSources(@CurrentUser() user: AuthenticatedUser) {
+    return this.driveImport.listSources(user.id);
+  }
+
+  /**
+   * Re-sync one source. Same logic as importFromDrive but scoped to
+   * the source's Drive folder — only adds files that appeared on
+   * Drive since the last sync.
+   */
+  @Post('drive/sources/:id/resync')
+  resyncDriveSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.driveImport.resyncSource(user.id, id);
+  }
+
+  /**
+   * Drop a source row. Imported files stay in KC — the user removes
+   * them via the normal file delete path if they want a full cleanup.
+   */
+  @Delete('drive/sources/:id')
+  async deleteDriveSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.driveImport.deleteSource(user.id, id);
+    return { success: true };
   }
 }

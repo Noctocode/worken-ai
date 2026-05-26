@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import {
   knowledgeChunks,
   knowledgeFiles,
@@ -12,6 +12,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { GoogleDriveClientService } from '../google-drive/google-drive-client.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
@@ -55,6 +56,10 @@ export class KnowledgeIngestionService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
     private readonly notifications: NotificationsService,
+    // Used by the drive-source branch in ingestOneFile to fetch bytes
+    // before parsing. Injected from GoogleDriveModule via the
+    // KnowledgeCoreModule import. Not required for upload-source rows.
+    private readonly driveClient: GoogleDriveClientService,
   ) {}
 
   /**
@@ -79,6 +84,8 @@ export class KnowledgeIngestionService {
   private async runUserFileIngestion(userId: string): Promise<void> {
     // Files are scoped to folders, and folders are owned by users.
     // We claim only files this user uploaded that are still pending.
+    // `source` + `externalId` are part of the projection so the
+    // drive-source branch in `ingestOneFile` can dispatch on them.
     const claimed = await this.db
       .update(knowledgeFiles)
       .set({ ingestionStatus: 'processing' })
@@ -94,6 +101,8 @@ export class KnowledgeIngestionService {
         name: knowledgeFiles.name,
         scope: knowledgeFiles.scope,
         visibility: knowledgeFiles.visibility,
+        source: knowledgeFiles.source,
+        externalId: knowledgeFiles.externalId,
       });
 
     if (claimed.length === 0) return;
@@ -111,9 +120,29 @@ export class KnowledgeIngestionService {
       name: string;
       scope: string;
       visibility: string;
+      source: string;
+      externalId: string | null;
     },
   ): Promise<void> {
     try {
+      // Drive-source rows arrive with storagePath=null — the import
+      // endpoint inserts metadata only, then we download here. We
+      // persist the storagePath + sizeBytes back on the row so the
+      // user can download/re-ingest later without another Drive call.
+      if (file.source === 'drive' && !file.storagePath) {
+        if (!file.externalId) {
+          throw new Error(
+            'Drive-source file is missing externalId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchDriveBytes(userId, file);
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
       if (!file.storagePath) {
         throw new Error('File has no storage path on disk');
       }
@@ -493,6 +522,43 @@ export class KnowledgeIngestionService {
       )
       .orderBy(desc(similarity))
       .limit(limit);
+  }
+
+  /**
+   * Pull a Drive-source file's bytes via the Drive client, write
+   * them to a deterministic path under `uploads/knowledge-core/drive/`,
+   * and return the relative storagePath the row should record.
+   *
+   * The basename is the row's UUID so we never collide with a manual
+   * upload (those live one directory up under `uploads/knowledge-core/`
+   * with multer-generated `<rand>-<safe-name>` basenames). Existing
+   * file on disk is silently overwritten — the only way to get here
+   * twice for the same row is an explicit re-ingest, which intends
+   * to refresh.
+   */
+  private async fetchDriveBytes(
+    userId: string,
+    file: { id: string; name: string; externalId: string | null },
+  ): Promise<string> {
+    if (!file.externalId) {
+      throw new Error('Drive-source file is missing externalId');
+    }
+    const download = await this.driveClient.downloadFile(
+      userId,
+      file.externalId,
+    );
+    const ext = this.extFromName(file.name);
+    const storagePath = `uploads/knowledge-core/drive/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  private extFromName(filename: string): string {
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1 || dot === filename.length - 1) return '';
+    return filename.slice(dot).toLowerCase();
   }
 
   private inferMimeFromName(filename: string): string {
