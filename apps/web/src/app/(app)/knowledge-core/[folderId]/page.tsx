@@ -764,14 +764,36 @@ export default function FolderDetailPage({
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Back link */}
-      <Link
-        href="/knowledge-core"
-        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[14px] text-text-2 hover:text-primary-6"
+      {/* Breadcrumbs — KC root → every ancestor → current. Replaces
+          the old "Back to Folders" link so users can jump up several
+          levels at once instead of clicking Back repeatedly. Current
+          folder is non-clickable; ancestors are links. */}
+      <nav
+        aria-label="Breadcrumb"
+        className="flex flex-wrap items-center gap-1 text-[14px] text-text-3"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Folders
-      </Link>
+        <Link
+          href="/knowledge-core"
+          className="cursor-pointer hover:text-primary-6"
+        >
+          Folders
+        </Link>
+        {folder.breadcrumb.map((crumb) => (
+          <span key={crumb.id} className="flex items-center gap-1">
+            <span className="text-text-3/60">/</span>
+            <Link
+              href={`/knowledge-core/${crumb.id}`}
+              className="cursor-pointer hover:text-primary-6"
+            >
+              {crumb.name}
+            </Link>
+          </span>
+        ))}
+        <span className="flex items-center gap-1">
+          <span className="text-text-3/60">/</span>
+          <span className="text-text-1 font-medium">{folder.name}</span>
+        </span>
+      </nav>
 
       {/* Folder info card */}
       <div className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -812,6 +834,41 @@ export default function FolderDetailPage({
           </Button>
         </label>
       </div>
+
+      {/* Subfolders section — only when this folder has children.
+          Same card layout as the KC root folder grid so the user
+          gets a familiar drill-down experience. Drive imports
+          surface here ("Google Drive" parent shows "Test" / etc.
+          as children); user-created nested folders show up the
+          same way. */}
+      {folder.children.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-[16px] font-bold text-text-1">Subfolders</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {folder.children.map((child) => (
+              <Link
+                key={child.id}
+                href={`/knowledge-core/${child.id}`}
+                className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-primary-1"
+              >
+                <Folder
+                  className="h-8 w-8 text-primary-6"
+                  strokeWidth={1.5}
+                />
+                <div className="flex flex-col gap-1">
+                  <span className="truncate text-[15px] font-semibold text-text-1">
+                    {child.name}
+                  </span>
+                  <span className="text-[12px] text-text-3">
+                    {child.fileCount} file{child.fileCount === 1 ? "" : "s"} ·{" "}
+                    {formatBytes(child.totalBytes)}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Search */}
       <div className="relative sm:max-w-xs">

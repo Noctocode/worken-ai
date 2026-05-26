@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   pgTable,
   primaryKey,
   text,
@@ -573,15 +574,39 @@ export const tenderTeamMembers = pgTable("tender_team_members", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
-export const knowledgeFolders = pgTable("knowledge_folders", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  ownerId: uuid("owner_id")
-    .references(() => users.id)
-    .notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const knowledgeFolders = pgTable(
+  "knowledge_folders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id)
+      .notNull(),
+    // Self-referencing FK: when set, this folder lives inside another
+    // folder; when NULL, it's a top-level folder (the only state
+    // before migration 0005 introduced nesting). Cascade on delete
+    // tears down the whole subtree — child folders go, and the
+    // existing FK on knowledge_files.folder_id (also cascade) takes
+    // every file under them.
+    //
+    // Drive import uses this to put "Google Drive > <DriveFolderName>"
+    // so imports from many Drive folders don't pile into a single
+    // mixed bag. Users can also create their own nested folders via
+    // the FE.
+    parentFolderId: uuid("parent_folder_id").references(
+      (): AnyPgColumn => knowledgeFolders.id,
+      { onDelete: "cascade" },
+    ),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Children of a given folder — the FE folder-detail view runs
+    // this query on every navigation, and without an index it would
+    // full-scan knowledge_folders.
+    index("knowledge_folders_parent_idx").on(table.parentFolderId),
+  ],
+);
 
 export const knowledgeFiles = pgTable("knowledge_files", {
   id: uuid("id").primaryKey().defaultRandom(),

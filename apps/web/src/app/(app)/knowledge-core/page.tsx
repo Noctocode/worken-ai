@@ -272,7 +272,10 @@ export default function KnowledgeCorePage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createKnowledgeFolder,
+    // Wrap so React Query sees a single-arg mutationFn — the optional
+    // parentFolderId on createKnowledgeFolder defaults to null which
+    // matches the legacy top-level-only behaviour of this dialog.
+    mutationFn: (name: string) => createKnowledgeFolder(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       setNewFolderOpen(false);

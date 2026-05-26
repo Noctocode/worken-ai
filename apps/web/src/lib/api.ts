@@ -2025,6 +2025,10 @@ export interface KnowledgeFolder {
   id: string;
   name: string;
   ownerId: string;
+  /** Top-level folders return null; nested folders carry the id of
+   *  their parent. The KC root view lists only top-level folders;
+   *  children surface inside their parent's detail page. */
+  parentFolderId: string | null;
   fileCount: number;
   totalBytes: number;
   createdAt: string;
@@ -2089,9 +2093,17 @@ export interface KnowledgeFolderDetail {
   id: string;
   name: string;
   ownerId: string;
+  /** Null when this is a top-level folder. */
+  parentFolderId: string | null;
   createdAt: string;
   updatedAt: string;
   files: KnowledgeFile[];
+  /** Direct child folders (one level deep). FE renders them above
+   *  the files table as folder cards, same shape as the root view. */
+  children: KnowledgeFolder[];
+  /** Lineage from root → parent (excluding this folder itself).
+   *  Empty for top-level folders. Drives the breadcrumb. */
+  breadcrumb: { id: string; name: string }[];
 }
 
 export interface KnowledgeRecentFile {
@@ -2125,11 +2137,17 @@ export async function fetchKnowledgeFolder(
 
 export async function createKnowledgeFolder(
   name: string,
-): Promise<Pick<KnowledgeFolder, "id" | "name" | "ownerId" | "createdAt" | "updatedAt">> {
+  parentFolderId?: string | null,
+): Promise<
+  Pick<
+    KnowledgeFolder,
+    "id" | "name" | "ownerId" | "parentFolderId" | "createdAt" | "updatedAt"
+  >
+> {
   const res = await apiFetch("/knowledge-core/folders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, parentFolderId: parentFolderId ?? null }),
   });
   if (!res.ok) throw new Error("Failed to create folder");
   return res.json();

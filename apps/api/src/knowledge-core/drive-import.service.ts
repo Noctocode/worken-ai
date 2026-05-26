@@ -23,13 +23,14 @@ import { GoogleDriveOAuthService } from '../google-drive/google-drive-oauth.serv
 import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
 
 /**
- * The auto-folder Drive imports land in. We deliberately don't mirror
- * Drive's folder hierarchy — keeps KC's already-flat folder model
- * simple and lets users freely reorganise post-import without
- * fighting a sync. drive_import_sources tracks the *Drive* folders;
- * this is just where the imported files live inside KC.
+ * The KC parent folder Drive imports nest under. "Entire Drive"
+ * imports land directly inside this folder; folder-scoped imports
+ * each get their own child folder named exactly after the Drive
+ * source (e.g. "Google Drive > Test"). Lazily created on first
+ * import so users who never touch Drive don't carry around an empty
+ * parent folder.
  */
-const DRIVE_KC_FOLDER_NAME = 'Google Drive';
+const DRIVE_PARENT_FOLDER_NAME = 'Google Drive';
 
 /**
  * Per-import safety cap. Drive folders in real corporate accounts
@@ -126,9 +127,10 @@ export class DriveImportService {
 
     const connection = await this.oauth.requireConnection(userId);
 
-    // Resolve the target KC folder. Created lazily so users who never
-    // touch Drive don't carry around an empty "Google Drive" folder.
-    const targetFolderId = await this.ensureDriveFolder(userId);
+    // Resolve (or create) the "Google Drive" parent folder. Children
+    // for per-folder imports are nested under this; entire-Drive
+    // imports go directly inside it.
+    const driveParentFolderId = await this.ensureDriveParentFolder(userId);
 
     // Hydrate per-user metadata once (used by every inserted row).
     const [uploader] = await this.db
@@ -149,13 +151,16 @@ export class DriveImportService {
     if (scope.kind === 'all') {
       const files = await this.drive.listFiles(userId, { kind: 'all' });
       this.enforceImportCountCap(files.length);
+      // Entire-Drive import lands DIRECTLY in the "Google Drive"
+      // parent — no child folder, since there's no single Drive
+      // folder to name the child after.
       const inserted = await this.upsertFilesAndSource(userId, {
         files,
         sourceScope: 'all',
         driveFolderId: null,
         driveFolderName: 'My Drive',
         connectionId: connection.id,
-        kcFolderId: targetFolderId,
+        kcFolderId: driveParentFolderId,
         kcFileScope: fileScope,
       });
       result.added += inserted.added;
@@ -188,13 +193,22 @@ export class DriveImportService {
       this.enforceImportCountCap(totalFiles);
 
       for (const entry of perFolder) {
+        // Per-folder imports get their own KC child under
+        // "Google Drive", named exactly like the Drive folder so
+        // multiple Drive sources don't pile into one bucket.
+        // Re-imports of the same folder reuse the existing child.
+        const kcChildFolderId = await this.ensureChildFolder(
+          userId,
+          driveParentFolderId,
+          entry.folderName,
+        );
         const inserted = await this.upsertFilesAndSource(userId, {
           files: entry.files,
           sourceScope: 'folder',
           driveFolderId: entry.folderId,
           driveFolderName: entry.folderName,
           connectionId: connection.id,
-          kcFolderId: targetFolderId,
+          kcFolderId: kcChildFolderId,
           kcFileScope: fileScope,
         });
         result.added += inserted.added;
@@ -296,24 +310,70 @@ export class DriveImportService {
   }
 
   /**
-   * Ensure the "Google Drive" KC folder exists for this user, return
-   * its id. Idempotent — picks up an existing folder by name if the
-   * user previously imported.
+   * Ensure the top-level "Google Drive" KC folder exists for this
+   * user, return its id. Idempotent — picks up an existing folder by
+   * name (parent_folder_id IS NULL) if the user previously imported.
    */
-  private async ensureDriveFolder(userId: string): Promise<string> {
+  private async ensureDriveParentFolder(userId: string): Promise<string> {
     const [existing] = await this.db
       .select({ id: knowledgeFolders.id })
       .from(knowledgeFolders)
       .where(
         and(
           eq(knowledgeFolders.ownerId, userId),
-          eq(knowledgeFolders.name, DRIVE_KC_FOLDER_NAME),
+          eq(knowledgeFolders.name, DRIVE_PARENT_FOLDER_NAME),
+          // Constrain to top-level — if the user happens to have a
+          // child folder also named "Google Drive" somewhere, we
+          // don't want to nest under it accidentally.
+          sql`${knowledgeFolders.parentFolderId} IS NULL`,
         ),
       );
     if (existing) return existing.id;
     const [created] = await this.db
       .insert(knowledgeFolders)
-      .values({ name: DRIVE_KC_FOLDER_NAME, ownerId: userId })
+      .values({
+        name: DRIVE_PARENT_FOLDER_NAME,
+        ownerId: userId,
+        parentFolderId: null,
+      })
+      .returning({ id: knowledgeFolders.id });
+    return created.id;
+  }
+
+  /**
+   * Ensure a child folder named `name` exists under `parentId` for
+   * this user, return its id. Used to nest per-Drive-folder children
+   * under the "Google Drive" parent so multiple Drive sources don't
+   * pile into one mixed bag. Re-imports of the same Drive folder
+   * land in the same KC child.
+   *
+   * Match is by (owner, parent, name) so a user could theoretically
+   * have a manual KC subfolder with the same name under a DIFFERENT
+   * parent without colliding here.
+   */
+  private async ensureChildFolder(
+    userId: string,
+    parentId: string,
+    name: string,
+  ): Promise<string> {
+    const [existing] = await this.db
+      .select({ id: knowledgeFolders.id })
+      .from(knowledgeFolders)
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          eq(knowledgeFolders.parentFolderId, parentId),
+          eq(knowledgeFolders.name, name),
+        ),
+      );
+    if (existing) return existing.id;
+    const [created] = await this.db
+      .insert(knowledgeFolders)
+      .values({
+        name,
+        ownerId: userId,
+        parentFolderId: parentId,
+      })
       .returning({ id: knowledgeFolders.id });
     return created.id;
   }

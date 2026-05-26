@@ -59,13 +59,17 @@ export class KnowledgeCoreController {
 
   @Post('folders')
   createFolder(
-    @Body() body: { name: string },
+    @Body() body: { name: string; parentFolderId?: string | null },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
       throw new BadRequestException('Folder name is required');
     }
-    return this.service.createFolder(body.name, user.id);
+    return this.service.createFolder(
+      body.name,
+      user.id,
+      body.parentFolderId ?? null,
+    );
   }
 
   @Delete('folders/:id')

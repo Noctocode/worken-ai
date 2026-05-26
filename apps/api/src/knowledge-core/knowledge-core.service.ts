@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, desc, inArray, sql } from 'drizzle-orm';
+import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import {
   knowledgeFolders,
   knowledgeFiles,
@@ -69,12 +69,25 @@ export class KnowledgeCoreService {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
+  /**
+   * Folder list for the /knowledge-core root view. Only top-level
+   * folders (`parent_folder_id IS NULL`) — nested children are
+   * surfaced inside their parent's detail page, not at the root.
+   *
+   * fileCount + totalBytes count only files DIRECTLY in each folder,
+   * not files inside descendant folders. A recursive total would be
+   * nicer UX-wise ("Google Drive has 17 files across subfolders")
+   * but adds query complexity for marginal value at this stage; the
+   * folder detail page shows each subfolder's own count and the user
+   * can drill down for specifics.
+   */
   async findAllFolders(userId: string) {
     const rows = await this.db
       .select({
         id: knowledgeFolders.id,
         name: knowledgeFolders.name,
         ownerId: knowledgeFolders.ownerId,
+        parentFolderId: knowledgeFolders.parentFolderId,
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
         fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
@@ -88,11 +101,19 @@ export class KnowledgeCoreService {
         knowledgeFiles,
         eq(knowledgeFiles.folderId, knowledgeFolders.id),
       )
-      .where(eq(knowledgeFolders.ownerId, userId))
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          // Top-level only at the root view; subfolders hidden inside
+          // their parent's detail page.
+          isNull(knowledgeFolders.parentFolderId),
+        ),
+      )
       .groupBy(
         knowledgeFolders.id,
         knowledgeFolders.name,
         knowledgeFolders.ownerId,
+        knowledgeFolders.parentFolderId,
         knowledgeFolders.createdAt,
         knowledgeFolders.updatedAt,
       )
@@ -153,7 +174,78 @@ export class KnowledgeCoreService {
       projects: projectLinks.get(f.id) ?? [],
     }));
 
-    return { ...folder, files: filesWithLinks };
+    // Subfolders living directly under this folder. Each row carries
+    // its own file count + size so the FE can render the same folder
+    // card as on the KC root.
+    const childRows = await this.db
+      .select({
+        id: knowledgeFolders.id,
+        name: knowledgeFolders.name,
+        ownerId: knowledgeFolders.ownerId,
+        parentFolderId: knowledgeFolders.parentFolderId,
+        createdAt: knowledgeFolders.createdAt,
+        updatedAt: knowledgeFolders.updatedAt,
+        fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
+        totalBytes:
+          sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
+            'total_bytes',
+          ),
+      })
+      .from(knowledgeFolders)
+      .leftJoin(
+        knowledgeFiles,
+        eq(knowledgeFiles.folderId, knowledgeFolders.id),
+      )
+      .where(eq(knowledgeFolders.parentFolderId, id))
+      .groupBy(
+        knowledgeFolders.id,
+        knowledgeFolders.name,
+        knowledgeFolders.ownerId,
+        knowledgeFolders.parentFolderId,
+        knowledgeFolders.createdAt,
+        knowledgeFolders.updatedAt,
+      )
+      .orderBy(desc(knowledgeFolders.updatedAt));
+
+    const children = childRows.map((r) => ({
+      ...r,
+      fileCount: Number(r.fileCount),
+      totalBytes: Number(r.totalBytes),
+    }));
+
+    // Breadcrumb chain — the lineage from the KC root down to this
+    // folder's parent, in display order. Used by the FE to render
+    // "KC / Google Drive / Test" at the top of the folder page.
+    // Walks up via parent_folder_id in a small loop; depth is bounded
+    // by MAX_BREADCRUMB_DEPTH so a pathological cycle (shouldn't ever
+    // happen — the schema doesn't enforce it but Drive import never
+    // creates cycles) can't infinitely loop.
+    const breadcrumb: { id: string; name: string }[] = [];
+    const MAX_BREADCRUMB_DEPTH = 16;
+    let currentParentId: string | null = folder.parentFolderId;
+    let safety = MAX_BREADCRUMB_DEPTH;
+    while (currentParentId && safety-- > 0) {
+      const [parent] = await this.db
+        .select({
+          id: knowledgeFolders.id,
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, currentParentId));
+      if (!parent) break;
+      // Prepend so the chain reads root-to-current; we're walking
+      // bottom-up so each ancestor goes at the front.
+      breadcrumb.unshift({ id: parent.id, name: parent.name });
+      currentParentId = parent.parentFolderId;
+    }
+
+    return {
+      ...folder,
+      files: filesWithLinks,
+      children,
+      breadcrumb,
+    };
   }
 
   /**
@@ -210,10 +302,35 @@ export class KnowledgeCoreService {
     return out;
   }
 
-  async createFolder(name: string, userId: string) {
+  async createFolder(
+    name: string,
+    userId: string,
+    parentFolderId?: string | null,
+  ) {
+    // Validate the parent exists + belongs to the same user when
+    // provided. Skipping this would let a caller plant their folders
+    // under another user's tree via a guessed UUID.
+    if (parentFolderId) {
+      const [parent] = await this.db
+        .select({ ownerId: knowledgeFolders.ownerId })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, parentFolderId));
+      if (!parent) {
+        throw new NotFoundException('Parent folder not found');
+      }
+      if (parent.ownerId !== userId) {
+        throw new ForbiddenException(
+          "Can't create a folder inside someone else's folder",
+        );
+      }
+    }
     const [folder] = await this.db
       .insert(knowledgeFolders)
-      .values({ name: name.trim(), ownerId: userId })
+      .values({
+        name: name.trim(),
+        ownerId: userId,
+        parentFolderId: parentFolderId ?? null,
+      })
       .returning();
     return folder;
   }
