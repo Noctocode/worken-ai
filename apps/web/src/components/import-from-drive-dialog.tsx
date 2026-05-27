@@ -448,13 +448,14 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
           <div className="flex flex-col gap-4 py-2">
             {phase === "scanning" ? (
               <div className="flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-3">Scanning your Drive…</span>
-                  <span className="font-medium text-text-1 tabular-nums">
-                    {scanned.toLocaleString()} files found
-                  </span>
+                <div className="flex items-center gap-2 text-[13px] text-text-3">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                  Scanning your Drive…
                 </div>
-                {/* Indeterminate bar during scan */}
+                {/* Indeterminate bar during scan — no raw file count shown
+                    because Drive returns all files (including Google Docs,
+                    images, etc.) before the supported-extension filter runs,
+                    which would show a misleadingly high number. */}
                 <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
                   <div className="h-full w-1/3 animate-[scan-slide_1.4s_ease-in-out_infinite] rounded-full bg-primary-6" />
                 </div>
