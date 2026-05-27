@@ -6,6 +6,6 @@
 --   team_ids    — JSONB string[]; NULL unless visibility='teams'.
 --   project_ids — JSONB string[]; NULL unless visibility='project'.
 
-ALTER TABLE "drive_import_sources" ADD COLUMN "visibility" text NOT NULL DEFAULT 'all';--> statement-breakpoint
-ALTER TABLE "drive_import_sources" ADD COLUMN "team_ids" jsonb;--> statement-breakpoint
-ALTER TABLE "drive_import_sources" ADD COLUMN "project_ids" jsonb;
+ALTER TABLE "drive_import_sources" ADD COLUMN IF NOT EXISTS "visibility" text NOT NULL DEFAULT 'all';--> statement-breakpoint
+ALTER TABLE "drive_import_sources" ADD COLUMN IF NOT EXISTS "team_ids" jsonb;--> statement-breakpoint
+ALTER TABLE "drive_import_sources" ADD COLUMN IF NOT EXISTS "project_ids" jsonb;
