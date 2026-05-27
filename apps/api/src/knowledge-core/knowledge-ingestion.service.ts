@@ -119,7 +119,7 @@ export class KnowledgeIngestionService {
                   eq(knowledgeFiles.ingestionStatus, 'pending'),
                 ),
               )
-              .orderBy(knowledgeFiles.createdAt)
+              .orderBy(desc(knowledgeFiles.createdAt))
               .limit(INGESTION_BATCH_SIZE),
           ),
         )
