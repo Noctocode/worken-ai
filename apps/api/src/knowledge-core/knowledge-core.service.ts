@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import {
+  driveImportSources,
   knowledgeFolders,
   knowledgeFiles,
   knowledgeFileTeams,
@@ -349,6 +350,48 @@ export class KnowledgeCoreService {
       .select({ storagePath: knowledgeFiles.storagePath })
       .from(knowledgeFiles)
       .where(eq(knowledgeFiles.folderId, id));
+
+    // Clean up Drive import sources so the Re-sync UI stays accurate.
+    // Two cases based on where in the Drive folder hierarchy this KC
+    // folder sits:
+    //
+    //   1. Top-level "Google Drive" folder (name='Google Drive',
+    //      parentFolderId IS NULL): delete ALL drive sources for this
+    //      user — both scope='all' and any scope='folder' imports,
+    //      since the entire Drive tree in KC is being removed.
+    //
+    //   2. Child folder directly under "Google Drive" (parentFolderId
+    //      points to a top-level folder named 'Google Drive'): delete
+    //      the matching scope='folder' source by driveFolderName.
+    //      `ensureChildFolder` always names KC children identically to
+    //      the Drive folder, so name matching is reliable here.
+    const isDriveParent =
+      folder.name === 'Google Drive' && folder.parentFolderId === null;
+
+    if (isDriveParent) {
+      await this.db
+        .delete(driveImportSources)
+        .where(eq(driveImportSources.ownerId, userId));
+    } else if (folder.parentFolderId) {
+      const [parent] = await this.db
+        .select({ name: knowledgeFolders.name, parentFolderId: knowledgeFolders.parentFolderId })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, folder.parentFolderId));
+
+      const parentIsGoogleDrive =
+        parent?.name === 'Google Drive' && parent.parentFolderId === null;
+
+      if (parentIsGoogleDrive) {
+        await this.db
+          .delete(driveImportSources)
+          .where(
+            and(
+              eq(driveImportSources.ownerId, userId),
+              eq(driveImportSources.driveFolderName, folder.name),
+            ),
+          );
+      }
+    }
 
     await this.db.delete(knowledgeFolders).where(eq(knowledgeFolders.id, id));
 
