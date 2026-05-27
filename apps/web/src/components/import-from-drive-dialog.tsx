@@ -159,19 +159,20 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   });
 
   // One-page file-count estimate for the "Entire Drive" warning banner.
-  // Fetched once when the dialog opens (or when switching to "all" scope)
-  // and cached for 5 minutes so reopening is instant.
-  // Fetch as soon as the dialog opens (not conditional on scopeChoice) so
-  // the count is cached and ready by the time the warning banner renders.
-  // staleTime keeps it fresh for 5 min so re-opening is instant.
+  // Fetched once when the dialog opens and cached for 5 minutes so
+  // reopening is instant. `hasMore: true` means Drive has >1 000 raw
+  // files (before the supported-extension filter) — we still show the
+  // filtered count with a "+" suffix rather than the generic fallback.
   const {
     data: fileCountData,
     isLoading: fileCountLoading,
+    isError: fileCountError,
   } = useQuery({
     queryKey: ["drive", "file-count"],
     queryFn: fetchDriveFileCount,
     enabled: open,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
   const [rootFolders, setRootFolders] = useState<DriveFolder[] | null>(null);
   const [rootLoading, setRootLoading] = useState(false);
@@ -564,16 +565,21 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                         <Loader2 className="h-3 w-3 animate-spin" />
                         Checking your Drive…
                       </span>
-                    ) : fileCountData && !fileCountData.hasMore ? (
+                    ) : fileCountData ? (
                       <>
                         This will import{" "}
                         <span className="tabular-nums">
                           {fileCountData.count.toLocaleString()}
+                          {fileCountData.hasMore ? "+" : ""}
                         </span>{" "}
-                        {fileCountData.count === 1 ? "file" : "files"}
+                        {fileCountData.count === 1 && !fileCountData.hasMore
+                          ? "file"
+                          : "files"}
                       </>
+                    ) : fileCountError ? (
+                      "This will import all supported files from your Drive"
                     ) : (
-                      "This will import up to 10,000 files"
+                      "This will import supported files from your Drive"
                     )}
                   </p>
                   <p className="text-[12px] text-warning-7">
