@@ -60,6 +60,7 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  deleteKnowledgeFolder,
   type KnowledgeFileVisibility,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
@@ -642,6 +643,23 @@ export default function FolderDetailPage({
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
 
+  // Subfolder delete — same confirm-dialog pattern as root /knowledge-core
+  const [deleteSubfolderId, setDeleteSubfolderId] = useState<string | null>(null);
+  const deleteSubfolderName =
+    folder?.children.find((c) => c.id === deleteSubfolderId)?.name ?? "";
+
+  const deleteSubfolderMutation = useMutation({
+    mutationFn: (id: string) => deleteKnowledgeFolder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder", folderId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      setDeleteSubfolderId(null);
+      toast.success("Folder deleted.");
+    },
+    onError: () => toast.error("Failed to delete folder."),
+  });
+
   // Same pattern as on the root /knowledge-core page — full
   // visibility editor lives in a shared dialog, opened per file by
   // the dropdown menu item.
@@ -850,10 +868,40 @@ export default function FolderDetailPage({
                 href={`/knowledge-core/${child.id}`}
                 className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-primary-1"
               >
-                <Folder
-                  className="h-8 w-8 text-primary-6"
-                  strokeWidth={1.5}
-                />
+                <div className="flex items-start justify-between">
+                  <Folder
+                    className="h-8 w-8 text-primary-6"
+                    strokeWidth={1.5}
+                  />
+                  {/* Intercept click so the Link doesn't navigate when
+                      the user opens / interacts with the dropdown. */}
+                  <div
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => setDeleteSubfolderId(child.id)}
+                          className="text-danger-6 focus:text-danger-6"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
                 <div className="flex flex-col gap-1">
                   <span className="truncate text-[15px] font-semibold text-text-1">
                     {child.name}
@@ -1588,6 +1636,46 @@ export default function FolderDetailPage({
               className="cursor-pointer"
             >
               {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Subfolder confirm dialog */}
+      <Dialog
+        open={deleteSubfolderId !== null}
+        onOpenChange={(open) =>
+          !open && !deleteSubfolderMutation.isPending && setDeleteSubfolderId(null)
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Folder</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{deleteSubfolderName}</strong> and all its files? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteSubfolderId(null)}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteSubfolderId)
+                  deleteSubfolderMutation.mutate(deleteSubfolderId);
+              }}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteSubfolderMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
