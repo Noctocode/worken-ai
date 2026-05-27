@@ -32,7 +32,7 @@ interface FolderNodeProps {
   folder: DriveFolder;
   depth: number;
   expanded: Set<string>;
-  children: Record<string, DriveFolder[] | undefined>;
+  folderMap: Record<string, DriveFolder[] | undefined>;
   loading: Set<string>;
   selected: Set<string>;
   onToggleExpand: (id: string) => void;
@@ -43,7 +43,7 @@ function FolderNode({
   folder,
   depth,
   expanded,
-  children,
+  folderMap,
   loading,
   selected,
   onToggleExpand,
@@ -52,7 +52,7 @@ function FolderNode({
   const isExpanded = expanded.has(folder.id);
   const isLoading = loading.has(folder.id);
   const isSelected = selected.has(folder.id);
-  const kids = children[folder.id];
+  const kids = folderMap[folder.id];
 
   return (
     <li>
@@ -95,7 +95,7 @@ function FolderNode({
               folder={child}
               depth={depth + 1}
               expanded={expanded}
-              children={children}
+              folderMap={folderMap}
               loading={loading}
               selected={selected}
               onToggleExpand={onToggleExpand}
@@ -333,7 +333,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                       folder={f}
                       depth={0}
                       expanded={expanded}
-                      children={children}
+                      folderMap={children}
                       loading={loading}
                       selected={selected}
                       onToggleExpand={toggleExpand}

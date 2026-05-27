@@ -37,9 +37,7 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
-  type KnowledgeFolder,
   type KnowledgeFileVisibility,
-  type KnowledgeRecentFile,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
 } from "@/lib/api";
