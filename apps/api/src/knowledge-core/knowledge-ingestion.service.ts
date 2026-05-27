@@ -93,33 +93,51 @@ export class KnowledgeIngestionService {
   }
 
   private async runUserFileIngestion(userId: string): Promise<void> {
-    // Files are scoped to folders, and folders are owned by users.
-    // We claim only files this user uploaded that are still pending.
-    // `source` + `externalId` are part of the projection so the
-    // drive-source branch in `ingestOneFile` can dispatch on them.
-    const claimed = await this.db
-      .update(knowledgeFiles)
-      .set({ ingestionStatus: 'processing' })
-      .where(
-        and(
-          eq(knowledgeFiles.uploadedById, userId),
-          eq(knowledgeFiles.ingestionStatus, 'pending'),
-        ),
-      )
-      .returning({
-        id: knowledgeFiles.id,
-        storagePath: knowledgeFiles.storagePath,
-        name: knowledgeFiles.name,
-        scope: knowledgeFiles.scope,
-        visibility: knowledgeFiles.visibility,
-        source: knowledgeFiles.source,
-        externalId: knowledgeFiles.externalId,
-      });
+    // Process pending files in small batches so the FE shows a clear
+    // queue progression ("Queued" → "Adding" → "In context") instead
+    // of flipping every file to "Adding" at once. Each iteration claims
+    // INGESTION_BATCH_SIZE rows atomically via a subquery, processes
+    // them sequentially, then loops to pick up the next batch. Remaining
+    // files stay 'pending' ("Queued") until their turn.
+    const INGESTION_BATCH_SIZE = 5;
 
-    if (claimed.length === 0) return;
+    while (true) {
+      // Atomic claim: SELECT … LIMIT N inside the WHERE so only
+      // INGESTION_BATCH_SIZE rows transition pending→processing per round.
+      const claimed = await this.db
+        .update(knowledgeFiles)
+        .set({ ingestionStatus: 'processing' })
+        .where(
+          inArray(
+            knowledgeFiles.id,
+            this.db
+              .select({ id: knowledgeFiles.id })
+              .from(knowledgeFiles)
+              .where(
+                and(
+                  eq(knowledgeFiles.uploadedById, userId),
+                  eq(knowledgeFiles.ingestionStatus, 'pending'),
+                ),
+              )
+              .orderBy(knowledgeFiles.createdAt)
+              .limit(INGESTION_BATCH_SIZE),
+          ),
+        )
+        .returning({
+          id: knowledgeFiles.id,
+          storagePath: knowledgeFiles.storagePath,
+          name: knowledgeFiles.name,
+          scope: knowledgeFiles.scope,
+          visibility: knowledgeFiles.visibility,
+          source: knowledgeFiles.source,
+          externalId: knowledgeFiles.externalId,
+        });
 
-    for (const file of claimed) {
-      await this.ingestOneFile(userId, file);
+      if (claimed.length === 0) break;
+
+      for (const file of claimed) {
+        await this.ingestOneFile(userId, file);
+      }
     }
   }
 
