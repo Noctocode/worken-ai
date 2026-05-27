@@ -424,34 +424,43 @@ export class GoogleDriveClientService {
   }
 
   /**
-   * Fast one-page scan (≤ 1 000 files) used by the import-dialog
-   * warning banner. Applies the native-type filter and the per-file
-   * size cap, and appends synthetic extensions for Google-native
-   * formats so the caller can run the extension allowlist on top.
-   * `hasMore: true` means the Drive has > 1 000 files and the caller
-   * should fall back to the generic "up to 10,000" message.
+   * Full-Drive scan used by the import-dialog warning banner.
+   * Paginates through ALL Drive pages (max 1 000 files/page) so the
+   * returned count matches what the actual import will pick up.
+   * Safety cap: 20 pages (≤ 20 000 raw files). `hasMore: true` only
+   * when a Drive genuinely exceeds that cap — practically never.
    */
   async estimateFileCount(
     userId: string,
   ): Promise<{ fileNames: string[]; hasMore: boolean }> {
     return this.runWithRetry(userId, async (drive) => {
-      const res = await drive.files.list({
-        q: `mimeType != '${FOLDER_MIME}' and trashed = false`,
-        corpora: 'user',
-        fields: 'nextPageToken, files(id, name, mimeType, size)',
-        pageSize: 1000,
-      });
       const fileNames: string[] = [];
-      for (const f of res.data.files ?? []) {
-        if (!f.id || !f.name || !f.mimeType) continue;
-        if (SKIP_NATIVE_MIMES.has(f.mimeType)) continue;
-        if (f.size != null && Number(f.size) > 50 * 1024 * 1024) continue;
-        const native = NATIVE_EXPORTS[f.mimeType];
-        fileNames.push(
-          native ? this.appendExtIfMissing(f.name, native.ext) : f.name,
-        );
-      }
-      return { fileNames, hasMore: !!res.data.nextPageToken };
+      let pageToken: string | undefined;
+      const MAX_PAGES = 20;
+      let pages = 0;
+
+      do {
+        const res = await drive.files.list({
+          q: `mimeType != '${FOLDER_MIME}' and trashed = false`,
+          corpora: 'user',
+          fields: 'nextPageToken, files(id, name, mimeType, size)',
+          pageSize: 1000,
+          ...(pageToken ? { pageToken } : {}),
+        });
+        for (const f of res.data.files ?? []) {
+          if (!f.id || !f.name || !f.mimeType) continue;
+          if (SKIP_NATIVE_MIMES.has(f.mimeType)) continue;
+          if (f.size != null && Number(f.size) > 50 * 1024 * 1024) continue;
+          const native = NATIVE_EXPORTS[f.mimeType];
+          fileNames.push(
+            native ? this.appendExtIfMissing(f.name, native.ext) : f.name,
+          );
+        }
+        pageToken = res.data.nextPageToken ?? undefined;
+        pages++;
+      } while (pageToken && pages < MAX_PAGES);
+
+      return { fileNames, hasMore: !!pageToken };
     });
   }
 
