@@ -91,7 +91,9 @@ export function DriveSection() {
       toast.success("Google Drive connected.");
       void queryClient.invalidateQueries({ queryKey: ["drive"] });
     } else if (flag.startsWith("error=")) {
-      const reason = decodeURIComponent(flag.slice("error=".length));
+      // searchParams.get() already decodes percent-sequences; a second
+      // decodeURIComponent would throw on a literal '%' in the message.
+      const reason = flag.slice("error=".length);
       toast.error(`Couldn't connect Google Drive: ${reason}`);
     }
     const next = new URLSearchParams(searchParams.toString());

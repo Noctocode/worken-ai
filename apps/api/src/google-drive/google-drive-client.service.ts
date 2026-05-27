@@ -238,21 +238,31 @@ export class GoogleDriveClientService {
    * Drive-native formats with no useful export target (forms, sites,
    * maps, …) are filtered out here so they never reach the ingestion
    * path. Folders themselves are excluded.
+   *
+   * @param fileLimit - Optional early-exit cap. Listing stops as soon
+   *   as the collected array exceeds this number. The caller (Drive
+   *   import service) is expected to enforce the hard cap on the
+   *   returned array; passing `MAX_IMPORT_FILES + 1` here lets the
+   *   size check fail fast without walking the rest of a huge Drive.
    */
   async listFiles(
     userId: string,
     scope: { kind: 'all' } | { kind: 'folders'; folderIds: string[] },
+    fileLimit?: number,
   ): Promise<DriveFileMeta[]> {
     if (scope.kind === 'all') {
-      return this.runWithRetry(userId, (drive) => this.listFilesGlobal(drive));
+      return this.runWithRetry(userId, (drive) =>
+        this.listFilesGlobal(drive, fileLimit),
+      );
     }
     return this.runWithRetry(userId, (drive) =>
-      this.listFilesUnderFolders(drive, scope.folderIds),
+      this.listFilesUnderFolders(drive, scope.folderIds, fileLimit),
     );
   }
 
   private async listFilesGlobal(
     drive: drive_v3.Drive,
+    fileLimit?: number,
   ): Promise<DriveFileMeta[]> {
     const out: DriveFileMeta[] = [];
     let pageToken: string | undefined;
@@ -270,6 +280,10 @@ export class GoogleDriveClientService {
         if (meta) out.push(meta);
       }
       pageToken = res.data.nextPageToken ?? undefined;
+      // Early exit: stop fetching pages once we've seen more than the
+      // caller's cap so a huge Drive fails fast rather than exhausting
+      // all pages before the BadRequestException fires.
+      if (fileLimit !== undefined && out.length > fileLimit) break;
     } while (pageToken);
     return out;
   }
@@ -277,12 +291,13 @@ export class GoogleDriveClientService {
   private async listFilesUnderFolders(
     drive: drive_v3.Drive,
     folderIds: string[],
+    fileLimit?: number,
   ): Promise<DriveFileMeta[]> {
     const out: DriveFileMeta[] = [];
     const visited = new Set<string>();
     const queue = [...folderIds];
 
-    while (queue.length > 0) {
+    outer: while (queue.length > 0) {
       const folderId = queue.shift()!;
       if (visited.has(folderId)) continue;
       visited.add(folderId);
@@ -306,6 +321,8 @@ export class GoogleDriveClientService {
           if (meta) out.push(meta);
         }
         pageToken = res.data.nextPageToken ?? undefined;
+        // Early exit: stop the entire BFS once we're over the cap.
+        if (fileLimit !== undefined && out.length > fileLimit) break outer;
       } while (pageToken);
     }
     return out;

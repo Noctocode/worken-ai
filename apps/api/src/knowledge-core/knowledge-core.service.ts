@@ -392,11 +392,19 @@ export class KnowledgeCoreService {
         parent?.name === 'Google Drive' && parent.parentFolderId === null;
 
       if (parentIsGoogleDrive) {
+        // Match by (ownerId, scope='folder', driveFolderName). Drive
+        // allows duplicate folder names, so in theory this could hit
+        // multiple sources — but `ensureChildFolder` always reuses one
+        // KC child per Drive folder name, so a duplicate KC child can't
+        // exist under "Google Drive" for the same user. Fully stable
+        // matching would require persisting driveFolderId on the KC
+        // folder row; that's a schema change deferred to a future PR.
         await this.db
           .delete(driveImportSources)
           .where(
             and(
               eq(driveImportSources.ownerId, userId),
+              eq(driveImportSources.scope, 'folder'),
               eq(driveImportSources.driveFolderName, folder.name),
             ),
           );

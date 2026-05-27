@@ -191,7 +191,11 @@ export class DriveImportService {
     };
 
     if (scope.kind === 'all') {
-      const files = await this.drive.listFiles(userId, { kind: 'all' });
+      const files = await this.drive.listFiles(
+        userId,
+        { kind: 'all' },
+        MAX_DRIVE_IMPORT_FILES + 1,
+      );
       this.enforceImportCountCap(files.length);
       // Entire-Drive import lands DIRECTLY in the "Google Drive"
       // parent — no child folder, since there's no single Drive
@@ -229,10 +233,11 @@ export class DriveImportService {
       let totalFiles = 0;
       for (const folderId of scope.folderIds) {
         const folderName = await this.resolveDriveFolderName(userId, folderId);
-        const files = await this.drive.listFiles(userId, {
-          kind: 'folders',
-          folderIds: [folderId],
-        });
+        const files = await this.drive.listFiles(
+          userId,
+          { kind: 'folders', folderIds: [folderId] },
+          MAX_DRIVE_IMPORT_FILES + 1,
+        );
         perFolder.push({ folderId, folderName, files });
         totalFiles += files.length;
       }
@@ -559,7 +564,13 @@ export class DriveImportService {
     // — we can't use one INSERT…ON CONFLICT for both, so dispatch.
     let sourceId: string;
     const [existingSource] = await this.db
-      .select({ id: driveImportSources.id })
+      .select({
+        id: driveImportSources.id,
+        // Fetch the stored count so we can increment rather than
+        // recompute — countSourceFiles() returned 0 for folder-scoped
+        // sources, which reset the chip to only the new batch size.
+        fileCountAtLastSync: driveImportSources.fileCountAtLastSync,
+      })
       .from(driveImportSources)
       .where(
         and(
@@ -570,8 +581,7 @@ export class DriveImportService {
         ),
       );
     if (existingSource) {
-      const fileCount = await this.countSourceFiles(userId, args);
-      const updatedCount = fileCount + newFiles.length;
+      const updatedCount = existingSource.fileCountAtLastSync + newFiles.length;
       // Preserve the original visibility on re-sync — callers that
       // don't pass visibility (re-sync path) must read it from the
       // source row first and forward it, so we never overwrite it here.
@@ -673,43 +683,6 @@ export class DriveImportService {
       skippedTooLarge,
       skippedUnsupported,
     };
-  }
-
-  /**
-   * Total files currently in KC under this source. Used by the FE
-   * chip "12 files imported" — derived from `external_id` ownership
-   * since we don't track source<->file directly (the source's
-   * driveFolderId can re-derive the set by walking Drive again, but
-   * here we count what's actually in KC instead).
-   *
-   * Cheap approximation: count rows for this user where externalId
-   * matches a file that lives under args.driveFolderId. For the MVP
-   * we just return 0 if we can't disambiguate — the count gets
-   * over-written on the next Re-sync anyway.
-   */
-  private async countSourceFiles(
-    userId: string,
-    args: { sourceScope: 'all' | 'folder'; driveFolderId: string | null },
-  ): Promise<number> {
-    if (args.sourceScope === 'all') {
-      const [row] = await this.db
-        .select({
-          count: sql<string>`count(*)`,
-        })
-        .from(knowledgeFiles)
-        .where(
-          and(
-            eq(knowledgeFiles.uploadedById, userId),
-            eq(knowledgeFiles.source, 'drive'),
-          ),
-        );
-      return Number(row?.count ?? 0);
-    }
-    // Folder-scoped: we can't precisely attribute KC rows to one
-    // specific source without a join table. For MVP we return 0 and
-    // let the +N from this sync establish the count. A future PR
-    // can add a drive_import_source_files join if precision matters.
-    return 0;
   }
 
   private extFromName(name: string): string {
