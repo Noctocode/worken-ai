@@ -400,4 +400,23 @@ export class GoogleDriveClientService {
       };
     });
   }
+
+  /**
+   * Resolve a Drive folder's display name directly via files.get.
+   * More reliable than scanning root-level children (which misses
+   * nested folders). Falls back to a synthetic slug on error.
+   */
+  async getFolderName(userId: string, folderId: string): Promise<string> {
+    try {
+      return await this.runWithRetry(userId, async (drive) => {
+        const res = await drive.files.get({
+          fileId: folderId,
+          fields: 'name',
+        });
+        return res.data.name ?? `Folder (${folderId.slice(0, 8)}…)`;
+      });
+    } catch {
+      return `Folder (${folderId.slice(0, 8)}…)`;
+    }
+  }
 }

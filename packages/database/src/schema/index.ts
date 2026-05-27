@@ -1147,6 +1147,15 @@ export const driveImportSources = pgTable(
     fileCountAtLastSync: integer("file_count_at_last_sync")
       .notNull()
       .default(0),
+    // Visibility applied to files imported from this source. Stored
+    // so Re-sync can reproduce the original setting without asking the
+    // user again. Defaults to 'all'.
+    visibility: text("visibility").notNull().default('all'),
+    // JSON-serialised string[] — team / project ids that files from
+    // this source should be linked to. NULL unless visibility is
+    // 'teams' or 'project'.
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

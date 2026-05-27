@@ -133,8 +133,8 @@ export function DriveSection() {
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
       // New files land in KC immediately as 'pending' — refresh the
       // file lists so the user sees them appear.
-      void queryClient.invalidateQueries({ queryKey: ["knowledgeFolders"] });
-      void queryClient.invalidateQueries({ queryKey: ["recentKnowledgeFiles"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : "Re-sync failed"),

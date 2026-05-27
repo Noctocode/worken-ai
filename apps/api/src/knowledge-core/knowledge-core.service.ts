@@ -197,7 +197,12 @@ export class KnowledgeCoreService {
         knowledgeFiles,
         eq(knowledgeFiles.folderId, knowledgeFolders.id),
       )
-      .where(eq(knowledgeFolders.parentFolderId, id))
+      .where(
+        and(
+          eq(knowledgeFolders.parentFolderId, id),
+          eq(knowledgeFolders.ownerId, userId),
+        ),
+      )
       .groupBy(
         knowledgeFolders.id,
         knowledgeFolders.name,
@@ -233,7 +238,12 @@ export class KnowledgeCoreService {
           parentFolderId: knowledgeFolders.parentFolderId,
         })
         .from(knowledgeFolders)
-        .where(eq(knowledgeFolders.id, currentParentId));
+        .where(
+          and(
+            eq(knowledgeFolders.id, currentParentId),
+            eq(knowledgeFolders.ownerId, userId),
+          ),
+        );
       if (!parent) break;
       // Prepend so the chain reads root-to-current; we're walking
       // bottom-up so each ancestor goes at the front.

@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import * as fs from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import {
@@ -146,9 +147,15 @@ export class KnowledgeIngestionService {
           );
         }
         const storagePath = await this.fetchDriveBytes(userId, file);
+        // Resolve actual byte size now that the file is on disk —
+        // Drive doesn't report reliable sizes for native formats before
+        // export, so we update sizeBytes here to keep folder totals accurate.
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
         await this.db
           .update(knowledgeFiles)
-          .set({ storagePath })
+          .set({ storagePath, sizeBytes: actualBytes })
           .where(eq(knowledgeFiles.id, file.id));
         file.storagePath = storagePath;
       }

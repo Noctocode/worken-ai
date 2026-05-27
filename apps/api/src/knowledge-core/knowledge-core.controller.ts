@@ -65,6 +65,14 @@ export class KnowledgeCoreController {
     if (!body.name || typeof body.name !== 'string' || !body.name.trim()) {
       throw new BadRequestException('Folder name is required');
     }
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (
+      body.parentFolderId != null &&
+      !UUID_RE.test(body.parentFolderId)
+    ) {
+      throw new BadRequestException('parentFolderId must be a valid UUID');
+    }
     return this.service.createFolder(
       body.name,
       user.id,

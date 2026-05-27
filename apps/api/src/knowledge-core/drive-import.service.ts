@@ -15,6 +15,7 @@ import {
   projectKnowledgeFiles,
   users,
 } from '@worken/database/schema';
+import { UPLOAD_ALLOWED_EXTENSIONS } from './upload-allowlist.js';
 
 import { DATABASE, type Database } from '../database/database.module.js';
 import {
@@ -134,6 +135,38 @@ export class DriveImportService {
       );
     }
 
+    // Validate visibility + its dependent fields.
+    const VALID_VISIBILITIES: DriveVisibility[] = [
+      'all',
+      'admins',
+      'teams',
+      'project',
+    ];
+    if (
+      scope.visibility !== undefined &&
+      !VALID_VISIBILITIES.includes(scope.visibility)
+    ) {
+      throw new BadRequestException(
+        `Invalid visibility "${scope.visibility}". Must be one of: ${VALID_VISIBILITIES.join(', ')}.`,
+      );
+    }
+    if (
+      scope.visibility === 'teams' &&
+      (!Array.isArray(scope.teamIds) || scope.teamIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'teamIds must be a non-empty array when visibility is "teams".',
+      );
+    }
+    if (
+      scope.visibility === 'project' &&
+      (!Array.isArray(scope.projectIds) || scope.projectIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+
     const connection = await this.oauth.requireConnection(userId);
 
     // Resolve (or create) the "Google Drive" parent folder. Children
@@ -178,6 +211,7 @@ export class DriveImportService {
       result.added += inserted.added;
       result.skippedDuplicates += inserted.skippedDuplicates;
       result.skippedTooLarge += inserted.skippedTooLarge;
+      result.skippedUnsupported += inserted.skippedUnsupported;
       result.sources.push({
         id: inserted.sourceId,
         driveFolderName: 'My Drive',
@@ -229,6 +263,7 @@ export class DriveImportService {
         result.added += inserted.added;
         result.skippedDuplicates += inserted.skippedDuplicates;
         result.skippedTooLarge += inserted.skippedTooLarge;
+        result.skippedUnsupported += inserted.skippedUnsupported;
         result.sources.push({
           id: inserted.sourceId,
           driveFolderName: entry.folderName,
@@ -266,8 +301,18 @@ export class DriveImportService {
       );
     if (!source) throw new NotFoundException('Drive source not found');
 
+    // Reproduce the original visibility settings so newly-added files
+    // match whatever the user picked on the initial import. Without
+    // this, re-sync would silently default new files to 'all', which
+    // would be surprising for a source originally scoped to a team.
+    const visibilityExtras = {
+      visibility: (source.visibility as DriveVisibility) ?? undefined,
+      teamIds: (source.teamIds as string[] | null) ?? undefined,
+      projectIds: (source.projectIds as string[] | null) ?? undefined,
+    };
+
     if (source.scope === 'all') {
-      return this.importFromDrive(userId, { kind: 'all' });
+      return this.importFromDrive(userId, { kind: 'all', ...visibilityExtras });
     }
     if (!source.driveFolderId) {
       throw new BadRequestException(
@@ -277,6 +322,7 @@ export class DriveImportService {
     return this.importFromDrive(userId, {
       kind: 'folders',
       folderIds: [source.driveFolderId],
+      ...visibilityExtras,
     });
   }
 
@@ -394,37 +440,19 @@ export class DriveImportService {
   }
 
   /**
-   * Best-effort Drive folder name resolver for the source record.
-   * Falls back to the raw folder id if Drive can't be queried (e.g.
-   * permission error). The name is a display cache — losing it
-   * doesn't break sync (Drive listings are keyed on folderId, not
-   * name).
+   * Resolve a Drive folder's display name via a direct `files.get`
+   * call. Works for any folder depth — not just root-level children —
+   * and falls back to a synthetic slug on error (permission denied,
+   * folder deleted, etc.). The name is a display cache for the
+   * Re-sync UI; losing it doesn't break sync.
    */
-  private async resolveDriveFolderName(
+  private resolveDriveFolderName(
     userId: string,
     folderId: string,
   ): Promise<string> {
-    try {
-      const folders = await this.drive.listFolders(userId, 'root');
-      const match = folders.find((f) => f.id === folderId);
-      if (match) return match.name;
-      // Fall through to per-id lookup for nested folders. listFolders
-      // only returns immediate children; nested picks need a direct
-      // `files.get(folderId)` lookup — skipped here for MVP; the FE
-      // can pass folderName in the import payload if precision
-      // matters more than a follow-up PR.
-      return `Folder (${folderId.slice(0, 8)}…)`;
-    } catch {
-      return `Folder (${folderId.slice(0, 8)}…)`;
-    }
+    return this.drive.getFolderName(userId, folderId);
   }
 
-  /**
-   * Insert new knowledge_files rows + upsert the source record in one
-   * transaction. Dedupe by (uploaded_by_id, external_id) against
-   * existing rows — Re-sync of the same source only adds files that
-   * appeared since last sync.
-   */
   /**
    * Refuse the import if the total file count would blow past the
    * per-import cap. Hard error (BadRequestException → FE toast) is
@@ -440,6 +468,15 @@ export class DriveImportService {
     }
   }
 
+  /**
+   * Insert new knowledge_files rows + upsert the source record.
+   * Dedupe by (uploaded_by_id, external_id) against existing rows —
+   * Re-sync of the same source only adds files that appeared since last
+   * sync. Filters out oversized files (skippedTooLarge) and files with
+   * unsupported extensions (skippedUnsupported) before any DB writes.
+   * Touches the KC folder's updatedAt so the folder surfaces at the
+   * top of recently-modified lists.
+   */
   private async upsertFilesAndSource(
     userId: string,
     args: {
@@ -459,6 +496,7 @@ export class DriveImportService {
     added: number;
     skippedDuplicates: number;
     skippedTooLarge: number;
+    skippedUnsupported: number;
   }> {
     // Strip files Drive reports as larger than MAX_DRIVE_FILE_BYTES
     // BEFORE we insert any KC row — saves a download round-trip + a
@@ -475,9 +513,26 @@ export class DriveImportService {
       sizeFilteredFiles.push(f);
     }
 
+    // Strip files whose extension KC can't parse (same allowlist as
+    // the manual upload endpoint). Google-native exports always produce
+    // .docx/.xlsx/.pdf so they all pass; the only files filtered here
+    // are uploaded binaries with unsupported formats (videos, images,
+    // zip archives, etc.). Counting them and returning to the FE is
+    // cleaner than creating a row that immediately lands in
+    // ingestion_error='Skipped'.
+    const ingestionReadyFiles: DriveFileMeta[] = [];
+    let skippedUnsupported = 0;
+    for (const f of sizeFilteredFiles) {
+      if (!UPLOAD_ALLOWED_EXTENSIONS.test(f.name)) {
+        skippedUnsupported++;
+        continue;
+      }
+      ingestionReadyFiles.push(f);
+    }
+
     // De-dupe against existing rows. One probe with inArray over the
     // candidate set is O(N) Postgres-side and avoids N+1 queries.
-    const candidateIds = sizeFilteredFiles.map((f) => f.id);
+    const candidateIds = ingestionReadyFiles.map((f) => f.id);
     const existingExternal = candidateIds.length
       ? await this.db
           .select({ externalId: knowledgeFiles.externalId })
@@ -495,7 +550,7 @@ export class DriveImportService {
         .filter((id): id is string => id !== null),
     );
 
-    const newFiles = sizeFilteredFiles.filter((f) => !existingSet.has(f.id));
+    const newFiles = ingestionReadyFiles.filter((f) => !existingSet.has(f.id));
 
     // ON CONFLICT DO UPDATE for the source row so a second import of
     // the same folder folds in as a Re-sync. The partial unique index
@@ -517,6 +572,9 @@ export class DriveImportService {
     if (existingSource) {
       const fileCount = await this.countSourceFiles(userId, args);
       const updatedCount = fileCount + newFiles.length;
+      // Preserve the original visibility on re-sync — callers that
+      // don't pass visibility (re-sync path) must read it from the
+      // source row first and forward it, so we never overwrite it here.
       await this.db
         .update(driveImportSources)
         .set({
@@ -536,6 +594,11 @@ export class DriveImportService {
           driveFolderId: args.driveFolderId,
           driveFolderName: args.driveFolderName,
           fileCountAtLastSync: newFiles.length,
+          // Persist visibility so Re-sync can reproduce the original
+          // selection without asking the user again.
+          visibility: args.visibility ?? 'all',
+          teamIds: args.teamIds ?? null,
+          projectIds: args.projectIds ?? null,
         })
         .returning({ id: driveImportSources.id });
       sourceId = inserted.id;
@@ -547,6 +610,7 @@ export class DriveImportService {
         added: 0,
         skippedDuplicates: existingSet.size,
         skippedTooLarge,
+        skippedUnsupported,
       };
     }
 
@@ -595,11 +659,19 @@ export class DriveImportService {
       );
     }
 
+    // Touch the KC folder's updatedAt so folder-list queries that order
+    // by recency surface this folder at the top after an import.
+    await this.db
+      .update(knowledgeFolders)
+      .set({ updatedAt: new Date() })
+      .where(eq(knowledgeFolders.id, args.kcFolderId));
+
     return {
       sourceId,
       added: newFiles.length,
       skippedDuplicates: existingSet.size,
       skippedTooLarge,
+      skippedUnsupported,
     };
   }
 
