@@ -242,8 +242,8 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
-      void queryClient.invalidateQueries({ queryKey: ["knowledgeFolders"] });
-      void queryClient.invalidateQueries({ queryKey: ["recentKnowledgeFiles"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       onOpenChange(false);
     },
     onError: (err) => {
