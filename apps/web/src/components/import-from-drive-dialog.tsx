@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
   Cloud,
@@ -130,6 +131,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const isAdmin = currentUser?.role === "admin";
 
   const [scopeChoice, setScopeChoice] = useState<ImportScopeChoice>("all");
+  const [entireDriveConfirmed, setEntireDriveConfirmed] = useState(false);
   const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -160,6 +162,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (!open) return;
     setScopeChoice("all");
+    setEntireDriveConfirmed(false);
     setVisibility("all");
     setSelectedTeamIds([]);
     setSelectedProjectIds([]);
@@ -295,7 +298,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
 
   const canSubmit =
     !importMutation.isPending &&
-    (scopeChoice === "all" || selected.size > 0) &&
+    (scopeChoice === "folders" ? selected.size > 0 : entireDriveConfirmed) &&
     visibilityValid;
 
   return (
@@ -319,7 +322,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               <input
                 type="radio"
                 checked={scopeChoice === "all"}
-                onChange={() => setScopeChoice("all")}
+                onChange={() => {
+                  setScopeChoice("all");
+                  setEntireDriveConfirmed(false);
+                }}
                 className="mt-0.5 h-4 w-4 cursor-pointer accent-primary-6"
               />
               <div className="flex flex-col gap-0.5">
@@ -348,6 +354,37 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               </div>
             </label>
           </div>
+
+          {/* Entire Drive confirmation warning */}
+          {scopeChoice === "all" && (
+            <div className="flex flex-col gap-2 rounded border border-warning-3 bg-warning-1 p-3">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-7" />
+                <div className="flex flex-col gap-1">
+                  <p className="text-[13px] font-medium text-warning-8">
+                    This will import up to 10,000 files
+                  </p>
+                  <p className="text-[12px] text-warning-7">
+                    Every supported document (.pdf, .docx, .xlsx) from your
+                    entire Google Drive will be scanned and queued for
+                    ingestion. This can take several minutes and will consume
+                    significant storage and processing resources.
+                  </p>
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 pl-6">
+                <input
+                  type="checkbox"
+                  checked={entireDriveConfirmed}
+                  onChange={(e) => setEntireDriveConfirmed(e.target.checked)}
+                  className="h-4 w-4 cursor-pointer accent-warning-7"
+                />
+                <span className="text-[12px] font-medium text-warning-8">
+                  I understand — import my entire Drive
+                </span>
+              </label>
+            </div>
+          )}
 
           {/* Folder tree (only when "Choose folders" is selected) */}
           {scopeChoice === "folders" && (

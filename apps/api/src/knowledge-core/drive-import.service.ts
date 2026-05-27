@@ -36,15 +36,19 @@ import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
 const DRIVE_PARENT_FOLDER_NAME = 'Google Drive';
 
 /**
- * Per-import safety cap. Drive folders in real corporate accounts
- * routinely hold 5k+ files; a naive "Entire Drive" import without
- * a guard would queue thousands of downloads, eat disk + API quota,
- * and time out the request. We reject above this with a clear
- * "narrow your selection" message instead of silently truncating
- * (which the user wouldn't notice until something they expected
- * is missing).
+ * Per-import safety cap for folder-scoped imports. Folder picks are
+ * typically narrow; we keep a tighter ceiling to prevent an accidental
+ * "select all" from overwhelming the ingestion queue.
  */
-const MAX_DRIVE_IMPORT_FILES = 1000;
+const MAX_FOLDER_IMPORT_FILES = 1000;
+
+/**
+ * Higher cap for "Entire Drive" imports. The FE shows an explicit
+ * confirmation step (file-count warning + checkbox) before the user
+ * can trigger this path, so the risk of an accidental mass-import is
+ * low. Still capped to protect against runaway ingestion.
+ */
+const MAX_ALL_IMPORT_FILES = 10_000;
 
 /**
  * Per-file size cap. Matches the existing 50MB multer limit on
@@ -194,9 +198,9 @@ export class DriveImportService {
       const files = await this.drive.listFiles(
         userId,
         { kind: 'all' },
-        MAX_DRIVE_IMPORT_FILES + 1,
+        MAX_ALL_IMPORT_FILES + 1,
       );
-      this.enforceImportCountCap(files.length);
+      this.enforceImportCountCap(files.length, 'all');
       // Entire-Drive import lands DIRECTLY in the "Google Drive"
       // parent — no child folder, since there's no single Drive
       // folder to name the child after.
@@ -236,12 +240,12 @@ export class DriveImportService {
         const files = await this.drive.listFiles(
           userId,
           { kind: 'folders', folderIds: [folderId] },
-          MAX_DRIVE_IMPORT_FILES + 1,
+          MAX_FOLDER_IMPORT_FILES + 1,
         );
         perFolder.push({ folderId, folderName, files });
         totalFiles += files.length;
       }
-      this.enforceImportCountCap(totalFiles);
+      this.enforceImportCountCap(totalFiles, 'folders');
 
       for (const entry of perFolder) {
         // Per-folder imports get their own KC child under
@@ -462,13 +466,20 @@ export class DriveImportService {
    * Refuse the import if the total file count would blow past the
    * per-import cap. Hard error (BadRequestException → FE toast) is
    * deliberately picked over silent truncation: a user who imported
-   * "Entire Drive" and got only the first 1000 files would assume
+   * "Entire Drive" and got only the first N files would assume
    * everything went through, miss the rest, and trip over it later.
    */
-  private enforceImportCountCap(totalFiles: number): void {
-    if (totalFiles > MAX_DRIVE_IMPORT_FILES) {
+  private enforceImportCountCap(
+    totalFiles: number,
+    kind: 'all' | 'folders',
+  ): void {
+    const cap =
+      kind === 'all' ? MAX_ALL_IMPORT_FILES : MAX_FOLDER_IMPORT_FILES;
+    if (totalFiles > cap) {
       throw new BadRequestException(
-        `This import would bring in ${totalFiles} files — the cap is ${MAX_DRIVE_IMPORT_FILES} per import. Pick fewer folders, or contact support to raise the limit.`,
+        kind === 'all'
+          ? `Your Drive has more than ${cap.toLocaleString()} supported files — the cap for an Entire Drive import is ${cap.toLocaleString()}. Contact support to raise the limit.`
+          : `This folder selection contains ${totalFiles} files — the cap is ${MAX_FOLDER_IMPORT_FILES.toLocaleString()} per import. Pick fewer folders or contact support to raise the limit.`,
       );
     }
   }
