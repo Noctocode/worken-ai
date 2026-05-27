@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "pnpm --filter @worken/database build && pnpm db:migrate && turbo dev",
     "dev:web": "turbo dev --filter=web",
     "dev:api": "turbo dev --filter=api",
     "build": "turbo build",
