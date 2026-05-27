@@ -304,6 +304,39 @@ export class KnowledgeCoreController {
     return this.driveImport.importFromDrive(user.id, body);
   }
 
+  /**
+   * Start an async "Entire Drive" import. Returns `{ started: true }`
+   * immediately; poll `GET drive/import/progress` to track it.
+   * Only `scope.kind === 'all'` is accepted — folder imports are fast
+   * enough for the synchronous path.
+   */
+  @Post('drive/import/async')
+  startDriveImportAsync(
+    @Body() body: ImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.driveImport.startImportAllAsync(user.id, body);
+  }
+
+  /**
+   * Poll the progress of the user's active async import.
+   * Returns `{ progress: DriveImportProgress | null }`.
+   */
+  @Get('drive/import/progress')
+  getDriveImportProgress(@CurrentUser() user: AuthenticatedUser) {
+    return { progress: this.driveImport.getImportProgress(user.id) };
+  }
+
+  /**
+   * Cancel the running async import and roll back all rows inserted
+   * so far. Silently no-ops if no import is active.
+   */
+  @Delete('drive/import/active')
+  async cancelDriveImport(@CurrentUser() user: AuthenticatedUser) {
+    await this.driveImport.cancelImport(user.id);
+    return { cancelled: true };
+  }
+
   /** All Drive sources the user has imported, for the Re-sync UI. */
   @Get('drive/sources')
   listDriveSources(@CurrentUser() user: AuthenticatedUser) {

@@ -249,10 +249,11 @@ export class GoogleDriveClientService {
     userId: string,
     scope: { kind: 'all' } | { kind: 'folders'; folderIds: string[] },
     fileLimit?: number,
+    onProgress?: (count: number) => void,
   ): Promise<DriveFileMeta[]> {
     if (scope.kind === 'all') {
       return this.runWithRetry(userId, (drive) =>
-        this.listFilesGlobal(drive, fileLimit),
+        this.listFilesGlobal(drive, fileLimit, onProgress),
       );
     }
     return this.runWithRetry(userId, (drive) =>
@@ -263,6 +264,7 @@ export class GoogleDriveClientService {
   private async listFilesGlobal(
     drive: drive_v3.Drive,
     fileLimit?: number,
+    onProgress?: (count: number) => void,
   ): Promise<DriveFileMeta[]> {
     const out: DriveFileMeta[] = [];
     let pageToken: string | undefined;
@@ -277,7 +279,10 @@ export class GoogleDriveClientService {
       });
       for (const f of res.data.files ?? []) {
         const meta = this.toMeta(f);
-        if (meta) out.push(meta);
+        if (meta) {
+          out.push(meta);
+          onProgress?.(out.length);
+        }
       }
       pageToken = res.data.nextPageToken ?? undefined;
       // Early exit: stop fetching pages once we've seen more than the

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -10,14 +10,19 @@ import {
   Cloud,
   Folder,
   Loader2,
+  XCircle,
 } from "lucide-react";
 
 import {
+  cancelDriveImport,
+  fetchDriveImportProgress,
   fetchDriveFolders,
   fetchProjects,
   fetchTeams,
   importFromDrive,
+  startDriveImportAsync,
   type DriveFolder,
+  type DriveImportProgress,
   type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
@@ -136,6 +141,11 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
+  // Whether an async Entire Drive job has been started (controls polling).
+  const [asyncJobActive, setAsyncJobActive] = useState(false);
+  // Track previous terminal phase so the useEffect below doesn't re-fire.
+  const handledPhaseRef = useRef<string | null>(null);
+
   const { data: userTeams = [] } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
@@ -156,6 +166,66 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const [loading, setLoading] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
+  // ── Async progress polling ────────────────────────────────────────
+  // Enabled whenever the dialog is open so we also pick up a job that
+  // started before the dialog was opened (e.g. user closed and reopened).
+  const { data: progress } = useQuery<DriveImportProgress | null>({
+    queryKey: ["drive", "import-progress"],
+    queryFn: fetchDriveImportProgress,
+    enabled: open,
+    refetchInterval: (query) => {
+      const p = query.state.data;
+      if (!p) return asyncJobActive ? 2000 : false;
+      if (p.phase === "scanning" || p.phase === "importing") return 2000;
+      return false;
+    },
+    staleTime: 0,
+  });
+
+  // Restore asyncJobActive flag when dialog opens and a job is already running.
+  useEffect(() => {
+    if (!open) return;
+    if (
+      progress?.phase === "scanning" ||
+      progress?.phase === "importing"
+    ) {
+      setAsyncJobActive(true);
+    }
+  }, [open, progress?.phase]);
+
+  // React to terminal phases (done / cancelled / error).
+  useEffect(() => {
+    if (!progress) return;
+    const { phase } = progress;
+    if (phase === handledPhaseRef.current) return; // already handled
+    if (phase !== "done" && phase !== "cancelled" && phase !== "error") return;
+
+    handledPhaseRef.current = phase;
+    setAsyncJobActive(false);
+
+    if (phase === "done") {
+      if (progress.imported === 0) {
+        toast.info("Everything from your Drive is already in Knowledge Core.");
+      } else {
+        toast.success(
+          `Imported ${progress.imported.toLocaleString()} file${
+            progress.imported === 1 ? "" : "s"
+          } from Drive. They'll appear as they finish ingesting.`,
+        );
+      }
+      void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      onOpenChange(false);
+    } else if (phase === "cancelled") {
+      toast.info("Drive import cancelled.");
+    } else if (phase === "error") {
+      toast.error(
+        `Drive import failed: ${progress.error ?? "Unknown error"}`,
+      );
+    }
+  }, [progress, onOpenChange, queryClient]);
+
   // Reset per-dialog state on every open. The user might disconnect /
   // reconnect a different Drive between opens, and stale cached
   // folder ids would point into the wrong account.
@@ -172,6 +242,8 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     setExpanded(new Set());
     setLoading(new Set());
     setSelected(new Set());
+    handledPhaseRef.current = null;
+    // Don't reset asyncJobActive here — a running job survives a reopen.
   }, [open]);
 
   // Lazy-load root folders the first time the user picks "Choose
@@ -197,8 +269,6 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
 
   const toggleExpand = useCallback(
     (id: string) => {
-      // Collapsing: just drop from expanded set; keep cached children
-      // so reopening is instant.
       if (expanded.has(id)) {
         setExpanded((prev) => {
           const next = new Set(prev);
@@ -207,8 +277,6 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         });
         return;
       }
-      // Expanding: if we already cached children for this id, just
-      // flip the flag. Otherwise lazy-load.
       if (children[id]) {
         setExpanded((prev) => new Set(prev).add(id));
         return;
@@ -244,16 +312,14 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     });
   }, []);
 
-  const importMutation = useMutation({
+  // ── Folder-scoped import (synchronous) ───────────────────────────
+  const folderImportMutation = useMutation({
     mutationFn: async () => {
       const visibilityExtra = {
         visibility,
         teamIds: visibility === "teams" ? selectedTeamIds : undefined,
         projectIds: visibility === "project" ? selectedProjectIds : undefined,
       };
-      if (scopeChoice === "all") {
-        return importFromDrive({ kind: "all", ...visibilityExtra });
-      }
       return importFromDrive({
         kind: "folders",
         folderIds: Array.from(selected),
@@ -268,14 +334,12 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       if (result.added === 0 && skipped === 0) {
         toast.info("No files found to import.");
       } else if (result.added === 0) {
-        toast.info("Everything from that scope is already in Knowledge Core.");
+        toast.info("Everything from those folders is already in Knowledge Core.");
       } else {
         toast.success(
           `Importing ${result.added} file${result.added === 1 ? "" : "s"} from Drive. They'll appear as they finish ingesting.`,
         );
       }
-      // Size-cap skips are noisy enough to warrant their own warning
-      // toast — the user picked those files expecting them to come in.
       if (result.skippedTooLarge > 0) {
         toast.warning(
           `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
@@ -291,16 +355,132 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     },
   });
 
+  // ── Entire Drive import (async, shows progress) ───────────────────
+  const startAsyncMutation = useMutation({
+    mutationFn: () =>
+      startDriveImportAsync({
+        kind: "all",
+        visibility,
+        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
+        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+      }),
+    onSuccess: () => {
+      handledPhaseRef.current = null;
+      setAsyncJobActive(true);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : "Import failed.");
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: cancelDriveImport,
+    onSuccess: () => {
+      setAsyncJobActive(false);
+      void queryClient.invalidateQueries({
+        queryKey: ["drive", "import-progress"],
+      });
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Cancel failed."),
+  });
+
   const visibilityValid =
     visibility !== "teams" || selectedTeamIds.length > 0
       ? visibility !== "project" || selectedProjectIds.length > 0
       : false;
 
   const canSubmit =
-    !importMutation.isPending &&
+    !folderImportMutation.isPending &&
+    !startAsyncMutation.isPending &&
     (scopeChoice === "folders" ? selected.size > 0 : entireDriveConfirmed) &&
     visibilityValid;
 
+  // ── Progress view (shown while async job is active) ───────────────
+  const isRunning =
+    asyncJobActive &&
+    progress &&
+    (progress.phase === "scanning" || progress.phase === "importing");
+
+  if (isRunning) {
+    const { phase, scanned, total, imported } = progress;
+    const pct = total > 0 ? Math.round((imported / total) * 100) : 0;
+
+    return (
+      <Dialog open={open} onOpenChange={() => {/* block close while running */}}>
+        <DialogContent className="max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
+              Importing from Google Drive…
+            </DialogTitle>
+            <DialogDescription>
+              You can close this dialog — the import will continue in the
+              background. Use Cancel to stop and undo all changes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-2">
+            {phase === "scanning" ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-text-3">Scanning your Drive…</span>
+                  <span className="font-medium text-text-1 tabular-nums">
+                    {scanned.toLocaleString()} files found
+                  </span>
+                </div>
+                {/* Indeterminate bar during scan */}
+                <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
+                  <div className="h-full w-1/3 animate-[scan-slide_1.4s_ease-in-out_infinite] rounded-full bg-primary-6" />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[13px]">
+                  <span className="text-text-3">Importing files…</span>
+                  <span className="font-medium text-text-1 tabular-nums">
+                    {imported.toLocaleString()} / {total.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
+                  <div
+                    className="h-full rounded-full bg-primary-6 transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-right text-[11px] text-text-3">{pct}%</p>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              className="cursor-pointer"
+            >
+              Close
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending}
+              className="cursor-pointer gap-2 border-danger-4 text-danger-6 hover:bg-danger-1"
+            >
+              {cancelMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <XCircle className="h-3.5 w-3.5" />
+              )}
+              Cancel import
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  // ── Normal (config) view ──────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[560px]">
@@ -554,11 +734,16 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             Cancel
           </Button>
           <Button
-            onClick={() => importMutation.mutate()}
+            onClick={() =>
+              scopeChoice === "all"
+                ? startAsyncMutation.mutate()
+                : folderImportMutation.mutate()
+            }
             disabled={!canSubmit}
             className="cursor-pointer gap-2"
           >
-            {importMutation.isPending && (
+            {(folderImportMutation.isPending ||
+              startAsyncMutation.isPending) && (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             {scopeChoice === "all"

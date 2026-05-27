@@ -3546,3 +3546,68 @@ export async function deleteDriveSource(sourceId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete Drive source");
 }
 
+// ── Async (progress-tracked) Entire-Drive import ──────────────────
+
+export interface DriveImportProgress {
+  phase: "scanning" | "importing" | "done" | "cancelled" | "error";
+  /** Files seen during the Drive list-API scan. */
+  scanned: number;
+  /**
+   * New files ready to insert after filtering + dedup.
+   * Zero until scanning completes.
+   */
+  total: number;
+  /** Rows inserted so far. */
+  imported: number;
+  /** Set when phase === "error". */
+  error?: string;
+}
+
+/**
+ * Kick off a background Entire-Drive import. Returns immediately with
+ * `{ started: true }`; poll `fetchDriveImportProgress` every ~2s to
+ * track the job.
+ */
+export async function startDriveImportAsync(
+  scope: {
+    kind: "all";
+    visibility?: KnowledgeFileVisibility;
+    teamIds?: string[];
+    projectIds?: string[];
+  },
+): Promise<{ started: true }> {
+  const res = await apiFetch("/knowledge-core/drive/import/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to start Drive import");
+  }
+  return res.json();
+}
+
+/**
+ * Fetch the current progress of an in-flight async Drive import.
+ * Returns null when no job is active for this user.
+ */
+export async function fetchDriveImportProgress(): Promise<DriveImportProgress | null> {
+  const res = await apiFetch("/knowledge-core/drive/import/progress");
+  if (!res.ok) throw new Error("Failed to fetch import progress");
+  const body = (await res.json()) as { progress: DriveImportProgress | null };
+  return body.progress;
+}
+
+/**
+ * Cancel the user's running async import and roll back all inserted
+ * rows. Silently succeeds if no import is active.
+ */
+export async function cancelDriveImport(): Promise<{ cancelled: true }> {
+  const res = await apiFetch("/knowledge-core/drive/import/active", {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to cancel Drive import");
+  return res.json();
+}
+

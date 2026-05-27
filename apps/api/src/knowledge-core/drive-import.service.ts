@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
@@ -99,9 +100,46 @@ export interface DriveSourceRow {
   createdAt: string;
 }
 
+/** Progress snapshot returned to the FE while an async import runs. */
+export interface DriveImportProgress {
+  phase: 'scanning' | 'importing' | 'done' | 'cancelled' | 'error';
+  /** Files seen during the Drive list-API phase. */
+  scanned: number;
+  /**
+   * New files ready to insert after filtering + dedup.
+   * Zero until the scanning phase completes.
+   */
+  total: number;
+  /** Rows inserted into knowledge_files so far. */
+  imported: number;
+  /** Set when phase='error'. */
+  error?: string;
+}
+
+/** Internal only — tracks a running background import for one user. */
+interface ActiveImportJob {
+  progress: DriveImportProgress;
+  /** Set to true by cancelImport() to stop the loop at the next checkpoint. */
+  cancelled: boolean;
+  /** IDs of knowledge_files rows inserted by this job (for rollback on cancel). */
+  insertedFileIds: string[];
+  /** drive_import_sources row created by this job; null if an existing row was re-used. */
+  createdSourceId: string | null;
+}
+
+/** Thrown from the onProgress callback to abort a Drive scan mid-flight. */
+class ImportCancelledError extends Error {
+  constructor() {
+    super('Import cancelled by user');
+  }
+}
+
 @Injectable()
 export class DriveImportService {
   private readonly logger = new Logger(DriveImportService.name);
+
+  /** One entry per user who currently has a background import in progress. */
+  private readonly activeJobs = new Map<string, ActiveImportJob>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -377,6 +415,351 @@ export class DriveImportService {
     await this.db
       .delete(driveImportSources)
       .where(eq(driveImportSources.id, sourceId));
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Async (progress-tracked) Entire-Drive import
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Start a background "Entire Drive" import. Returns immediately with
+   * `{ started: true }`. The actual scan + insert runs fire-and-forget;
+   * poll `getImportProgress()` to track it. Only `scope.kind === 'all'`
+   * is supported — folder-scoped imports are fast enough to be sync.
+   */
+  async startImportAllAsync(
+    userId: string,
+    scope: ImportScope,
+  ): Promise<{ started: true }> {
+    if (scope.kind !== 'all') {
+      throw new BadRequestException(
+        'Async import is only supported for the "all" (Entire Drive) scope.',
+      );
+    }
+
+    // Re-use the same visibility validation as importFromDrive.
+    const VALID: DriveVisibility[] = ['all', 'admins', 'teams', 'project'];
+    if (scope.visibility !== undefined && !VALID.includes(scope.visibility)) {
+      throw new BadRequestException(
+        `Invalid visibility "${scope.visibility}".`,
+      );
+    }
+    if (
+      scope.visibility === 'teams' &&
+      (!Array.isArray(scope.teamIds) || scope.teamIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'teamIds must be a non-empty array when visibility is "teams".',
+      );
+    }
+    if (
+      scope.visibility === 'project' &&
+      (!Array.isArray(scope.projectIds) || scope.projectIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+
+    // Reject a second concurrent import.
+    const existing = this.activeJobs.get(userId);
+    if (
+      existing &&
+      (existing.progress.phase === 'scanning' ||
+        existing.progress.phase === 'importing')
+    ) {
+      throw new ConflictException(
+        'A Drive import is already in progress. Cancel it first or wait for it to finish.',
+      );
+    }
+    // Clean up any stale terminal job.
+    this.activeJobs.delete(userId);
+
+    const job: ActiveImportJob = {
+      progress: { phase: 'scanning', scanned: 0, total: 0, imported: 0 },
+      cancelled: false,
+      insertedFileIds: [],
+      createdSourceId: null,
+    };
+    this.activeJobs.set(userId, job);
+
+    void this._runImportAllJob(userId, scope, job).catch((err) => {
+      if (this.activeJobs.get(userId) === job) {
+        job.progress.phase = 'error';
+        job.progress.error =
+          err instanceof Error ? err.message : 'Unknown error';
+        this.logger.error(
+          `Drive async import failed for user ${userId}: ${job.progress.error}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      }
+    });
+
+    return { started: true };
+  }
+
+  /**
+   * Current progress for the user's active import. Returns null when
+   * no job is tracked (either never started or already cleaned up).
+   */
+  getImportProgress(userId: string): DriveImportProgress | null {
+    return this.activeJobs.get(userId)?.progress ?? null;
+  }
+
+  /**
+   * Cancel the user's running import and roll back every file row
+   * inserted so far. Silently no-ops if no import is active.
+   */
+  async cancelImport(userId: string): Promise<void> {
+    const job = this.activeJobs.get(userId);
+    if (!job) return;
+
+    const isRunning =
+      job.progress.phase === 'scanning' ||
+      job.progress.phase === 'importing';
+
+    if (isRunning) {
+      // Signal the loop to stop at its next checkpoint.
+      job.cancelled = true;
+
+      // Snapshot inserted IDs before the loop can append more.
+      const idsToDelete = [...job.insertedFileIds];
+      job.insertedFileIds = [];
+      job.progress.phase = 'cancelled';
+
+      // Delete in batches of 1000 to stay within DB query limits.
+      const CHUNK = 1000;
+      for (let i = 0; i < idsToDelete.length; i += CHUNK) {
+        const chunk = idsToDelete.slice(i, i + CHUNK);
+        await this.db
+          .delete(knowledgeFiles)
+          .where(
+            and(
+              eq(knowledgeFiles.uploadedById, userId),
+              inArray(knowledgeFiles.id, chunk),
+            ),
+          );
+      }
+
+      // Remove the source row if this job created it (re-import starts fresh).
+      if (job.createdSourceId) {
+        await this.db
+          .delete(driveImportSources)
+          .where(eq(driveImportSources.id, job.createdSourceId));
+        job.createdSourceId = null;
+      }
+    }
+
+    this.activeJobs.delete(userId);
+  }
+
+  /**
+   * Background worker started by startImportAllAsync. Any unhandled
+   * throw is caught by the .catch() in startImportAllAsync, which sets
+   * phase='error'. The `finally` block always schedules a GC timeout so
+   * the job doesn't leak memory if the FE never polls after completion.
+   */
+  private async _runImportAllJob(
+    userId: string,
+    scope: ImportScope,
+    job: ActiveImportJob,
+  ): Promise<void> {
+    try {
+      const connection = await this.oauth.requireConnection(userId);
+      const driveParentFolderId = await this.ensureDriveParentFolder(userId);
+
+      const [uploader] = await this.db
+        .select({ profileType: users.profileType })
+        .from(users)
+        .where(eq(users.id, userId));
+      const fileScope =
+        uploader?.profileType === 'company' ? 'company' : 'personal';
+      const visibility = (scope.visibility ?? 'all') as DriveVisibility;
+
+      // ── Phase 1: Scan ─────────────────────────────────────────────
+      job.progress.phase = 'scanning';
+
+      let files: import('../google-drive/google-drive-client.service.js').DriveFileMeta[];
+      try {
+        files = await this.drive.listFiles(
+          userId,
+          { kind: 'all' },
+          MAX_ALL_IMPORT_FILES + 1,
+          (count) => {
+            job.progress.scanned = count;
+            if (job.cancelled) throw new ImportCancelledError();
+          },
+        );
+      } catch (err) {
+        if (err instanceof ImportCancelledError) return; // cleanup done by cancelImport
+        throw err;
+      }
+
+      if (job.cancelled) return;
+
+      // Clamp rather than reject — partial imports are better than errors.
+      const cappedFiles = files.slice(0, MAX_ALL_IMPORT_FILES);
+
+      // ── Phase 2: Filter + dedupe ──────────────────────────────────
+      const sizeFiltered = cappedFiles.filter(
+        (f) => f.sizeBytes == null || f.sizeBytes <= MAX_DRIVE_FILE_BYTES,
+      );
+      const extFiltered = sizeFiltered.filter((f) =>
+        UPLOAD_ALLOWED_EXTENSIONS.test(f.name),
+      );
+
+      const candidateIds = extFiltered.map((f) => f.id);
+      const existingExternal = candidateIds.length
+        ? await this.db
+            .select({ externalId: knowledgeFiles.externalId })
+            .from(knowledgeFiles)
+            .where(
+              and(
+                eq(knowledgeFiles.uploadedById, userId),
+                inArray(knowledgeFiles.externalId, candidateIds),
+              ),
+            )
+        : [];
+      const existingSet = new Set(
+        existingExternal
+          .map((r) => r.externalId)
+          .filter((id): id is string => id !== null),
+      );
+      const newFiles = extFiltered.filter((f) => !existingSet.has(f.id));
+
+      if (job.cancelled) return;
+
+      job.progress.total = newFiles.length;
+      job.progress.phase = 'importing';
+
+      // Upsert source row before inserting files.
+      const [existingSource] = await this.db
+        .select({
+          id: driveImportSources.id,
+          fileCountAtLastSync: driveImportSources.fileCountAtLastSync,
+        })
+        .from(driveImportSources)
+        .where(
+          and(
+            eq(driveImportSources.ownerId, userId),
+            eq(driveImportSources.scope, 'all'),
+          ),
+        );
+
+      let sourceId: string;
+      if (existingSource) {
+        sourceId = existingSource.id;
+      } else {
+        const [created] = await this.db
+          .insert(driveImportSources)
+          .values({
+            ownerId: userId,
+            connectionId: connection.id,
+            scope: 'all',
+            driveFolderId: null,
+            driveFolderName: 'My Drive',
+            fileCountAtLastSync: 0, // updated at the end
+            visibility,
+            teamIds: scope.teamIds ?? null,
+            projectIds: scope.projectIds ?? null,
+          })
+          .returning({ id: driveImportSources.id });
+        sourceId = created.id;
+        job.createdSourceId = sourceId;
+      }
+
+      // ── Phase 3: Insert in batches of 100 ─────────────────────────
+      const BATCH_SIZE = 100;
+      let totalInserted = 0;
+
+      for (let i = 0; i < newFiles.length; i += BATCH_SIZE) {
+        if (job.cancelled) break;
+
+        const batch = newFiles.slice(i, i + BATCH_SIZE);
+        const insertedRows = await this.db
+          .insert(knowledgeFiles)
+          .values(
+            batch.map((f) => ({
+              folderId: driveParentFolderId,
+              name: f.name,
+              fileType: this.extFromName(f.name),
+              sizeBytes: f.sizeBytes ?? 0,
+              storagePath: null,
+              uploadedById: userId,
+              scope: fileScope,
+              visibility,
+              source: 'drive' as const,
+              externalId: f.id,
+              externalUrl: f.webViewLink ?? null,
+            })),
+          )
+          .returning({ id: knowledgeFiles.id });
+
+        for (const row of insertedRows) {
+          job.insertedFileIds.push(row.id);
+        }
+        totalInserted += insertedRows.length;
+        job.progress.imported = totalInserted;
+
+        // Team / project junction rows.
+        if (visibility === 'teams' && (scope.teamIds ?? []).length > 0) {
+          await this.db.insert(knowledgeFileTeams).values(
+            insertedRows.flatMap((row) =>
+              (scope.teamIds ?? []).map((teamId) => ({
+                fileId: row.id,
+                teamId,
+              })),
+            ),
+          );
+        }
+        if (visibility === 'project' && (scope.projectIds ?? []).length > 0) {
+          await this.db.insert(projectKnowledgeFiles).values(
+            insertedRows.flatMap((row) =>
+              (scope.projectIds ?? []).map((projectId) => ({
+                projectId,
+                fileId: row.id,
+                attachedBy: userId,
+              })),
+            ),
+          );
+        }
+      }
+
+      if (job.cancelled) return; // cleanup done by cancelImport
+
+      // ── Finalise ──────────────────────────────────────────────────
+      const prevCount = existingSource?.fileCountAtLastSync ?? 0;
+      await this.db
+        .update(driveImportSources)
+        .set({
+          lastSyncedAt: new Date(),
+          fileCountAtLastSync: prevCount + totalInserted,
+          driveFolderName: 'My Drive',
+        })
+        .where(eq(driveImportSources.id, sourceId));
+
+      await this.db
+        .update(knowledgeFolders)
+        .set({ updatedAt: new Date() })
+        .where(eq(knowledgeFolders.id, driveParentFolderId));
+
+      await this.oauth.markSynced(userId);
+
+      if (totalInserted > 0) {
+        this.ingestion.ingestPendingFilesForUser(userId);
+      }
+
+      job.progress.phase = 'done';
+    } finally {
+      // Auto-clean terminal jobs after 5 min so memory doesn't accumulate.
+      // The reference check ensures cancelImport() (which already deletes
+      // the entry) doesn't accidentally resurrect a stale one.
+      setTimeout(() => {
+        if (this.activeJobs.get(userId) === job) {
+          this.activeJobs.delete(userId);
+        }
+      }, 5 * 60 * 1000);
+    }
   }
 
   /**
