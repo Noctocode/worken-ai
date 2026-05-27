@@ -424,6 +424,38 @@ export class GoogleDriveClientService {
   }
 
   /**
+   * Fast one-page scan (≤ 1 000 files) used by the import-dialog
+   * warning banner. Applies the native-type filter and the per-file
+   * size cap, and appends synthetic extensions for Google-native
+   * formats so the caller can run the extension allowlist on top.
+   * `hasMore: true` means the Drive has > 1 000 files and the caller
+   * should fall back to the generic "up to 10,000" message.
+   */
+  async estimateFileCount(
+    userId: string,
+  ): Promise<{ fileNames: string[]; hasMore: boolean }> {
+    return this.runWithRetry(userId, async (drive) => {
+      const res = await drive.files.list({
+        q: `mimeType != '${FOLDER_MIME}' and trashed = false`,
+        corpora: 'user',
+        fields: 'nextPageToken, files(id, name, mimeType, size)',
+        pageSize: 1000,
+      });
+      const fileNames: string[] = [];
+      for (const f of res.data.files ?? []) {
+        if (!f.id || !f.name || !f.mimeType) continue;
+        if (SKIP_NATIVE_MIMES.has(f.mimeType)) continue;
+        if (f.size != null && Number(f.size) > 50 * 1024 * 1024) continue;
+        const native = NATIVE_EXPORTS[f.mimeType];
+        fileNames.push(
+          native ? this.appendExtIfMissing(f.name, native.ext) : f.name,
+        );
+      }
+      return { fileNames, hasMore: !!res.data.nextPageToken };
+    });
+  }
+
+  /**
    * Resolve a Drive folder's display name directly via files.get.
    * More reliable than scanning root-level children (which misses
    * nested folders). Falls back to a synthetic slug on error.

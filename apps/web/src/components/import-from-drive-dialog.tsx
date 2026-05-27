@@ -15,6 +15,7 @@ import {
 
 import {
   cancelDriveImport,
+  fetchDriveFileCount,
   fetchDriveImportProgress,
   fetchDriveFolders,
   fetchProjects,
@@ -155,6 +156,19 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     queryKey: ["projects", "drive-import"],
     queryFn: () => fetchProjects("all"),
     enabled: open,
+  });
+
+  // One-page file-count estimate for the "Entire Drive" warning banner.
+  // Fetched once when the dialog opens (or when switching to "all" scope)
+  // and cached for 5 minutes so reopening is instant.
+  const {
+    data: fileCountData,
+    isLoading: fileCountLoading,
+  } = useQuery({
+    queryKey: ["drive", "file-count"],
+    queryFn: fetchDriveFileCount,
+    enabled: open && scopeChoice === "all",
+    staleTime: 5 * 60 * 1000,
   });
   const [rootFolders, setRootFolders] = useState<DriveFolder[] | null>(null);
   const [rootLoading, setRootLoading] = useState(false);
@@ -542,7 +556,22 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning-7" />
                 <div className="flex flex-col gap-1">
                   <p className="text-[13px] font-medium text-warning-8">
-                    This will import up to 10,000 files
+                    {fileCountLoading ? (
+                      <span className="flex items-center gap-1.5">
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Checking your Drive…
+                      </span>
+                    ) : fileCountData && !fileCountData.hasMore ? (
+                      <>
+                        This will import{" "}
+                        <span className="tabular-nums">
+                          {fileCountData.count.toLocaleString()}
+                        </span>{" "}
+                        {fileCountData.count === 1 ? "file" : "files"}
+                      </>
+                    ) : (
+                      "This will import up to 10,000 files"
+                    )}
                   </p>
                   <p className="text-[12px] text-warning-7">
                     Every supported document (.pdf, .docx, .xlsx) from your

@@ -292,6 +292,15 @@ export class KnowledgeCoreController {
   // ────────────────────────────────────────────────────────────────
 
   /**
+   * One-page file-count estimate for the import-dialog warning banner.
+   * Fast (< 1 s for most users); `hasMore: true` means > 1 000 files.
+   */
+  @Get('drive/file-count')
+  getDriveFileCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.driveImport.getFileCountEstimate(user.id);
+  }
+
+  /**
    * Pull files from the user's connected Drive into KC. Returns
    * `{ added, skippedDuplicates, ... }` so the FE can toast a
    * meaningful "Imported N new files" message.

@@ -418,6 +418,27 @@ export class DriveImportService {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // File-count estimate (powers the dialog warning banner)
+  // ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Cheap one-page scan that tells the FE roughly how many files would
+   * be imported before the user clicks "Import entire Drive". Applies
+   * the extension allowlist so the count matches what the actual import
+   * would pick up. `hasMore: true` means the Drive exceeds 1 000 files
+   * and the FE should fall back to the generic "up to 10,000" message.
+   */
+  async getFileCountEstimate(
+    userId: string,
+  ): Promise<{ count: number; hasMore: boolean }> {
+    const { fileNames, hasMore } = await this.drive.estimateFileCount(userId);
+    const count = fileNames.filter((n) =>
+      UPLOAD_ALLOWED_EXTENSIONS.test(n),
+    ).length;
+    return { count, hasMore };
+  }
+
+  // ─────────────────────────────────────────────────────────────────
   // Async (progress-tracked) Entire-Drive import
   // ─────────────────────────────────────────────────────────────────
 

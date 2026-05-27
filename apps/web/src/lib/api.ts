@@ -3546,6 +3546,20 @@ export async function deleteDriveSource(sourceId: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete Drive source");
 }
 
+/**
+ * One-page estimate of how many files the Entire Drive import would pick
+ * up. Fast (< 1 s for most users). `hasMore: true` means the Drive has
+ * more than 1 000 importable files — fall back to the generic cap message.
+ */
+export async function fetchDriveFileCount(): Promise<{
+  count: number;
+  hasMore: boolean;
+}> {
+  const res = await apiFetch("/knowledge-core/drive/file-count");
+  if (!res.ok) throw new Error("Failed to estimate Drive file count");
+  return res.json();
+}
+
 // ── Async (progress-tracked) Entire-Drive import ──────────────────
 
 export interface DriveImportProgress {
