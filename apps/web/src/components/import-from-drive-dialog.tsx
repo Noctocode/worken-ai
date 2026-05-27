@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   ChevronDown,
@@ -13,9 +13,13 @@ import {
 
 import {
   fetchDriveFolders,
+  fetchProjects,
+  fetchTeams,
   importFromDrive,
   type DriveFolder,
+  type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,6 +29,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 type ImportScopeChoice = "all" | "folders";
 
@@ -115,7 +126,24 @@ interface Props {
 
 export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
+  const isAdmin = currentUser?.role === "admin";
+
   const [scopeChoice, setScopeChoice] = useState<ImportScopeChoice>("all");
+  const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
+  const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+
+  const { data: userTeams = [] } = useQuery({
+    queryKey: ["teams"],
+    queryFn: fetchTeams,
+    enabled: open,
+  });
+  const { data: userProjects = [] } = useQuery({
+    queryKey: ["projects", "drive-import"],
+    queryFn: () => fetchProjects("all"),
+    enabled: open,
+  });
   const [rootFolders, setRootFolders] = useState<DriveFolder[] | null>(null);
   const [rootLoading, setRootLoading] = useState(false);
   const [rootError, setRootError] = useState<string | null>(null);
@@ -132,6 +160,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   useEffect(() => {
     if (!open) return;
     setScopeChoice("all");
+    setVisibility("all");
+    setSelectedTeamIds([]);
+    setSelectedProjectIds([]);
     setRootFolders(null);
     setRootError(null);
     setChildren({});
@@ -212,12 +243,18 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
 
   const importMutation = useMutation({
     mutationFn: async () => {
+      const visibilityExtra = {
+        visibility,
+        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
+        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+      };
       if (scopeChoice === "all") {
-        return importFromDrive({ kind: "all" });
+        return importFromDrive({ kind: "all", ...visibilityExtra });
       }
       return importFromDrive({
         kind: "folders",
         folderIds: Array.from(selected),
+        ...visibilityExtra,
       });
     },
     onSuccess: (result) => {
@@ -251,9 +288,15 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     },
   });
 
+  const visibilityValid =
+    visibility !== "teams" || selectedTeamIds.length > 0
+      ? visibility !== "project" || selectedProjectIds.length > 0
+      : false;
+
   const canSubmit =
     !importMutation.isPending &&
-    (scopeChoice === "all" || selected.size > 0);
+    (scopeChoice === "all" || selected.size > 0) &&
+    visibilityValid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -345,6 +388,125 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             </div>
           )}
         </div>
+
+        {/* Visibility picker */}
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[12px] font-medium text-text-1">
+            Visibility
+          </label>
+          <Select
+            value={visibility}
+            onValueChange={(v) => {
+              setVisibility(v as KnowledgeFileVisibility);
+              setSelectedTeamIds([]);
+              setSelectedProjectIds([]);
+            }}
+          >
+            <SelectTrigger className="h-10 w-full cursor-pointer">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Everyone in the company</SelectItem>
+              {isAdmin && <SelectItem value="admins">Admins only</SelectItem>}
+              <SelectItem value="teams">Specific teams…</SelectItem>
+              <SelectItem value="project">Specific project…</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-[11px] text-text-3">
+            {visibility === "admins"
+              ? "Only admins will see these files in chat / arena."
+              : visibility === "teams"
+                ? "Only members of the teams you pick below will see these files."
+                : visibility === "project"
+                  ? "These files will only appear in the chat of the selected project(s)."
+                  : "Every user in the company can see these files in chat / arena."}
+          </p>
+        </div>
+
+        {/* Team picker */}
+        {visibility === "teams" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              Teams with access
+            </label>
+            {userTeams.length === 0 ? (
+              <p className="text-[11px] text-text-3">
+                You aren&rsquo;t a member of any team yet.
+              </p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userTeams.map((t) => {
+                  const checked = selectedTeamIds.includes(t.id);
+                  return (
+                    <label
+                      key={t.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedTeamIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== t.id)
+                              : [...prev, t.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">{t.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Project picker */}
+        {visibility === "project" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              Projects with access
+            </label>
+            {userProjects.length === 0 ? (
+              <p className="text-[11px] text-text-3">
+                You don&rsquo;t have access to any projects yet.
+              </p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userProjects.map((p) => {
+                  const checked = selectedProjectIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedProjectIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== p.id)
+                              : [...prev, p.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">
+                        {p.name}
+                        {p.teamName && (
+                          <span className="ml-1 text-text-3">· {p.teamName}</span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         <DialogFooter className="gap-2">
           <Button

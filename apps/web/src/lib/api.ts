@@ -3456,9 +3456,14 @@ export interface DriveImportResult {
   sources: { id: string; driveFolderName: string }[];
 }
 
-export type DriveImportScope =
+export type DriveImportScope = (
   | { kind: "all" }
-  | { kind: "folders"; folderIds: string[] };
+  | { kind: "folders"; folderIds: string[] }
+) & {
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
 
 export async function fetchDriveStatus(): Promise<DriveStatus> {
   const res = await apiFetch("/google-drive/status");

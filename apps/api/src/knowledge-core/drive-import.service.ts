@@ -9,8 +9,10 @@ import {
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   driveImportSources,
+  knowledgeFileTeams,
   knowledgeFiles,
   knowledgeFolders,
+  projectKnowledgeFiles,
   users,
 } from '@worken/database/schema';
 
@@ -53,9 +55,16 @@ const MAX_DRIVE_IMPORT_FILES = 1000;
  */
 const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
-export type ImportScope =
+export type DriveVisibility = 'all' | 'admins' | 'teams' | 'project';
+
+export type ImportScope = (
   | { kind: 'all' }
-  | { kind: 'folders'; folderIds: string[] };
+  | { kind: 'folders'; folderIds: string[] }
+) & {
+  visibility?: DriveVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
 
 export interface ImportResult {
   /** Number of new knowledge_files rows created on this call. */
@@ -162,6 +171,9 @@ export class DriveImportService {
         connectionId: connection.id,
         kcFolderId: driveParentFolderId,
         kcFileScope: fileScope,
+        visibility: scope.visibility,
+        teamIds: scope.teamIds,
+        projectIds: scope.projectIds,
       });
       result.added += inserted.added;
       result.skippedDuplicates += inserted.skippedDuplicates;
@@ -210,6 +222,9 @@ export class DriveImportService {
           connectionId: connection.id,
           kcFolderId: kcChildFolderId,
           kcFileScope: fileScope,
+          visibility: scope.visibility,
+          teamIds: scope.teamIds,
+          projectIds: scope.projectIds,
         });
         result.added += inserted.added;
         result.skippedDuplicates += inserted.skippedDuplicates;
@@ -435,6 +450,9 @@ export class DriveImportService {
       connectionId: string;
       kcFolderId: string;
       kcFileScope: string;
+      visibility?: DriveVisibility;
+      teamIds?: string[];
+      projectIds?: string[];
     },
   ): Promise<{
     sourceId: string;
@@ -536,7 +554,7 @@ export class DriveImportService {
     // mirrors Drive's MIME (after Google-native export) — the
     // ingestion path reads `name`'s extension for parser dispatch, so
     // fileType is purely for display in the KC UI right now.
-    await this.db.insert(knowledgeFiles).values(
+    const insertedFiles = await this.db.insert(knowledgeFiles).values(
       newFiles.map((f) => ({
         folderId: args.kcFolderId,
         name: f.name,
@@ -548,12 +566,34 @@ export class DriveImportService {
         storagePath: null,
         uploadedById: userId,
         scope: args.kcFileScope,
-        visibility: 'all' as const,
+        visibility: (args.visibility ?? 'all') as DriveVisibility,
         source: 'drive' as const,
         externalId: f.id,
         externalUrl: f.webViewLink ?? null,
       })),
-    );
+    ).returning({ id: knowledgeFiles.id });
+
+    // Link inserted files to teams / projects via junction tables,
+    // mirroring the same pattern used by the manual upload path.
+    const visibility = args.visibility ?? 'all';
+    if (visibility === 'teams' && (args.teamIds ?? []).length > 0) {
+      await this.db.insert(knowledgeFileTeams).values(
+        insertedFiles.flatMap((row) =>
+          (args.teamIds ?? []).map((teamId) => ({ fileId: row.id, teamId })),
+        ),
+      );
+    }
+    if (visibility === 'project' && (args.projectIds ?? []).length > 0) {
+      await this.db.insert(projectKnowledgeFiles).values(
+        insertedFiles.flatMap((row) =>
+          (args.projectIds ?? []).map((projectId) => ({
+            projectId,
+            fileId: row.id,
+            attachedBy: userId,
+          })),
+        ),
+      );
+    }
 
     return {
       sourceId,
