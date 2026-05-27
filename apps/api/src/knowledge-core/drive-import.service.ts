@@ -431,11 +431,24 @@ export class DriveImportService {
   async getFileCountEstimate(
     userId: string,
   ): Promise<{ count: number; hasMore: boolean }> {
-    const { fileNames, hasMore } = await this.drive.estimateFileCount(userId);
-    const count = fileNames.filter((n) =>
-      UPLOAD_ALLOWED_EXTENSIONS.test(n),
-    ).length;
-    return { count, hasMore };
+    this.logger.log(`[file-count] starting for user ${userId}`);
+    try {
+      const { fileNames, hasMore } = await this.drive.estimateFileCount(userId);
+      this.logger.log(
+        `[file-count] drive returned ${fileNames.length} names, hasMore=${hasMore}`,
+      );
+      const count = fileNames.filter((n) =>
+        UPLOAD_ALLOWED_EXTENSIONS.test(n),
+      ).length;
+      this.logger.log(`[file-count] after ext filter: ${count}`);
+      return { count, hasMore };
+    } catch (err) {
+      this.logger.error(
+        `[file-count] failed: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────

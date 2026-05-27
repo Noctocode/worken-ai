@@ -161,13 +161,16 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   // One-page file-count estimate for the "Entire Drive" warning banner.
   // Fetched once when the dialog opens (or when switching to "all" scope)
   // and cached for 5 minutes so reopening is instant.
+  // Fetch as soon as the dialog opens (not conditional on scopeChoice) so
+  // the count is cached and ready by the time the warning banner renders.
+  // staleTime keeps it fresh for 5 min so re-opening is instant.
   const {
     data: fileCountData,
     isLoading: fileCountLoading,
   } = useQuery({
     queryKey: ["drive", "file-count"],
     queryFn: fetchDriveFileCount,
-    enabled: open && scopeChoice === "all",
+    enabled: open,
     staleTime: 5 * 60 * 1000,
   });
   const [rootFolders, setRootFolders] = useState<DriveFolder[] | null>(null);
