@@ -146,6 +146,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const [asyncJobActive, setAsyncJobActive] = useState(false);
   // Track previous terminal phase so the useEffect below doesn't re-fire.
   const handledPhaseRef = useRef<string | null>(null);
+  // Incremented each time the dialog opens so the file-count queryKey
+  // changes and React Query always fires a fresh fetch (no stale cache).
+  const openCountRef = useRef(0);
+  const [openEpoch, setOpenEpoch] = useState(0);
 
   const { data: userTeams = [] } = useQuery({
     queryKey: ["teams"],
@@ -168,10 +172,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     isLoading: fileCountLoading,
     isError: fileCountError,
   } = useQuery({
-    queryKey: ["drive", "file-count"],
+    // openEpoch changes on every open → new key → fresh Drive scan.
+    queryKey: ["drive", "file-count", openEpoch],
     queryFn: fetchDriveFileCount,
-    enabled: open,
-    staleTime: 5 * 60 * 1000,
+    enabled: open && openEpoch > 0,
     retry: 1,
   });
   const [rootFolders, setRootFolders] = useState<DriveFolder[] | null>(null);
@@ -249,6 +253,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   // folder ids would point into the wrong account.
   useEffect(() => {
     if (!open) return;
+    // Bump epoch so the file-count queryKey changes → guaranteed fresh fetch.
+    openCountRef.current += 1;
+    setOpenEpoch(openCountRef.current);
     setScopeChoice("all");
     setEntireDriveConfirmed(false);
     setVisibility("all");
