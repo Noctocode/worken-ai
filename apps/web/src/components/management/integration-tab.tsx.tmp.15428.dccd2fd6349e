@@ -688,12 +688,12 @@ export function IntegrationTab() {
                     }`}
                     title={
                       isAdmin
-                        ? t("mgmt.integ.deleteCustomLLM")
-                        : t("mgmt.integ.deleteAdminOnly")
+                        ? "Delete custom LLM"
+                        : "Only admins can delete integrations"
                     }
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    {t("mgmt.integ.delete")}
+                    Delete
                     {card.boundAliasCount > 0 && (
                       <span className="ml-1 rounded-full bg-danger-1 px-1.5 py-0 text-[10px] font-medium text-danger-6">
                         {card.boundAliasCount}
@@ -704,7 +704,7 @@ export function IntegrationTab() {
                   <span />
                 )}
                 <span className="text-[14px] font-normal text-text-3">
-                  {t("mgmt.integ.settings")}
+                  Settings
                 </span>
               </div>
             </div>
@@ -713,7 +713,7 @@ export function IntegrationTab() {
 
           {filtered.length === 0 && (
             <div className="col-span-full py-12 text-center text-sm text-text-3">
-              {t("mgmt.integ.noMatch")}
+              No integrations match your search.
             </div>
           )}
         </div>
