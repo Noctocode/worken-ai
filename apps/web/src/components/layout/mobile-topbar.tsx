@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { SidebarContent } from "./sidebar";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Mobile menu glyph from Figma node 4750:32081 (icons/Menu). Differs
@@ -50,6 +51,7 @@ function MenuIcon({ className }: { className?: string }) {
  * variants doesn't shift the content scroll position.
  */
 export function MobileTopbar() {
+  const { t } = useLanguage();
   return (
     <header className="md:hidden sticky top-0 z-20 flex h-14 items-center justify-between border-b border-bg-1 bg-bg-white px-4">
       <Link href="/" className="flex items-center">
@@ -67,7 +69,7 @@ export function MobileTopbar() {
             variant="ghost"
             size="icon"
             className="h-10 w-10 text-text-2 hover:bg-bg-1 hover:text-text-1"
-            aria-label="Open menu"
+            aria-label={t("appbar.openMenu")}
           >
             <MenuIcon className="h-7 w-7" />
           </Button>
