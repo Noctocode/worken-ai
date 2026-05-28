@@ -119,8 +119,17 @@ export class SharePointGraphService {
 
   /**
    * GET against the Graph API with the user's access token, one
-   * automatic retry on 401 (clock skew — token just-expired in
-   * flight) and one retry on 429 with Retry-After respected.
+   * automatic retry on 401 and one retry on 429 with Retry-After
+   * respected.
+   *
+   * 401 retry semantics: we call `getValidAccessToken` again, which
+   * returns a freshly-refreshed token ONLY if our stored `expiresAt`
+   * is past. So the retry catches the narrow race where the access
+   * token expired between the first `getValidAccessToken` call and
+   * `fetch` landing at Microsoft (clock skew, slow process). It does
+   * NOT recover from mid-session grant revocation — that case
+   * 401s twice and falls through to `ReauthRequiredError`, which is
+   * the right outcome (the user has to reconnect anyway).
    */
   private async graphGet<T>(userId: string, path: string): Promise<T> {
     const doFetch = async (token: string): Promise<Response> => {
@@ -133,9 +142,8 @@ export class SharePointGraphService {
     let token = await this.oauth.getValidAccessToken(userId);
     let res = await doFetch(token);
 
-    // 401 → refresh once and retry. The token may have expired
-    // mid-flight (clock skew between us and Microsoft); the next
-    // getValidAccessToken refreshes if needed.
+    // 401 → try once more with whatever getValidAccessToken returns.
+    // See the method docstring for what this actually catches.
     if (res.status === 401) {
       token = await this.oauth.getValidAccessToken(userId);
       res = await doFetch(token);

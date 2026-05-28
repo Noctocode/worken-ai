@@ -490,10 +490,16 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       toast.error(err instanceof Error ? err.message : "Cancel failed."),
   });
 
-  const visibilityValid =
-    visibility !== "teams" || selectedTeamIds.length > 0
-      ? visibility !== "project" || selectedProjectIds.length > 0
-      : false;
+  // Visibility-specific picker requirements. Written as named locals
+  // (rather than one terse boolean expression) because the previous
+  // shape parsed correctly only by accident of operator precedence —
+  // a future edit could silently swap "OR" / "AND" precedence and
+  // ship a broken submit gate. Keep one rule per visibility kind.
+  const teamsRuleSatisfied =
+    visibility !== "teams" || selectedTeamIds.length > 0;
+  const projectRuleSatisfied =
+    visibility !== "project" || selectedProjectIds.length > 0;
+  const visibilityValid = teamsRuleSatisfied && projectRuleSatisfied;
 
   const canSubmit =
     !folderImportMutation.isPending &&

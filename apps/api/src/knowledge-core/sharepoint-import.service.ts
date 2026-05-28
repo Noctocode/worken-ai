@@ -17,6 +17,11 @@ import {
   users,
 } from '@worken/database/schema';
 import { UPLOAD_ALLOWED_EXTENSIONS } from './upload-allowlist.js';
+import {
+  validateSharePointScope,
+  type SharePointImportScope as SharePointImportScopeBase,
+  type SharePointVisibility as SharePointVisibilityBase,
+} from './sharepoint-scope.js';
 
 import { DATABASE, type Database } from '../database/database.module.js';
 import {
@@ -40,21 +45,12 @@ const MAX_SITE_IMPORT_FILES = 10_000;
 /** Match Drive's ceiling — 50 MB. */
 const MAX_SP_FILE_BYTES = 50 * 1024 * 1024;
 
-export type SharePointVisibility = 'all' | 'admins' | 'teams' | 'project';
-
-export type SharePointImportScope = (
-  | { kind: 'site'; siteId: string }
-  | {
-      kind: 'folder';
-      siteId: string;
-      driveId: string;
-      folderIds: string[];
-    }
-) & {
-  visibility?: SharePointVisibility;
-  teamIds?: string[];
-  projectIds?: string[];
-};
+// Re-exported so existing callers (knowledge-core.controller.ts +
+// FE-facing types) keep their import paths. The authoritative
+// definitions live in sharepoint-scope.ts so they can be unit-tested
+// in isolation from the service's DI graph.
+export type SharePointVisibility = SharePointVisibilityBase;
+export type SharePointImportScope = SharePointImportScopeBase;
 
 export interface SharePointImportResult {
   added: number;
@@ -129,7 +125,7 @@ export class SharePointImportService {
     userId: string,
     scope: SharePointImportScope,
   ): Promise<SharePointImportResult> {
-    this.validateScope(scope);
+    validateSharePointScope(scope);
     const connection = await this.oauth.requireConnection(userId);
     const parentFolderId = await this.ensureSharePointParentFolder(userId);
 
@@ -381,7 +377,7 @@ export class SharePointImportService {
         'Async import is only supported for the "site" scope.',
       );
     }
-    this.validateScope(scope);
+    validateSharePointScope(scope);
 
     const existing = this.activeJobs.get(userId);
     if (
@@ -667,54 +663,6 @@ export class SharePointImportService {
   // ─────────────────────────────────────────────────────────────────
   // Helpers
   // ─────────────────────────────────────────────────────────────────
-
-  private validateScope(scope: SharePointImportScope): void {
-    if (!scope || typeof scope !== 'object') {
-      throw new BadRequestException('Invalid scope.');
-    }
-    if (scope.kind === 'site') {
-      if (!scope.siteId) {
-        throw new BadRequestException('siteId is required for site scope.');
-      }
-    } else if (scope.kind === 'folder') {
-      if (!scope.siteId) {
-        throw new BadRequestException('siteId is required for folder scope.');
-      }
-      if (!scope.driveId) {
-        throw new BadRequestException('driveId is required for folder scope.');
-      }
-      if (!Array.isArray(scope.folderIds) || scope.folderIds.length === 0) {
-        throw new BadRequestException(
-          'folderIds must be a non-empty array when scope is "folder".',
-        );
-      }
-    } else {
-      throw new BadRequestException('Unknown scope kind.');
-    }
-
-    const VALID: SharePointVisibility[] = ['all', 'admins', 'teams', 'project'];
-    if (scope.visibility !== undefined && !VALID.includes(scope.visibility)) {
-      throw new BadRequestException(
-        `Invalid visibility "${scope.visibility}".`,
-      );
-    }
-    if (
-      scope.visibility === 'teams' &&
-      (!Array.isArray(scope.teamIds) || scope.teamIds.length === 0)
-    ) {
-      throw new BadRequestException(
-        'teamIds must be a non-empty array when visibility is "teams".',
-      );
-    }
-    if (
-      scope.visibility === 'project' &&
-      (!Array.isArray(scope.projectIds) || scope.projectIds.length === 0)
-    ) {
-      throw new BadRequestException(
-        'projectIds must be a non-empty array when visibility is "project".',
-      );
-    }
-  }
 
   private enforceImportCountCap(
     totalFiles: number,
