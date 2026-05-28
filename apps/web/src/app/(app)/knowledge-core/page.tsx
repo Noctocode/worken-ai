@@ -1073,10 +1073,15 @@ export default function KnowledgeCorePage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              {t("knowledgeCore.upload")} {stagedFiles.length} file{stagedFiles.length !== 1 ? "s" : ""}
+              {(stagedFiles.length === 1
+                ? t("knowledgeMain.uploadTitleOne")
+                : t("knowledgeMain.uploadTitleMany")
+              ).replace("{n}", String(stagedFiles.length))}
             </DialogTitle>
             <DialogDescription>
-              These files will be uploaded to the <strong>All Files</strong> folder.
+              {stagedFiles.length === 1
+                ? t("knowledgeMain.uploadDescOne")
+                : t("knowledgeMain.uploadDescMany").replace("{n}", String(stagedFiles.length))}
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">

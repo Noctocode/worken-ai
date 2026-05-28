@@ -524,7 +524,7 @@ function OverviewTab({
                       </div>
                     ) : (
                       <span className="text-[11px] text-text-3">
-                        Personal
+                        {t("guardrails.personal")}
                       </span>
                     )}
                   </div>
@@ -698,14 +698,14 @@ function TemplatesTab({
                     variant="outline"
                     className="cursor-pointer rounded-lg border-border-3 px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
                   >
-                    Disable
+                    {t("guardrails.disable")}
                   </Button>
                 ) : (
                   <Button
                     onClick={() => onApply(tmpl.id)}
                     className="cursor-pointer rounded-lg bg-primary-6 px-6 py-2 text-[16px] font-normal text-white hover:bg-primary-7"
                   >
-                    Apply
+                    {t("guardrails.apply")}
                   </Button>
                 )}
               </div>
@@ -736,14 +736,14 @@ function TemplatesTab({
                   variant="outline"
                   className="w-full cursor-pointer rounded-lg border-border-3 py-2.5 text-[15px] font-normal text-text-1 hover:bg-bg-1"
                 >
-                  Disable
+                  {t("guardrails.disable")}
                 </Button>
               ) : (
                 <Button
                   onClick={() => onApply(tmpl.id)}
                   className="w-full cursor-pointer rounded-lg bg-primary-6 py-2.5 text-[15px] font-normal text-white hover:bg-primary-7"
                 >
-                  Apply
+                  {t("guardrails.apply")}
                 </Button>
               )}
             </div>

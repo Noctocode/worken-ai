@@ -204,7 +204,7 @@ export const SidebarContent = ({
                 disabled
               >
                 <Plus className="h-4 w-4 shrink-0" />
-                <span>New Project</span>
+                <span>{t("sidebar.newProject")}</span>
               </Button>
             )}
           </DisabledReasonTooltip>

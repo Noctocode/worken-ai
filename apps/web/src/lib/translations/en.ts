@@ -2363,6 +2363,16 @@ export const en = {
   'compareModels.toastLoadShortcutsFailed': "Couldn't load shortcuts.",
   'compareModels.copyLabelResponse': 'response',
   'setupSix.removeFile': 'Remove file',
+  'compareModels.removeFromComparison': 'Remove from comparison',
+  'compareModels.inUse': 'In use',
+  'compareModels.shortcuts': 'Shortcuts',
+  'guardrails.personal': 'Personal',
+  'guardrails.disable': 'Disable',
+  'guardrails.apply': 'Apply',
+  'knowledgeMain.uploadDescOne': 'This file will be uploaded to the All Files folder.',
+  'knowledgeMain.uploadDescMany': 'These {n} files will be uploaded to the All Files folder.',
+  'knowledgeMain.uploadTitleOne': 'Upload {n} file',
+  'knowledgeMain.uploadTitleMany': 'Upload {n} files',
 } as const;
 
 export type TranslationKey = keyof typeof en;

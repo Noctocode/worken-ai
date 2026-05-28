@@ -2102,7 +2102,7 @@ function ModelPill({
                 }}
                 className="text-danger-6 focus:text-danger-6"
               >
-                Remove from comparison
+                {t("compareModels.removeFromComparison")}
               </DropdownMenuItem>
             </>
           )}
@@ -2254,7 +2254,7 @@ function AddModelDialog({
                               </span>
                               {inUse && (
                                 <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
-                                  In use
+                                  {t("compareModels.inUse")}
                                 </span>
                               )}
                             </span>
@@ -2547,7 +2547,7 @@ function ShortcutsPopover({
           title={t("compareModels.titleInsertShortcut")}
         >
           <LayoutGrid className="h-4 w-4" />
-          Shortcuts
+          {t("compareModels.shortcuts")}
         </button>
       </PopoverTrigger>
       <PopoverContent

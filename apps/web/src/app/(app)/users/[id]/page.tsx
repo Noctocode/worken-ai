@@ -724,9 +724,9 @@ export default function UserDetailPage({
                                 renders the current value even when
                                 read-only; the 403 surfaces as a
                                 toast for editors who try. */}
-                            <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="editor">Editor</SelectItem>
+                            <SelectItem value="admin">{t("userDetail.tmAdmin")}</SelectItem>
+                            <SelectItem value="manager">{t("userDetail.tmManager")}</SelectItem>
+                            <SelectItem value="editor">{t("userDetail.tmEditor")}</SelectItem>
                             <SelectItem value="viewer">{t("userDetail.tmViewer")}</SelectItem>
                           </SelectContent>
                         </Select>
