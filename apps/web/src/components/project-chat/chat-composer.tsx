@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 
 import { AttachFileDialog } from "./attach-file-dialog";
 import { PromptLibraryDialog } from "./prompt-library-dialog";
+import { useLanguage } from "@/lib/i18n";
 
 interface Props {
   projectId: string;
@@ -43,6 +44,7 @@ export function ChatComposer({
   onStop,
   isSending,
 }: Props) {
+  const { t } = useLanguage();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -91,7 +93,7 @@ export function ChatComposer({
             value={message}
             onChange={(e) => onMessageChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask me anything"
+            placeholder={t("chatComp.askAnything")}
             rows={1}
             disabled={isSending}
             className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-text-1 placeholder:text-text-3 focus:outline-none disabled:opacity-50"
@@ -110,10 +112,10 @@ export function ChatComposer({
         <div className="flex items-center justify-between gap-2 px-3 pb-3 pt-1">
           <div className="flex flex-wrap items-center gap-2">
             <AttachFileDialog projectId={projectId}>
-              <ComposerPill icon={Paperclip}>Attach File</ComposerPill>
+              <ComposerPill icon={Paperclip}>{t("chatComp.attachFile")}</ComposerPill>
             </AttachFileDialog>
             <PromptLibraryDialog onPick={insertPromptBody}>
-              <ComposerPill icon={BookOpen}>Prompt Library</ComposerPill>
+              <ComposerPill icon={BookOpen}>{t("chatComp.promptLibrary")}</ComposerPill>
             </PromptLibraryDialog>
           </div>
           {isSending ? (
@@ -123,7 +125,7 @@ export function ChatComposer({
               variant="destructive"
               className="h-9 w-9 shrink-0 rounded-full"
               onClick={onStop}
-              title="Stop generating"
+              title={t("chatComp.stopGenerating")}
             >
               <Square className="h-3.5 w-3.5" fill="currentColor" />
             </Button>
@@ -133,7 +135,7 @@ export function ChatComposer({
               size="icon"
               className="h-9 w-9 shrink-0 rounded-full bg-primary-6 hover:bg-primary-7"
               disabled={!message.trim()}
-              title="Send"
+              title={t("chatComp.send")}
             >
               {message.trim() ? (
                 <Send className="h-4 w-4" />
@@ -148,10 +150,10 @@ export function ChatComposer({
         {isSending ? (
           <span className="inline-flex items-center gap-1.5">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Generating — press Stop to cancel.
+            {t("chatComp.generating")}
           </span>
         ) : (
-          <>Shift + Enter for new line</>
+          <>{t("chatComp.shiftEnter")}</>
         )}
       </p>
     </div>

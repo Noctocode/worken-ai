@@ -34,6 +34,7 @@ import {
   type NameConflictAction,
   type ProjectKnowledgeFile,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /** Accept attribute for the picker. Restricted to the formats the
  *  chat ingestion pipeline can actually parse: .docx (mammoth), .xls
@@ -68,6 +69,7 @@ export function AttachFileDialog({
   children: React.ReactNode;
   projectId: string;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -137,21 +139,21 @@ export function AttachFileDialog({
       if (uploaded > 0) {
         toast.success(
           uploaded === 1
-            ? `Uploaded 1 file.`
-            : `Uploaded ${uploaded} files.`,
+            ? t("attach.uploaded1")
+            : `${t("attach.uploadedN1")} ${uploaded} ${t("attach.uploadedN2")}`,
         );
       }
       if (dup > 0) {
         toast.info(
           dup === 1
-            ? `1 file was already in your Knowledge Core — re-attached.`
-            : `${dup} files were already in your Knowledge Core — re-attached.`,
+            ? t("attach.reattach1")
+            : `${dup} ${t("attach.reattachN1")}`,
         );
       }
       setPendingRetryFiles([]);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to upload files.");
+      toast.error(err.message || t("attach.failedUpload"));
       setPendingRetryFiles([]);
     },
   });
@@ -172,13 +174,13 @@ export function AttachFileDialog({
       });
       toast.success(
         count === 1
-          ? `Detached 1 file.`
-          : `Detached ${count} files.`,
+          ? t("attach.detached1")
+          : `${t("attach.detachedN1")} ${count} ${t("attach.detachedN2")}`,
       );
       setSelected(new Set());
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to detach files.");
+      toast.error(err.message || t("attach.failedDetach"));
       // Some may have succeeded before the throw — refresh either way.
       qc.invalidateQueries({
         queryKey: ["project-knowledge-files", projectId],
@@ -228,10 +230,9 @@ export function AttachFileDialog({
         <DialogTrigger asChild>{children}</DialogTrigger>
         <DialogContent className="sm:max-w-[640px]">
           <DialogHeader>
-            <DialogTitle>Knowledge attached to this chat</DialogTitle>
+            <DialogTitle>{t("attach.title")}</DialogTitle>
             <DialogDescription>
-              These files feed the model as context on every message.
-              Supported formats: PDF, DOCX, XLS, XLSX.
+              {t("attach.desc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -247,7 +248,7 @@ export function AttachFileDialog({
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
-              placeholder="Search attached files…"
+              placeholder={t("attach.search")}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-9"
@@ -265,8 +266,8 @@ export function AttachFileDialog({
                 <FileText className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <p className="text-[13px] text-text-2">
                   {attached.length === 0
-                    ? "No knowledge yet. Upload one with the Upload files button below."
-                    : "No attached files match your search."}
+                    ? t("attach.noKnowledge")
+                    : t("attach.noMatch")}
                 </p>
               </div>
             )}
@@ -309,7 +310,7 @@ export function AttachFileDialog({
               onClick={() => setOpen(false)}
               disabled={isUploading || isDetaching}
             >
-              Close
+              {t("attach.close")}
             </Button>
             <Button
               type="button"
@@ -320,14 +321,14 @@ export function AttachFileDialog({
               {isDetaching ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Detaching…
+                  {t("attach.detaching")}
                 </>
               ) : (
                 <>
                   <Trash2 className="h-4 w-4" />
                   {selected.size > 0
-                    ? `Detach ${selected.size}`
-                    : "Detach selected"}
+                    ? `${t("attach.detach")} ${selected.size}`
+                    : t("attach.detachSelected")}
                 </>
               )}
             </Button>
@@ -340,12 +341,12 @@ export function AttachFileDialog({
               {isUploading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Uploading…
+                  {t("attach.uploading")}
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4" />
-                  Upload files
+                  {t("attach.uploadFiles")}
                 </>
               )}
             </Button>
@@ -386,11 +387,12 @@ function IngestionStatusBadge({
   status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
+  const { t } = useLanguage();
   if (status === "done") {
     return (
       <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
         <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-        In context
+        {t("attach.inContext")}
       </span>
     );
   }
@@ -398,10 +400,10 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
-        title={error ?? "Could not extract searchable text from this file."}
+        title={error ?? t("attach.skippedTitle")}
       >
         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
-        Skipped
+        {t("attach.skipped")}
       </span>
     );
   }
@@ -409,17 +411,17 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Excluded from context — open Knowledge Core to include this file again."
+        title={t("attach.excludedTitle")}
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
-        Excluded
+        {t("attach.excluded")}
       </span>
     );
   }
   return (
     <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-      {status === "processing" ? "Adding" : "Queued"}
+      {status === "processing" ? t("attach.adding") : t("attach.queued")}
     </span>
   );
 }
