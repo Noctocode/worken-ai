@@ -32,13 +32,15 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createTender, fetchOrgUsers } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
-const STEPS: { title: string; caption: string; icon: LucideIcon }[] = [
-  { title: "Basic Information", caption: "Step 1 of 5", icon: FileText },
-  { title: "Requirements", caption: "Step 2 of 5", icon: ListChecks },
-  { title: "Team Assignment", caption: "Step 3 of 5", icon: Users },
-  { title: "Documents", caption: "Step 4 of 5", icon: Upload },
-  { title: "Review & Create", caption: "Step 5 of 5", icon: Eye },
+const STEPS: { titleKey: TranslationKey; stepNum: number; icon: LucideIcon }[] = [
+  { titleKey: "tenderCreate.step1", stepNum: 1, icon: FileText },
+  { titleKey: "tenderCreate.step2", stepNum: 2, icon: ListChecks },
+  { titleKey: "tenderCreate.step3", stepNum: 3, icon: Users },
+  { titleKey: "tenderCreate.step4", stepNum: 4, icon: Upload },
+  { titleKey: "tenderCreate.step5", stepNum: 5, icon: Eye },
 ];
 
 const CATEGORIES = [
@@ -98,6 +100,7 @@ interface BasicInfo {
 /* ─── Steppers ───────────────────────────────────────────────────────── */
 
 function DesktopStepper({ active }: { active: number }) {
+  const { t } = useLanguage();
   return (
     <nav className="hidden items-center px-6 py-4 lg:flex">
       {STEPS.map((s, i) => {
@@ -124,9 +127,9 @@ function DesktopStepper({ active }: { active: number }) {
                     current || done ? "text-text-1" : "text-text-3"
                   }`}
                 >
-                  {s.title}
+                  {t(s.titleKey)}
                 </span>
-                <span className="text-[11px] text-text-3">{s.caption}</span>
+                <span className="text-[11px] text-text-3">{t("tenderCreate.stepNof").replace("{n}", String(s.stepNum))}</span>
               </div>
             </div>
             {i < STEPS.length - 1 && (
@@ -144,6 +147,7 @@ function DesktopStepper({ active }: { active: number }) {
 }
 
 function MobileStepper({ active }: { active: number }) {
+  const { t } = useLanguage();
   return (
     <nav className="flex items-center gap-0 border border-border-2 bg-bg-white px-4 py-3 lg:hidden">
       {STEPS.map((s, i) => {
@@ -167,7 +171,7 @@ function MobileStepper({ active }: { active: number }) {
                   current ? "font-medium text-text-1" : "text-text-3"
                 }`}
               >
-                {s.title}
+                {t(s.titleKey)}
               </span>
             </div>
             {i < STEPS.length - 1 && (
@@ -195,6 +199,7 @@ function BasicInfoStep({
   onChange: (d: BasicInfo) => void;
   touched: boolean;
 }) {
+  const { t } = useLanguage();
   const update = (field: keyof BasicInfo, value: string) =>
     onChange({ ...data, [field]: value });
 
@@ -205,11 +210,10 @@ function BasicInfoStep({
     <div className="flex flex-col gap-8">
       <div className="text-center">
         <h2 className="text-[20px] sm:text-[26px] font-bold leading-[1.3] text-text-1">
-          Basic Information
+          {t("tenderCreate.basicTitle")}
         </h2>
         <p className="mt-2 text-[14px] leading-[1.3] text-text-2">
-          Let&apos;s start with the essential details about this tender
-          opportunity.
+          {t("tenderCreate.basicSubtitle")}
         </p>
       </div>
 
@@ -217,30 +221,30 @@ function BasicInfoStep({
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-2">
           <span className="h-5 w-1 rounded-full bg-primary-6" />
-          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Essential Details</span>
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">{t("tenderCreate.essentialDetails")}</span>
         </div>
         <div className="flex flex-col gap-[7px]">
           <label className="text-[13px] text-text-1">
-            Tender Name <span className="text-danger-6">*</span>
+            {t("tenderCreate.tenderName")} <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.name}
             onChange={(e) => update("name", e.target.value)}
-            placeholder="Enter a clear, descriptive name for this tender"
+            placeholder={t("tenderCreate.tenderNamePh")}
             className={`h-[52px] px-4 text-[16px] ${err("name") ? "border-danger-6" : ""}`}
           />
           {err("name") ? (
-            <span className="text-[12px] text-danger-6">Tender Name is required</span>
+            <span className="text-[12px] text-danger-6">{t("tenderCreate.tenderNameErr")}</span>
           ) : (
             <span className="text-[13px] text-text-2">
-              Example: Enterprise Cloud Migration Services Q2 2026
+              {t("tenderCreate.tenderNameExample")}
             </span>
           )}
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-[7px]">
             <label className="text-[13px] text-text-1">
-              RFP/Tender Number <span className="text-danger-6">*</span>
+              {t("tenderCreate.rfpNumber")} <span className="text-danger-6">*</span>
             </label>
             <Input
               value={data.rfpNumber}
@@ -249,19 +253,19 @@ function BasicInfoStep({
               className={`h-[52px] px-4 text-[16px] ${err("rfpNumber") ? "border-danger-6" : ""}`}
             />
             {err("rfpNumber") && (
-              <span className="text-[12px] text-danger-6">RFP Number is required</span>
+              <span className="text-[12px] text-danger-6">{t("tenderCreate.rfpNumberErr")}</span>
             )}
           </div>
           <div className="flex flex-col gap-[7px]">
             <label className="text-[13px] text-text-1">
-              Category <span className="text-danger-6">*</span>
+              {t("tenderCreate.category")} <span className="text-danger-6">*</span>
             </label>
             <Select
               value={data.category}
               onValueChange={(v) => update("category", v)}
             >
               <SelectTrigger className={`w-full cursor-pointer text-[16px] data-[size=default]:h-[52px] ${err("category") ? "border-danger-6" : ""}`}>
-                <SelectValue placeholder="Select category" />
+                <SelectValue placeholder={t("tenderCreate.selectCategory")} />
               </SelectTrigger>
               <SelectContent>
                 {CATEGORIES.map((c) => (
@@ -272,22 +276,22 @@ function BasicInfoStep({
               </SelectContent>
             </Select>
             {err("category") && (
-              <span className="text-[12px] text-danger-6">Category is required</span>
+              <span className="text-[12px] text-danger-6">{t("tenderCreate.categoryErr")}</span>
             )}
           </div>
         </div>
         <div className="flex flex-col gap-[7px]">
           <label className="text-[13px] text-text-1">
-            Client Name <span className="text-danger-6">*</span>
+            {t("tenderCreate.clientName")} <span className="text-danger-6">*</span>
           </label>
           <Input
             value={data.client}
             onChange={(e) => update("client", e.target.value)}
-            placeholder="Federal Aviation Administration"
+            placeholder={t("tenderCreate.clientNamePh")}
             className={`h-[52px] px-4 text-[16px] ${err("client") ? "border-danger-6" : ""}`}
           />
           {err("client") && (
-            <span className="text-[12px] text-danger-6">Client Name is required</span>
+            <span className="text-[12px] text-danger-6">{t("tenderCreate.clientNameErr")}</span>
           )}
         </div>
       </div>
@@ -296,12 +300,12 @@ function BasicInfoStep({
       <div className="flex flex-col gap-4 border-t border-border-2 pt-4">
         <div className="flex items-center gap-2">
           <span className="h-5 w-1 rounded-full bg-primary-6" />
-          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Timeline &amp; Budget</span>
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">{t("tenderCreate.timelineBudget")}</span>
         </div>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-[7px]">
             <label className="text-[13px] text-text-1">
-              Submission Deadline <span className="text-danger-6">*</span>
+              {t("tenderCreate.submissionDeadline")} <span className="text-danger-6">*</span>
             </label>
             <div
               className="relative cursor-pointer"
@@ -320,12 +324,12 @@ function BasicInfoStep({
               />
             </div>
             {err("deadline") && (
-              <span className="text-[12px] text-danger-6">Deadline is required</span>
+              <span className="text-[12px] text-danger-6">{t("tenderCreate.deadlineErr")}</span>
             )}
           </div>
           <div className="flex flex-col gap-[7px]">
             <label className="text-[13px] text-text-1">
-              Contract Value <span className="text-danger-6">*</span>
+              {t("tenderCreate.contractValue")} <span className="text-danger-6">*</span>
             </label>
             <div className="relative">
               <DollarSign className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-text-3" />
@@ -338,10 +342,10 @@ function BasicInfoStep({
               />
             </div>
             {err("value") ? (
-              <span className="text-[12px] text-danger-6">Contract Value is required</span>
+              <span className="text-[12px] text-danger-6">{t("tenderCreate.contractValueErr")}</span>
             ) : (
               <span className="text-[13px] text-text-2">
-                Enter numeric value (e.g., 2,400,000 or 2.4M)
+                {t("tenderCreate.contractValueHint")}
               </span>
             )}
           </div>
@@ -352,23 +356,23 @@ function BasicInfoStep({
       <div className="flex flex-col gap-4 border-t border-border-2 pt-4">
         <div className="flex items-center gap-2">
           <span className="h-5 w-1 rounded-full bg-primary-6" />
-          <span className="text-[18px] font-bold leading-[1.3] text-text-1">Project Description</span>
+          <span className="text-[18px] font-bold leading-[1.3] text-text-1">{t("tenderCreate.projectDescription")}</span>
         </div>
         <div className="flex flex-col gap-[10px]">
           <label className="text-[13px] text-text-1">
-            Description <span className="text-danger-6">*</span>
+            {t("tenderCreate.description")} <span className="text-danger-6">*</span>
           </label>
           <Textarea
             value={data.description}
             onChange={(e) => update("description", e.target.value)}
-            placeholder="Provide a comprehensive overview of the tender opportunity, including scope, objectives, and key deliverables..."
+            placeholder={t("tenderCreate.descriptionPh")}
             className={`min-h-[140px] px-4 py-4 text-[16px] ${err("description") ? "border-danger-6" : ""}`}
           />
           <div className="flex items-center justify-between text-[13px] text-text-2">
             <span>
-              Be specific about scope, deliverables, and success criteria
+              {t("tenderCreate.descriptionHint")}
             </span>
-            <span>{data.description.length} characters</span>
+            <span>{data.description.length} {t("tenderCreate.characters")}</span>
           </div>
         </div>
       </div>
@@ -385,6 +389,9 @@ function RequirementsStep({
   requirements: Requirement[];
   setRequirements: (r: Requirement[]) => void;
 }) {
+  const { t } = useLanguage();
+  const priorityLabel = (p: Priority) =>
+    p === "High" ? t("tenderCreate.priHigh") : p === "Medium" ? t("tenderCreate.priMedium") : t("tenderCreate.priLow");
   const addReq = () =>
     setRequirements([
       ...requirements,
@@ -403,23 +410,22 @@ function RequirementsStep({
     <div className="flex flex-col gap-6">
       <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
-          Tender Requirements
+          {t("tenderCreate.reqsTitle")}
         </h2>
         <p className="mt-1 text-[14px] text-text-2">
-          Define the key requirements from the RFP. Our AI will match these
-          against your Knowledge Core.
+          {t("tenderCreate.reqsSubtitle")}
         </p>
       </div>
 
       <Button className="cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7">
         <Sparkles className="h-4 w-4" />
-        Auto-Extract Requirements from RFP Document
+        {t("tenderCreate.autoExtract")}
       </Button>
 
       <div className="flex items-center gap-3">
         <span className="h-px flex-1 bg-border-2" />
         <span className="text-[12px] font-medium uppercase tracking-wide text-text-3">
-          Or add manually
+          {t("tenderCreate.orAddManually")}
         </span>
         <span className="h-px flex-1 bg-border-2" />
       </div>
@@ -438,11 +444,11 @@ function RequirementsStep({
                 <Input
                   value={req.text}
                   onChange={(e) => updateReq(req.id, "text", e.target.value)}
-                  placeholder="Describe the requirement in detail (e.g., AWS Certified Solutions Architect - Professional certification required for minimum 3 team members)"
+                  placeholder={t("tenderCreate.reqPlaceholder")}
                   className="h-10"
                 />
                 <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-text-2">Priority:</span>
+                  <span className="text-[12px] text-text-2">{t("tenderCreate.priority")}</span>
                   {(["High", "Medium", "Low"] as Priority[]).map((p) => (
                     <button
                       key={p}
@@ -454,7 +460,7 @@ function RequirementsStep({
                           : "border border-border-2 bg-bg-white text-text-2 hover:border-primary-6"
                       }`}
                     >
-                      {p}
+                      {priorityLabel(p)}
                     </button>
                   ))}
                 </div>
@@ -479,7 +485,7 @@ function RequirementsStep({
         className="inline-flex cursor-pointer items-center gap-2 self-start text-[14px] font-medium text-text-2 hover:text-primary-6"
       >
         <Plus className="h-4 w-4" />
-        Add Another Requirement
+        {t("tenderCreate.addAnother")}
       </button>
     </div>
   );
@@ -494,6 +500,7 @@ function TeamStep({
   selected: string[];
   setSelected: (s: string[]) => void;
 }) {
+  const { t } = useLanguage();
   const [search, setSearch] = useState("");
 
   const { data: orgUsers = [], isLoading: usersLoading } = useQuery({
@@ -529,10 +536,10 @@ function TeamStep({
     <div className="flex flex-col gap-6">
       <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
-          Assign Team Members
+          {t("tenderCreate.teamTitle")}
         </h2>
         <p className="mt-1 text-[14px] text-text-2">
-          Select team members and define their access levels for this tender.
+          {t("tenderCreate.teamSubtitle")}
         </p>
       </div>
 
@@ -540,7 +547,7 @@ function TeamStep({
         <div className="flex items-center gap-2">
           <span className="h-5 w-1 rounded-full bg-primary-6" />
           <span className="text-[18px] font-bold leading-[1.3] text-text-1">
-            Available Team Members
+            {t("tenderCreate.availableMembers")}
           </span>
         </div>
         <div className="relative">
@@ -548,7 +555,7 @@ function TeamStep({
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, team or role..."
+            placeholder={t("tenderCreate.searchPh")}
             className="h-10 pl-9"
           />
         </div>
@@ -596,12 +603,12 @@ function TeamStep({
                   {isAdded ? (
                     <span className="inline-flex items-center gap-1">
                       <Check className="h-3 w-3" />
-                      Added
+                      {t("tenderCreate.added")}
                     </span>
                   ) : (
                     <span className="inline-flex items-center gap-1">
                       <Plus className="h-3 w-3" />
-                      Add
+                      {t("tenderCreate.add")}
                     </span>
                   )}
                 </button>
@@ -615,7 +622,7 @@ function TeamStep({
           className="inline-flex cursor-pointer items-center gap-2 self-start text-[14px] font-medium text-text-2 hover:text-primary-6"
         >
           <Mail className="h-4 w-4" />
-          Invite External Team Member
+          {t("tenderCreate.inviteExternal")}
         </button>
       </div>
     </div>
@@ -631,6 +638,7 @@ function DocumentsStep({
   files: File[];
   setFiles: (f: File[]) => void;
 }) {
+  const { t } = useLanguage();
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const dropped = Array.from(e.dataTransfer.files);
@@ -649,9 +657,9 @@ function DocumentsStep({
   return (
     <div className="flex flex-col gap-6">
       <div className="text-center">
-        <h2 className="text-[20px] font-bold text-text-1">Upload Documents</h2>
+        <h2 className="text-[20px] font-bold text-text-1">{t("tenderCreate.uploadDocs")}</h2>
         <p className="mt-1 text-[14px] text-text-2">
-          Upload the RFP document and any supporting materials.
+          {t("tenderCreate.uploadDocsSubtitle")}
         </p>
       </div>
 
@@ -664,10 +672,10 @@ function DocumentsStep({
           <Upload className="h-5 w-5 text-text-3" />
         </span>
         <p className="text-[14px] font-medium text-text-1">
-          Drop files here or click to browse
+          {t("tenderCreate.dropFiles")}
         </p>
         <p className="text-[12px] text-text-3">
-          Supports PDF, DOCX, XLS, XLSX (Max 50MB per file)
+          {t("tenderCreate.supports")}
         </p>
         <label>
           <input
@@ -678,7 +686,7 @@ function DocumentsStep({
             onChange={handleSelect}
           />
           <span className="inline-flex cursor-pointer items-center rounded-lg bg-primary-6 px-4 py-2 text-[13px] font-medium text-white transition-colors hover:bg-primary-7">
-            Select Files
+            {t("tenderCreate.selectFiles")}
           </span>
         </label>
       </div>
@@ -729,35 +737,36 @@ function ReviewStep({
   files: File[];
   onEdit: (step: number) => void;
 }) {
+  const { t } = useLanguage();
   const cards = [
     {
-      title: "Basic Information",
-      subtitle: "Essential tender details",
+      title: t("tenderCreate.cardBasic"),
+      subtitle: t("tenderCreate.cardBasicSub"),
       step: 0,
       rows: [
-        { label: "Tender Name:", value: basicInfo.name },
-        { label: "Client:", value: basicInfo.client },
-        { label: "RFP Number:", value: basicInfo.rfpNumber },
-        { label: "Category:", value: basicInfo.category },
-        { label: "Deadline:", value: basicInfo.deadline },
-        { label: "Value:", value: basicInfo.value ? (basicInfo.value.trim().startsWith("$") ? basicInfo.value : `$${basicInfo.value}`) : "" },
+        { label: t("tenderCreate.tenderNameLabel"), value: basicInfo.name },
+        { label: t("tenderCreate.clientLabel"), value: basicInfo.client },
+        { label: t("tenderCreate.rfpNumberLabel"), value: basicInfo.rfpNumber },
+        { label: t("tenderCreate.categoryLabel"), value: basicInfo.category },
+        { label: t("tenderCreate.deadlineLabel"), value: basicInfo.deadline },
+        { label: t("tenderCreate.valueLabel"), value: basicInfo.value ? (basicInfo.value.trim().startsWith("$") ? basicInfo.value : `$${basicInfo.value}`) : "" },
       ],
     },
     {
-      title: "Requirements",
-      subtitle: `${requirements.filter((r) => r.text.trim()).length} requirements defined`,
+      title: t("tenderCreate.cardReqs"),
+      subtitle: `${requirements.filter((r) => r.text.trim()).length} ${t("tenderCreate.reqsDefined")}`,
       step: 1,
       rows: [],
     },
     {
-      title: "Team Members",
-      subtitle: `${selectedTeam.length} members assigned`,
+      title: t("tenderCreate.cardTeam"),
+      subtitle: `${selectedTeam.length} ${t("tenderCreate.membersAssigned")}`,
       step: 2,
       rows: [],
     },
     {
-      title: "Documents",
-      subtitle: `${files.length} files uploaded`,
+      title: t("tenderCreate.cardDocs"),
+      subtitle: `${files.length} ${t("tenderCreate.filesUploaded")}`,
       step: 3,
       rows: [],
     },
@@ -767,11 +776,10 @@ function ReviewStep({
     <div className="flex flex-col gap-6">
       <div className="text-center">
         <h2 className="text-[20px] font-bold text-text-1">
-          Review &amp; Create Tender
+          {t("tenderCreate.reviewTitle")}
         </h2>
         <p className="mt-1 text-[14px] text-text-2">
-          Please review all information before creating the tender. You can go
-          back to edit any section.
+          {t("tenderCreate.reviewSubtitle")}
         </p>
       </div>
 
@@ -798,7 +806,7 @@ function ReviewStep({
                 onClick={() => onEdit(card.step)}
                 className="cursor-pointer text-[13px] font-medium text-primary-6 hover:text-primary-7"
               >
-                Edit
+                {t("tenderCreate.edit")}
               </button>
             </div>
             {card.rows.length > 0 && (
@@ -807,7 +815,7 @@ function ReviewStep({
                   <div key={r.label} className="flex gap-2">
                     <span className="text-text-2">{r.label}</span>
                     <span className="font-medium text-text-1">
-                      {r.value || "Not provided"}
+                      {r.value || t("tenderCreate.notProvided")}
                     </span>
                   </div>
                 ))}
@@ -824,13 +832,10 @@ function ReviewStep({
         </span>
         <div className="flex flex-col gap-1">
           <h3 className="text-[14px] font-semibold text-text-1">
-            AI Analysis Ready
+            {t("tenderCreate.aiReady")}
           </h3>
           <p className="text-[13px] leading-[1.5] text-text-2">
-            After creation, our AI will automatically analyze all requirements
-            and match them against your Knowledge Core to identify capability
-            gaps, suggest relevant case studies, and generate actionable items
-            for your team.
+            {t("tenderCreate.aiReadyDesc")}
           </p>
         </div>
       </div>
@@ -842,6 +847,7 @@ function ReviewStep({
 
 export default function CreateTenderPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [step, setStep] = useState(0);
 
   const [basicInfo, setBasicInfo] = useState<BasicInfo>({
@@ -865,34 +871,34 @@ export default function CreateTenderPage() {
     mutationFn: createTender,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenders"] });
-      toast.success("Tender created successfully!");
+      toast.success(t("tenderCreate.success"));
       router.push("/tender-ai");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to create tender.");
+      toast.error(err.message || t("tenderCreate.failed"));
     },
   });
 
   const validateStep = (s: number): string | null => {
     switch (s) {
       case 0: {
-        if (!basicInfo.name.trim()) return "Tender Name is required.";
-        if (!basicInfo.rfpNumber.trim()) return "RFP/Tender Number is required.";
-        if (!basicInfo.category) return "Category is required.";
-        if (!basicInfo.client.trim()) return "Client Name is required.";
-        if (!basicInfo.deadline) return "Submission Deadline is required.";
-        if (!basicInfo.value.trim()) return "Contract Value is required.";
-        if (!basicInfo.description.trim()) return "Description is required.";
+        if (!basicInfo.name.trim()) return t("tenderCreate.errName");
+        if (!basicInfo.rfpNumber.trim()) return t("tenderCreate.errRfp");
+        if (!basicInfo.category) return t("tenderCreate.errCategory");
+        if (!basicInfo.client.trim()) return t("tenderCreate.errClient");
+        if (!basicInfo.deadline) return t("tenderCreate.errDeadline");
+        if (!basicInfo.value.trim()) return t("tenderCreate.errValue");
+        if (!basicInfo.description.trim()) return t("tenderCreate.errDescription");
         return null;
       }
       case 1: {
         const filled = requirements.filter((r) => r.text.trim());
-        if (filled.length === 0) return "Add at least one requirement.";
+        if (filled.length === 0) return t("tenderCreate.errAtLeastReq");
         return null;
       }
       case 2:
         if (selectedTeam.length === 0)
-          return "Assign at least one team member.";
+          return t("tenderCreate.errAtLeastMember");
         return null;
       case 3:
         return null;
@@ -985,7 +991,7 @@ export default function CreateTenderPage() {
                 onClick={() => setStep((s) => s - 1)}
                 className="cursor-pointer"
               >
-                Previous
+                {t("tenderCreate.previous")}
               </Button>
             )}
             {step < 4 ? (
@@ -993,7 +999,7 @@ export default function CreateTenderPage() {
                 onClick={handleNext}
                 className="cursor-pointer bg-primary-6 hover:bg-primary-7"
               >
-                Next Step
+                {t("tenderCreate.nextStep")}
               </Button>
             ) : (
               <Button
@@ -1004,7 +1010,7 @@ export default function CreateTenderPage() {
                 {createMutation.isPending && (
                   <Loader2 className="h-4 w-4 animate-spin" />
                 )}
-                {createMutation.isPending ? "Creating..." : "Create Tender"}
+                {createMutation.isPending ? t("tenderCreate.creating") : t("tenderCreate.createTender")}
               </Button>
             )}
           </div>
