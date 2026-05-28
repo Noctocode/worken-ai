@@ -54,6 +54,7 @@ import {
 import { toast } from "sonner";
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/components/providers";
+import { useLanguage } from "@/lib/i18n";
 
 /* ─── Helper components ──────────────────────────────────────────────────── */
 
@@ -105,6 +106,7 @@ function UserRoleControl({
   onChange?: (role: OrgRole) => void;
   disabled?: boolean;
 }) {
+  const { t } = useLanguage();
   const badgeClass =
     role === "admin"
       ? "border-transparent bg-danger-1 text-danger-6 uppercase tracking-wide text-[10px] px-1.5 py-0"
@@ -126,9 +128,9 @@ function UserRoleControl({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        <SelectItem value="basic">Basic</SelectItem>
-        <SelectItem value="advanced">Advanced</SelectItem>
-        <SelectItem value="admin">Admin</SelectItem>
+        <SelectItem value="basic">{t("userDetail.roleBasic")}</SelectItem>
+        <SelectItem value="advanced">{t("userDetail.roleAdvanced")}</SelectItem>
+        <SelectItem value="admin">{t("userDetail.roleAdmin")}</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -141,6 +143,7 @@ function UserRoleControl({
  * error message; successful ones show only the metrics.
  */
 function ActivityRow({ event }: { event: UserActivityEvent }) {
+  const { t } = useLanguage();
   const when = new Date(event.createdAt);
   const time = when.toLocaleString(undefined, {
     dateStyle: "short",
@@ -149,13 +152,13 @@ function ActivityRow({ event }: { event: UserActivityEvent }) {
   const eventLabel = (() => {
     switch (event.eventType) {
       case "chat_call":
-        return "Chat";
+        return t("userDetail.eventChat");
       case "arena_call":
-        return "Arena";
+        return t("userDetail.eventArena");
       case "evaluator_call":
-        return "Evaluator";
+        return t("userDetail.eventEvaluator");
       case "guardrail_trigger":
-        return "Guardrail";
+        return t("userDetail.eventGuardrail");
       default:
         return event.eventType;
     }
@@ -173,7 +176,7 @@ function ActivityRow({ event }: { event: UserActivityEvent }) {
             className={`inline-flex h-2 w-2 shrink-0 rounded-full ${
               event.success ? "bg-success-7" : "bg-danger-6"
             }`}
-            aria-label={event.success ? "Success" : "Failed"}
+            aria-label={event.success ? t("userDetail.success") : t("userDetail.failed")}
           />
           <span className="rounded bg-bg-1 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-text-2">
             {eventLabel}
@@ -191,7 +194,7 @@ function ActivityRow({ event }: { event: UserActivityEvent }) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-text-3 pl-4">
         {event.provider && <span>{event.provider}</span>}
         {event.totalTokens != null && (
-          <span>{event.totalTokens.toLocaleString()} tokens</span>
+          <span>{event.totalTokens.toLocaleString()} {t("userDetail.tokens")}</span>
         )}
         {cost && <span>{cost}</span>}
         {event.latencyMs != null && (
@@ -238,6 +241,7 @@ export default function UserDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  const { t } = useLanguage();
   const { id } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -302,23 +306,23 @@ export default function UserDetailPage({
     }) => updateMemberRole(teamId, memberId, role),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["users", id] });
-      toast.success("Role updated.");
+      toast.success(t("userDetail.roleUpdated"));
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't update role.");
+      toast.error(err.message || t("userDetail.couldntUpdateRole"));
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: () => removeOrgUser(id),
     onSuccess: () => {
-      toast.success("User removed.");
+      toast.success(t("userDetail.userRemoved"));
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       router.push("/teams?tab=users");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove user.");
+      toast.error(err.message || t("userDetail.couldntRemoveUser"));
     },
   });
 
@@ -331,13 +335,13 @@ export default function UserDetailPage({
       memberId: string;
     }) => removeTeamMember(teamId, memberId),
     onSuccess: () => {
-      toast.success("Removed from team.");
+      toast.success(t("userDetail.removedFromTeam"));
       queryClient.invalidateQueries({ queryKey: ["users", id] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setPendingTeamRemoval(null);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove from team.");
+      toast.error(err.message || t("userDetail.couldntRemoveTeam"));
       setPendingTeamRemoval(null);
     },
   });
@@ -392,7 +396,7 @@ export default function UserDetailPage({
   if (error || !user) {
     return (
       <div className="flex items-center justify-center py-24">
-        <p className="text-text-3">Failed to load user.</p>
+        <p className="text-text-3">{t("userDetail.failedLoad")}</p>
       </div>
     );
   }
@@ -435,7 +439,7 @@ export default function UserDetailPage({
     const raw = editBudget.replace(/\./g, "").replace(",", ".");
     const parsed = parseFloat(raw);
     if (isNaN(parsed) || parsed < 0) {
-      toast.error("Budget must be a non-negative number.");
+      toast.error(t("userDetail.budgetNonNegative"));
       return;
     }
 
@@ -455,9 +459,9 @@ export default function UserDetailPage({
       tasks.push(
         budgetMutation
           .mutateAsync(parsed)
-          .then(() => toast.success("Budget updated."))
+          .then(() => toast.success(t("userDetail.budgetUpdated")))
           .catch((err: Error) => {
-            toast.error(err.message || "Couldn't update budget.");
+            toast.error(err.message || t("userDetail.couldntUpdateBudget"));
             throw err;
           }),
       );
@@ -467,10 +471,10 @@ export default function UserDetailPage({
         orgRoleMutation
           .mutateAsync(editRole)
           .then((data) =>
-            toast.success(`Role updated to ${data.role}.`),
+            toast.success(`${t("userDetail.roleUpdatedTo")} ${data.role}.`),
           )
           .catch((err: Error) => {
-            toast.error(err.message || "Couldn't update role.");
+            toast.error(err.message || t("userDetail.couldntUpdateRole"));
             throw err;
           }),
       );
@@ -510,7 +514,7 @@ export default function UserDetailPage({
                 />
                 {editing && !canEditSelfRole && (
                   <span className="text-[11px] text-text-3">
-                    (you can&apos;t change your own role)
+                    {t("userDetail.cantChangeOwnRole")}
                   </span>
                 )}
               </div>
@@ -524,7 +528,7 @@ export default function UserDetailPage({
               onClick={() => setActivityOpen(true)}
             >
               <LayoutList className="h-4 w-4" />
-              Activity Log
+              {t("userDetail.activityLog")}
             </Button>
 
             {/* Edit-mode controls. The "enter edit mode" pencil lives
@@ -541,7 +545,7 @@ export default function UserDetailPage({
                   disabled={isSubmitting}
                 >
                   <X className="h-4 w-4" />
-                  Cancel
+                  {t("userDetail.cancel")}
                 </Button>
                 <Button
                   className="h-10 gap-2 bg-success-7 text-white hover:bg-success-7/90"
@@ -553,7 +557,7 @@ export default function UserDetailPage({
                   ) : (
                     <Check className="h-4 w-4" strokeWidth={2.5} />
                   )}
-                  Confirm
+                  {t("userDetail.confirm")}
                 </Button>
               </>
             )}
@@ -566,21 +570,17 @@ export default function UserDetailPage({
           <div className="space-y-3">
             <div className="flex items-center gap-1.5">
               <p className="text-[18px] font-bold text-text-1">
-                Personal Monthly Budget
+                {t("userDetail.personalMonthlyBudget")}
               </p>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Info
                     className="h-3.5 w-3.5 text-text-3 cursor-help"
-                    aria-label="What this budget covers"
+                    aria-label={t("userDetail.whatBudgetCovers")}
                   />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  Caps spend on personal projects and the Compare Models
-                  arena. Project chats inside a team bill against the
-                  team budget instead. BYOK calls (your own provider
-                  keys configured in Management → Integration) bill
-                  externally and don&apos;t count here.
+                  {t("userDetail.budgetTooltip")}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -615,21 +615,20 @@ export default function UserDetailPage({
                 {budget > 0 ? (
                   <span>{formatCurrency(budget)}</span>
                 ) : (
-                  <span className="text-text-3">Not set</span>
+                  <span className="text-text-3">{t("userDetail.notSet")}</span>
                 )}
               </div>
             )}
             {!editing && !canEditBudget && (
               <p className="text-[12px] text-text-3">
-                Only admins can change this — ask an admin to adjust the
-                budget.
+                {t("userDetail.adminOnly")}
               </p>
             )}
           </div>
 
           {/* Spent / Remaining */}
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Spent / Remaining</p>
+            <p className="text-[18px] font-bold text-text-1">{t("userDetail.spentRemaining")}</p>
             <div className="flex items-center gap-3 h-[56px]">
               <span className="text-[16px] text-text-2">
                 {formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
@@ -641,22 +640,19 @@ export default function UserDetailPage({
           {/* Projected */}
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <p className="text-[18px] font-bold text-text-1">Projected</p>
+              <p className="text-[18px] font-bold text-text-1">{t("userDetail.projected")}</p>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label="What does Projected mean?"
+                    aria-label={t("userDetail.projectedTooltipAria")}
                     className="flex items-center justify-center text-text-3 hover:text-text-1"
                   >
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  Linear forecast of this user&rsquo;s total spend by
-                  month-end, extrapolated from the daily run-rate so
-                  far. Early in the month it can swing widely, then
-                  stabilizes.
+                  {t("userDetail.projectedTooltip")}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -667,7 +663,7 @@ export default function UserDetailPage({
                   onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"
                 }`}
               >
-                {onTrack ? "On track" : "Over Budget"}
+                {onTrack ? t("userDetail.onTrack") : t("userDetail.overBudget")}
               </span>
             </div>
           </div>
@@ -676,39 +672,39 @@ export default function UserDetailPage({
 
       {/* ── Teams ─────────────────────────────────────────────────── */}
       <div className="space-y-3">
-        <p className="text-[18px] font-bold text-text-1">Teams</p>
+        <p className="text-[18px] font-bold text-text-1">{t("userDetail.teamsTitle")}</p>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[400px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Team</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Role</th>
-                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("userDetail.colTeam")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("userDetail.colRole")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("userDetail.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
-                {user.teams.map((t) => (
-                  <tr key={t.id} className="h-14 border-b border-border-2">
+                {user.teams.map((team) => (
+                  <tr key={team.id} className="h-14 border-b border-border-2">
                     <td className="bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap">
-                      {t.name}
-                      {t.status === "pending" && (
-                        <span className="ml-2 rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>
+                      {team.name}
+                      {team.status === "pending" && (
+                        <span className="ml-2 rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">{t("userDetail.pending")}</span>
                       )}
                     </td>
                     <td className="bg-bg-white px-4 align-middle">
-                      {t.role === "owner" ? (
+                      {team.role === "owner" ? (
                         <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
-                          Team Owner
+                          {t("userDetail.teamOwner")}
                         </span>
                       ) : (
                         <Select
-                          value={t.role}
-                          disabled={!t.canManage}
+                          value={team.role}
+                          disabled={!team.canManage}
                           onValueChange={(value) =>
                             teamRoleMutation.mutate({
-                              teamId: t.id,
-                              memberId: t.memberId,
+                              teamId: team.id,
+                              memberId: team.memberId,
                               role: value as
                                 | "admin"
                                 | "manager"
@@ -731,23 +727,14 @@ export default function UserDetailPage({
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="manager">Manager</SelectItem>
                             <SelectItem value="editor">Editor</SelectItem>
-                            <SelectItem value="viewer">Viewer</SelectItem>
+                            <SelectItem value="viewer">{t("userDetail.tmViewer")}</SelectItem>
                           </SelectContent>
                         </Select>
                       )}
                     </td>
                     <td className="bg-bg-white px-4 align-middle w-[93px]">
                       <div className="flex justify-center">
-                        {/* Kebab only renders for the caller-can-manage
-                            AND not-self path. The BE rejects
-                            self-removal explicitly ("Cannot remove
-                            yourself from the team"), so the row owner
-                            viewing their own page never sees this
-                            action. Admin viewing another user's
-                            membership: shown when `t.canManage` is
-                            true (admin is owner or accepted editor of
-                            the team). */}
-                        {!isSelf && t.canManage && (
+                        {!isSelf && team.canManage && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button
@@ -763,14 +750,14 @@ export default function UserDetailPage({
                                 className="gap-2 text-danger-6 focus:text-danger-6"
                                 onClick={() =>
                                   setPendingTeamRemoval({
-                                    teamId: t.id,
-                                    memberId: t.memberId,
-                                    teamName: t.name,
+                                    teamId: team.id,
+                                    memberId: team.memberId,
+                                    teamName: team.name,
                                   })
                                 }
                               >
                                 <Trash2 className="h-4 w-4" />
-                                Remove from team
+                                {t("userDetail.removeFromTeam")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -782,7 +769,7 @@ export default function UserDetailPage({
                 {user.teams.length === 0 && (
                   <tr>
                     <td colSpan={3} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">
-                      Not a member of any team.
+                      {t("userDetail.notMemberAny")}
                     </td>
                   </tr>
                 )}
@@ -803,9 +790,9 @@ export default function UserDetailPage({
       >
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Activity log — {displayName}</DialogTitle>
+            <DialogTitle>{t("userDetail.activityTitle")} {displayName}</DialogTitle>
             <DialogDescription>
-              Recent AI calls and platform events for this user.
+              {t("userDetail.activityDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="max-h-[60vh] overflow-y-auto rounded-md border border-bg-1 bg-bg-white">
@@ -818,14 +805,14 @@ export default function UserDetailPage({
               <div className="px-4 py-10 text-center text-sm text-danger-6">
                 {activityQuery.error instanceof Error
                   ? activityQuery.error.message
-                  : "Failed to load activity log."}
+                  : t("userDetail.failedActivity")}
               </div>
             )}
             {activityQuery.data &&
               !activityQuery.isLoading &&
               activityQuery.data.events.length === 0 && (
                 <div className="px-4 py-10 text-center text-sm text-text-3">
-                  No activity recorded for this user yet.
+                  {t("userDetail.noActivity")}
                 </div>
               )}
             {activityQuery.data &&
@@ -840,10 +827,8 @@ export default function UserDetailPage({
           {activityQuery.data &&
             activityQuery.data.total > activityQuery.data.events.length && (
               <p className="text-[12px] text-text-3">
-                Showing {activityQuery.data.events.length} of{" "}
-                {activityQuery.data.total.toLocaleString()} most recent
-                events. Older events are available in the Observability
-                dashboard.
+                {t("userDetail.showing")} {activityQuery.data.events.length} {t("userDetail.of")}{" "}
+                {activityQuery.data.total.toLocaleString()} {t("userDetail.mostRecent")}
               </p>
             )}
           <DialogFooter>
@@ -851,7 +836,7 @@ export default function UserDetailPage({
               variant="outline"
               onClick={() => setActivityOpen(false)}
             >
-              Close
+              {t("userDetail.close")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -867,12 +852,10 @@ export default function UserDetailPage({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove from team</DialogTitle>
+            <DialogTitle>{t("userDetail.removeFromTeamTitle")}</DialogTitle>
             <DialogDescription>
-              Remove <strong>{displayName}</strong> from{" "}
-              <strong>{pendingTeamRemoval?.teamName}</strong>? They&apos;ll
-              lose access to that team&apos;s projects and budget. Their
-              account stays intact.
+              {t("userDetail.removeTeamDesc1")} <strong>{displayName}</strong> {t("userDetail.removeTeamDesc2")}{" "}
+              <strong>{pendingTeamRemoval?.teamName}</strong>{t("userDetail.removeTeamDesc3")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -881,7 +864,7 @@ export default function UserDetailPage({
               onClick={() => setPendingTeamRemoval(null)}
               disabled={removeTeamMemberMutation.isPending}
             >
-              Cancel
+              {t("userDetail.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -895,7 +878,7 @@ export default function UserDetailPage({
               }}
               disabled={removeTeamMemberMutation.isPending}
             >
-              {removeTeamMemberMutation.isPending ? "Removing..." : "Remove"}
+              {removeTeamMemberMutation.isPending ? t("userDetail.removing") : t("userDetail.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -910,11 +893,10 @@ export default function UserDetailPage({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove user</DialogTitle>
+            <DialogTitle>{t("userDetail.removeUserTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove{" "}
-              <strong>{displayName}</strong> from the organization? This
-              action cannot be undone.
+              {t("userDetail.removeUserDesc1")}{" "}
+              <strong>{displayName}</strong> {t("userDetail.removeUserDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -923,14 +905,14 @@ export default function UserDetailPage({
               onClick={() => setConfirmDeleteOpen(false)}
               disabled={removeMutation.isPending}
             >
-              Cancel
+              {t("userDetail.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={() => removeMutation.mutate()}
               disabled={removeMutation.isPending}
             >
-              {removeMutation.isPending ? "Removing..." : "Remove"}
+              {removeMutation.isPending ? t("userDetail.removing") : t("userDetail.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>
