@@ -77,7 +77,16 @@ const MAX_PAGES = 20;
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 
 interface GraphErrorBody {
-  error?: { code?: string; message?: string };
+  error?: {
+    code?: string;
+    message?: string;
+    innerError?: {
+      code?: string;
+      message?: string;
+      'request-id'?: string;
+      date?: string;
+    };
+  };
 }
 
 interface GraphPage<T> {
@@ -168,7 +177,22 @@ export class SharePointGraphService {
 
     if (!res.ok) {
       const body = (await res.json().catch(() => ({}))) as GraphErrorBody;
-      const detail = body.error?.message ?? `${res.status} ${res.statusText}`;
+      // Surface code + innerError so generic "General exception while
+      // processing" messages aren't a complete black box. The
+      // innerError typically carries the actual tenant-side reason
+      // (request-id is useful for Microsoft support tickets).
+      const code = body.error?.code;
+      const message = body.error?.message ?? `${res.status} ${res.statusText}`;
+      const innerCode = body.error?.innerError?.code;
+      const requestId = body.error?.innerError?.['request-id'];
+      const detail = [
+        message,
+        code ? `code=${code}` : null,
+        innerCode ? `innerCode=${innerCode}` : null,
+        requestId ? `request-id=${requestId}` : null,
+      ]
+        .filter(Boolean)
+        .join(' | ');
       throw new Error(`Microsoft Graph error: ${detail}`);
     }
 
@@ -204,41 +228,91 @@ export class SharePointGraphService {
   }
 
   /**
-   * List SharePoint sites the user can access. Uses the
-   * `/sites?search=*` endpoint which returns every site visible to
-   * the signed-in user (Graph filters by delegated permissions).
+   * List SharePoint sites the user can access. Three layered
+   * strategies, in order of preference:
    *
-   * Capped at MAX_PAGES (≈ 4000 sites). Practically unreachable in
-   * sane tenants; very large tenants get a "showing first N" hint
-   * in the FE.
+   *   1. `/me/followedSites` — sites the user has explicitly followed
+   *      in SharePoint (the "My sites" / "Sledim" list). Best UX
+   *      because it matches what the user actually sees in SharePoint
+   *      Online and is much less prone to the
+   *      "General exception while processing" failure that
+   *      `/sites?search=*` exhibits for some tenant configurations.
+   *
+   *   2. `/sites?search=*` — fall back to a tenant-wide search if
+   *      the user hasn't followed any sites yet (or that endpoint
+   *      returns empty for any reason).
+   *
+   *   3. Empty list — if BOTH endpoints fail (a real tenant-side
+   *      issue), the FE renders our existing empty-state with a
+   *      hint about personal vs work accounts. Better than a 500.
    *
    * Personal Microsoft accounts (MSA) have no SharePoint at all —
-   * Graph returns "This API is not supported for MSA accounts" for
-   * `/sites`. We catch that specific error and return [], which the
-   * FE renders as the existing empty-state ("you don't have access
-   * to any SharePoint sites") — accurate AND not misleading (the FE
-   * error path tells users to "reconnect", which wouldn't help in
-   * the MSA case).
+   * Graph returns "This API is not supported for MSA accounts".
+   * We catch that specifically and return [] silently.
    */
   async listSites(userId: string): Promise<SharePointSiteMeta[]> {
-    let items: GraphSite[];
+    let items: GraphSite[] = [];
+
+    // 1. /me/followedSites
     try {
       const result = await this.paginate<GraphSite>(
         userId,
-        '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
+        '/me/followedSites?$select=id,name,displayName,webUrl&$top=200',
       );
       items = result.items;
+      if (items.length > 0) {
+        this.logger.log(
+          `listSites: returned ${items.length} sites from /me/followedSites`,
+        );
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (/not supported for MSA accounts/i.test(msg)) {
         this.logger.log(
-          'listSites: account is a personal Microsoft account ' +
-            '(no SharePoint sites available). Returning empty list.',
+          'listSites: personal MSA — no SharePoint, returning empty.',
         );
         return [];
       }
-      throw err;
+      this.logger.warn(
+        `listSites: /me/followedSites failed (${msg}). ` +
+          `Falling back to /sites?search=*.`,
+      );
     }
+
+    // 2. /sites?search=* fallback (only if followedSites empty)
+    if (items.length === 0) {
+      try {
+        const result = await this.paginate<GraphSite>(
+          userId,
+          '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
+        );
+        items = result.items;
+        if (items.length > 0) {
+          this.logger.log(
+            `listSites: returned ${items.length} sites from /sites?search=*`,
+          );
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/not supported for MSA accounts/i.test(msg)) {
+          this.logger.log(
+            'listSites: personal MSA — no SharePoint, returning empty.',
+          );
+          return [];
+        }
+        // 3. Both failed — log loudly + return empty rather than 500.
+        // FE shows the empty-state hint about personal vs work accounts.
+        this.logger.warn(
+          `listSites: /sites?search=* also failed (${msg}). ` +
+            `Returning empty list so the FE doesn't 500. ` +
+            `User likely has a tenant configuration that blocks both ` +
+            `endpoints — recommend they follow a site in SharePoint ` +
+            `first or check tenant SharePoint provisioning.`,
+        );
+        return [];
+      }
+    }
+
     return items.map((s) => ({
       id: s.id,
       name: s.name ?? '',
