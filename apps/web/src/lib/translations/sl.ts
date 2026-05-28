@@ -2273,4 +2273,8 @@ export const sl: Record<TranslationKey, string> = {
   'promptBuilder.errSave': 'Poziva ni bilo mogoče shraniti.',
   'promptBuilder.updated': 'Poziv posodobljen.',
   'promptBuilder.saved': 'Poziv shranjen.',
+  'pagination.label': 'Paginacija',
+  'pagination.previous': 'Prejšnja',
+  'pagination.next': 'Naslednja',
+  'pagination.page': 'Stran {n}',
 };

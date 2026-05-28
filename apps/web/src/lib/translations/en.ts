@@ -2275,6 +2275,10 @@ export const en = {
   'promptBuilder.errSave': "Couldn't save prompt.",
   'promptBuilder.updated': 'Prompt updated.',
   'promptBuilder.saved': 'Prompt saved.',
+  'pagination.label': 'Pagination',
+  'pagination.previous': 'Previous',
+  'pagination.next': 'Next',
+  'pagination.page': 'Page {n}',
 } as const;
 
 export type TranslationKey = keyof typeof en;
