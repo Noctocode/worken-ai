@@ -8,8 +8,10 @@ import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { resendVerificationEmail } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 function CheckEmailContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const email = searchParams.get("email");
 
@@ -19,10 +21,10 @@ function CheckEmailContent() {
       await resendVerificationEmail(email);
     },
     onSuccess: () => {
-      toast.success("Verification email sent. Please check your inbox.");
+      toast.success(t("auth.verificationSent"));
     },
     onError: () => {
-      toast.error("Couldn't resend right now. Please try again.");
+      toast.error(t("auth.resendFailed"));
     },
   });
 
@@ -41,23 +43,23 @@ function CheckEmailContent() {
           <div className="flex flex-col items-center gap-2">
             <Mail className="h-[52px] w-[52px] text-primary-6" strokeWidth={1.5} />
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              We sent you a confirmation email.
+              {t("auth.confirmationSent")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Please check your inbox to continue
+              {t("auth.checkInboxContinue")}
             </p>
           </div>
 
           {email && (
             <p className="text-sm text-text-2 text-center">
-              Didn&apos;t receive it?{" "}
+              {t("auth.didntReceive")}
               <button
                 type="button"
                 onClick={() => mutation.mutate()}
                 disabled={mutation.isPending}
                 className="text-primary-6 hover:text-primary-7 font-medium disabled:opacity-60"
               >
-                {mutation.isPending ? "Resending…" : "Resend email"}
+                {mutation.isPending ? t("auth.resending") : t("auth.resendEmail")}
               </button>
             </p>
           )}

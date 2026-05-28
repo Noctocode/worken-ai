@@ -61,6 +61,7 @@ import {
   type ComplianceTemplateItem,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useLanguage } from "@/lib/i18n";
 
 type Tab = "overview" | "templates";
 type Severity = "high" | "medium" | "low";
@@ -182,6 +183,7 @@ function OverviewTab({
    *  auth hook inside the table component. */
   canOrgWide: boolean;
 }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [severity, setSeverity] = useState<string>("all");
   const [timeFilter, setTimeFilter] = useState<string>("all");
@@ -255,25 +257,25 @@ function OverviewTab({
       {/* Stats — 2x2 grid on mobile, 4-up on desktop. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 lg:gap-4">
         <StatCard
-          label="Active Rules"
+          label={t("guardrails.activeRules")}
           value={String(stats?.activeRules ?? 0)}
           icon={ShieldCheck}
           iconBg="bg-primary-1 text-primary-6"
         />
         <StatCard
-          label="Total Triggers"
+          label={t("guardrails.totalTriggers")}
           value={(stats?.totalTriggers ?? 0).toLocaleString()}
           icon={Zap}
           iconBg="bg-warning-1 text-warning-6"
         />
         <StatCard
-          label="Critical Rules"
+          label={t("guardrails.criticalRules")}
           value={String(stats?.criticalRules ?? 0)}
           icon={AlertTriangle}
           iconBg="bg-danger-1 text-danger-6"
         />
         <StatCard
-          label="Coverage"
+          label={t("guardrails.coverage")}
           value={`${stats?.coverage ?? 0}%`}
           icon={Eye}
           iconBg="bg-success-1 text-success-7"
@@ -286,7 +288,7 @@ function OverviewTab({
           we've always had. */}
       <div className="flex flex-col gap-2.5 rounded-xl border border-border-2 bg-bg-white p-4 lg:flex-row lg:items-center lg:gap-6 lg:rounded-none lg:border-0 lg:bg-transparent lg:p-0 lg:flex-wrap">
         <h3 className="text-[16px] font-semibold text-text-1 lg:text-[18px] lg:font-bold">
-          All Guardrails
+          {t("guardrails.allGuardrails")}
         </h3>
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 lg:left-4 top-1/2 h-4 w-4 lg:h-5 lg:w-5 -translate-y-1/2 text-text-3" />
@@ -297,7 +299,7 @@ function OverviewTab({
               setQuery(e.target.value);
               setPage(1);
             }}
-            placeholder="Search guardrails..."
+            placeholder={t("guardrails.search")}
             className="h-10 lg:h-12 rounded-md lg:rounded-xl border-border-3 bg-bg-white pl-10 lg:pl-12 text-[14px] lg:text-[16px] placeholder:text-text-3"
           />
         </div>
@@ -313,10 +315,10 @@ function OverviewTab({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Severities</SelectItem>
-              <SelectItem value="high">High</SelectItem>
-              <SelectItem value="medium">Medium</SelectItem>
-              <SelectItem value="low">Low</SelectItem>
+              <SelectItem value="all">{t("guardrails.allSeverities")}</SelectItem>
+              <SelectItem value="high">{t("guardrails.high")}</SelectItem>
+              <SelectItem value="medium">{t("guardrails.medium")}</SelectItem>
+              <SelectItem value="low">{t("guardrails.low")}</SelectItem>
             </SelectContent>
           </Select>
           <Select value={timeFilter} onValueChange={setTimeFilter}>
@@ -324,10 +326,10 @@ function OverviewTab({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="24h">Last 24h</SelectItem>
-              <SelectItem value="7d">Last 7 days</SelectItem>
-              <SelectItem value="30d">Last 30 days</SelectItem>
-              <SelectItem value="all">All time</SelectItem>
+              <SelectItem value="24h">{t("guardrails.last24h")}</SelectItem>
+              <SelectItem value="7d">{t("guardrails.last7days")}</SelectItem>
+              <SelectItem value="30d">{t("guardrails.last30days")}</SelectItem>
+              <SelectItem value="all">{t("guardrails.allTime")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -366,12 +368,12 @@ function OverviewTab({
                     {g.isActive ? (
                       <>
                         <X className="h-4 w-4" />
-                        Pause
+                        {t("guardrails.pause")}
                       </>
                     ) : (
                       <>
                         <Check className="h-4 w-4" />
-                        Activate
+                        {t("guardrails.activate")}
                       </>
                     )}
                   </DropdownMenuItem>
@@ -381,7 +383,7 @@ function OverviewTab({
                       onClick={() => onToggleOrgWide(g.id)}
                     >
                       <Shield className="h-4 w-4" />
-                      {g.isOrgWide ? "Disable Org-wide" : "Enable Org-wide"}
+                      {g.isOrgWide ? t("guardrails.disableOrgWide") : t("guardrails.enableOrgWide")}
                     </DropdownMenuItem>
                   )}
                   <DropdownMenuItem
@@ -389,14 +391,14 @@ function OverviewTab({
                     onClick={() => onEdit(g)}
                   >
                     <Pencil className="h-4 w-4" />
-                    Edit
+                    {t("common.edit")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="gap-2 text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteId(g.id)}
                   >
                     <Trash2 className="h-4 w-4" />
-                    Delete
+                    {t("common.delete")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -407,7 +409,7 @@ function OverviewTab({
               </span>
               {g.isOrgWide && (
                 <span className="rounded-md bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6">
-                  Org-wide
+                  {t("guardrails.orgWide")}
                 </span>
               )}
               <span
@@ -417,12 +419,12 @@ function OverviewTab({
               </span>
               {!g.isActive && (
                 <span className="rounded-md bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3">
-                  Paused
+                  {t("guardrails.paused")}
                 </span>
               )}
             </div>
             <div className="flex items-center gap-1.5 text-[12px] text-text-3">
-              <span>Triggers:</span>
+              <span>{t("guardrails.trigersSuffix")}</span>
               <span className="text-[13px] font-semibold text-text-1">
                 {g.triggers.toLocaleString()}
               </span>
@@ -431,7 +433,7 @@ function OverviewTab({
         ))}
         {paginated.length === 0 && (
           <div className="rounded-[10px] border border-border-2 bg-bg-white px-4 py-10 text-center text-[13px] text-text-3">
-            No guardrails found.
+            {t("guardrails.noGuardrails")}
           </div>
         )}
       </div>
@@ -441,13 +443,13 @@ function OverviewTab({
         <table className="w-full text-left text-[13px]">
           <thead>
             <tr className="border-b border-border-2 text-[14px] font-medium text-text-2">
-              <th className="px-4 py-2 font-medium">Name</th>
-              <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Severity</th>
-              <th className="px-4 py-2 font-medium">Triggers</th>
-              <th className="px-4 py-2 font-medium">Scope</th>
-              <th className="px-4 py-2 font-medium">Status</th>
-              <th className="px-4 py-2 font-medium">Actions</th>
+              <th className="px-4 py-2 font-medium">{t("common.name")}</th>
+              <th className="px-4 py-2 font-medium">{t("common.type")}</th>
+              <th className="px-4 py-2 font-medium">{t("guardrails.severity")}</th>
+              <th className="px-4 py-2 font-medium">{t("guardrails.triggers")}</th>
+              <th className="px-4 py-2 font-medium">{t("guardrails.scope")}</th>
+              <th className="px-4 py-2 font-medium">{t("common.status")}</th>
+              <th className="px-4 py-2 font-medium">{t("common.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -502,21 +504,21 @@ function OverviewTab({
                     )}
                     {g.isOrgWide ? (
                       <span className="rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6">
-                        Org-wide
+                        {t("guardrails.orgWide")}
                       </span>
                     ) : g.teams.length > 0 ? (
                       <div className="flex flex-wrap gap-1">
-                        {g.teams.map((t) => (
+                        {g.teams.map((tm) => (
                           <span
-                            key={t.id}
+                            key={tm.id}
                             className={`rounded-full px-2 py-0.5 text-[11px] ${
-                              t.isActive
+                              tm.isActive
                                 ? "bg-bg-1 text-text-3"
                                 : "bg-bg-1 text-text-3 opacity-60"
                             }`}
-                            title={t.isActive ? t.name : `${t.name} (paused)`}
+                            title={tm.isActive ? tm.name : `${tm.name} (paused)`}
                           >
-                            {t.name}
+                            {tm.name}
                           </span>
                         ))}
                       </div>
@@ -551,7 +553,7 @@ function OverviewTab({
                       type="button"
                       onClick={() => onEdit(g)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-primary-6"
-                      title="Edit"
+                      title={t("common.edit")}
                     >
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
@@ -559,7 +561,7 @@ function OverviewTab({
                       type="button"
                       onClick={() => setDeleteId(g.id)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                      title="Delete"
+                      title={t("common.delete")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -573,7 +575,7 @@ function OverviewTab({
                   colSpan={7}
                   className="px-6 py-10 text-center text-[13px] text-text-3"
                 >
-                  No guardrails found.
+                  {t("guardrails.noGuardrails")}
                 </td>
               </tr>
             )}
@@ -596,9 +598,9 @@ function OverviewTab({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Guardrail</DialogTitle>
+            <DialogTitle>{t("guardrails.deleteGuardrail")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
+              {t("guardrails.deleteConfirm")}{" "}
               <strong>{deleteName}</strong>? This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
@@ -608,7 +610,7 @@ function OverviewTab({
               onClick={() => setDeleteId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -620,7 +622,7 @@ function OverviewTab({
               }}
               className="cursor-pointer"
             >
-              Delete
+              {t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -644,6 +646,8 @@ function TemplatesTab({
   onApply: (templateId: string) => void;
   onDisable: (templateId: string) => void;
 }) {
+  const { t } = useLanguage();
+
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center py-20">
@@ -657,13 +661,13 @@ function TemplatesTab({
       {/* Mobile-only page title — matches Figma 4716:31110. Desktop
           renders the tab name in the appbar so we don't double up. */}
       <h2 className="lg:hidden -mx-6 border-b border-border-2 bg-bg-white px-4 py-3.5 text-[17px] font-semibold text-text-1">
-        Compliance Templates
+        {t("guardrails.complianceTemplates")}
       </h2>
-      {templates.map((t) => {
-        const isApplied = appliedTemplateIds.has(t.id);
+      {templates.map((tmpl) => {
+        const isApplied = appliedTemplateIds.has(tmpl.id);
         return (
           <div
-            key={t.id}
+            key={tmpl.id}
             className={`flex flex-col gap-3 lg:gap-4 rounded-xl lg:rounded-[20px] border bg-bg-white p-4 lg:p-6 ${
               isApplied
                 ? "border-primary-6 bg-primary-1/40 lg:border-primary-6"
@@ -675,22 +679,22 @@ function TemplatesTab({
                 <Shield className="h-[18px] w-[18px] shrink-0 text-primary-6" />
                 <div className="flex min-w-0 flex-col">
                   <h3 className="truncate text-[15px] font-semibold text-text-1 lg:text-[18px] lg:font-bold">
-                    {t.name}
+                    {tmpl.name}
                   </h3>
                   <span className="hidden text-[13px] font-normal text-text-3 lg:inline">
-                    {t.ruleCount} rules
+                    {tmpl.ruleCount} rules
                   </span>
                 </div>
               </div>
               <span className="rounded-xl bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3 lg:hidden">
-                {t.ruleCount} rules
+                {tmpl.ruleCount} rules
               </span>
               {/* Desktop CTA stays in the title row; mobile pushes it
                   below the description as a full-width primary action. */}
               <div className="hidden lg:block">
                 {isApplied ? (
                   <Button
-                    onClick={() => onDisable(t.id)}
+                    onClick={() => onDisable(tmpl.id)}
                     variant="outline"
                     className="cursor-pointer rounded-lg border-border-3 px-6 py-2 text-[16px] font-normal text-text-2 hover:bg-bg-1"
                   >
@@ -698,7 +702,7 @@ function TemplatesTab({
                   </Button>
                 ) : (
                   <Button
-                    onClick={() => onApply(t.id)}
+                    onClick={() => onApply(tmpl.id)}
                     className="cursor-pointer rounded-lg bg-primary-6 px-6 py-2 text-[16px] font-normal text-white hover:bg-primary-7"
                   >
                     Apply
@@ -707,14 +711,14 @@ function TemplatesTab({
               </div>
             </div>
             <p className="text-[13px] lg:text-[14px] font-normal text-text-3">
-              {t.description}
+              {tmpl.description}
             </p>
             <div className="hidden h-px bg-border-2 lg:block" />
             <div className="flex flex-col gap-1.5 lg:gap-2.5">
               <span className="text-[12px] font-medium text-text-2 lg:text-[16px] lg:font-normal lg:text-text-1">
-                Features:
+                {t("guardrails.features")}
               </span>
-              {t.features.map((f) => (
+              {tmpl.features.map((f) => (
                 <div key={f} className="flex items-center gap-2 lg:gap-2.5">
                   <CheckCircle className="h-3.5 w-3.5 shrink-0 text-primary-6" />
                   <span className="text-[13px] lg:text-[14px] font-normal text-text-3">
@@ -728,7 +732,7 @@ function TemplatesTab({
             <div className="lg:hidden">
               {isApplied ? (
                 <Button
-                  onClick={() => onDisable(t.id)}
+                  onClick={() => onDisable(tmpl.id)}
                   variant="outline"
                   className="w-full cursor-pointer rounded-lg border-border-3 py-2.5 text-[15px] font-normal text-text-1 hover:bg-bg-1"
                 >
@@ -736,7 +740,7 @@ function TemplatesTab({
                 </Button>
               ) : (
                 <Button
-                  onClick={() => onApply(t.id)}
+                  onClick={() => onApply(tmpl.id)}
                   className="w-full cursor-pointer rounded-lg bg-primary-6 py-2.5 text-[15px] font-normal text-white hover:bg-primary-7"
                 >
                   Apply
@@ -778,6 +782,7 @@ function AddGuardrailDialog({
   isPending: boolean;
   initial?: GuardrailItem | null;
 }) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [severity, setSeverity] = useState<"high" | "medium" | "low">("high");
   const [validatorType, setValidatorType] = useState("no_pii");
@@ -900,7 +905,7 @@ function AddGuardrailDialog({
                     overrides the default tiny "leading-none font-
                     semibold" class so it still reads like an h2. */}
                 <DialogTitle className="text-[18px] font-bold leading-tight text-text-1 sm:text-[23px]">
-                  {initial ? "Edit guardrail" : "Add guardrail"}
+                  {initial ? t("guardrails.editGuardrail") : t("guardrails.addGuardrail")}
                 </DialogTitle>
                 <button
                   type="button"
@@ -926,12 +931,12 @@ function AddGuardrailDialog({
             {/* Guardrail name */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
-                Guardrail name
+                {t("guardrails.guardrailName")}
               </label>
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Enter guardrail name"
+                placeholder={t("guardrails.guardrailName")}
                 className="h-10"
               />
             </div>
@@ -939,16 +944,16 @@ function AddGuardrailDialog({
             {/* Severity */}
             <div className="flex flex-col gap-2">
               <label className="text-[14px] font-medium text-text-1">
-                Severity
+                {t("guardrails.severity")}
               </label>
               <Select value={severity} onValueChange={(v) => setSeverity(v as "high" | "medium" | "low")}>
                 <SelectTrigger className="cursor-pointer data-[size=default]:h-10">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="medium">Medium</SelectItem>
-                  <SelectItem value="low">Low</SelectItem>
+                  <SelectItem value="high">{t("guardrails.high")}</SelectItem>
+                  <SelectItem value="medium">{t("guardrails.medium")}</SelectItem>
+                  <SelectItem value="low">{t("guardrails.low")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -957,7 +962,7 @@ function AddGuardrailDialog({
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-1">
                 <h3 className="text-[16px] font-bold text-text-1">
-                  Validators
+                  {t("guardrails.validators")}
                 </h3>
                 <p className="text-[13px] leading-[1.5] text-text-2">
                   Validators run input/output guards in your application that
@@ -981,7 +986,7 @@ function AddGuardrailDialog({
                   {validatorType === "regex_match" && (
                     <div className="flex flex-col gap-2">
                       <label className="text-[14px] font-semibold text-text-2">
-                        Regex pattern
+                        {t("guardrails.regexPattern")}
                       </label>
                       <Input
                         value={pattern}
@@ -1006,7 +1011,7 @@ function AddGuardrailDialog({
                   {validatorType === "detect_jailbreak" && (
                     <div className="flex flex-col gap-2">
                       <label className="text-[14px] font-semibold text-text-2">
-                        Custom phrases (optional)
+                        {t("guardrails.customPhrases")}
                       </label>
                       <textarea
                         value={Array.from(selectedEntities).join("\n")}
@@ -1041,12 +1046,12 @@ function AddGuardrailDialog({
                       {/* Entities + Filter checks */}
                       <div className="flex flex-col gap-2">
                         <label className="text-[14px] font-semibold text-text-2">
-                          Entities
+                          {t("guardrails.entities")}
                         </label>
                         <div className="relative">
                           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
                           <Input
-                            placeholder="Filter checks"
+                            placeholder={t("guardrails.filterChecks")}
                             value={entityFilter}
                             onChange={(e) => setEntityFilter(e.target.value)}
                             className="h-9 rounded-md border-border-2 pl-9 text-[14px] placeholder:text-text-3"
@@ -1082,7 +1087,7 @@ function AddGuardrailDialog({
                               onClick={() => setShowAllEntities(true)}
                               className="w-full cursor-pointer border-t border-border-2 px-3 py-2 text-center text-[13px] text-text-3 hover:text-primary-6"
                             >
-                              Show all {filteredEntities.length} items
+                              {t("guardrails.showAll")} {filteredEntities.length} {t("guardrails.items")}
                             </button>
                           )}
                         </div>
@@ -1093,17 +1098,20 @@ function AddGuardrailDialog({
                   {/* Select target — radio buttons */}
                   <div className="flex flex-col gap-2 pt-1">
                     <span className="text-[14px] font-semibold text-text-2">
-                      Select target
+                      {t("guardrails.selectTarget")}
                     </span>
                     <div className="flex items-center gap-6">
-                      {(["Input", "Output", "Both"] as const).map((t) => {
-                        const val = t.toLowerCase() as "input" | "output" | "both";
-                        const active = target === val;
+                      {([
+                        { key: "input" as const, label: t("guardrails.input") },
+                        { key: "output" as const, label: t("guardrails.output") },
+                        { key: "both" as const, label: t("guardrails.both") },
+                      ]).map((opt) => {
+                        const active = target === opt.key;
                         return (
                           <button
-                            key={t}
+                            key={opt.key}
                             type="button"
-                            onClick={() => setTarget(val)}
+                            onClick={() => setTarget(opt.key)}
                             className="flex cursor-pointer items-center gap-2"
                           >
                             <span
@@ -1118,7 +1126,7 @@ function AddGuardrailDialog({
                               )}
                             </span>
                             <span className="text-[14px] text-text-2">
-                              {t}
+                              {opt.label}
                             </span>
                           </button>
                         );
@@ -1129,18 +1137,18 @@ function AddGuardrailDialog({
                   {/* on_fail behavior — radio cards */}
                   <div className="flex flex-col gap-2 pt-1">
                     <span className="text-[14px] font-semibold text-text-2">
-                      Select &ldquo;on_fail&rdquo; behavior
+                      {t("guardrails.onFail")}
                     </span>
                     <div className="flex gap-6">
                       {[
                         {
                           id: "fix",
-                          label: "Fix",
+                          label: t("guardrails.fix"),
                           desc: "Guardrail will replace sensitive data with labels.",
                         },
                         {
                           id: "exception",
-                          label: "Exception",
+                          label: t("guardrails.exception"),
                           desc: "Guardrail will not send the sensitive data to LLMs, instead it will fail the prompt.",
                         },
                       ].map((opt) => {
@@ -1190,7 +1198,7 @@ function AddGuardrailDialog({
               dialog height. */}
           <div className="flex flex-col border-t border-border-2 bg-bg-1 px-4 py-4 sm:border-l sm:border-t-0 sm:min-h-0 sm:overflow-y-auto sm:px-6 sm:py-8">
             <h3 className="text-[16px] font-semibold leading-[1.3] text-text-1 sm:text-[18px]">
-              Compliance templates
+              {t("guardrails.complianceTemplates")}
             </h3>
 
             <div className="relative mt-5">
@@ -1198,7 +1206,7 @@ function AddGuardrailDialog({
               <Input
                 value={validatorSearch}
                 onChange={(e) => setValidatorSearch(e.target.value)}
-                placeholder="Filter validators"
+                placeholder={t("guardrails.filterValidators")}
                 className="h-9 rounded-md border-border-3 bg-bg-white pl-10 text-[14px] placeholder:text-text-2"
               />
             </div>
@@ -1223,7 +1231,7 @@ function AddGuardrailDialog({
                     </div>
                     {v.id === validatorType ? (
                       <span className="shrink-0 rounded bg-primary-6/10 px-2 py-0.5 text-[11px] font-medium text-primary-6">
-                        Added
+                        {t("guardrails.added")}
                       </span>
                     ) : (
                       <button
@@ -1250,7 +1258,7 @@ function AddGuardrailDialog({
             onClick={() => onOpenChange(false)}
             className="cursor-pointer"
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={() =>
@@ -1289,11 +1297,11 @@ function AddGuardrailDialog({
           >
             {isPending
               ? initial
-                ? "Saving..."
-                : "Adding..."
+                ? t("common.save") + "..."
+                : t("guardrails.adding")
               : initial
-                ? "Save"
-                : "Add"}
+                ? t("common.save")
+                : t("common.add")}
           </Button>
         </div>
       </DialogContent>
@@ -1304,6 +1312,7 @@ function AddGuardrailDialog({
 /* ─── Main Page ──────────────────────────────────────────────────────── */
 
 export default function GuardrailsPage() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_TABS: Tab[] = ["overview", "templates"];
@@ -1447,7 +1456,7 @@ export default function GuardrailsPage() {
             className="shrink-0"
           />
           <h1 className="truncate text-[18px] font-semibold text-text-1">
-            Guardrails
+            {t("guardrails.title")}
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -1464,7 +1473,7 @@ export default function GuardrailsPage() {
                 el.focus({ preventScroll: true });
               }
             }}
-            aria-label="Search guardrails"
+            aria-label={t("guardrails.search")}
             className="flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
           >
             <Search className="h-4 w-4" />
@@ -1475,7 +1484,7 @@ export default function GuardrailsPage() {
             className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-medium text-text-1 hover:bg-bg-1"
           >
             <Plus className="h-4 w-4" />
-            Add
+            {t("common.add")}
           </button>
         </div>
       </header>
@@ -1491,7 +1500,7 @@ export default function GuardrailsPage() {
               : "font-normal text-text-2 hover:text-text-1"
           }`}
         >
-          Overview
+          {t("guardrails.overview")}
           {tab === "overview" && (
             <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary-6 lg:bg-border-3" />
           )}
@@ -1505,7 +1514,7 @@ export default function GuardrailsPage() {
               : "font-normal text-text-2 hover:text-text-1"
           }`}
         >
-          Compliance templates
+          {t("guardrails.complianceTemplates")}
           {tab === "templates" && (
             <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-primary-6 lg:bg-border-3" />
           )}
