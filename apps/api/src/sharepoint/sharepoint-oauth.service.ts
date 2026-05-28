@@ -93,23 +93,45 @@ export class SharePointOAuthService {
     private readonly jwt: JwtService,
   ) {}
 
+  /**
+   * Defensively trim every env value we feed into Microsoft URLs.
+   * Stray trailing whitespace on a .env line (e.g. `TENANT_ID=common `
+   * pasted from an editor that adds soft-wrap padding) survives into
+   * `ConfigService.get` verbatim and corrupts the authorize URL or
+   * the redirect_uri parameter — surfacing as AADSTS50011 or a
+   * "redirect_uri is not valid" error that's painful to attribute.
+   * This helper makes those mistakes impossible.
+   */
+  private readEnv(key: string, fallback?: string): string {
+    const raw = this.config.get<string>(key);
+    const trimmed = raw?.trim() ?? fallback ?? '';
+    if (!trimmed) {
+      if (fallback === undefined) {
+        // Mirror ConfigService.getOrThrow's behaviour for required vars.
+        throw new Error(`Required env var ${key} is empty`);
+      }
+      return fallback;
+    }
+    return trimmed;
+  }
+
   private get tenant(): string {
     // Default to 'common' so multi-tenant + personal Microsoft accounts
     // can sign in without any env tweak. Single-tenant apps override
     // with a GUID in .env; see docs/sharepoint-setup.md.
-    return this.config.get<string>('MICROSOFT_TENANT_ID', 'common');
+    return this.readEnv('MICROSOFT_TENANT_ID', 'common');
   }
 
   private get clientId(): string {
-    return this.config.getOrThrow<string>('MICROSOFT_CLIENT_ID');
+    return this.readEnv('MICROSOFT_CLIENT_ID');
   }
 
   private get clientSecret(): string {
-    return this.config.getOrThrow<string>('MICROSOFT_CLIENT_SECRET');
+    return this.readEnv('MICROSOFT_CLIENT_SECRET');
   }
 
   private get redirectUri(): string {
-    return this.config.get<string>(
+    return this.readEnv(
       'SHAREPOINT_REDIRECT_URI',
       'http://localhost:3001/sharepoint/callback',
     );
