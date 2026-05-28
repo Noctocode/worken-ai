@@ -315,7 +315,7 @@ export default function ObservabilityPage() {
   const handleExport = async () => {
     if (exporting) return;
     setExporting(true);
-    const exportToastId = toast.loading("Preparing CSV…");
+    const exportToastId = toast.loading(t("observability.toastPreparingCsv"));
     try {
       const data = await fetchObservabilityEventsExport({
         range,
@@ -323,7 +323,7 @@ export default function ObservabilityPage() {
         eventType: eventType === "all" ? undefined : eventType,
       });
       if (data.events.length === 0) {
-        toast.error("Nothing to export with these filters.", {
+        toast.error(t("observability.toastNothingExport"), {
           id: exportToastId,
         });
         return;
@@ -333,18 +333,23 @@ export default function ObservabilityPage() {
       downloadCsv(`observability-${range}-${ts}.csv`, csv);
       if (data.truncated) {
         toast.warning(
-          `Exported ${data.events.length.toLocaleString()} of ${data.total.toLocaleString()} rows. Narrow the range or filters to get the rest.`,
+          t("observability.toastTruncated")
+            .replace("{n}", data.events.length.toLocaleString())
+            .replace("{total}", data.total.toLocaleString()),
           { id: exportToastId },
         );
       } else {
         toast.success(
-          `Exported ${data.events.length.toLocaleString()} row${data.events.length === 1 ? "" : "s"}.`,
+          (data.events.length === 1
+            ? t("observability.toastExportedOne")
+            : t("observability.toastExportedMany")
+          ).replace("{n}", data.events.length.toLocaleString()),
           { id: exportToastId },
         );
       }
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Couldn't export events.",
+        err instanceof Error ? err.message : t("observability.toastExportFailed"),
         { id: exportToastId },
       );
     } finally {

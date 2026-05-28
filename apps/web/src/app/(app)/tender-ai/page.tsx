@@ -83,15 +83,15 @@ export default function TenderAiPage() {
     mutationFn: deleteTender,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenders"] });
-      toast.success("Tender deleted.");
+      toast.success(t("tenderMain.toastDeleted"));
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to delete tender.");
+      toast.error(err.message || t("tenderMain.toastDeleteFailed"));
     },
   });
 
   const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? This action cannot be undone.`)) return;
+    if (!confirm(t("tenderMain.confirmDelete").replace("{name}", name))) return;
     removeMutation.mutate(id);
   };
 
@@ -355,7 +355,7 @@ export default function TenderAiPage() {
                         handleDelete(tender.id, tender.name);
                       }}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                      title="Delete tender"
+                      title={t("tenderMain.titleDelete")}
                       aria-label={`Delete ${tender.name}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -408,7 +408,7 @@ export default function TenderAiPage() {
                       handleDelete(tender.id, tender.name);
                     }}
                     className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                    title="Delete tender"
+                    title={t("tenderMain.titleDelete")}
                     aria-label={`Delete ${tender.name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

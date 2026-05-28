@@ -357,7 +357,7 @@ export default function CompareModelsPage() {
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load history.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadHistoryFailed");
         toast.error(message);
       });
     return () => {
@@ -536,7 +536,7 @@ export default function CompareModelsPage() {
             setEvaluatorError(event.error);
             setEvaluatorStatus("error");
             toast.error(
-              `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
+              t("compareModels.toastScoreFailed").replace("{error}", event.error),
             );
           } else {
             setEvaluatorStatus("done");
@@ -567,7 +567,7 @@ export default function CompareModelsPage() {
       const isAbort =
         err instanceof DOMException && err.name === "AbortError";
       if (isAbort) {
-        toast.info("Comparison stopped.");
+        toast.info(t("compareModels.toastStopped"));
         setModelStatuses((prev) => {
           const next = { ...prev };
           for (const id of activeModels) {
@@ -680,7 +680,7 @@ export default function CompareModelsPage() {
         })
         .catch((err) => {
           const message =
-            err instanceof Error ? err.message : "Couldn't load run.";
+            err instanceof Error ? err.message : t("compareModels.toastLoadRunFailed");
           toast.error(message);
         });
     },
@@ -705,12 +705,17 @@ export default function CompareModelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  async function copyText(text: string, label = "response") {
+  async function copyText(text: string, label?: string) {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`Copied ${label} to clipboard.`);
+      toast.success(
+        t("compareModels.toastCopied").replace(
+          "{label}",
+          label ?? t("compareModels.copyLabelResponse"),
+        ),
+      );
     } catch {
-      toast.error("Couldn't copy to clipboard.");
+      toast.error(t("compareModels.toastCopyFailed"));
     }
   }
 
@@ -1111,7 +1116,7 @@ export default function CompareModelsPage() {
         selectedModels={selectedModels}
         onAdd={(id) => {
           addModel(id);
-          toast.success(`Added ${getModelLabel(id)} to comparison.`);
+          toast.success(t("compareModels.toastAddedModel").replace("{label}", getModelLabel(id)));
         }}
       />
 
@@ -1123,7 +1128,7 @@ export default function CompareModelsPage() {
             const trimmed = prev.trim();
             return trimmed ? `${prev.replace(/\s+$/, "")}\n\n${p.body}` : p.body;
           });
-          toast.success(`Inserted "${p.title}".`);
+          toast.success(t("compareModels.toastInsertedPrompt").replace("{title}", p.title));
         }}
       />
 
@@ -1157,7 +1162,7 @@ export default function CompareModelsPage() {
                 deleteArenaRun(runId).catch((err) => {
                   setHistory(previous);
                   const message =
-                    err instanceof Error ? err.message : "Couldn't delete run.";
+                    err instanceof Error ? err.message : t("compareModels.toastDeleteRunFailed");
                   toast.error(message);
                 });
               }}
@@ -1240,8 +1245,8 @@ function ResponseCard({
               <button
                 type="button"
                 className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                title="Model info"
-                aria-label="Model info"
+                title={t("compareModels.titleModelInfo")}
+                aria-label={t("compareModels.titleModelInfo")}
               >
                 <Info className="h-3.5 w-3.5" />
               </button>
@@ -1321,8 +1326,8 @@ function ResponseCard({
           onClick={() => response && onCopy(response)}
           disabled={!response}
           className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Copy"
-          aria-label="Copy"
+          title={t("compareModels.titleCopy")}
+          aria-label={t("compareModels.titleCopy")}
         >
           <Clipboard className="h-3.5 w-3.5" />
         </button>
@@ -1556,17 +1561,20 @@ function Composer({
       const limitMb = (ATTACH_FILE_MAX_BYTES / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
       toast.error(
-        `"${file.name}" is too large (${sizeMb} MB). Attachments are capped at ${limitMb} MB.`,
+        t("compareModels.toastFileTooLarge")
+          .replace("{name}", file.name)
+          .replace("{size}", sizeMb)
+          .replace("{limit}", limitMb),
       );
       return;
     }
 
     if (needsServerParse(file)) {
-      const toastId = toast.loading(`Parsing ${file.name}…`);
+      const toastId = toast.loading(t("compareModels.toastParsing").replace("{name}", file.name));
       try {
         const parsed = await parseArenaAttachment(file);
         setAttachedFile(parsed);
-        toast.success(`Attached ${parsed.name}.`, { id: toastId });
+        toast.success(t("compareModels.toastAttached").replace("{name}", parsed.name), { id: toastId });
       } catch (err) {
         toast.error(humanizeChatError(err), { id: toastId });
       }
@@ -1647,8 +1655,8 @@ function Composer({
                 type="button"
                 onClick={() => setAttachedFile(null)}
                 className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                title="Remove file"
-                aria-label="Remove file"
+                title={t("compareModels.titleRemoveFile")}
+                aria-label={t("compareModels.titleRemoveFile")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1681,7 +1689,7 @@ function Composer({
               disabled
               className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg bg-bg-white text-primary-6 opacity-50"
               title={t("arena.voiceComingSoon")}
-              aria-label="Voice input"
+              aria-label={t("compareModels.ariaVoiceInput")}
             >
               <Mic className="h-4 w-4" />
             </button>
@@ -1695,7 +1703,7 @@ function Composer({
                 onClick={onStop}
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-danger-6 text-white transition-colors hover:bg-danger-7"
                 title={t("arena.stopGenerating")}
-                aria-label="Stop"
+                aria-label={t("compareModels.ariaStop")}
               >
                 <Square
                   className="h-3.5 w-3.5"
@@ -1837,8 +1845,8 @@ function RightRail({
             type="button"
             onClick={onClose}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Close"
-            aria-label="Close"
+            title={t("compareModels.titleClose")}
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -2053,8 +2061,8 @@ function ModelPill({
           <button
             type="button"
             className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Change model"
-            aria-label="Change model"
+            title={t("compareModels.titleChangeModel")}
+            aria-label={t("compareModels.titleChangeModel")}
           >
             <MoreVertical className="h-4 w-4" />
           </button>
@@ -2195,7 +2203,7 @@ function AddModelDialog({
             type="button"
             onClick={() => onOpenChange(false)}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            aria-label="Close"
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -2209,7 +2217,7 @@ function AddModelDialog({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search Models"
+                placeholder={t("compareModels.placeholderSearchModels")}
                 className="h-10 pl-9 placeholder:text-text-3"
               />
             </div>
@@ -2377,11 +2385,11 @@ function PromptLibraryDialog({
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load prompts.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadPromptsFailed");
         toast.error(message);
       })
       .finally(() => setLoading(false));
-  }, [open, loaded]);
+  }, [open, loaded, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -2405,7 +2413,7 @@ function PromptLibraryDialog({
             type="button"
             onClick={() => onOpenChange(false)}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            aria-label="Close"
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -2417,7 +2425,7 @@ function PromptLibraryDialog({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your prompts"
+              placeholder={t("compareModels.placeholderSearchPrompts")}
               className="h-10 pl-9 placeholder:text-text-3"
             />
           </div>
@@ -2512,11 +2520,11 @@ function ShortcutsPopover({
       .then((rows) => setItems(rows))
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load shortcuts.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadShortcutsFailed");
         toast.error(message);
       })
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -2536,7 +2544,7 @@ function ShortcutsPopover({
           type="button"
           disabled={disabled}
           className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Insert a saved shortcut"
+          title={t("compareModels.titleInsertShortcut")}
         >
           <LayoutGrid className="h-4 w-4" />
           Shortcuts
@@ -2553,7 +2561,7 @@ function ShortcutsPopover({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search shortcuts"
+            placeholder={t("compareModels.placeholderSearchShortcuts")}
             className="h-7 w-full border-0 bg-transparent text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
             autoFocus
           />

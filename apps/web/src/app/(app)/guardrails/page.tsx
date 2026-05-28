@@ -1353,7 +1353,7 @@ export default function GuardrailsPage() {
     onSuccess: () => {
       invalidateAll();
       setAddOpen(false);
-      toast.success("Guardrail created.");
+      toast.success(t("guardrails.toastCreated"));
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1367,7 +1367,7 @@ export default function GuardrailsPage() {
       invalidateAll();
       setEditingRule(null);
       setAddOpen(false);
-      toast.success("Guardrail updated.");
+      toast.success(t("guardrails.toastUpdated"));
     },
     onError: (err: Error) => toast.error(err.message),
   });
@@ -1375,7 +1375,7 @@ export default function GuardrailsPage() {
   const toggleMutation = useMutation({
     mutationFn: toggleGuardrailItem,
     onSuccess: () => invalidateAll(),
-    onError: () => toast.error("Failed to toggle guardrail."),
+    onError: () => toast.error(t("guardrails.toastToggleFailed")),
   });
 
   const toggleOrgWideMutation = useMutation({
@@ -1387,12 +1387,12 @@ export default function GuardrailsPage() {
       queryClient.invalidateQueries({ queryKey: ["guardrails"] });
       toast.success(
         rule.isOrgWide
-          ? `"${rule.name}" is now Org-wide.`
-          : `"${rule.name}" returned to per-team scope.`,
+          ? t("guardrails.toastOrgWide").replace("{name}", rule.name)
+          : t("guardrails.toastPerTeam").replace("{name}", rule.name),
       );
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to toggle org-wide scope."),
+      toast.error(err.message || t("guardrails.toastOrgWideFailed")),
   });
 
   const { user: currentUser } = useAuth();
@@ -1402,9 +1402,9 @@ export default function GuardrailsPage() {
     mutationFn: deleteGuardrailItem,
     onSuccess: () => {
       invalidateAll();
-      toast.success("Guardrail deleted.");
+      toast.success(t("guardrails.toastDeleted"));
     },
-    onError: () => toast.error("Failed to delete guardrail."),
+    onError: () => toast.error(t("guardrails.toastDeleteFailed")),
   });
 
   const applyMutation = useMutation({
@@ -1412,19 +1412,21 @@ export default function GuardrailsPage() {
     onSuccess: (result) => {
       invalidateAll();
       toast.success(
-        `Applied ${result.templateName}: ${result.rulesCreated} rules created.`,
+        t("guardrails.toastApplied")
+          .replace("{name}", result.templateName)
+          .replace("{count}", String(result.rulesCreated)),
       );
     },
-    onError: () => toast.error("Failed to apply template."),
+    onError: () => toast.error(t("guardrails.toastApplyFailed")),
   });
 
   const disableMutation = useMutation({
     mutationFn: (templateId: string) => removeComplianceTemplate(templateId),
     onSuccess: (result) => {
       invalidateAll();
-      toast.success(`Disabled template: ${result.rulesRemoved} rules removed.`);
+      toast.success(t("guardrails.toastDisabled").replace("{count}", String(result.rulesRemoved)));
     },
-    onError: () => toast.error("Failed to disable template."),
+    onError: () => toast.error(t("guardrails.toastDisableFailed")),
   });
 
   const appliedTemplateIds = useMemo(

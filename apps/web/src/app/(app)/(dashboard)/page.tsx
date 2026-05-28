@@ -258,7 +258,7 @@ function ProjectCard({ project }: { project: Project }) {
                 <TeamMembersPopover teamId={project.teamId}>
                   <button
                     type="button"
-                    aria-label="View team members"
+                    aria-label={t("dashboard.viewTeamMembers")}
                     onClick={(e) => {
                       // Outer card wrapper navigates to the project on
                       // click — stopPropagation keeps the route swap

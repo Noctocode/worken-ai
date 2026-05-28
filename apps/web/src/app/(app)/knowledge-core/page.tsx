@@ -137,7 +137,7 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Excluded from context — Include in context to make this file searchable again."
+        title={t("knowledgeMain.titleExcluded")}
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
         {t("knowledgeCore.excluded")}
@@ -173,7 +173,7 @@ function VisibilityBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
-        title="Only admins can see this file in chat / arena."
+        title={t("knowledgeMain.titleAdminsOnly")}
       >
         <Shield className="h-3 w-3" strokeWidth={2} />
         {t("knowledgeCore.adminsOnly")}
@@ -187,12 +187,14 @@ function VisibilityBadge({
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Only members of these teams can see this file in chat / arena: ${names}.`
-            : "Visibility is set to specific teams, but no team is linked yet — no one can see this file."
+            ? t("knowledgeMain.titleTeamsList").replace("{names}", names)
+            : t("knowledgeMain.titleNoTeams")
         }
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+        {teams.length > 0
+          ? t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))
+          : t("knowledgeMain.labelTeams")}
       </span>
     );
   }
@@ -203,19 +205,21 @@ function VisibilityBadge({
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Surfaced only in the chat of these projects: ${names}.`
-            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+            ? t("knowledgeMain.titleProjectsList").replace("{names}", names)
+            : t("knowledgeMain.titleNoProjects")
         }
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
+        {projects.length > 0
+          ? t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))
+          : t("knowledgeMain.labelProject")}
       </span>
     );
   }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title="Every company user can see this file in chat / arena."
+      title={t("knowledgeMain.titleCompanyWide")}
     >
       <Users className="h-3 w-3" strokeWidth={2} />
       {t("knowledgeCore.everyone")}
@@ -282,9 +286,9 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       setNewFolderOpen(false);
       setNewFolderName("");
-      toast.success("Folder created.");
+      toast.success(t("knowledgeMain.toastFolderCreated"));
     },
-    onError: () => toast.error("Failed to create folder."),
+    onError: () => toast.error(t("knowledgeMain.toastFolderCreateFailed")),
   });
 
   const deleteMutation = useMutation({
@@ -292,9 +296,9 @@ export default function KnowledgeCorePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("Folder deleted.");
+      toast.success(t("knowledgeMain.toastFolderDeleted"));
     },
-    onError: () => toast.error("Failed to delete folder."),
+    onError: () => toast.error(t("knowledgeMain.toastFolderDeleteFailed")),
   });
 
   const [moveFileId, setMoveFileId] = useState<string | null>(null);
@@ -309,9 +313,9 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       setMoveFileId(null);
       setMoveTargetId("");
-      toast.success("File moved.");
+      toast.success(t("knowledgeMain.toastFileMoved"));
     },
-    onError: () => toast.error("Failed to move file."),
+    onError: () => toast.error(t("knowledgeMain.toastFileMoveFailed")),
   });
 
   const deleteFileMutation = useMutation({
@@ -319,9 +323,9 @@ export default function KnowledgeCorePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("File deleted.");
+      toast.success(t("knowledgeMain.toastFileDeleted"));
     },
-    onError: () => toast.error("Failed to delete file."),
+    onError: () => toast.error(t("knowledgeMain.toastFileDeleteFailed")),
   });
 
   // Re-run chunk + embed on a single file so it's available to chat /
@@ -335,10 +339,10 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("Adding to context.");
+      toast.success(t("knowledgeMain.toastAddingContext"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to include this file in context."),
+      toast.error(err.message || t("knowledgeMain.toastIncludeFailed")),
   });
 
   // Inverse of "Include in context": drop the file's embeddings so
@@ -352,10 +356,10 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("Excluded from context.");
+      toast.success(t("knowledgeMain.toastExcludedContext"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to exclude this file from context."),
+      toast.error(err.message || t("knowledgeMain.toastExcludeFailed")),
   });
 
   // Admin-only PATCH to flip a file's visibility between 'all' and
@@ -377,12 +381,12 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
       toast.success(
         visibility === "admins"
-          ? "File is now visible only to admins."
-          : "File is now visible to everyone.",
+          ? t("knowledgeMain.toastAdminsOnlyDone")
+          : t("knowledgeMain.toastEveryoneDone"),
       );
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to update visibility."),
+      toast.error(err.message || t("knowledgeMain.toastVisibilityFailed")),
   });
 
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
@@ -464,11 +468,11 @@ export default function KnowledgeCorePage() {
     // but a client guard keeps the dialog from collapsing on a 400
     // with stale staged files.
     if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error("Pick at least one team for Teams visibility.");
+      toast.error(t("knowledgeMain.toastNeedTeams"));
       return;
     }
     if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error("Pick at least one project for Project visibility.");
+      toast.error(t("knowledgeMain.toastNeedProjects"));
       return;
     }
     setUploading(true);
@@ -496,7 +500,7 @@ export default function KnowledgeCorePage() {
       setStagedTeamIds([]);
       setStagedProjectIds([]);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload files.");
+      toast.error(err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -534,7 +538,7 @@ export default function KnowledgeCorePage() {
     ]);
     if (result.uploaded.length > 0) {
       toast.success(
-        `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+        t("knowledgeMain.toastUploaded").replace("{n}", String(result.uploaded.length)),
       );
     }
     if (result.duplicates.length > 0) {
@@ -543,12 +547,14 @@ export default function KnowledgeCorePage() {
       // "X is already in KC" but X isn't in the list — confusing.
       const titleForOne = (d: (typeof result.duplicates)[number]) =>
         d.existing.name && d.existing.name !== d.name
-          ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
-          : `"${d.name}" is already in your Knowledge Core.`;
+          ? t("knowledgeMain.toastDupMatchesOne")
+              .replace("{name}", d.name)
+              .replace("{existing}", d.existing.name)
+          : t("knowledgeMain.toastDupExistsOne").replace("{name}", d.name);
       toast.info(
         result.duplicates.length === 1
           ? titleForOne(result.duplicates[0])
-          : `${result.duplicates.length} file(s) were already in your Knowledge Core.`,
+          : t("knowledgeMain.toastDupExistsMany").replace("{n}", String(result.duplicates.length)),
         {
           description: result.duplicates
             .map((d) =>
@@ -579,7 +585,7 @@ export default function KnowledgeCorePage() {
     const ctx = pendingConflicts;
     setPendingConflicts(null);
     if (filesToResend.length === 0) {
-      if (skippedCount > 0) toast.info(`Skipped ${skippedCount} file(s).`);
+      if (skippedCount > 0) toast.info(t("knowledgeMain.toastSkipped").replace("{n}", String(skippedCount)));
       return;
     }
     setUploading(true);
@@ -601,18 +607,18 @@ export default function KnowledgeCorePage() {
       ]);
       if (result.uploaded.length > 0) {
         toast.success(
-          `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+          t("knowledgeMain.toastUploaded").replace("{n}", String(result.uploaded.length)),
         );
       }
       if (skippedCount > 0) {
-        toast.info(`Skipped ${skippedCount} file(s).`);
+        toast.info(t("knowledgeMain.toastSkipped").replace("{n}", String(skippedCount)));
       }
       // If the BE still reports conflicts here, the user kept some
       // as 'skip' — silent on this branch because the toast above
       // already covers the skip count.
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to upload files.",
+        err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"),
       );
     } finally {
       setUploading(false);

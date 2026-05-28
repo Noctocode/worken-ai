@@ -645,7 +645,7 @@ export default function SetupProfileStep6Page() {
                   <button
                     type="button"
                     onClick={() => removeFile(i)}
-                    title="Remove file"
+                    title={t("setupSix.removeFile")}
                     className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
                   >
                     <X className="h-4 w-4" />
