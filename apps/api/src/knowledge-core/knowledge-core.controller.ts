@@ -27,6 +27,10 @@ import {
   DriveImportService,
   type ImportScope,
 } from './drive-import.service.js';
+import {
+  SharePointImportService,
+  type SharePointImportScope,
+} from './sharepoint-import.service.js';
 import { uploadFileFilter } from './upload-allowlist.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
@@ -45,6 +49,7 @@ export class KnowledgeCoreController {
   constructor(
     private readonly service: KnowledgeCoreService,
     private readonly driveImport: DriveImportService,
+    private readonly sharepointImport: SharePointImportService,
   ) {}
 
   @Get('folders')
@@ -67,10 +72,7 @@ export class KnowledgeCoreController {
     }
     const UUID_RE =
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    if (
-      body.parentFolderId != null &&
-      !UUID_RE.test(body.parentFolderId)
-    ) {
+    if (body.parentFolderId != null && !UUID_RE.test(body.parentFolderId)) {
       throw new BadRequestException('parentFolderId must be a valid UUID');
     }
     return this.service.createFolder(
@@ -375,6 +377,82 @@ export class KnowledgeCoreController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.driveImport.deleteSource(user.id, id);
+    return { success: true };
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // SharePoint import + Re-sync
+  //
+  // OAuth lifecycle + raw site/drive/folder browsing live under
+  // /sharepoint/* (SharePointController). These endpoints handle the
+  // SharePoint→KC orchestration only — listing sources, importing,
+  // re-syncing, detaching.
+  // ────────────────────────────────────────────────────────────────
+
+  /**
+   * Per-site file-count estimate for the whole-site import warning
+   * banner. `siteId` is a Graph site identifier — opaque from our side.
+   * Returns `{ count, hasMore }`; `hasMore: true` means the site
+   * exceeds the safety cap and the FE shows a "+1000" hint.
+   */
+  @Get('sharepoint/sites/:siteId/file-count')
+  getSharePointSiteFileCount(
+    @Param('siteId') siteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sharepointImport.getFileCountEstimateForSite(user.id, siteId);
+  }
+
+  @Post('sharepoint/import')
+  importFromSharePoint(
+    @Body() body: SharePointImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sharepointImport.importFromSharePoint(user.id, body);
+  }
+
+  /**
+   * Start an async whole-site import. Returns `{ started: true }`
+   * immediately; poll `GET sharepoint/import/progress` to track it.
+   */
+  @Post('sharepoint/import/async')
+  startSharePointImportAsync(
+    @Body() body: SharePointImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sharepointImport.startImportSiteAsync(user.id, body);
+  }
+
+  @Get('sharepoint/import/progress')
+  getSharePointImportProgress(@CurrentUser() user: AuthenticatedUser) {
+    return { progress: this.sharepointImport.getImportProgress(user.id) };
+  }
+
+  @Delete('sharepoint/import/active')
+  async cancelSharePointImport(@CurrentUser() user: AuthenticatedUser) {
+    await this.sharepointImport.cancelImport(user.id);
+    return { cancelled: true };
+  }
+
+  @Get('sharepoint/sources')
+  listSharePointSources(@CurrentUser() user: AuthenticatedUser) {
+    return this.sharepointImport.listSources(user.id);
+  }
+
+  @Post('sharepoint/sources/:id/resync')
+  resyncSharePointSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sharepointImport.resyncSource(user.id, id);
+  }
+
+  @Delete('sharepoint/sources/:id')
+  async deleteSharePointSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.sharepointImport.deleteSource(user.id, id);
     return { success: true };
   }
 }

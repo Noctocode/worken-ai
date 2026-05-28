@@ -664,6 +664,9 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // this is the `webViewLink` ("Open in Drive" button). Nullable
   // outside of source='drive'.
   externalUrl: text("external_url"),
+  // SharePoint needs a (driveId, itemId) pair to download — itemId
+  // alone is ambiguous across libraries. Drive rows leave this NULL.
+  externalDriveId: text("external_drive_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   // Fast lookup for the upload-path dupe check: given an uploader and
@@ -1172,5 +1175,77 @@ export const driveImportSources = pgTable(
     uniqueIndex("drive_import_sources_owner_all_unique")
       .on(table.ownerId)
       .where(sql`${table.scope} = 'all'`),
+  ],
+);
+
+/**
+ * Per-site / per-folder record of what's been imported from a
+ * connected SharePoint (Microsoft Graph) account. Parallels
+ * `driveImportSources` but the hierarchy is one level deeper
+ * (site → drive/library → folder), so the row carries siteId,
+ * driveId, and folderId — only siteId is required.
+ *
+ *   - `scope = 'site'`  : whole-site import (BFS across every drive
+ *     in the site). One row per (owner, siteId) via the partial
+ *     unique index.
+ *   - `scope = 'folder'`: a specific folder inside a specific drive
+ *     inside a site. One row per (owner, siteId, driveId, folderId).
+ *
+ * Re-sync semantics match Drive: only NEW files are added (dedup by
+ * `knowledge_files.external_id` = SharePoint item id), existing rows
+ * stay put even if the SharePoint copy changed.
+ */
+export const sharepointImportSources = pgTable(
+  "sharepoint_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'site' for a whole-site import, 'folder' for a specific folder
+    // inside a specific drive.
+    scope: text("scope").notNull(),
+    // SharePoint site id (Graph's `sites/{id}` value). Always set —
+    // every import is anchored to a site.
+    siteId: text("site_id").notNull(),
+    // Display cache of the site's `displayName`. Shown in the
+    // Re-sync UI and used as the KC child-folder name for site-scope
+    // imports.
+    siteName: text("site_name").notNull(),
+    // SharePoint drive (document library) id. NULL when scope='site'
+    // (the import spans every drive on the site).
+    driveId: text("drive_id"),
+    // Display cache of the drive's `name`. NULL when scope='site'.
+    driveName: text("drive_name"),
+    // SharePoint item id of the folder being imported. NULL when
+    // scope='site'.
+    folderId: text("folder_id"),
+    // Display cache of the folder name. NULL when scope='site'.
+    folderName: text("folder_name"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    visibility: text("visibility").notNull().default("all"),
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one whole-site source per (owner, site).
+    uniqueIndex("sharepoint_import_sources_owner_site_unique")
+      .on(table.ownerId, table.siteId)
+      .where(sql`${table.scope} = 'site'`),
+    // At most one folder source per (owner, site, drive, folder).
+    uniqueIndex("sharepoint_import_sources_owner_folder_unique")
+      .on(table.ownerId, table.siteId, table.driveId, table.folderId)
+      .where(sql`${table.scope} = 'folder'`),
   ],
 );

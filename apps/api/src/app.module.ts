@@ -23,6 +23,7 @@ import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
+import { SharePointModule } from './sharepoint/sharepoint.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
@@ -50,6 +51,7 @@ import { UsersModule } from './users/users.module';
     OrgSettingsModule,
     ProjectsModule,
     PromptsModule,
+    SharePointModule,
     ShortcutsModule,
     TeamsModule,
     TendersModule,

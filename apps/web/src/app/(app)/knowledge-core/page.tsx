@@ -43,6 +43,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { DriveSection } from "@/components/drive-section";
+import { SharePointSection } from "@/components/sharepoint-section";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
@@ -725,6 +726,9 @@ export default function KnowledgeCorePage() {
 
       {/* Google Drive — connect, import, and Re-sync imported sources. */}
       <DriveSection />
+
+      {/* SharePoint — same shape as Drive but for Microsoft Graph. */}
+      <SharePointSection />
 
       {/* Folders */}
       <section>

@@ -3625,3 +3625,229 @@ export async function cancelDriveImport(): Promise<{ cancelled: true }> {
   return res.json();
 }
 
+// ──────────────────────────────────────────────────────────────────
+// SharePoint (Microsoft Graph) — Knowledge Core integration
+// ──────────────────────────────────────────────────────────────────
+
+export interface SharePointStatus {
+  connected: boolean;
+  accountEmail?: string;
+  status?: "active" | "reauth_required";
+  scope?: string;
+  lastSyncedAt?: string;
+}
+
+export interface SharePointSite {
+  id: string;
+  name: string;
+  displayName: string;
+  webUrl?: string;
+}
+
+export interface SharePointDrive {
+  id: string;
+  name: string;
+  driveType?: string;
+  webUrl?: string;
+}
+
+export interface SharePointFolder {
+  id: string;
+  name: string;
+  hasChildren: boolean;
+}
+
+export interface SharePointSource {
+  id: string;
+  scope: "site" | "folder";
+  siteId: string;
+  siteName: string;
+  driveId: string | null;
+  driveName: string | null;
+  folderId: string | null;
+  folderName: string | null;
+  /** Human-readable label for the chip — site name or folder name. */
+  displayName: string;
+  lastSyncedAt: string;
+  fileCountAtLastSync: number;
+  createdAt: string;
+}
+
+export interface SharePointImportResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedUnsupported: number;
+  skippedTooLarge: number;
+  sources: { id: string; displayName: string }[];
+}
+
+export type SharePointImportScope = (
+  | { kind: "site"; siteId: string }
+  | {
+      kind: "folder";
+      siteId: string;
+      driveId: string;
+      folderIds: string[];
+    }
+) & {
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
+
+export async function fetchSharePointStatus(): Promise<SharePointStatus> {
+  const res = await apiFetch("/sharepoint/status");
+  if (!res.ok) throw new Error("Failed to fetch SharePoint status");
+  return res.json();
+}
+
+/**
+ * Kick off the Microsoft OAuth flow. Hard-redirects the browser the
+ * same way `connectDrive` does — the API 302s on to Microsoft and
+ * eventually bounces back to `/knowledge-core?sharepoint=connected`.
+ */
+export function connectSharePoint(): void {
+  window.location.href = `${BASE_URL}/sharepoint/connect`;
+}
+
+export async function disconnectSharePoint(): Promise<void> {
+  const res = await apiFetch("/sharepoint/connection", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to disconnect SharePoint");
+}
+
+export async function fetchSharePointSites(): Promise<SharePointSite[]> {
+  const res = await apiFetch("/sharepoint/sites");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list SharePoint sites");
+  }
+  return res.json();
+}
+
+export async function fetchSharePointDrives(
+  siteId: string,
+): Promise<SharePointDrive[]> {
+  const res = await apiFetch(
+    `/sharepoint/sites/${encodeURIComponent(siteId)}/drives`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list SharePoint drives");
+  }
+  return res.json();
+}
+
+export async function fetchSharePointFolders(
+  siteId: string,
+  driveId: string,
+  parentId?: string,
+): Promise<SharePointFolder[]> {
+  const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
+  const res = await apiFetch(
+    `/sharepoint/sites/${encodeURIComponent(siteId)}/drives/${encodeURIComponent(driveId)}/folders${qs}`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list SharePoint folders");
+  }
+  return res.json();
+}
+
+export async function importFromSharePoint(
+  scope: SharePointImportScope,
+): Promise<SharePointImportResult> {
+  const res = await apiFetch("/knowledge-core/sharepoint/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to import from SharePoint");
+  }
+  return res.json();
+}
+
+export async function fetchSharePointSources(): Promise<SharePointSource[]> {
+  const res = await apiFetch("/knowledge-core/sharepoint/sources");
+  if (!res.ok) throw new Error("Failed to list SharePoint sources");
+  return res.json();
+}
+
+export async function resyncSharePointSource(
+  sourceId: string,
+): Promise<SharePointImportResult> {
+  const res = await apiFetch(
+    `/knowledge-core/sharepoint/sources/${sourceId}/resync`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-sync SharePoint source");
+  }
+  return res.json();
+}
+
+export async function deleteSharePointSource(sourceId: string): Promise<void> {
+  const res = await apiFetch(
+    `/knowledge-core/sharepoint/sources/${sourceId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw new Error("Failed to delete SharePoint source");
+}
+
+export async function fetchSharePointSiteFileCount(
+  siteId: string,
+): Promise<{ count: number; hasMore: boolean }> {
+  const res = await apiFetch(
+    `/knowledge-core/sharepoint/sites/${encodeURIComponent(siteId)}/file-count`,
+  );
+  if (!res.ok) throw new Error("Failed to estimate SharePoint file count");
+  return res.json();
+}
+
+// ── Async (progress-tracked) whole-site import ────────────────────
+
+export interface SharePointImportProgress {
+  phase: "scanning" | "importing" | "done" | "cancelled" | "error";
+  scanned: number;
+  total: number;
+  imported: number;
+  error?: string;
+}
+
+export async function startSharePointImportAsync(scope: {
+  kind: "site";
+  siteId: string;
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+}): Promise<{ started: true }> {
+  const res = await apiFetch("/knowledge-core/sharepoint/import/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to start SharePoint import");
+  }
+  return res.json();
+}
+
+export async function fetchSharePointImportProgress(): Promise<SharePointImportProgress | null> {
+  const res = await apiFetch("/knowledge-core/sharepoint/import/progress");
+  if (!res.ok) throw new Error("Failed to fetch import progress");
+  const body = (await res.json()) as {
+    progress: SharePointImportProgress | null;
+  };
+  return body.progress;
+}
+
+export async function cancelSharePointImport(): Promise<{ cancelled: true }> {
+  const res = await apiFetch("/knowledge-core/sharepoint/import/active", {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to cancel SharePoint import");
+  return res.json();
+}

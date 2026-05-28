@@ -8,6 +8,7 @@ import {
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import {
   driveImportSources,
+  sharepointImportSources,
   knowledgeFolders,
   knowledgeFiles,
   knowledgeFileTeams,
@@ -384,7 +385,10 @@ export class KnowledgeCoreService {
         .where(eq(driveImportSources.ownerId, userId));
     } else if (folder.parentFolderId) {
       const [parent] = await this.db
-        .select({ name: knowledgeFolders.name, parentFolderId: knowledgeFolders.parentFolderId })
+        .select({
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
         .from(knowledgeFolders)
         .where(eq(knowledgeFolders.id, folder.parentFolderId));
 
@@ -406,6 +410,60 @@ export class KnowledgeCoreService {
               eq(driveImportSources.ownerId, userId),
               eq(driveImportSources.scope, 'folder'),
               eq(driveImportSources.driveFolderName, folder.name),
+            ),
+          );
+      }
+    }
+
+    // Symmetric SharePoint cleanup — mirrors the Drive logic above.
+    //
+    //   1. Top-level "SharePoint" folder: drop ALL sharepoint sources.
+    //   2. Direct child of "SharePoint" (site- or folder-scope child):
+    //      drop the matching source by siteName / folderName.
+    //
+    // `ensureChildFolder` in sharepoint-import.service.ts always names
+    // KC children identically to the SharePoint site or folder, so
+    // name matching is stable for the per-user single-row case.
+    const isSharePointParent =
+      folder.name === 'SharePoint' && folder.parentFolderId === null;
+
+    if (isSharePointParent) {
+      await this.db
+        .delete(sharepointImportSources)
+        .where(eq(sharepointImportSources.ownerId, userId));
+    } else if (folder.parentFolderId) {
+      const [parent] = await this.db
+        .select({
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, folder.parentFolderId));
+
+      const parentIsSharePoint =
+        parent?.name === 'SharePoint' && parent.parentFolderId === null;
+
+      if (parentIsSharePoint) {
+        // Two source kinds can match this KC child:
+        //   - scope='site' source with siteName === folder.name
+        //   - scope='folder' source with folderName === folder.name
+        // Run two separate deletes so each shape uses its proper match.
+        await this.db
+          .delete(sharepointImportSources)
+          .where(
+            and(
+              eq(sharepointImportSources.ownerId, userId),
+              eq(sharepointImportSources.scope, 'site'),
+              eq(sharepointImportSources.siteName, folder.name),
+            ),
+          );
+        await this.db
+          .delete(sharepointImportSources)
+          .where(
+            and(
+              eq(sharepointImportSources.ownerId, userId),
+              eq(sharepointImportSources.scope, 'folder'),
+              eq(sharepointImportSources.folderName, folder.name),
             ),
           );
       }
