@@ -3,7 +3,6 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Download,
   FileText,
   FolderInput,
@@ -61,6 +60,7 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  deleteKnowledgeFolder,
   type KnowledgeFileVisibility,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
@@ -643,6 +643,23 @@ export default function FolderDetailPage({
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
 
+  // Subfolder delete — same confirm-dialog pattern as root /knowledge-core
+  const [deleteSubfolderId, setDeleteSubfolderId] = useState<string | null>(null);
+  const deleteSubfolderName =
+    folder?.children.find((c) => c.id === deleteSubfolderId)?.name ?? "";
+
+  const deleteSubfolderMutation = useMutation({
+    mutationFn: (id: string) => deleteKnowledgeFolder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder", folderId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      setDeleteSubfolderId(null);
+      toast.success("Folder deleted.");
+    },
+    onError: () => toast.error("Failed to delete folder."),
+  });
+
   // Same pattern as on the root /knowledge-core page — full
   // visibility editor lives in a shared dialog, opened per file by
   // the dropdown menu item.
@@ -764,14 +781,36 @@ export default function FolderDetailPage({
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Back link */}
-      <Link
-        href="/knowledge-core"
-        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[14px] text-text-2 hover:text-primary-6"
+      {/* Breadcrumbs — KC root → every ancestor → current. Replaces
+          the old "Back to Folders" link so users can jump up several
+          levels at once instead of clicking Back repeatedly. Current
+          folder is non-clickable; ancestors are links. */}
+      <nav
+        aria-label="Breadcrumb"
+        className="flex flex-wrap items-center gap-1 text-[14px] text-text-3"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Folders
-      </Link>
+        <Link
+          href="/knowledge-core"
+          className="cursor-pointer hover:text-primary-6"
+        >
+          Folders
+        </Link>
+        {folder.breadcrumb.map((crumb) => (
+          <span key={crumb.id} className="flex items-center gap-1">
+            <span className="text-text-3/60">/</span>
+            <Link
+              href={`/knowledge-core/${crumb.id}`}
+              className="cursor-pointer hover:text-primary-6"
+            >
+              {crumb.name}
+            </Link>
+          </span>
+        ))}
+        <span className="flex items-center gap-1">
+          <span className="text-text-3/60">/</span>
+          <span className="text-text-1 font-medium">{folder.name}</span>
+        </span>
+      </nav>
 
       {/* Folder info card */}
       <div className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -812,6 +851,71 @@ export default function FolderDetailPage({
           </Button>
         </label>
       </div>
+
+      {/* Subfolders section — only when this folder has children.
+          Same card layout as the KC root folder grid so the user
+          gets a familiar drill-down experience. Drive imports
+          surface here ("Google Drive" parent shows "Test" / etc.
+          as children); user-created nested folders show up the
+          same way. */}
+      {folder.children.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-[16px] font-bold text-text-1">Subfolders</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {folder.children.map((child) => (
+              <Link
+                key={child.id}
+                href={`/knowledge-core/${child.id}`}
+                className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-primary-1"
+              >
+                <div className="flex items-start justify-between">
+                  <Folder
+                    className="h-8 w-8 text-primary-6"
+                    strokeWidth={1.5}
+                  />
+                  {/* Intercept click so the Link doesn't navigate when
+                      the user opens / interacts with the dropdown. */}
+                  <div
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => setDeleteSubfolderId(child.id)}
+                          className="text-danger-6 focus:text-danger-6"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="truncate text-[15px] font-semibold text-text-1">
+                    {child.name}
+                  </span>
+                  <span className="text-[12px] text-text-3">
+                    {child.fileCount} file{child.fileCount === 1 ? "" : "s"} ·{" "}
+                    {formatBytes(child.totalBytes)}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Search */}
       <div className="relative sm:max-w-xs">
@@ -1532,6 +1636,46 @@ export default function FolderDetailPage({
               className="cursor-pointer"
             >
               {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Subfolder confirm dialog */}
+      <Dialog
+        open={deleteSubfolderId !== null}
+        onOpenChange={(open) =>
+          !open && !deleteSubfolderMutation.isPending && setDeleteSubfolderId(null)
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Folder</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <strong>{deleteSubfolderName}</strong> and all its files? This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteSubfolderId(null)}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteSubfolderId)
+                  deleteSubfolderMutation.mutate(deleteSubfolderId);
+              }}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteSubfolderMutation.isPending ? "Deleting..." : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

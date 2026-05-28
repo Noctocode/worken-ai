@@ -37,13 +37,12 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
-  type KnowledgeFolder,
   type KnowledgeFileVisibility,
-  type KnowledgeRecentFile,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { DriveSection } from "@/components/drive-section";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
@@ -271,7 +270,10 @@ export default function KnowledgeCorePage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: createKnowledgeFolder,
+    // Wrap so React Query sees a single-arg mutationFn — the optional
+    // parentFolderId on createKnowledgeFolder defaults to null which
+    // matches the legacy top-level-only behaviour of this dialog.
+    mutationFn: (name: string) => createKnowledgeFolder(name),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       setNewFolderOpen(false);
@@ -720,6 +722,9 @@ export default function KnowledgeCorePage() {
           </span>
         </label>
       </div>
+
+      {/* Google Drive — connect, import, and Re-sync imported sources. */}
+      <DriveSection />
 
       {/* Folders */}
       <section>

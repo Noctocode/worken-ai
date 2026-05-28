@@ -2025,6 +2025,10 @@ export interface KnowledgeFolder {
   id: string;
   name: string;
   ownerId: string;
+  /** Top-level folders return null; nested folders carry the id of
+   *  their parent. The KC root view lists only top-level folders;
+   *  children surface inside their parent's detail page. */
+  parentFolderId: string | null;
   fileCount: number;
   totalBytes: number;
   createdAt: string;
@@ -2089,9 +2093,17 @@ export interface KnowledgeFolderDetail {
   id: string;
   name: string;
   ownerId: string;
+  /** Null when this is a top-level folder. */
+  parentFolderId: string | null;
   createdAt: string;
   updatedAt: string;
   files: KnowledgeFile[];
+  /** Direct child folders (one level deep). FE renders them above
+   *  the files table as folder cards, same shape as the root view. */
+  children: KnowledgeFolder[];
+  /** Lineage from root → parent (excluding this folder itself).
+   *  Empty for top-level folders. Drives the breadcrumb. */
+  breadcrumb: { id: string; name: string }[];
 }
 
 export interface KnowledgeRecentFile {
@@ -2125,11 +2137,17 @@ export async function fetchKnowledgeFolder(
 
 export async function createKnowledgeFolder(
   name: string,
-): Promise<Pick<KnowledgeFolder, "id" | "name" | "ownerId" | "createdAt" | "updatedAt">> {
+  parentFolderId?: string | null,
+): Promise<
+  Pick<
+    KnowledgeFolder,
+    "id" | "name" | "ownerId" | "parentFolderId" | "createdAt" | "updatedAt"
+  >
+> {
   const res = await apiFetch("/knowledge-core/folders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, parentFolderId: parentFolderId ?? null }),
   });
   if (!res.ok) throw new Error("Failed to create folder");
   return res.json();
@@ -3396,6 +3414,214 @@ export async function declineNotification(id: string): Promise<{ ok: true }> {
 export async function dismissNotification(id: string): Promise<{ id: string }> {
   const res = await apiFetch(`/notifications/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to dismiss notification");
+  return res.json();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Google Drive — Knowledge Core integration
+// ──────────────────────────────────────────────────────────────────
+
+export interface DriveStatus {
+  connected: boolean;
+  accountEmail?: string;
+  status?: "active" | "reauth_required";
+  scope?: string;
+  lastSyncedAt?: string;
+}
+
+export interface DriveFolder {
+  id: string;
+  name: string;
+  hasChildren: boolean;
+}
+
+export interface DriveSource {
+  id: string;
+  scope: "all" | "folder";
+  driveFolderId: string | null;
+  driveFolderName: string;
+  lastSyncedAt: string;
+  fileCountAtLastSync: number;
+  createdAt: string;
+}
+
+export interface DriveImportResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedUnsupported: number;
+  /** Files skipped at import time because Drive reported a size above
+   *  the per-file cap. Surfaced in the post-import toast so the user
+   *  knows why fewer files than expected ended up in KC. */
+  skippedTooLarge: number;
+  sources: { id: string; driveFolderName: string }[];
+}
+
+export type DriveImportScope = (
+  | { kind: "all" }
+  | { kind: "folders"; folderIds: string[] }
+) & {
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
+
+export async function fetchDriveStatus(): Promise<DriveStatus> {
+  const res = await apiFetch("/google-drive/status");
+  if (!res.ok) throw new Error("Failed to fetch Drive status");
+  return res.json();
+}
+
+/**
+ * Kick off the OAuth flow. Hard-redirects the browser to the API's
+ * connect endpoint, which 302s on to Google's consent screen. Google
+ * sends the user back to /google-drive/callback, and the API in turn
+ * 302s back to `/knowledge-core?drive=connected | ?drive=error=...`.
+ *
+ * Uses the same BASE_URL the rest of api.ts uses (with the same
+ * `http://localhost:3001` dev fallback) so this routes to the API
+ * even when NEXT_PUBLIC_API_URL isn't set — a missing env var would
+ * otherwise resolve to the FE's own origin and the user would land
+ * on a Next.js 404 instead of Google's consent screen.
+ */
+export function connectDrive(): void {
+  window.location.href = `${BASE_URL}/google-drive/connect`;
+}
+
+export async function disconnectDrive(): Promise<void> {
+  const res = await apiFetch("/google-drive/connection", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to disconnect Google Drive");
+}
+
+export async function fetchDriveFolders(
+  parentId?: string,
+): Promise<DriveFolder[]> {
+  const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
+  const res = await apiFetch(`/google-drive/folders${qs}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list Drive folders");
+  }
+  return res.json();
+}
+
+export async function importFromDrive(
+  scope: DriveImportScope,
+): Promise<DriveImportResult> {
+  const res = await apiFetch("/knowledge-core/drive/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to import from Drive");
+  }
+  return res.json();
+}
+
+export async function fetchDriveSources(): Promise<DriveSource[]> {
+  const res = await apiFetch("/knowledge-core/drive/sources");
+  if (!res.ok) throw new Error("Failed to list Drive sources");
+  return res.json();
+}
+
+export async function resyncDriveSource(
+  sourceId: string,
+): Promise<DriveImportResult> {
+  const res = await apiFetch(
+    `/knowledge-core/drive/sources/${sourceId}/resync`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-sync Drive source");
+  }
+  return res.json();
+}
+
+export async function deleteDriveSource(sourceId: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/drive/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete Drive source");
+}
+
+/**
+ * One-page estimate of how many files the Entire Drive import would pick
+ * up. Fast (< 1 s for most users). `hasMore: true` means the Drive has
+ * more than 1 000 importable files — fall back to the generic cap message.
+ */
+export async function fetchDriveFileCount(): Promise<{
+  count: number;
+  hasMore: boolean;
+}> {
+  const res = await apiFetch("/knowledge-core/drive/file-count");
+  if (!res.ok) throw new Error("Failed to estimate Drive file count");
+  return res.json();
+}
+
+// ── Async (progress-tracked) Entire-Drive import ──────────────────
+
+export interface DriveImportProgress {
+  phase: "scanning" | "importing" | "done" | "cancelled" | "error";
+  /** Files seen during the Drive list-API scan. */
+  scanned: number;
+  /**
+   * New files ready to insert after filtering + dedup.
+   * Zero until scanning completes.
+   */
+  total: number;
+  /** Rows inserted so far. */
+  imported: number;
+  /** Set when phase === "error". */
+  error?: string;
+}
+
+/**
+ * Kick off a background Entire-Drive import. Returns immediately with
+ * `{ started: true }`; poll `fetchDriveImportProgress` every ~2s to
+ * track the job.
+ */
+export async function startDriveImportAsync(
+  scope: {
+    kind: "all";
+    visibility?: KnowledgeFileVisibility;
+    teamIds?: string[];
+    projectIds?: string[];
+  },
+): Promise<{ started: true }> {
+  const res = await apiFetch("/knowledge-core/drive/import/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to start Drive import");
+  }
+  return res.json();
+}
+
+/**
+ * Fetch the current progress of an in-flight async Drive import.
+ * Returns null when no job is active for this user.
+ */
+export async function fetchDriveImportProgress(): Promise<DriveImportProgress | null> {
+  const res = await apiFetch("/knowledge-core/drive/import/progress");
+  if (!res.ok) throw new Error("Failed to fetch import progress");
+  const body = (await res.json()) as { progress: DriveImportProgress | null };
+  return body.progress;
+}
+
+/**
+ * Cancel the user's running async import and roll back all inserted
+ * rows. Silently succeeds if no import is active.
+ */
+export async function cancelDriveImport(): Promise<{ cancelled: true }> {
+  const res = await apiFetch("/knowledge-core/drive/import/active", {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to cancel Drive import");
   return res.json();
 }
 

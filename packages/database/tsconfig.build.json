@@ -1,8 +1,8 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "declaration": true,
     "outDir": "./dist",
     // Drizzle's self-referencing columns (e.g. teams.parentTeamId -> teams)

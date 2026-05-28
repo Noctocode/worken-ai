@@ -11,6 +11,7 @@ import { CompareModelsModule } from './compare-models/compare-models.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { GuardrailsSectionModule } from './guardrails/guardrails-section.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
@@ -38,6 +39,7 @@ import { UsersModule } from './users/users.module';
     CompareModelsModule,
     ConversationsModule,
     DocumentsModule,
+    GoogleDriveModule,
     GuardrailsSectionModule,
     IntegrationsModule,
     KnowledgeCoreModule,
