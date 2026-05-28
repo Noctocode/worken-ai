@@ -9,10 +9,12 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
+import { useLanguage } from "@/lib/i18n";
 
 export default function SetupProfileStep3Page() {
   const router = useRouter();
   const { state, update, saveDraft } = useOnboarding();
+  const { t } = useLanguage();
   const fullName = state.fullName ?? "";
 
   // Show inline error only after the first failed Continue — same
@@ -44,11 +46,10 @@ export default function SetupProfileStep3Page() {
         <div className="w-full max-w-[400px] flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Set up your WorkenAI Identity
+              {t("onboarding.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Tell us a bit about yourself so we can personalize your
-              enterprise AI experience.
+              {t("onboarding.step3.subtitle")}
             </p>
           </div>
 
@@ -59,10 +60,10 @@ export default function SetupProfileStep3Page() {
             </div>
             <div className="flex flex-col gap-1">
               <h3 className="text-base font-bold text-text-1 leading-normal">
-                Private Professional Profile
+                {t("onboarding.step1.personalTitle")}
               </h3>
               <p className="text-[13px] font-medium leading-relaxed text-text-3">
-                For individual expert use with personal data and credentials.
+                {t("onboarding.step1.personalDesc")}
               </p>
             </div>
           </div>
@@ -73,7 +74,7 @@ export default function SetupProfileStep3Page() {
               <div className="relative">
                 <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
                 <Input
-                  placeholder="Full name"
+                  placeholder={t("onboarding.step3.fullNamePlaceholder")}
                   value={fullName}
                   onChange={(e) => update({ fullName: e.target.value })}
                   aria-invalid={attempted && fullNameError}
@@ -82,7 +83,7 @@ export default function SetupProfileStep3Page() {
               </div>
               {attempted && fullNameError && (
                 <p className="text-[12px] text-danger-6">
-                  Full name is required.
+                  {t("onboarding.step3.fullNameError")}
                 </p>
               )}
             </div>
@@ -93,13 +94,13 @@ export default function SetupProfileStep3Page() {
                 className="h-12 w-[75px] rounded-lg text-text-1"
                 onClick={() => router.back()}
               >
-                Back
+                {t("common.back")}
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
                 onClick={handleContinue}
               >
-                Continue
+                {t("common.continue")}
               </Button>
             </div>
           </div>

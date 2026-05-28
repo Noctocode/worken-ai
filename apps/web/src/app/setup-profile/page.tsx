@@ -6,34 +6,34 @@ import { Building2, UserRound } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { useOnboarding } from "./layout";
 import { OnboardingExit } from "./onboarding-exit";
+import { useLanguage } from "@/lib/i18n";
 
 type ProfileType = "company" | "personal";
-
-const OPTIONS: Array<{
-  type: ProfileType;
-  title: string;
-  description: string;
-  icon: typeof Building2;
-}> = [
-  {
-    type: "company",
-    title: "Company Profile",
-    description:
-      "For organizational use by Fortune 500 companies and government contractors.",
-    icon: Building2,
-  },
-  {
-    type: "personal",
-    title: "Private Professional Profile",
-    description:
-      "For individual expert use with personal data and credentials.",
-    icon: UserRound,
-  },
-];
 
 export default function SetupProfilePage() {
   const router = useRouter();
   const { update, saveDraft } = useOnboarding();
+  const { t } = useLanguage();
+
+  const OPTIONS: Array<{
+    type: ProfileType;
+    title: string;
+    description: string;
+    icon: typeof Building2;
+  }> = [
+    {
+      type: "company",
+      title: t("onboarding.step1.companyTitle"),
+      description: t("onboarding.step1.companyDesc"),
+      icon: Building2,
+    },
+    {
+      type: "personal",
+      title: t("onboarding.step1.personalTitle"),
+      description: t("onboarding.step1.personalDesc"),
+      icon: UserRound,
+    },
+  ];
 
   const pick = (type: ProfileType) => {
     update({ profileType: type });
@@ -59,11 +59,10 @@ export default function SetupProfilePage() {
         <div className="w-full max-w-[400px] flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Set up your WorkenAI Identity
+              {t("onboarding.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Configure your organizational profile to customize your
-              enterprise AI experience.
+              {t("onboarding.subtitle")}
             </p>
           </div>
 

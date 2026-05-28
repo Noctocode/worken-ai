@@ -16,16 +16,7 @@ import {
 } from "@/components/ui/select";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
-
-const INDUSTRIES = [
-  { value: "technology", label: "Technology" },
-  { value: "finance", label: "Finance" },
-  { value: "healthcare", label: "Healthcare" },
-  { value: "government", label: "Government" },
-  { value: "manufacturing", label: "Manufacturing" },
-  { value: "retail", label: "Retail" },
-  { value: "other", label: "Other" },
-];
+import { useLanguage } from "@/lib/i18n";
 
 const TEAM_SIZES = [
   { value: "1-10", label: "1 – 10" },
@@ -38,6 +29,17 @@ const TEAM_SIZES = [
 export default function SetupProfileStep2Page() {
   const router = useRouter();
   const { state, update, saveDraft } = useOnboarding();
+  const { t } = useLanguage();
+
+  const INDUSTRIES = [
+    { value: "technology", label: t("onboarding.step2.industry.technology") },
+    { value: "finance", label: t("onboarding.step2.industry.finance") },
+    { value: "healthcare", label: t("onboarding.step2.industry.healthcare") },
+    { value: "government", label: t("onboarding.step2.industry.government") },
+    { value: "manufacturing", label: t("onboarding.step2.industry.manufacturing") },
+    { value: "retail", label: t("onboarding.step2.industry.retail") },
+    { value: "other", label: t("onboarding.step2.industry.other") },
+  ];
   const companyName = state.companyName ?? "";
   const industry = state.industry ?? "";
   const teamSize = state.teamSize ?? "";
@@ -84,11 +86,10 @@ export default function SetupProfileStep2Page() {
         <div className="w-full max-w-[400px] flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Set up your WorkenAI Identity
+              {t("onboarding.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Configure your organizational profile to customize your
-              enterprise AI experience.
+              {t("onboarding.subtitle")}
             </p>
           </div>
 
@@ -99,11 +100,10 @@ export default function SetupProfileStep2Page() {
             </div>
             <div className="flex flex-col gap-1">
               <h3 className="text-base font-bold text-text-1 leading-normal">
-                Company Profile
+                {t("onboarding.step1.companyTitle")}
               </h3>
               <p className="text-[13px] font-medium leading-relaxed text-text-3">
-                For organizational use by Fortune 500 companies and government
-                contractors.
+                {t("onboarding.step1.companyDesc")}
               </p>
             </div>
           </div>
@@ -114,7 +114,7 @@ export default function SetupProfileStep2Page() {
               <div className="relative">
                 <UserIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-text-3" />
                 <Input
-                  placeholder="Company Name"
+                  placeholder={t("onboarding.step2.companyNamePlaceholder")}
                   value={companyName}
                   onChange={(e) => update({ companyName: e.target.value })}
                   aria-invalid={attempted && errors.companyName}
@@ -123,7 +123,7 @@ export default function SetupProfileStep2Page() {
               </div>
               {attempted && errors.companyName && (
                 <p className="text-[12px] text-danger-6">
-                  Company name is required.
+                  {t("onboarding.step2.companyNameError")}
                 </p>
               )}
             </div>
@@ -137,7 +137,7 @@ export default function SetupProfileStep2Page() {
                   aria-invalid={attempted && errors.industry}
                   className="h-11 w-full rounded-md border-border-2 text-base"
                 >
-                  <SelectValue placeholder="Industry" />
+                  <SelectValue placeholder={t("onboarding.step2.industryPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {INDUSTRIES.map((i) => (
@@ -149,7 +149,7 @@ export default function SetupProfileStep2Page() {
               </Select>
               {attempted && errors.industry && (
                 <p className="text-[12px] text-danger-6">
-                  Pick an industry.
+                  {t("onboarding.step2.industryError")}
                 </p>
               )}
             </div>
@@ -163,7 +163,7 @@ export default function SetupProfileStep2Page() {
                   aria-invalid={attempted && errors.teamSize}
                   className="h-11 w-full rounded-md border-border-2 text-base"
                 >
-                  <SelectValue placeholder="Team Size" />
+                  <SelectValue placeholder={t("onboarding.step2.teamSizePlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {TEAM_SIZES.map((t) => (
@@ -175,7 +175,7 @@ export default function SetupProfileStep2Page() {
               </Select>
               {attempted && errors.teamSize && (
                 <p className="text-[12px] text-danger-6">
-                  Pick a team size.
+                  {t("onboarding.step2.teamSizeError")}
                 </p>
               )}
             </div>
@@ -186,13 +186,13 @@ export default function SetupProfileStep2Page() {
                 className="h-12 w-[75px] rounded-lg text-text-1"
                 onClick={() => router.back()}
               >
-                Back
+                {t("common.back")}
               </Button>
               <Button
                 className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
                 onClick={handleContinue}
               >
-                Continue
+                {t("common.continue")}
               </Button>
             </div>
           </div>
