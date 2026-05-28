@@ -18,6 +18,7 @@ import {
   type Lesson,
   type LessonResource,
 } from "@/lib/learn-academy-data";
+import { useLanguage } from "@/lib/i18n";
 
 const RESOURCE_ICONS: Record<LessonResource["kind"], LucideIcon> = {
   pdf: FileText,
@@ -30,13 +31,14 @@ function VideoPlayer({ lesson, lessonIndex, totalLessons }: {
   lessonIndex: number;
   totalLessons: number;
 }) {
+  const { t } = useLanguage();
   return (
     <section className="overflow-hidden rounded-lg border border-border-2 bg-bg-white">
       <div className="relative flex aspect-video w-full items-center justify-center bg-black">
         <button
           type="button"
           className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-full bg-primary-7 text-white transition-transform hover:scale-105"
-          aria-label="Play lesson"
+          aria-label={t("lessonDetail.playAria")}
         >
           <Play className="h-8 w-8 fill-current" strokeWidth={0} />
         </button>
@@ -44,7 +46,7 @@ function VideoPlayer({ lesson, lessonIndex, totalLessons }: {
       </div>
       <div className="flex flex-col gap-2 p-6">
         <h2 className="text-[18px] font-bold leading-[1.5] text-text-1">
-          Lesson {lessonIndex}: {lesson.title}
+          {t("lessonDetail.lessonNum").replace("{n}", String(lessonIndex)).replace("{title}", lesson.title)}
         </h2>
         <p className="text-[13px] leading-[1.5] text-text-2">
           {lesson.description}
@@ -56,7 +58,7 @@ function VideoPlayer({ lesson, lessonIndex, totalLessons }: {
           </span>
           <span>•</span>
           <span>
-            Lesson {lessonIndex} of {totalLessons}
+            {t("lessonDetail.lessonNofN").replace("{n}", String(lessonIndex)).replace("{total}", String(totalLessons))}
           </span>
         </div>
       </div>
@@ -73,9 +75,10 @@ function ChapterMarkers({
   activeTime: string;
   onSelect: (time: string) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-      <h3 className="text-[14px] font-semibold text-text-1">Chapter Markers</h3>
+      <h3 className="text-[14px] font-semibold text-text-1">{t("lessonDetail.chapterMarkers")}</h3>
       <ul className="flex flex-col gap-2">
         {lesson.chapters.map((c) => {
           const active = c.time === activeTime;
@@ -111,9 +114,10 @@ function ChapterMarkers({
 }
 
 function Transcript({ lesson }: { lesson: Lesson }) {
+  const { t } = useLanguage();
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-      <h3 className="text-[14px] font-semibold text-text-1">Transcript</h3>
+      <h3 className="text-[14px] font-semibold text-text-1">{t("lessonDetail.transcript")}</h3>
       <div className="flex flex-col gap-3">
         {lesson.transcript.map((p) => (
           <p
@@ -129,9 +133,10 @@ function Transcript({ lesson }: { lesson: Lesson }) {
 }
 
 function Resources({ lesson }: { lesson: Lesson }) {
+  const { t } = useLanguage();
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-      <h3 className="text-[14px] font-semibold text-text-1">Resources</h3>
+      <h3 className="text-[14px] font-semibold text-text-1">{t("lessonDetail.resources")}</h3>
       <ul className="flex flex-col gap-2">
         {lesson.resources.map((r) => {
           const Icon = RESOURCE_ICONS[r.kind];
@@ -160,6 +165,7 @@ export default function LessonDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = use(params);
+  const { t } = useLanguage();
   // Named `lessonModule` rather than `module` because Next's
   // no-assign-module-variable rule treats `module` as a reserved
   // identifier (collides with the CommonJS-style global).
@@ -182,7 +188,7 @@ export default function LessonDetailPage({
         <Link
           href="/resources/learn-academy"
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-1 transition-colors hover:bg-bg-1"
-          aria-label="Back to Learn Academy"
+          aria-label={t("lessonDetail.backAria")}
         >
           <ArrowLeft className="h-5 w-5" />
         </Link>
@@ -203,23 +209,23 @@ export default function LessonDetailPage({
           {/* Example: Bad vs Enterprise-Grade Prompt */}
           <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white p-6">
             <h3 className="text-[15px] font-semibold text-text-1">
-              Example: Bad vs Enterprise-Grade Prompt
+              {t("lessonDetail.exampleTitle")}
             </h3>
             <button
               type="button"
               className="cursor-pointer text-[12px] font-medium text-text-2 hover:text-primary-6 hover:underline"
             >
-              Show Comparison
+              {t("lessonDetail.showComparison")}
             </button>
           </section>
 
           {/* Interactive Exercise */}
           <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white p-6">
             <h3 className="text-[15px] font-semibold text-text-1">
-              Interactive Exercise
+              {t("lessonDetail.interactiveTitle")}
             </h3>
             <Button className="cursor-pointer bg-primary-7 hover:bg-primary-7/90">
-              Try Exercise
+              {t("lessonDetail.tryExercise")}
             </Button>
           </section>
         </div>
