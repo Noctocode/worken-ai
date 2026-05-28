@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Inject,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -22,15 +23,8 @@ export { ReauthRequiredError };
  * file the signed-in user has access to (OneDrive + SharePoint).
  * `Sites.Read.All` lets the import dialog list every SharePoint site
  * the user can see. `User.Read` lets us cache the connected account's
- * email for display. `offline_access` is mandatory — without it
- * Microsoft refuses to issue a refresh_token and the connection dies
- * after the first hour.
- *
- * If you change this set, you MUST bump REQUIRED_SCOPES below.
- * Microsoft, like Google, can return a subset of what we asked for
- * (admin policy, conditional consent), and a partial grant should
- * fail fast on the callback rather than silently 401 every Graph
- * call later.
+ * email for display. `offline_access` is what gets us a refresh
+ * token — without it the connection dies after the first hour.
  */
 const SHAREPOINT_SCOPES = [
   'Files.Read.All',
@@ -39,7 +33,27 @@ const SHAREPOINT_SCOPES = [
   'offline_access',
 ];
 
-const REQUIRED_SCOPES = ['Files.Read.All', 'Sites.Read.All', 'offline_access'];
+/**
+ * Scopes we hard-require in the returned grant. Only `Files.Read.All`
+ * is non-negotiable — without it there is literally nothing to
+ * import. Everything else is best-effort:
+ *
+ *   - `Sites.Read.All` may be silently stripped by Microsoft for
+ *     personal Microsoft accounts (consumer endpoint) because
+ *     personal MSAs don't have SharePoint sites at all. Failing the
+ *     callback for that scope would block personal-account users
+ *     even though the OneDrive import path would still work for
+ *     them. We warn instead and let the import dialog surface
+ *     "no sites" if appropriate.
+ *
+ *   - `offline_access` would normally be required (refresh tokens),
+ *     but the Microsoft response sometimes omits it from `scope`
+ *     even when a refresh_token IS issued. We rely on the presence
+ *     of `tokens.refresh_token` itself (checked elsewhere) as the
+ *     real signal, and warn here rather than hard-fail.
+ */
+const REQUIRED_SCOPES = ['Files.Read.All'];
+const OPTIONAL_SCOPES = ['Sites.Read.All', 'offline_access'];
 
 const PROVIDER = 'sharepoint';
 
@@ -86,6 +100,8 @@ interface GraphMeResponse {
 
 @Injectable()
 export class SharePointOAuthService {
+  private readonly logger = new Logger(SharePointOAuthService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly config: ConfigService,
@@ -474,12 +490,36 @@ export class SharePointOAuthService {
     // Microsoft sometimes returns scopes with a full URI prefix
     // (e.g. "https://graph.microsoft.com/Files.Read.All") for v1
     // tokens. We compare on the trailing path component so both
-    // shapes are accepted.
-    const granted = new Set(grantedScopes.map((s) => s.split('/').pop() ?? s));
-    const missing = REQUIRED_SCOPES.filter((s) => !granted.has(s));
-    if (missing.length > 0) {
+    // shapes are accepted. Case-insensitive too — the consumer
+    // endpoint has been observed returning lower-case variants.
+    const granted = new Set(
+      grantedScopes.map((s) => (s.split('/').pop() ?? s).toLowerCase()),
+    );
+    const lcRequired = REQUIRED_SCOPES.map((s) => s.toLowerCase());
+    const lcOptional = OPTIONAL_SCOPES.map((s) => s.toLowerCase());
+
+    // Always log what Microsoft actually returned — invaluable when
+    // a particular tenant or account type strips scopes silently.
+    this.logger.log(
+      `Microsoft returned scopes: [${grantedScopes.join(', ')}]`,
+    );
+
+    const missingRequired = lcRequired.filter((s) => !granted.has(s));
+    if (missingRequired.length > 0) {
       throw new BadRequestException(
-        `SharePoint permission missing: ${missing.join(', ')}. Reconnect and accept the requested access.`,
+        `SharePoint permission missing: ${missingRequired.join(', ')}. ` +
+          `Reconnect and accept the requested access. ` +
+          `(If you signed in with a personal Microsoft account, switch ` +
+          `to a work/school account — personal accounts can't grant Files.Read.All.)`,
+      );
+    }
+
+    const missingOptional = lcOptional.filter((s) => !granted.has(s));
+    if (missingOptional.length > 0) {
+      this.logger.warn(
+        `SharePoint connect missing optional scope(s): ${missingOptional.join(', ')}. ` +
+          `Connection will still work but some features may degrade ` +
+          `(no site list / no refresh after 1h).`,
       );
     }
   }
