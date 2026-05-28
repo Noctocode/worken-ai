@@ -43,6 +43,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLanguage } from "@/lib/i18n";
 
 type ImportScopeChoice = "all" | "folders";
 
@@ -67,6 +68,7 @@ function FolderNode({
   onToggleExpand,
   onToggleSelect,
 }: FolderNodeProps) {
+  const { t } = useLanguage();
   const isExpanded = expanded.has(folder.id);
   const isLoading = loading.has(folder.id);
   const isSelected = selected.has(folder.id);
@@ -84,7 +86,7 @@ function FolderNode({
           className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 ${
             folder.hasChildren ? "hover:bg-bg-white hover:text-text-1" : "invisible"
           }`}
-          aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+          aria-label={isExpanded ? t("driveDlg.collapseFolder") : t("driveDlg.expandFolder")}
         >
           {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -132,6 +134,7 @@ interface Props {
 }
 
 export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
@@ -227,12 +230,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
 
     if (phase === "done") {
       if (progress.imported === 0) {
-        toast.info("Everything from your Drive is already in Knowledge Core.");
+        toast.info(t("driveDlg.allInKC"));
       } else {
         toast.success(
-          `Imported ${progress.imported.toLocaleString()} file${
-            progress.imported === 1 ? "" : "s"
-          } from Drive. They'll appear as they finish ingesting.`,
+          `${t("driveDlg.imported1")} ${progress.imported.toLocaleString()} ${progress.imported === 1 ? t("driveDlg.imported2") : t("driveDlg.imported2Plural")} ${t("driveDlg.fromDrive")}`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
@@ -240,12 +241,13 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       onOpenChange(false);
     } else if (phase === "cancelled") {
-      toast.info("Drive import cancelled.");
+      toast.info(t("driveDlg.cancelled"));
     } else if (phase === "error") {
       toast.error(
-        `Drive import failed: ${progress.error ?? "Unknown error"}`,
+        `${t("driveDlg.failed")} ${progress.error ?? t("driveDlg.unknownError")}`,
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, onOpenChange, queryClient]);
 
   // Reset per-dialog state on every open. The user might disconnect /
@@ -286,7 +288,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       })
       .catch((err) => {
         setRootError(
-          err instanceof Error ? err.message : "Couldn't list Drive folders.",
+          err instanceof Error ? err.message : t("driveDlg.couldntList"),
         );
       })
       .finally(() => setRootLoading(false));
@@ -314,7 +316,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         })
         .catch((err) => {
           toast.error(
-            err instanceof Error ? err.message : "Couldn't list sub-folders.",
+            err instanceof Error ? err.message : t("driveDlg.couldntSubfolders"),
           );
         })
         .finally(() =>
@@ -357,17 +359,17 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         result.skippedUnsupported +
         result.skippedTooLarge;
       if (result.added === 0 && skipped === 0) {
-        toast.info("No files found to import.");
+        toast.info(t("driveDlg.noFilesFound"));
       } else if (result.added === 0) {
-        toast.info("Everything from those folders is already in Knowledge Core.");
+        toast.info(t("driveDlg.foldersAllInKC"));
       } else {
         toast.success(
-          `Importing ${result.added} file${result.added === 1 ? "" : "s"} from Drive. They'll appear as they finish ingesting.`,
+          `${t("driveDlg.importing1")} ${result.added} ${result.added === 1 ? t("driveDlg.imported2") : t("driveDlg.imported2Plural")} ${t("driveDlg.fromDrive")}`,
         );
       }
       if (result.skippedTooLarge > 0) {
         toast.warning(
-          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+          `${t("drive.skipped1")} ${result.skippedTooLarge} ${result.skippedTooLarge === 1 ? t("drive.skipped2") : t("drive.skipped2Plural")} ${t("drive.skipped3")}`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
@@ -376,7 +378,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       onOpenChange(false);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("driveDlg.importFailed"));
     },
   });
 
@@ -394,7 +396,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       setAsyncJobActive(true);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("driveDlg.importFailed"));
     },
   });
 
@@ -407,7 +409,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Cancel failed."),
+      toast.error(err instanceof Error ? err.message : t("driveDlg.cancelFailed")),
   });
 
   const visibilityValid =
@@ -437,11 +439,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
-              Importing from Google Drive…
+              {t("driveDlg.importingTitle")}
             </DialogTitle>
             <DialogDescription>
-              You can close this dialog — the import will continue in the
-              background. Use Cancel to stop and undo all changes.
+              {t("driveDlg.importingDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -450,7 +451,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                  Scanning your Drive…
+                  {t("driveDlg.scanning")}
                 </div>
                 {/* Indeterminate bar during scan — no raw file count shown
                     because Drive returns all files (including Google Docs,
@@ -463,7 +464,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-3">Importing files…</span>
+                  <span className="text-text-3">{t("driveDlg.importingFiles")}</span>
                   <span className="font-medium text-text-1 tabular-nums">
                     {imported.toLocaleString()} / {total.toLocaleString()}
                   </span>
@@ -485,7 +486,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               onClick={() => onOpenChange(false)}
               className="cursor-pointer"
             >
-              Close
+              {t("driveDlg.close")}
             </Button>
             <Button
               variant="outline"
@@ -498,7 +499,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               ) : (
                 <XCircle className="h-3.5 w-3.5" />
               )}
-              Cancel import
+              {t("driveDlg.cancelImport")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -513,11 +514,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Cloud className="h-4 w-4 text-primary-6" />
-            Import from Google Drive
+            {t("driveDlg.title")}
           </DialogTitle>
           <DialogDescription>
-            Pick what to bring into Knowledge Core. Files you already imported
-            are skipped automatically.
+            {t("driveDlg.desc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -536,10 +536,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-[14px] font-medium text-text-1">
-                  Entire Drive
+                  {t("driveDlg.entireDrive")}
                 </span>
                 <span className="text-[12px] text-text-3">
-                  Import every supported file from My Drive.
+                  {t("driveDlg.entireDriveDesc")}
                 </span>
               </div>
             </label>
@@ -552,10 +552,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-[14px] font-medium text-text-1">
-                  Choose folders
+                  {t("driveDlg.chooseFolders")}
                 </span>
                 <span className="text-[12px] text-text-3">
-                  Pick specific folders from your Drive. Subfolders included.
+                  {t("driveDlg.chooseFoldersDesc")}
                 </span>
               </div>
             </label>
@@ -571,30 +571,27 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                     {fileCountLoading ? (
                       <span className="flex items-center gap-1.5">
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Checking your Drive…
+                        {t("driveDlg.checkingDrive")}
                       </span>
                     ) : fileCountData ? (
                       <>
-                        This will import{" "}
+                        {t("driveDlg.willImport")}{" "}
                         <span className="tabular-nums">
                           {fileCountData.count.toLocaleString()}
                           {fileCountData.hasMore ? "+" : ""}
                         </span>{" "}
                         {fileCountData.count === 1 && !fileCountData.hasMore
-                          ? "file"
-                          : "files"}
+                          ? t("driveDlg.fileSing")
+                          : t("driveDlg.filePlural")}
                       </>
                     ) : fileCountError ? (
-                      "This will import all supported files from your Drive"
+                      t("driveDlg.willImportAll")
                     ) : (
-                      "This will import supported files from your Drive"
+                      t("driveDlg.willImportSupported")
                     )}
                   </p>
                   <p className="text-[12px] text-warning-7">
-                    Every supported document (.pdf, .docx, .xlsx) from your
-                    entire Google Drive will be scanned and queued for
-                    ingestion. This can take several minutes and will consume
-                    significant storage and processing resources.
+                    {t("driveDlg.warnText")}
                   </p>
                 </div>
               </div>
@@ -606,7 +603,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                   className="h-4 w-4 cursor-pointer accent-warning-7"
                 />
                 <span className="text-[12px] font-medium text-warning-8">
-                  I understand — import my entire Drive
+                  {t("driveDlg.iUnderstand")}
                 </span>
               </label>
             </div>
@@ -618,7 +615,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               {rootLoading && (
                 <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Loading your Drive folders…
+                  {t("driveDlg.loadingFolders")}
                 </div>
               )}
               {rootError && (
@@ -628,7 +625,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               )}
               {!rootLoading && rootFolders && rootFolders.length === 0 && (
                 <p className="px-2 py-3 text-[13px] text-text-3">
-                  No folders in My Drive.
+                  {t("driveDlg.noFolders")}
                 </p>
               )}
               {rootFolders && rootFolders.length > 0 && (
@@ -655,7 +652,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         {/* Visibility picker */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[12px] font-medium text-text-1">
-            Visibility
+            {t("driveDlg.visibility")}
           </label>
           <Select
             value={visibility}
@@ -669,20 +666,20 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Everyone in the company</SelectItem>
-              {isAdmin && <SelectItem value="admins">Admins only</SelectItem>}
-              <SelectItem value="teams">Specific teams…</SelectItem>
-              <SelectItem value="project">Specific project…</SelectItem>
+              <SelectItem value="all">{t("driveDlg.everyone")}</SelectItem>
+              {isAdmin && <SelectItem value="admins">{t("driveDlg.adminsOnly")}</SelectItem>}
+              <SelectItem value="teams">{t("driveDlg.specificTeams")}</SelectItem>
+              <SelectItem value="project">{t("driveDlg.specificProject")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
             {visibility === "admins"
-              ? "Only admins will see these files in chat / arena."
+              ? t("driveDlg.visHintAdmins")
               : visibility === "teams"
-                ? "Only members of the teams you pick below will see these files."
+                ? t("driveDlg.visHintTeams")
                 : visibility === "project"
-                  ? "These files will only appear in the chat of the selected project(s)."
-                  : "Every user in the company can see these files in chat / arena."}
+                  ? t("driveDlg.visHintProject")
+                  : t("driveDlg.visHintEveryone")}
           </p>
         </div>
 
@@ -690,11 +687,11 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         {visibility === "teams" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Teams with access
+              {t("driveDlg.teamsWithAccess")}
             </label>
             {userTeams.length === 0 ? (
               <p className="text-[11px] text-text-3">
-                You aren&rsquo;t a member of any team yet.
+                {t("driveDlg.notTeamMember")}
               </p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
@@ -730,11 +727,11 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         {visibility === "project" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Projects with access
+              {t("driveDlg.projectsWithAccess")}
             </label>
             {userProjects.length === 0 ? (
               <p className="text-[11px] text-text-3">
-                You don&rsquo;t have access to any projects yet.
+                {t("driveDlg.noProjectAccess")}
               </p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
@@ -777,7 +774,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             onClick={() => onOpenChange(false)}
             className="cursor-pointer"
           >
-            Cancel
+            {t("driveDlg.cancel")}
           </Button>
           <Button
             onClick={() =>
@@ -793,10 +790,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             {scopeChoice === "all"
-              ? "Import entire Drive"
+              ? t("driveDlg.importEntire")
               : selected.size === 0
-                ? "Pick at least one folder"
-                : `Import ${selected.size} folder${selected.size === 1 ? "" : "s"}`}
+                ? t("driveDlg.pickFolder")
+                : `${t("driveDlg.importNFolders1")} ${selected.size} ${selected.size === 1 ? t("driveDlg.importNFolders2") : t("driveDlg.importNFolders2Plural")}`}
           </Button>
         </DialogFooter>
       </DialogContent>
