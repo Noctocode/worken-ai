@@ -363,7 +363,7 @@ export default function CompareModelsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
@@ -684,7 +684,7 @@ export default function CompareModelsPage() {
           toast.error(message);
         });
     },
-    [],
+    [t],
   );
 
   // Deep-link support: clicking a card on the dashboard opens
@@ -1186,7 +1186,7 @@ function PromptBubble({ question }: { question: string }) {
         U
       </div>
       <p className="flex-1 text-[14px] italic leading-[1.5] text-text-1">
-        "{question}"
+        “{question}”
       </p>
     </div>
   );
@@ -1921,7 +1921,7 @@ function RightRail({
                         className="line-clamp-3 flex-1 cursor-pointer text-left text-[14px] leading-[1.4] text-text-1 transition-colors hover:text-primary-6"
                         title={h.question}
                       >
-                        "{h.question}"
+                        “{h.question}”
                       </button>
                       <button
                         type="button"

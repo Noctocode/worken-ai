@@ -116,21 +116,19 @@ export default function TenderAiPage() {
     };
   }, [handleSearch, router]);
 
-  function computeStats(tenderList: TenderSummary[]): StatCard[] {
-    const active = tenderList.filter((t) => t.status === "Active").length;
-    const rates = tenderList
-      .map((t) => t.matchRate ?? 0)
-      .filter((r) => r > 0);
+  const stats = useMemo<StatCard[]>(() => {
+    const active = tenders.filter((x) => x.status === "Active").length;
+    const rates = tenders.map((x) => x.matchRate ?? 0).filter((r) => r > 0);
     const avgRate =
       rates.length > 0
         ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
         : 0;
-    const criticalGaps = tenderList.filter((t) => t.gapCount >= 3).length;
+    const criticalGaps = tenders.filter((x) => x.gapCount >= 3).length;
     const now = new Date();
     const in14d = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-    const upcoming = tenderList.filter((t) => {
-      if (!t.deadline) return false;
-      const d = new Date(t.deadline);
+    const upcoming = tenders.filter((x) => {
+      if (!x.deadline) return false;
+      const d = new Date(x.deadline);
       return d >= now && d <= in14d;
     }).length;
 
@@ -161,9 +159,7 @@ export default function TenderAiPage() {
         iconBg: "bg-bg-1 text-text-2",
       },
     ];
-  }
-
-  const stats = useMemo(() => computeStats(tenders), [tenders, t]);
+  }, [tenders, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();

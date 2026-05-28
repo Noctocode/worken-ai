@@ -72,7 +72,7 @@ export default function SetupProfileStep6Page() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { state, files, setFiles, reset } = useOnboarding();
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
 
   const CATEGORIES: Array<{
     title: string;

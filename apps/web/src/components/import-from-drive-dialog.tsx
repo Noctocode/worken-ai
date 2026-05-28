@@ -292,7 +292,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         );
       })
       .finally(() => setRootLoading(false));
-  }, [open, scopeChoice, rootFolders, rootLoading]);
+  }, [open, scopeChoice, rootFolders, rootLoading, t]);
 
   const toggleExpand = useCallback(
     (id: string) => {
@@ -327,7 +327,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
           }),
         );
     },
-    [children, expanded],
+    [children, expanded, t],
   );
 
   const toggleSelect = useCallback((id: string) => {
