@@ -2,7 +2,6 @@ import {
   BadRequestException,
   Inject,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -10,8 +9,14 @@ import { and, eq } from 'drizzle-orm';
 import { google, Auth } from 'googleapis';
 import { oauthConnections } from '@worken/database/schema';
 
+import { ReauthRequiredError } from '../common/errors/reauth-required.error.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+
+// Re-exported so existing importers (e.g. google-drive-client.service.ts)
+// can keep their relative path. New code should import from
+// '../common/errors/reauth-required.error.js' directly.
+export { ReauthRequiredError };
 
 /**
  * Drive scope set we request. `drive.readonly` covers both metadata
@@ -56,12 +61,6 @@ export interface DriveStatus {
   /** Granted scope set. Useful for FE to surface "missing scope" diagnostics. */
   scope?: string;
   lastSyncedAt?: string;
-}
-
-export class ReauthRequiredError extends UnauthorizedException {
-  constructor(message = 'Google Drive connection needs reauthorization.') {
-    super(message);
-  }
 }
 
 @Injectable()
@@ -289,7 +288,9 @@ export class GoogleDriveOAuthService {
       throw new ReauthRequiredError('Google Drive is not connected.');
     }
     if (row.status === 'reauth_required') {
-      throw new ReauthRequiredError();
+      throw new ReauthRequiredError(
+        'Google Drive connection needs reauthorization.',
+      );
     }
 
     const nowMs = Date.now();

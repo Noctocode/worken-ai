@@ -153,7 +153,9 @@ export class SharePointGraphService {
     if (res.status === 401) {
       // Still 401 after refresh — flag for reauth so the FE prompts
       // a reconnect.
-      throw new ReauthRequiredError();
+      throw new ReauthRequiredError(
+        'SharePoint connection needs reauthorization.',
+      );
     }
 
     if (!res.ok) {

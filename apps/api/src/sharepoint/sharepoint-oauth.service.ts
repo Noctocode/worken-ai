@@ -2,15 +2,20 @@ import {
   BadRequestException,
   Inject,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { and, eq } from 'drizzle-orm';
 import { oauthConnections } from '@worken/database/schema';
 
+import { ReauthRequiredError } from '../common/errors/reauth-required.error.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+
+// Re-exported so existing importers (e.g. sharepoint-graph.service.ts)
+// can keep their relative path. New code should import from
+// '../common/errors/reauth-required.error.js' directly.
+export { ReauthRequiredError };
 
 /**
  * Microsoft Graph scope set we request. `Files.Read.All` covers any
@@ -62,22 +67,6 @@ export interface SharePointStatus {
   /** Granted scope set. Useful for FE to surface "missing scope" diagnostics. */
   scope?: string;
   lastSyncedAt?: string;
-}
-
-/**
- * Mirrors `ReauthRequiredError` from google-drive-oauth.service.ts
- * verbatim. Kept local to this module so SharePoint can be developed
- * without touching the Drive code path (and so we don't accidentally
- * widen a 401 catch from one provider to the other).
- *
- * TODO(tech-debt): hoist to apps/api/src/common/errors/ and dedupe
- * with the Drive copy once we have a third provider. Be careful with
- * `instanceof` checks that pre-date the hoist.
- */
-export class ReauthRequiredError extends UnauthorizedException {
-  constructor(message = 'SharePoint connection needs reauthorization.') {
-    super(message);
-  }
 }
 
 interface MicrosoftTokenResponse {
@@ -327,7 +316,9 @@ export class SharePointOAuthService {
       throw new ReauthRequiredError('SharePoint is not connected.');
     }
     if (row.status === 'reauth_required') {
-      throw new ReauthRequiredError();
+      throw new ReauthRequiredError(
+        'SharePoint connection needs reauthorization.',
+      );
     }
 
     const nowMs = Date.now();
