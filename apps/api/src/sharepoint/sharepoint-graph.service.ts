@@ -571,6 +571,14 @@ export class SharePointGraphService {
    * ~1 hour) — matches the Drive integration's "look up current
    * MIME at download time" guarantee.
    *
+   * Critical Graph quirk: `@microsoft.graph.downloadUrl` is an
+   * "instance annotation" and is NOT returned when `$select` is
+   * used — even when explicitly included in the select list. We
+   * therefore fetch the full driveItem (no $select), which causes
+   * Graph to attach the annotation. Bandwidth cost is negligible
+   * (one ~2 KB JSON per file) and the alternative is endless
+   * "SharePoint did not return a download URL." failures.
+   *
    * Unlike Drive, SharePoint stores Office files as binary .docx /
    * .xlsx already, so there is no native-export step here.
    */
@@ -581,11 +589,15 @@ export class SharePointGraphService {
   ): Promise<SharePointDownload> {
     const meta = await this.graphGet<GraphDriveItem>(
       userId,
-      `/drives/${driveId}/items/${itemId}?$select=id,name,size,file,@microsoft.graph.downloadUrl`,
+      `/drives/${driveId}/items/${itemId}`,
     );
     const downloadUrl = meta['@microsoft.graph.downloadUrl'];
     if (!downloadUrl) {
-      throw new Error('SharePoint did not return a download URL.');
+      throw new Error(
+        'SharePoint did not return a download URL for this item. ' +
+          'This usually means the item is a folder, a placeholder, or ' +
+          'the user lost read access between scan and download time.',
+      );
     }
     const mimeType = meta.file?.mimeType ?? 'application/octet-stream';
     const filename = meta.name ?? 'untitled';
