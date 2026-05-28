@@ -60,19 +60,23 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 // Mirror the wizard step-2 dropdowns so the post-onboarding edit flow
 // offers the same options. Source of truth: setup-profile/step-2 (BE
 // validates against the same enum).
-const INDUSTRIES = [
-  { value: "technology", label: "Technology" },
-  { value: "finance", label: "Finance" },
-  { value: "healthcare", label: "Healthcare" },
-  { value: "government", label: "Government" },
-  { value: "manufacturing", label: "Manufacturing" },
-  { value: "retail", label: "Retail" },
-  { value: "other", label: "Other" },
-];
+function buildIndustries(t: (key: TranslationKey) => string) {
+  return [
+    { value: "technology", label: t("mgmt.company.industry.technology") },
+    { value: "finance", label: t("mgmt.company.industry.finance") },
+    { value: "healthcare", label: t("mgmt.company.industry.healthcare") },
+    { value: "government", label: t("mgmt.company.industry.government") },
+    { value: "manufacturing", label: t("mgmt.company.industry.manufacturing") },
+    { value: "retail", label: t("mgmt.company.industry.retail") },
+    { value: "other", label: t("mgmt.company.industry.other") },
+  ];
+}
 
 const TEAM_SIZES = [
   { value: "1-10", label: "1 – 10" },
@@ -106,6 +110,8 @@ const labelFor = (
 ) => options.find((o) => o.value === value)?.label ?? value;
 
 export function CompanyTab() {
+  const { t } = useLanguage();
+  const INDUSTRIES = buildIndustries(t);
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
   const queryClient = useQueryClient();
@@ -163,23 +169,25 @@ export function CompanyTab() {
     mutationFn: (userId: string) => removeOrgUser(userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
-      toast.success("User removed.");
+      toast.success(t("mgmt.company.userRemoved"));
       setPendingRemoveUser(null);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove user.");
+      toast.error(err.message || t("mgmt.company.couldntRemoveUser"));
       setPendingRemoveUser(null);
     },
   });
   const deleteCompanyMutation = useMutation({
     mutationFn: deleteCompanyProfile,
     onSuccess: (result) => {
+      const teamWord = result.deletedTeamCount === 1
+        ? t("mgmt.company.deletedToastTeam")
+        : t("mgmt.company.deletedToastTeams");
+      const userWord = result.affectedUserCount === 1
+        ? t("mgmt.company.deletedToastUser")
+        : t("mgmt.company.deletedToastUsers");
       toast.success(
-        `Company deleted. Removed ${result.deletedTeamCount} team${
-          result.deletedTeamCount === 1 ? "" : "s"
-        }; ${result.affectedUserCount} user${
-          result.affectedUserCount === 1 ? "" : "s"
-        } now need to re-onboard.`,
+        `${t("mgmt.company.deletedToastPrefix")} ${result.deletedTeamCount} ${teamWord}; ${result.affectedUserCount} ${userWord} ${t("mgmt.company.deletedToastSuffix")}`,
       );
       // Bust every cache that just had its underlying rows wiped or
       // mutated. The onboarding-profile + auth.me invalidations make
@@ -194,7 +202,7 @@ export function CompanyTab() {
       setDeleteConfirmText("");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't delete company.");
+      toast.error(err.message || t("mgmt.company.couldntDelete"));
     },
   });
 
@@ -236,7 +244,7 @@ export function CompanyTab() {
     if (!profile) return;
     const trimmedName = editCompanyName.trim();
     if (!trimmedName) {
-      toast.error("Company name cannot be empty.");
+      toast.error(t("mgmt.company.companyNameEmpty"));
       return;
     }
 
@@ -252,7 +260,7 @@ export function CompanyTab() {
       const raw = trimmedBudget.replace(/\./g, "").replace(",", ".");
       const num = parseFloat(raw);
       if (!Number.isFinite(num) || num < 0) {
-        toast.error("Budget must be a non-negative number.");
+        toast.error(t("mgmt.company.budgetNonNegative"));
         return;
       }
       parsedBudgetCents = Math.round(num * 100);
@@ -287,7 +295,7 @@ export function CompanyTab() {
             ...(teamSizeChanged ? { teamSize: editTeamSize } : {}),
           })
           .catch((err: Error) => {
-            toast.error(err.message || "Couldn't update company profile.");
+            toast.error(err.message || t("mgmt.company.couldntUpdateProfile"));
             throw err;
           }),
       );
@@ -297,7 +305,7 @@ export function CompanyTab() {
         updateBudgetMutation
           .mutateAsync({ monthlyBudgetCents: parsedBudgetCents })
           .catch((err: Error) => {
-            toast.error(err.message || "Couldn't update company budget.");
+            toast.error(err.message || t("mgmt.company.couldntUpdateBudget"));
             throw err;
           }),
       );
@@ -307,7 +315,7 @@ export function CompanyTab() {
     queryClient.invalidateQueries({ queryKey: ["onboarding-profile"] });
     queryClient.invalidateQueries({ queryKey: ["org-settings"] });
     if (results.every((r) => r.status === "fulfilled")) {
-      toast.success("Company updated.");
+      toast.success(t("mgmt.company.updated"));
       setIsEditing(false);
     }
   };
@@ -355,7 +363,7 @@ export function CompanyTab() {
   if (profileError || !profile) {
     return (
       <div className="flex items-center justify-center py-24">
-        <p className="text-text-3">Failed to load company profile.</p>
+        <p className="text-text-3">{t("mgmt.company.failedLoad")}</p>
       </div>
     );
   }
@@ -366,9 +374,7 @@ export function CompanyTab() {
   if (profile.profileType !== "company") {
     return (
       <div className="py-12 text-center text-[14px] text-text-3">
-        This workspace is registered as a personal profile, so there&rsquo;s
-        no company information to show. Visit My Account to update your
-        profile type.
+        {t("mgmt.company.personalOnly")}
       </div>
     );
   }
@@ -414,7 +420,7 @@ export function CompanyTab() {
     (participantsPage - 1) * PARTICIPANTS_PAGE_SIZE,
     participantsPage * PARTICIPANTS_PAGE_SIZE,
   );
-  const companyDisplay = profile.companyName?.trim() || "Unnamed company";
+  const companyDisplay = profile.companyName?.trim() || t("mgmt.company.unnamedCompany");
 
   // Tri-state company target → `null` means an admin has never set a
   // cap; chat passes silently, every spend/projected affordance on
@@ -439,11 +445,9 @@ export function CompanyTab() {
         <div className="flex items-center justify-between gap-3 rounded-lg border border-warning-7/30 bg-warning-1 px-4 py-3">
           <p className="text-[13px] text-text-1">
             <strong className="font-semibold">
-              No company-wide monthly budget set.
+              {t("mgmt.company.noBudgetBanner")}
             </strong>{" "}
-            Set a target so org-wide spend can be tracked against a
-            cap — without one, the over-budget guard rails on chat are
-            silently off.
+            {t("mgmt.company.noBudgetBannerDesc")}
           </p>
           <Button
             type="button"
@@ -451,7 +455,7 @@ export function CompanyTab() {
             disabled={isEditing}
             className="shrink-0 h-8 bg-warning-7 text-white hover:bg-warning-7/90"
           >
-            Set budget
+            {t("mgmt.company.setBudget")}
           </Button>
         </div>
       )}
@@ -465,15 +469,15 @@ export function CompanyTab() {
           <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
           <div className="flex-1 space-y-1">
             <p className="text-[14px] font-semibold text-danger-6">
-              Org-wide chat is paused
+              {t("mgmt.company.chatPaused")}
             </p>
             <p className="text-[13px] text-text-1">
-              Company Monthly Budget is set to{" "}
-              <strong>$0</strong>, which blocks every chat call across
-              the organization.{" "}
+              {t("mgmt.company.suspendedPrefix")}{" "}
+              <strong>$0</strong>
+              {t("mgmt.company.suspendedMiddle")}{" "}
               {isAdmin
-                ? "Open the Pencil and clear the budget (or set a positive target) to resume."
-                : "Ask an admin to clear the budget or set a positive target to resume."}
+                ? t("mgmt.company.suspendedAdmin")
+                : t("mgmt.company.suspendedUser")}
             </p>
           </div>
         </div>
@@ -488,24 +492,24 @@ export function CompanyTab() {
           <AlertTriangle className="h-5 w-5 shrink-0 text-danger-6 mt-0.5" />
           <div className="flex-1 space-y-1">
             <p className="text-[14px] font-semibold text-danger-6">
-              Over the company budget
+              {t("mgmt.company.overBudgetTitle")}
             </p>
             <p className="text-[13px] text-text-1">
               {spent > target ? (
                 <>
-                  Spent <strong>{formatCurrency(spent)}</strong> of the{" "}
-                  <strong>{formatCurrency(target)}</strong> monthly target.
+                  {t("mgmt.company.spentOf")} <strong>{formatCurrency(spent)}</strong> {t("mgmt.company.of")}{" "}
+                  <strong>{formatCurrency(target)}</strong> {t("mgmt.company.monthlyTarget")}
                 </>
               ) : (
                 <>
-                  Projected to spend <strong>{formatCurrency(projected)}</strong>{" "}
-                  by month-end against a <strong>{formatCurrency(target)}</strong>{" "}
-                  target.
+                  {t("mgmt.company.projectedPrefix")} <strong>{formatCurrency(projected)}</strong>{" "}
+                  {t("mgmt.company.byMonthEnd")} <strong>{formatCurrency(target)}</strong>
+                  {t("mgmt.company.targetSuffix")}
                 </>
               )}{" "}
               {isAdmin
-                ? "Raise the target with the Pencil button, or trim per-team / per-member caps."
-                : "Ask an admin to raise the target or trim per-team / per-member caps."}
+                ? t("mgmt.company.overAdmin")
+                : t("mgmt.company.overUser")}
             </p>
           </div>
         </div>
@@ -524,7 +528,7 @@ export function CompanyTab() {
                   type="text"
                   value={editCompanyName}
                   onChange={(e) => setEditCompanyName(e.target.value)}
-                  placeholder="Company name"
+                  placeholder={t("mgmt.company.companyNamePlaceholder")}
                   disabled={isSaving}
                   className="w-full h-10 rounded border border-border-4 bg-transparent px-3 text-[18px] font-bold text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
                   autoFocus
@@ -547,7 +551,7 @@ export function CompanyTab() {
                   disabled={isSaving}
                 >
                   <X className="h-4 w-4" />
-                  Cancel
+                  {t("mgmt.company.cancel")}
                 </Button>
                 <Button
                   className="h-10 gap-2 bg-success-7 text-white hover:bg-success-7/90"
@@ -559,7 +563,7 @@ export function CompanyTab() {
                   ) : (
                     <Check className="h-4 w-4" strokeWidth={2.5} />
                   )}
-                  Confirm
+                  {t("mgmt.company.confirm")}
                 </Button>
               </>
             ) : (
@@ -570,7 +574,7 @@ export function CompanyTab() {
                     size="icon"
                     className="h-6 w-6 text-success-7 hover:text-success-7/80"
                     onClick={enterEdit}
-                    title="Edit company profile"
+                    title={t("mgmt.company.editTitle")}
                   >
                     <Pencil className="h-6 w-6" />
                   </Button>
@@ -579,7 +583,7 @@ export function CompanyTab() {
                     size="icon"
                     className="h-6 w-6 text-success-7 hover:text-success-7/80"
                     onClick={() => setConfirmDeleteOpen(true)}
-                    title="Delete company"
+                    title={t("mgmt.company.deleteTitle")}
                   >
                     <Trash2 className="h-6 w-6" />
                   </Button>
@@ -592,11 +596,11 @@ export function CompanyTab() {
         {/* Profile fields row */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Industry</p>
+            <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.industry")}</p>
             {editing ? (
               <Select value={editIndustry || undefined} onValueChange={setEditIndustry}>
                 <SelectTrigger className="h-[56px] border-border-4 text-[16px] text-text-1">
-                  <SelectValue placeholder="Select industry" />
+                  <SelectValue placeholder={t("mgmt.company.selectIndustry")} />
                 </SelectTrigger>
                 <SelectContent>
                   {INDUSTRIES.map((opt) => (
@@ -611,18 +615,18 @@ export function CompanyTab() {
                 {profile.industry ? (
                   <span>{labelFor(INDUSTRIES, profile.industry)}</span>
                 ) : (
-                  <span className="text-text-3">Not set</span>
+                  <span className="text-text-3">{t("mgmt.company.notSet")}</span>
                 )}
               </div>
             )}
           </div>
 
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Team size</p>
+            <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.teamSize")}</p>
             {editing ? (
               <Select value={editTeamSize || undefined} onValueChange={setEditTeamSize}>
                 <SelectTrigger className="h-[56px] border-border-4 text-[16px] text-text-1">
-                  <SelectValue placeholder="Select team size" />
+                  <SelectValue placeholder={t("mgmt.company.selectTeamSize")} />
                 </SelectTrigger>
                 <SelectContent>
                   {TEAM_SIZES.map((opt) => (
@@ -637,14 +641,14 @@ export function CompanyTab() {
                 {profile.teamSize ? (
                   <span>{labelFor(TEAM_SIZES, profile.teamSize)}</span>
                 ) : (
-                  <span className="text-text-3">Not set</span>
+                  <span className="text-text-3">{t("mgmt.company.notSet")}</span>
                 )}
               </div>
             )}
           </div>
 
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Plan</p>
+            <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.plan")}</p>
             <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1 capitalize">
               {profile.plan}
             </div>
@@ -666,7 +670,7 @@ export function CompanyTab() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">
-              Company Monthly Budget
+              {t("mgmt.company.companyMonthlyBudget")}
             </p>
             {editing ? (
               <div className="relative">
@@ -689,7 +693,7 @@ export function CompanyTab() {
                       cancelEdit();
                     }
                   }}
-                  placeholder="No target"
+                  placeholder={t("mgmt.company.noTarget")}
                   disabled={isSaving}
                   className="w-full h-[56px] rounded border border-border-4 bg-transparent pl-7 pr-4 text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
                 />
@@ -697,16 +701,16 @@ export function CompanyTab() {
             ) : (
               <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
                 {isSuspended ? (
-                  <span className="text-danger-6">Suspended ($0)</span>
+                  <span className="text-danger-6">{t("mgmt.company.suspended$0")}</span>
                 ) : hasTarget ? (
                   <span>{formatCurrency(target)}</span>
                 ) : (
-                  <span className="text-text-3">No target set</span>
+                  <span className="text-text-3">{t("mgmt.company.noTargetSet")}</span>
                 )}
               </div>
             )}
             <p className="text-[12px] text-text-3">
-              Allocated across teams + members:{" "}
+              {t("mgmt.company.allocatedAcross")}{" "}
               <strong className="text-text-2">
                 {formatCurrency(allocated)}
               </strong>
@@ -714,7 +718,7 @@ export function CompanyTab() {
           </div>
 
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Spent / Remaining</p>
+            <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.spentRemaining")}</p>
             <div className="flex items-center gap-3 h-[56px]">
               <span className="text-[16px] text-text-2">
                 {formatCurrency(spent)} /{" "}
@@ -738,21 +742,19 @@ export function CompanyTab() {
 
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <p className="text-[18px] font-bold text-text-1">Projected</p>
+              <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.projected")}</p>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label="What does Projected mean?"
+                    aria-label={t("mgmt.company.projectedTooltipAria")}
                     className="flex items-center justify-center text-text-3 hover:text-text-1"
                   >
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  Linear forecast of total company spend by month-end,
-                  extrapolated from the daily run-rate so far. Early in
-                  the month it can swing widely, then stabilizes.
+                  {t("mgmt.company.projectedTooltipDesc")}
                 </TooltipContent>
               </Tooltip>
             </div>
@@ -766,7 +768,7 @@ export function CompanyTab() {
                       : "bg-danger-1 text-danger-6"
                   }`}
                 >
-                  {onTrack ? "On track" : "Over Budget"}
+                  {onTrack ? t("mgmt.company.onTrack") : t("mgmt.company.overBudget")}
                 </span>
               )}
             </div>
@@ -776,15 +778,15 @@ export function CompanyTab() {
 
       {/* Admins */}
       <div className="space-y-3">
-        <p className="text-[18px] font-bold text-text-1">Admins</p>
+        <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.admins")}</p>
         <div className="rounded overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[540px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Name</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Email</th>
-                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">{t("mgmt.company.colName")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colEmail")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("mgmt.company.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -832,10 +834,10 @@ export function CompanyTab() {
                                 disabled
                                 className="gap-2 text-danger-6 focus:text-danger-6"
                                 onSelect={(e) => e.preventDefault()}
-                                title="Admins can't be removed from here. Demote them to a non-admin role on the Users tab first."
+                                title={t("mgmt.company.removeAdminBlocked")}
                               >
                                 <UserX className="h-4 w-4" />
-                                Remove admin
+                                {t("mgmt.company.removeAdmin")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -850,7 +852,7 @@ export function CompanyTab() {
                       colSpan={3}
                       className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3"
                     >
-                      No admins yet.
+                      {t("mgmt.company.noAdmins")}
                     </td>
                   </tr>
                 )}
@@ -865,18 +867,18 @@ export function CompanyTab() {
           roster of the company without flipping to the Users tab. */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[18px] font-bold text-text-1">Other participants</p>
+          <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.otherParticipants")}</p>
           {isAdmin ? (
             <InviteUserDialog>
               <Button variant="plusAction" className="rounded-lg">
                 <Plus className="h-4 w-4 text-text-white" />
-                Invite User
+                {t("mgmt.company.inviteUser")}
               </Button>
             </InviteUserDialog>
           ) : (
             <DisabledReasonTooltip
               disabled
-              reason="Only admins can invite users"
+              reason={t("mgmt.company.inviteAdminOnly")}
             >
               <Button
                 variant="plusAction"
@@ -884,7 +886,7 @@ export function CompanyTab() {
                 disabled
               >
                 <Plus className="h-4 w-4 text-text-white" />
-                Invite User
+                {t("mgmt.company.inviteUser")}
               </Button>
             </DisabledReasonTooltip>
           )}
@@ -894,10 +896,10 @@ export function CompanyTab() {
             <table className="w-full min-w-[600px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">Name</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Email</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[120px]">Role</th>
-                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[300px]">{t("mgmt.company.colName")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colEmail")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[120px]">{t("mgmt.company.colRole")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("mgmt.company.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -962,7 +964,7 @@ export function CompanyTab() {
                                 }}
                               >
                                 <UserX className="h-4 w-4" />
-                                Remove user
+                                {t("mgmt.company.removeUser")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -977,7 +979,7 @@ export function CompanyTab() {
                       colSpan={4}
                       className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3"
                     >
-                      No participants yet.
+                      {t("mgmt.company.noParticipants")}
                     </td>
                   </tr>
                 )}
@@ -996,11 +998,11 @@ export function CompanyTab() {
       {/* Primary Guardrails — DEMO data, awaiting org-level guardrails BE */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <p className="text-[18px] font-bold text-text-1">Primary Guardrails</p>
+          <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.primaryGuardrails")}</p>
           {isAdmin ? (
             <Button variant="plusAction" className="rounded-lg w-[155px]">
               <Plus className="h-4 w-4 text-text-white" />
-              Add Guardrail
+              {t("mgmt.company.addGuardrail")}
             </Button>
           ) : (
             // Basic / advanced users see the button disabled with a
@@ -1010,7 +1012,7 @@ export function CompanyTab() {
             // non-admins fire a no-op that the BE would reject anyway.
             <DisabledReasonTooltip
               disabled
-              reason="Only admins can add guardrails"
+              reason={t("mgmt.company.addGuardrailAdminOnly")}
             >
               <Button
                 variant="plusAction"
@@ -1018,7 +1020,7 @@ export function CompanyTab() {
                 disabled
               >
                 <Plus className="h-4 w-4 text-text-white" />
-                Add Guardrail
+                {t("mgmt.company.addGuardrail")}
               </Button>
             </DisabledReasonTooltip>
           )}
@@ -1028,12 +1030,12 @@ export function CompanyTab() {
             <table className="w-full min-w-[700px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Name</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Type</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Severity</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Triggers</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">Status</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colName")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colType")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colSeverity")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("mgmt.company.colTriggers")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">{t("mgmt.company.colStatus")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("mgmt.company.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1073,7 +1075,7 @@ export function CompanyTab() {
                         ) : (
                           <DisabledReasonTooltip
                             disabled
-                            reason="Only admins can change guardrails"
+                            reason={t("mgmt.company.toggleAdminOnly")}
                           >
                             <Switch
                               checked={g.active}
@@ -1082,7 +1084,7 @@ export function CompanyTab() {
                             />
                           </DisabledReasonTooltip>
                         )}
-                        <span className="text-[16px] text-text-1 whitespace-nowrap">{g.active ? "Active" : "Inactive"}</span>
+                        <span className="text-[16px] text-text-1 whitespace-nowrap">{g.active ? t("mgmt.company.active") : t("mgmt.company.inactive")}</span>
                       </div>
                     </td>
                     <td className="px-4 align-middle w-[93px]">
@@ -1102,25 +1104,21 @@ export function CompanyTab() {
                               className="gap-2"
                               disabled={!isAdmin}
                               title={
-                                isAdmin
-                                  ? undefined
-                                  : "Only admins can edit guardrails"
+                                isAdmin ? undefined : t("mgmt.company.editAdminOnly")
                               }
                             >
                               <Pencil className="h-4 w-4" />
-                              Edit
+                              {t("mgmt.company.edit")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="gap-2 text-danger-6 focus:text-danger-6"
                               disabled={!isAdmin}
                               title={
-                                isAdmin
-                                  ? undefined
-                                  : "Only admins can delete guardrails"
+                                isAdmin ? undefined : t("mgmt.company.deleteAdminOnly")
                               }
                             >
                               <Trash2 className="h-4 w-4" />
-                              Delete
+                              {t("mgmt.company.delete")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1146,13 +1144,13 @@ export function CompanyTab() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove user</DialogTitle>
+            <DialogTitle>{t("mgmt.company.removeUser")}</DialogTitle>
             <DialogDescription>
-              Remove{" "}
+              {t("mgmt.company.removeUserDesc1")}{" "}
               <strong>
                 {pendingRemoveUser?.name ?? pendingRemoveUser?.email}
               </strong>{" "}
-              from the organization? This action cannot be undone.
+              {t("mgmt.company.removeUserDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1161,7 +1159,7 @@ export function CompanyTab() {
               onClick={() => setPendingRemoveUser(null)}
               disabled={removeUserMutation.isPending}
             >
-              Cancel
+              {t("mgmt.company.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1172,7 +1170,7 @@ export function CompanyTab() {
               }}
               disabled={removeUserMutation.isPending}
             >
-              {removeUserMutation.isPending ? "Removing..." : "Remove"}
+              {removeUserMutation.isPending ? t("mgmt.company.removing") : t("mgmt.company.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1195,42 +1193,35 @@ export function CompanyTab() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-danger-6">Delete company</DialogTitle>
+            <DialogTitle className="text-danger-6">{t("mgmt.company.deleteCompany")}</DialogTitle>
             <DialogDescription>
-              This permanently tears down the workspace for{" "}
+              {t("mgmt.company.deleteCompanyDesc")}{" "}
               <strong>{companyDisplay}</strong>.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3 space-y-2">
               <p className="text-[13px] font-semibold text-danger-6">
-                What will be deleted:
+                {t("mgmt.company.whatDeleted")}
               </p>
               <ul className="list-disc pl-5 text-[13px] text-text-1 space-y-1">
                 <li>
-                  All <strong>{teams.length}</strong> team
-                  {teams.length === 1 ? "" : "s"} (including sub-teams,
-                  members, and team-shared API keys)
+                  {t("mgmt.company.deletedItem1Prefix")} <strong>{teams.length}</strong>{" "}
+                  {teams.length === 1 ? t("mgmt.company.deletedItem1Team") : t("mgmt.company.deletedItem1Teams")}{" "}
+                  {t("mgmt.company.deletedItem1Suffix")}
                 </li>
                 <li>
-                  Company profile (name, industry, team size) on every
-                  user — <strong>{orgUsers.length}</strong>{" "}
-                  account{orgUsers.length === 1 ? "" : "s"} will be sent
-                  back through onboarding on next login
+                  {t("mgmt.company.deletedItem2Prefix")} <strong>{orgUsers.length}</strong>{" "}
+                  {orgUsers.length === 1 ? t("mgmt.company.deletedItem2Account") : t("mgmt.company.deletedItem2Accounts")}{" "}
+                  {t("mgmt.company.deletedItem2Suffix")}
                 </li>
               </ul>
               <p className="text-[13px] font-semibold text-danger-6 pt-2">
-                What stays:
+                {t("mgmt.company.whatStays")}
               </p>
               <ul className="list-disc pl-5 text-[13px] text-text-1 space-y-1">
-                <li>
-                  All user accounts, roles, plans, and personal API keys
-                </li>
-                <li>
-                  All chats, conversations, and projects — team-scoped
-                  projects are unassigned from their (now deleted) team
-                  and become personal-scope
-                </li>
+                <li>{t("mgmt.company.stays1")}</li>
+                <li>{t("mgmt.company.stays2")}</li>
               </ul>
             </div>
             <div className="space-y-1.5">
@@ -1238,11 +1229,11 @@ export function CompanyTab() {
                 htmlFor="company-delete-confirm"
                 className="text-[13px] text-text-1"
               >
-                Type{" "}
+                {t("mgmt.company.typeToConfirm")}{" "}
                 <span className="font-mono font-semibold">
                   {companyDisplay}
                 </span>{" "}
-                to confirm:
+                {t("mgmt.company.toConfirm")}
               </label>
               <input
                 id="company-delete-confirm"
@@ -1255,7 +1246,7 @@ export function CompanyTab() {
               />
             </div>
             <p className="text-[12px] text-text-3">
-              This action cannot be undone.
+              {t("mgmt.company.actionCannotUndo")}
             </p>
           </div>
           <DialogFooter className="gap-2">
@@ -1267,7 +1258,7 @@ export function CompanyTab() {
               }}
               disabled={deleteCompanyMutation.isPending}
             >
-              Cancel
+              {t("mgmt.company.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1278,8 +1269,8 @@ export function CompanyTab() {
               }
             >
               {deleteCompanyMutation.isPending
-                ? "Deleting..."
-                : "Delete company"}
+                ? t("mgmt.company.deleting")
+                : t("mgmt.company.deleteCompany")}
             </Button>
           </DialogFooter>
         </DialogContent>
