@@ -16,6 +16,7 @@ import type {
   KnowledgeUploadNameConflict,
   NameConflictAction,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 interface Props {
   open: boolean;
@@ -47,6 +48,7 @@ export function KnowledgeNameConflictDialog({
   onResolve,
   onCancel,
 }: Props) {
+  const { t } = useLanguage();
   // Per-name action. Defaults to 'skip' so a user who clicks "Apply"
   // without touching the picker doesn't end up nuking anything they
   // didn't explicitly opt into.
@@ -104,12 +106,12 @@ export function KnowledgeNameConflictDialog({
         <DialogHeader className="border-b border-border-2 px-5 py-4 sm:px-6">
           <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
             <AlertTriangle className="h-4 w-4 text-warning-7" />
-            File name already in use
+            {t("nameConf.title")}
           </DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
             {conflicts.length === 1
-              ? `A file named "${conflicts[0].name}" already exists in this folder with different content. Pick what to do.`
-              : `${conflicts.length} files share a name with existing files in this folder (different content). Pick what to do for each, or apply to all.`}
+              ? `${t("nameConf.descSingle1")} "${conflicts[0].name}" ${t("nameConf.descSingle2")}`
+              : `${conflicts.length} ${t("nameConf.descMulti1")}`}
           </DialogDescription>
         </DialogHeader>
 
@@ -117,7 +119,7 @@ export function KnowledgeNameConflictDialog({
           {conflicts.length > 1 && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-[12px] font-medium text-text-3">
-                Apply to all:
+                {t("nameConf.applyToAll")}
               </span>
               <Button
                 type="button"
@@ -126,7 +128,7 @@ export function KnowledgeNameConflictDialog({
                 className="h-7 cursor-pointer text-xs"
                 onClick={() => applyToAll("overwrite")}
               >
-                Overwrite
+                {t("nameConf.overwrite")}
               </Button>
               <Button
                 type="button"
@@ -135,7 +137,7 @@ export function KnowledgeNameConflictDialog({
                 className="h-7 cursor-pointer text-xs"
                 onClick={() => applyToAll("keep_both")}
               >
-                Keep both
+                {t("nameConf.keepBoth")}
               </Button>
               <Button
                 type="button"
@@ -144,7 +146,7 @@ export function KnowledgeNameConflictDialog({
                 className="h-7 cursor-pointer text-xs"
                 onClick={() => applyToAll("skip")}
               >
-                Skip
+                {t("nameConf.skip")}
               </Button>
             </div>
           )}
@@ -167,7 +169,7 @@ export function KnowledgeNameConflictDialog({
                       </div>
                       <div className="flex shrink-0 gap-1">
                         <ChoicePill
-                          label="Overwrite"
+                          label={t("nameConf.overwrite")}
                           active={action === "overwrite"}
                           tone="danger"
                           onClick={() =>
@@ -178,7 +180,7 @@ export function KnowledgeNameConflictDialog({
                           }
                         />
                         <ChoicePill
-                          label="Keep both"
+                          label={t("nameConf.keepBoth")}
                           active={action === "keep_both"}
                           tone="primary"
                           onClick={() =>
@@ -189,7 +191,7 @@ export function KnowledgeNameConflictDialog({
                           }
                         />
                         <ChoicePill
-                          label="Skip"
+                          label={t("nameConf.skip")}
                           active={action === "skip"}
                           tone="neutral"
                           onClick={() =>
@@ -208,20 +210,18 @@ export function KnowledgeNameConflictDialog({
           </div>
 
           <p className="text-[11px] leading-relaxed text-text-3">
-            <strong>Overwrite</strong> deletes the existing file (and its
-            chat embeddings) and replaces it with the new bytes.{" "}
-            <strong>Keep both</strong> saves the new file as
-            &ldquo;<em>name</em> (2).<em>ext</em>&rdquo; alongside the
-            existing one. <strong>Skip</strong> does nothing — the new
-            file is discarded.
+            <strong>{t("nameConf.overwrite")}</strong> {t("nameConf.hint1")}{" "}
+            <strong>{t("nameConf.keepBoth")}</strong> {t("nameConf.hint2")}
+            &ldquo;<em>name</em> (2).<em>ext</em>&rdquo; {t("nameConf.hint3")}{" "}
+            <strong>{t("nameConf.skip")}</strong> {t("nameConf.hint4")}
           </p>
         </div>
 
         <DialogFooter className="gap-2 border-t border-border-2 px-5 py-3 sm:px-6">
           <span className="mr-auto text-[11px] text-text-3 sm:text-xs">
-            {summary.overwrite > 0 && `${summary.overwrite} overwrite · `}
-            {summary.keepBoth > 0 && `${summary.keepBoth} keep both · `}
-            {summary.skip > 0 && `${summary.skip} skip`}
+            {summary.overwrite > 0 && `${summary.overwrite} ${t("nameConf.summaryOverwrite")} · `}
+            {summary.keepBoth > 0 && `${summary.keepBoth} ${t("nameConf.summaryKeepBoth")} · `}
+            {summary.skip > 0 && `${summary.skip} ${t("nameConf.summarySkip")}`}
           </span>
           <Button
             type="button"
@@ -229,14 +229,14 @@ export function KnowledgeNameConflictDialog({
             className="cursor-pointer"
             onClick={onCancel}
           >
-            Cancel
+            {t("nameConf.cancel")}
           </Button>
           <Button
             type="button"
             className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             onClick={() => onResolve(actions)}
           >
-            Apply
+            {t("nameConf.apply")}
           </Button>
         </DialogFooter>
       </DialogContent>
