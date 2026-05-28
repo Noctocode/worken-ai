@@ -623,7 +623,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               </p>
             ) : sites.length === 0 ? (
               <p className="rounded border border-border-2 px-3 py-2 text-[13px] text-text-3">
-                You don&rsquo;t have access to any SharePoint sites.
+                You don&rsquo;t have access to any SharePoint sites. If you
+                signed in with a personal Microsoft account, switch to a
+                work or school account — SharePoint is a work/school
+                product and personal accounts can&rsquo;t access it.
               </p>
             ) : (
               <Select

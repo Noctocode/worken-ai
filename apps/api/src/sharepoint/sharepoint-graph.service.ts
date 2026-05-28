@@ -211,12 +211,34 @@ export class SharePointGraphService {
    * Capped at MAX_PAGES (≈ 4000 sites). Practically unreachable in
    * sane tenants; very large tenants get a "showing first N" hint
    * in the FE.
+   *
+   * Personal Microsoft accounts (MSA) have no SharePoint at all —
+   * Graph returns "This API is not supported for MSA accounts" for
+   * `/sites`. We catch that specific error and return [], which the
+   * FE renders as the existing empty-state ("you don't have access
+   * to any SharePoint sites") — accurate AND not misleading (the FE
+   * error path tells users to "reconnect", which wouldn't help in
+   * the MSA case).
    */
   async listSites(userId: string): Promise<SharePointSiteMeta[]> {
-    const { items } = await this.paginate<GraphSite>(
-      userId,
-      '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
-    );
+    let items: GraphSite[];
+    try {
+      const result = await this.paginate<GraphSite>(
+        userId,
+        '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
+      );
+      items = result.items;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (/not supported for MSA accounts/i.test(msg)) {
+        this.logger.log(
+          'listSites: account is a personal Microsoft account ' +
+            '(no SharePoint sites available). Returning empty list.',
+        );
+        return [];
+      }
+      throw err;
+    }
     return items.map((s) => ({
       id: s.id,
       name: s.name ?? '',
