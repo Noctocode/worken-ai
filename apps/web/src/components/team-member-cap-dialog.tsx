@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { updateTeamMemberCap, type TeamMember } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 interface TeamMemberCapDialogProps {
   teamId: string;
@@ -35,6 +36,7 @@ export function TeamMemberCapDialog({
   open,
   onClose,
 }: TeamMemberCapDialogProps) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const initialUsd =
     member.monthlyCapCents != null && member.monthlyCapCents > 0
@@ -50,13 +52,13 @@ export function TeamMemberCapDialog({
       onClose();
     },
     onError: (err: Error) =>
-      toast.error(err.message ?? "Couldn't update member cap."),
+      toast.error(err.message ?? t("memberCap.failed")),
   });
 
   const handleSetCap = () => {
     const num = parseFloat(capUsd.replace(",", "."));
     if (isNaN(num) || num <= 0) {
-      toast.error("Enter a positive amount, or use Clear / Suspend.");
+      toast.error(t("memberCap.positiveOrClear"));
       return;
     }
     mutation.mutate(Math.round(num * 100));
@@ -65,31 +67,28 @@ export function TeamMemberCapDialog({
   const memberLabel = member.userName ?? member.email;
   const currentLabel =
     member.monthlyCapCents == null
-      ? "No cap (shares team budget)"
+      ? t("memberCap.noCap")
       : member.monthlyCapCents === 0
-        ? "Suspended (chat blocked)"
-        : `$${(member.monthlyCapCents / 100).toFixed(2)}/month`;
+        ? t("memberCap.suspended")
+        : `$${(member.monthlyCapCents / 100).toFixed(2)}${t("memberCap.perMonth")}`;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Monthly cap for {memberLabel}</DialogTitle>
+          <DialogTitle>{t("memberCap.title")} {memberLabel}</DialogTitle>
           <DialogDescription>
-            Cap this member&rsquo;s monthly spend inside this team. The
-            limit is enforced against their successful chat calls billed
-            through the team key (WorkenAI default or team-shared BYOK).
-            Resets on the 1st.
+            {t("memberCap.desc")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="rounded-md border border-border-2 bg-bg-1 px-3 py-2 text-[13px] text-text-2">
-            Current: <strong className="text-text-1">{currentLabel}</strong>
+            {t("memberCap.current")} <strong className="text-text-1">{currentLabel}</strong>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="member-cap-input">Monthly cap (USD)</Label>
+            <Label htmlFor="member-cap-input">{t("memberCap.label")}</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-text-3">
                 $
@@ -106,8 +105,7 @@ export function TeamMemberCapDialog({
               />
             </div>
             <p className="text-[12px] text-text-3">
-              Use the buttons below to clear the cap (no per-user limit)
-              or suspend the member entirely.
+              {t("memberCap.hint")}
             </p>
           </div>
         </div>
@@ -119,7 +117,7 @@ export function TeamMemberCapDialog({
             onClick={() => mutation.mutate(null)}
             disabled={mutation.isPending}
           >
-            Clear cap
+            {t("memberCap.clearCap")}
           </Button>
           <Button
             type="button"
@@ -127,14 +125,14 @@ export function TeamMemberCapDialog({
             onClick={() => mutation.mutate(0)}
             disabled={mutation.isPending}
           >
-            Suspend
+            {t("memberCap.suspend")}
           </Button>
           <Button
             type="button"
             onClick={handleSetCap}
             disabled={mutation.isPending}
           >
-            {mutation.isPending ? "Saving…" : "Set cap"}
+            {mutation.isPending ? t("memberCap.saving") : t("memberCap.setCap")}
           </Button>
         </DialogFooter>
       </DialogContent>

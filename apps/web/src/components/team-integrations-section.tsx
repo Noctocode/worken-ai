@@ -21,6 +21,7 @@ import {
   type LinkableIntegration,
   type TeamIntegrationLink,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /* ─── Icons ──────────────────────────────────────────────────────────── */
 
@@ -116,6 +117,7 @@ export function TeamIntegrationsSection({
   teamId: string;
   canManage: boolean;
 }) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
 
   const linksKey = ["team-integration-links", teamId] as const;
@@ -183,7 +185,7 @@ export function TeamIntegrationsSection({
       if (ctx?.prevLinks) {
         queryClient.setQueryData(linksKey, ctx.prevLinks);
       }
-      toast.error(err.message ?? "Couldn't update team integrations.");
+      toast.error(err.message ?? t("teamInt.couldntUpdate"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: linkableKey });
@@ -217,7 +219,7 @@ export function TeamIntegrationsSection({
       if (ctx?.previous) {
         queryClient.setQueryData(linksKey, ctx.previous);
       }
-      toast.error(err.message ?? "Couldn't toggle integration.");
+      toast.error(err.message ?? t("teamInt.couldntToggle"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: linksKey });
@@ -246,11 +248,10 @@ export function TeamIntegrationsSection({
       <header className="flex items-end justify-between gap-3">
         <div>
           <h2 className="text-[18px] font-bold text-text-1">
-            AI Provider Keys
+            {t("teamInt.title")}
           </h2>
           <p className="mt-1 text-[13px] text-text-2">
-            Pick which of your personal keys this team can use for chat,
-            arena, and tooling.
+            {t("teamInt.desc")}
           </p>
         </div>
       </header>
@@ -262,22 +263,21 @@ export function TeamIntegrationsSection({
         <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning-7" />
         <div className="flex-1 text-[13px] leading-relaxed text-text-2">
           <p className="font-medium text-text-1">
-            AI Provider Keys are configured in the Integration tab.
+            {t("teamInt.bannerTitle")}
           </p>
         </div>
         <Link
           href="/teams?tab=integration"
           className="inline-flex shrink-0 items-center gap-1 rounded-md bg-bg-white px-3 py-1.5 text-[12px] font-medium text-text-1 transition-colors hover:bg-bg-1"
         >
-          Manage keys
+          {t("teamInt.manageKeys")}
           <ArrowUpRight className="h-3.5 w-3.5" />
         </Link>
       </div>
 
       {loading ? (
         <div className="flex items-center gap-2 text-[13px] text-text-3">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading
-          integrations…
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t("teamInt.loading")}
         </div>
       ) : noActivity ? (
         <EmptyStateCta />
@@ -291,7 +291,7 @@ export function TeamIntegrationsSection({
           {canManage && linkable.length > 0 && (
             <section className="flex flex-col gap-2">
               <h3 className="text-[13px] font-semibold text-text-1">
-                Your AI Provider Keys
+                {t("teamInt.yourKeys")}
               </h3>
               <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
                 {linkable.map((row) => (
@@ -319,7 +319,7 @@ export function TeamIntegrationsSection({
           {othersLinks.length > 0 && (
             <section className="flex flex-col gap-2">
               <h3 className="text-[13px] font-semibold text-text-1">
-                Linked by other admins
+                {t("teamInt.linkedByOthers")}
               </h3>
               <ul className="flex flex-col divide-y divide-border-2 overflow-hidden rounded-lg border border-border-2 bg-bg-white">
                 {othersLinks.map((link) => {
@@ -349,12 +349,11 @@ export function TeamIntegrationsSection({
                         ) : null}
                       </span>
                       <span className="text-[12px] text-text-3">
-                        by {link.ownerName ?? "another admin"}
-                        {!link.hasApiKey && " · no API key set"}
+                        {t("teamInt.by")} {link.ownerName ?? t("teamInt.anotherAdmin")}
+                        {!link.hasApiKey && t("teamInt.noApiKey")}
                         {masterOff && (
                           <span className="text-warning-7">
-                            {" "}
-                            · disabled in Integration tab
+                            {t("teamInt.disabledInTab")}
                           </span>
                         )}
                       </span>
@@ -372,24 +371,24 @@ export function TeamIntegrationsSection({
                           }
                           aria-label={
                             masterOff
-                              ? "Disabled by owner in their Integration tab"
+                              ? t("teamInt.disabledByOwner")
                               : link.linkEnabled
-                                ? "Pause use on this team"
-                                : "Resume use on this team"
+                                ? t("teamInt.pauseUse")
+                                : t("teamInt.resumeUse")
                           }
                           title={
                             masterOff
-                              ? "The owner disabled this key on their Integration tab. Ask them to turn it back on to use here."
+                              ? t("teamInt.disabledByOwnerTitle")
                               : undefined
                           }
                         />
                         <span className="w-12 text-right text-[12px] text-text-3">
-                          {effectiveActive ? "Active" : "Paused"}
+                          {effectiveActive ? t("teamInt.active") : t("teamInt.paused")}
                         </span>
                       </div>
                     ) : (
                       <span className="shrink-0 text-[12px] text-text-3">
-                        {effectiveActive ? "Active" : "Paused"}
+                        {effectiveActive ? t("teamInt.active") : t("teamInt.paused")}
                       </span>
                     )}
                   </li>
@@ -407,9 +406,7 @@ export function TeamIntegrationsSection({
             <div className="flex items-start gap-3 rounded-lg border border-border-2 bg-bg-1/60 px-4 py-3 text-[13px] text-text-2">
               <PlugZap className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
               <div>
-                You haven&apos;t configured any keys of your own yet — the
-                links above were added by other team admins. Add your
-                first key on the Integration tab to link it here.
+                {t("teamInt.noKeysYet")}
               </div>
             </div>
           )}
@@ -418,8 +415,7 @@ export function TeamIntegrationsSection({
             <div className="flex items-start gap-3 rounded-lg border border-border-2 bg-bg-1/60 px-4 py-3 text-[13px] text-text-2">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
               <div>
-                Read-only view. Only team owners, admins, managers, and
-                editors can link or unlink AI Provider Keys.
+                {t("teamInt.readOnly")}
               </div>
             </div>
           )}
@@ -436,6 +432,7 @@ function PickerRow({
   row: LinkableIntegration;
   onToggle: (next: boolean) => void;
 }) {
+  const { t } = useLanguage();
   // Switch state mirrors the BE truth: `alreadyLinked` flips on a
   // successful link / unlink (optimistically in onMutate, server-
   // confirmed onSettled). No local component state — the row stays
@@ -449,9 +446,9 @@ function PickerRow({
   const blocked = row.blockedByProvider;
   const disabled = (masterOff && !checked) || blocked;
   const reason = blocked
-    ? `Another ${row.providerId} key is already linked to this team. Turn it off first.`
+    ? t("teamInt.alreadyLinked").replace("{provider}", row.providerId)
     : masterOff
-      ? "Disabled on the Integration tab. Re-enable it there to use here."
+      ? t("teamInt.disabledOnTab")
       : null;
   return (
     <li className="flex items-center gap-3 px-4 py-3">
@@ -468,7 +465,7 @@ function PickerRow({
           ) : null}
         </span>
         <span className="text-[12px] text-text-3">
-          {row.hasApiKey ? "Personal key" : "No API key set"}
+          {row.hasApiKey ? t("teamInt.personalKey") : t("teamInt.noApiKeySet")}
           {reason && ` · ${reason}`}
         </span>
       </div>
@@ -479,12 +476,12 @@ function PickerRow({
           onCheckedChange={(next) => onToggle(next)}
           aria-label={
             checked
-              ? `Unlink ${row.displayName} from this team`
-              : `Link ${row.displayName} to this team`
+              ? t("teamInt.unlinkFrom").replace("{name}", row.displayName)
+              : t("teamInt.linkTo").replace("{name}", row.displayName)
           }
         />
         <span className="w-12 text-right text-[12px] text-text-3">
-          {checked ? "Active" : "Inactive"}
+          {checked ? t("teamInt.active") : t("teamInt.inactive")}
         </span>
       </div>
     </li>
@@ -492,24 +489,23 @@ function PickerRow({
 }
 
 function EmptyStateCta() {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed border-border-3 bg-bg-1/40 px-6 py-10 text-center">
       <PlugZap className="h-8 w-8 text-text-3" strokeWidth={1.5} />
       <div className="flex flex-col gap-1">
         <p className="text-[14px] font-medium text-text-1">
-          No AI Provider Keys yet
+          {t("teamInt.emptyTitle")}
         </p>
         <p className="max-w-[420px] text-[12px] text-text-3">
-          Add your first key on the Integration tab — Anthropic, OpenAI,
-          Gemini, or a self-hosted endpoint. Once it&apos;s there, come
-          back to activate it for this team.
+          {t("teamInt.emptyDesc")}
         </p>
       </div>
       <Link
         href="/teams?tab=integration"
         className="inline-flex items-center gap-1 rounded-md bg-primary-6 px-3 py-1.5 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
       >
-        Add your first key
+        {t("teamInt.addFirstKey")}
         <ArrowUpRight className="h-3.5 w-3.5" />
       </Link>
     </div>
