@@ -57,6 +57,33 @@ export interface SharePointFileMeta {
   sizeBytes: number | null;
 }
 
+/**
+ * Why a `listSites` call returned zero sites. The FE renders one of
+ * three empty-state messages keyed on this code, so we don't need a
+ * fuzzy three-bullet "could be one of these" hint anymore.
+ *
+ *   - `msa`         : Personal Microsoft account. SharePoint doesn't
+ *                     exist for personal accounts.
+ *   - `none_found`  : Both endpoints returned successfully but with
+ *                     0 sites. User hasn't followed any sites yet
+ *                     AND tenant-wide search came back empty.
+ *   - `graph_error` : Both endpoints returned a Graph error
+ *                     (typically `generalException` for tenants with
+ *                     no SP licence or where SP isn't provisioned).
+ *                     `detail` carries the raw Graph message + code
+ *                     + request-id so users can hand the request-id
+ *                     to their IT admin or Microsoft support.
+ */
+export type ListSitesEmptyReason = 'msa' | 'none_found' | 'graph_error';
+
+export interface ListSitesResult {
+  sites: SharePointSiteMeta[];
+  /** Set only when `sites` is empty. Lets the FE pick a specific message. */
+  emptyReason?: ListSitesEmptyReason;
+  /** Raw Graph error detail for `graph_error`. Contains request-id when present. */
+  detail?: string;
+}
+
 /** Result of `downloadFile`. Buffer is the file's bytes. */
 export interface SharePointDownload {
   buffer: Buffer;
@@ -250,10 +277,12 @@ export class SharePointGraphService {
    * Graph returns "This API is not supported for MSA accounts".
    * We catch that specifically and return [] silently.
    */
-  async listSites(userId: string): Promise<SharePointSiteMeta[]> {
+  async listSites(userId: string): Promise<ListSitesResult> {
     let items: GraphSite[] = [];
+    let followedErr: string | undefined;
+    let searchErr: string | undefined;
 
-    // 1. /me/followedSites
+    // 1. /me/followedSites — what the user sees under "Moje strani"
     try {
       const result = await this.paginate<GraphSite>(
         userId,
@@ -271,15 +300,16 @@ export class SharePointGraphService {
         this.logger.log(
           'listSites: personal MSA — no SharePoint, returning empty.',
         );
-        return [];
+        return { sites: [], emptyReason: 'msa' };
       }
+      followedErr = msg;
       this.logger.warn(
         `listSites: /me/followedSites failed (${msg}). ` +
           `Falling back to /sites?search=*.`,
       );
     }
 
-    // 2. /sites?search=* fallback (only if followedSites empty)
+    // 2. /sites?search=* — fall back if followedSites returned 0
     if (items.length === 0) {
       try {
         const result = await this.paginate<GraphSite>(
@@ -298,27 +328,41 @@ export class SharePointGraphService {
           this.logger.log(
             'listSites: personal MSA — no SharePoint, returning empty.',
           );
-          return [];
+          return { sites: [], emptyReason: 'msa' };
         }
-        // 3. Both failed — log loudly + return empty rather than 500.
-        // FE shows the empty-state hint about personal vs work accounts.
+        searchErr = msg;
         this.logger.warn(
           `listSites: /sites?search=* also failed (${msg}). ` +
-            `Returning empty list so the FE doesn't 500. ` +
-            `User likely has a tenant configuration that blocks both ` +
-            `endpoints — recommend they follow a site in SharePoint ` +
-            `first or check tenant SharePoint provisioning.`,
+            `Returning empty list with graph_error diagnostic so the FE ` +
+            `can surface the request-id and the user can hand it to ` +
+            `their IT admin or Microsoft support.`,
         );
-        return [];
       }
     }
 
-    return items.map((s) => ({
-      id: s.id,
-      name: s.name ?? '',
-      displayName: s.displayName ?? s.name ?? 'Untitled site',
-      webUrl: s.webUrl,
-    }));
+    // 3. Pick an emptyReason for the FE
+    if (items.length === 0) {
+      // If at least one Graph call returned an error (most common case
+      // for tenants without SP provisioned), surface the most recent
+      // error message — it carries the request-id and the actual code.
+      const detail = searchErr ?? followedErr;
+      if (detail) {
+        return { sites: [], emptyReason: 'graph_error', detail };
+      }
+      // Both endpoints returned successfully but with 0 sites — user
+      // simply hasn't followed any sites yet and tenant-wide search
+      // came back empty.
+      return { sites: [], emptyReason: 'none_found' };
+    }
+
+    return {
+      sites: items.map((s) => ({
+        id: s.id,
+        name: s.name ?? '',
+        displayName: s.displayName ?? s.name ?? 'Untitled site',
+        webUrl: s.webUrl,
+      })),
+    };
   }
 
   /**

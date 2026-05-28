@@ -171,7 +171,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
 
   // ── Sites ────────────────────────────────────────────────────────
   const {
-    data: sites = [],
+    data: sitesResponse,
     isLoading: sitesLoading,
     isError: sitesError,
   } = useQuery({
@@ -183,6 +183,9 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
     queryFn: fetchSharePointSites,
     enabled: open && openEpoch > 0,
   });
+  const sites = sitesResponse?.sites ?? [];
+  const sitesEmptyReason = sitesResponse?.emptyReason;
+  const sitesEmptyDetail = sitesResponse?.detail;
 
   // Auto-select the first site so users with only one site can skip
   // a click. Multi-site users see a Select.
@@ -628,26 +631,53 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               </p>
             ) : sites.length === 0 ? (
               <div className="flex flex-col gap-1.5 rounded border border-border-2 px-3 py-2 text-[13px] text-text-3">
-                <p>We couldn&rsquo;t find any SharePoint sites for this account.</p>
-                <p className="text-[12px]">
-                  Common reasons:
-                </p>
-                <ul className="list-disc pl-5 text-[12px]">
-                  <li>
-                    You signed in with a personal Microsoft account.
-                    SharePoint requires a work or school account.
-                  </li>
-                  <li>
-                    Your work account hasn&rsquo;t followed any sites yet.
-                    Open SharePoint, click &ldquo;Follow&rdquo; on the
-                    site(s) you want to import, then come back here.
-                  </li>
-                  <li>
-                    Your tenant has SharePoint search blocked. The dev
-                    log shows the exact Graph error — check it for the
-                    next step.
-                  </li>
-                </ul>
+                {sitesEmptyReason === "msa" ? (
+                  <>
+                    <p>
+                      You&rsquo;re signed in with a personal Microsoft
+                      account. SharePoint is a work / school product —
+                      personal accounts can&rsquo;t access it.
+                    </p>
+                    <p className="text-[12px]">
+                      Disconnect SharePoint and reconnect with a work or
+                      school Microsoft account.
+                    </p>
+                  </>
+                ) : sitesEmptyReason === "none_found" ? (
+                  <>
+                    <p>
+                      Your account has no SharePoint sites visible to it
+                      yet.
+                    </p>
+                    <p className="text-[12px]">
+                      Open SharePoint in your browser, click{" "}
+                      <strong>Follow</strong> on the site(s) you want to
+                      import, then close and reopen this dialog.
+                    </p>
+                  </>
+                ) : sitesEmptyReason === "graph_error" ? (
+                  <>
+                    <p>
+                      Microsoft refused the request to list SharePoint
+                      sites:
+                    </p>
+                    <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-bg-2 px-2 py-1 text-[11px] text-text-1">
+                      {sitesEmptyDetail ?? "Unknown error"}
+                    </pre>
+                    <p className="text-[12px]">
+                      Most often this means the signed-in account
+                      doesn&rsquo;t have a SharePoint Online licence, or
+                      the tenant&rsquo;s SharePoint isn&rsquo;t
+                      provisioned. Hand the <strong>request-id</strong>{" "}
+                      above to your IT admin or Microsoft support.
+                    </p>
+                  </>
+                ) : (
+                  <p>
+                    We couldn&rsquo;t find any SharePoint sites for this
+                    account.
+                  </p>
+                )}
               </div>
             ) : (
               <Select

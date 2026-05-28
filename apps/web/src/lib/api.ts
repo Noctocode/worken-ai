@@ -3715,7 +3715,31 @@ export async function disconnectSharePoint(): Promise<void> {
   if (!res.ok) throw new Error("Failed to disconnect SharePoint");
 }
 
-export async function fetchSharePointSites(): Promise<SharePointSite[]> {
+/**
+ * Why the BE returned zero SharePoint sites. The FE picks an
+ * empty-state message based on this code instead of showing a
+ * fuzzy "could be one of these" list of possibilities.
+ *
+ *   - `msa`         : Personal Microsoft account — no SharePoint.
+ *   - `none_found`  : Both Graph endpoints returned 0 sites. User
+ *                     hasn't followed any sites yet and tenant-wide
+ *                     search is also empty.
+ *   - `graph_error` : Microsoft Graph returned an error
+ *                     (typically `generalException` for tenants
+ *                     without SP licence / provisioning). `detail`
+ *                     carries the raw error + request-id.
+ */
+export type SharePointSitesEmptyReason = "msa" | "none_found" | "graph_error";
+
+export interface SharePointSitesResponse {
+  sites: SharePointSite[];
+  /** Set only when `sites` is empty. */
+  emptyReason?: SharePointSitesEmptyReason;
+  /** Raw Graph error for `graph_error` — contains request-id when present. */
+  detail?: string;
+}
+
+export async function fetchSharePointSites(): Promise<SharePointSitesResponse> {
   const res = await apiFetch("/sharepoint/sites");
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
