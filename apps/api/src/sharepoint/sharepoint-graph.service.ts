@@ -255,7 +255,7 @@ export class SharePointGraphService {
   }
 
   /**
-   * List SharePoint sites the user can access. Three layered
+   * List SharePoint sites the user can access. Four layered
    * strategies, in order of preference:
    *
    *   1. `/me/followedSites` — sites the user has explicitly followed
@@ -266,21 +266,34 @@ export class SharePointGraphService {
    *      `/sites?search=*` exhibits for some tenant configurations.
    *
    *   2. `/sites?search=*` — fall back to a tenant-wide search if
-   *      the user hasn't followed any sites yet (or that endpoint
-   *      returns empty for any reason).
+   *      the user hasn't followed any sites yet. Known to return
+   *      400 / generalException on tenants where SP Search service
+   *      isn't fully indexed (newer tenants, post-migration, etc.).
    *
-   *   3. Empty list — if BOTH endpoints fail (a real tenant-side
-   *      issue), the FE renders our existing empty-state with a
-   *      hint about personal vs work accounts. Better than a 500.
+   *   3. `/sites/root` + `/sites/{root.id}/sites` — always available
+   *      baseline. `/sites/root` returns the tenant's communication
+   *      site collection; `/sites/{root.id}/sites` enumerates its
+   *      sub-sites. This works even when `?search=*` is broken
+   *      (we verified this on the ptlabdoo tenant — root returned
+   *      "Spletno mesto za komunikacijo" while search 400-ed).
    *
-   * Personal Microsoft accounts (MSA) have no SharePoint at all —
-   * Graph returns "This API is not supported for MSA accounts".
-   * We catch that specifically and return [] silently.
+   *   4. Empty list — if EVERYTHING fails (a real tenant-side issue),
+   *      the FE renders an empty-state with the actual Graph error.
+   *
+   * Results from steps 1–3 are merged and deduplicated by site id,
+   * so following a site in SharePoint just adds to whatever the
+   * baseline returned. Personal MSA accounts short-circuit to
+   * `{emptyReason: 'msa'}` on the first failing call.
    */
   async listSites(userId: string): Promise<ListSitesResult> {
-    let items: GraphSite[] = [];
+    const byId = new Map<string, GraphSite>();
     let followedErr: string | undefined;
     let searchErr: string | undefined;
+    let rootErr: string | undefined;
+
+    // Personal MSA short-circuit — applies to every step.
+    const isMsaError = (msg: string) =>
+      /not supported for MSA accounts/i.test(msg);
 
     // 1. /me/followedSites — what the user sees under "Moje strani"
     try {
@@ -288,75 +301,107 @@ export class SharePointGraphService {
         userId,
         '/me/followedSites?$select=id,name,displayName,webUrl&$top=200',
       );
-      items = result.items;
-      if (items.length > 0) {
+      for (const s of result.items) byId.set(s.id, s);
+      if (result.items.length > 0) {
         this.logger.log(
-          `listSites: returned ${items.length} sites from /me/followedSites`,
+          `listSites: +${result.items.length} from /me/followedSites`,
         );
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (/not supported for MSA accounts/i.test(msg)) {
-        this.logger.log(
-          'listSites: personal MSA — no SharePoint, returning empty.',
-        );
+      if (isMsaError(msg)) {
+        this.logger.log('listSites: personal MSA — returning empty.');
         return { sites: [], emptyReason: 'msa' };
       }
       followedErr = msg;
-      this.logger.warn(
-        `listSites: /me/followedSites failed (${msg}). ` +
-          `Falling back to /sites?search=*.`,
-      );
+      this.logger.warn(`listSites: /me/followedSites failed (${msg})`);
     }
 
-    // 2. /sites?search=* — fall back if followedSites returned 0
-    if (items.length === 0) {
-      try {
-        const result = await this.paginate<GraphSite>(
-          userId,
-          '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
+    // 2. /sites?search=* — tenant-wide search (best when it works)
+    try {
+      const result = await this.paginate<GraphSite>(
+        userId,
+        '/sites?search=*&$select=id,name,displayName,webUrl&$top=200',
+      );
+      let added = 0;
+      for (const s of result.items) {
+        if (!byId.has(s.id)) {
+          byId.set(s.id, s);
+          added++;
+        }
+      }
+      if (added > 0) {
+        this.logger.log(`listSites: +${added} from /sites?search=*`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isMsaError(msg)) {
+        this.logger.log('listSites: personal MSA — returning empty.');
+        return { sites: [], emptyReason: 'msa' };
+      }
+      searchErr = msg;
+      this.logger.warn(`listSites: /sites?search=* failed (${msg})`);
+    }
+
+    // 3. /sites/root + sub-sites — always-available baseline
+    try {
+      const root = await this.graphGet<GraphSite>(
+        userId,
+        '/sites/root?$select=id,name,displayName,webUrl',
+      );
+      if (root.id && !byId.has(root.id)) {
+        byId.set(root.id, root);
+        this.logger.log(
+          `listSites: +1 from /sites/root (${root.displayName ?? root.id})`,
         );
-        items = result.items;
-        if (items.length > 0) {
-          this.logger.log(
-            `listSites: returned ${items.length} sites from /sites?search=*`,
-          );
+      }
+      // Sub-sites of the root. Best-effort — many tenants have none,
+      // some have a long-tail of legacy sub-sites.
+      try {
+        const subs = await this.paginate<GraphSite>(
+          userId,
+          `/sites/${root.id}/sites?$select=id,name,displayName,webUrl&$top=200`,
+        );
+        let added = 0;
+        for (const s of subs.items) {
+          if (s.id && !byId.has(s.id)) {
+            byId.set(s.id, s);
+            added++;
+          }
+        }
+        if (added > 0) {
+          this.logger.log(`listSites: +${added} from /sites/root/sites`);
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (/not supported for MSA accounts/i.test(msg)) {
-          this.logger.log(
-            'listSites: personal MSA — no SharePoint, returning empty.',
-          );
-          return { sites: [], emptyReason: 'msa' };
-        }
-        searchErr = msg;
-        this.logger.warn(
-          `listSites: /sites?search=* also failed (${msg}). ` +
-            `Returning empty list with graph_error diagnostic so the FE ` +
-            `can surface the request-id and the user can hand it to ` +
-            `their IT admin or Microsoft support.`,
-        );
+        this.logger.warn(`listSites: /sites/root/sites failed (${msg})`);
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isMsaError(msg)) {
+        this.logger.log('listSites: personal MSA — returning empty.');
+        return { sites: [], emptyReason: 'msa' };
+      }
+      rootErr = msg;
+      this.logger.warn(`listSites: /sites/root failed (${msg})`);
     }
 
-    // 3. Pick an emptyReason for the FE
-    if (items.length === 0) {
-      // If at least one Graph call returned an error (most common case
-      // for tenants without SP provisioned), surface the most recent
-      // error message — it carries the request-id and the actual code.
-      const detail = searchErr ?? followedErr;
+    // 4. Decide what to return
+    if (byId.size === 0) {
+      // Every endpoint failed — surface the most actionable error.
+      // Order of preference: search (typically richest message),
+      // root (most diagnostic), followed (last resort).
+      const detail = searchErr ?? rootErr ?? followedErr;
       if (detail) {
         return { sites: [], emptyReason: 'graph_error', detail };
       }
-      // Both endpoints returned successfully but with 0 sites — user
-      // simply hasn't followed any sites yet and tenant-wide search
-      // came back empty.
+      // No errors but no sites either — the only way this can happen
+      // is if /sites/root returned but with no id (extremely unusual).
       return { sites: [], emptyReason: 'none_found' };
     }
 
     return {
-      sites: items.map((s) => ({
+      sites: Array.from(byId.values()).map((s) => ({
         id: s.id,
         name: s.name ?? '',
         displayName: s.displayName ?? s.name ?? 'Untitled site',
