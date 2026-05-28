@@ -175,9 +175,13 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
     isLoading: sitesLoading,
     isError: sitesError,
   } = useQuery({
-    queryKey: ["sharepoint", "sites"],
+    // openEpoch bumps on every dialog open → new queryKey → fresh
+    // fetch every time. Lets the user click "Follow" on a site in
+    // SharePoint, reopen the dialog, and see the new site appear
+    // without having to hard-refresh the page.
+    queryKey: ["sharepoint", "sites", openEpoch],
     queryFn: fetchSharePointSites,
-    enabled: open,
+    enabled: open && openEpoch > 0,
   });
 
   // Auto-select the first site so users with only one site can skip
@@ -193,9 +197,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
     data: drives = [],
     isLoading: drivesLoading,
   } = useQuery<SharePointDrive[]>({
-    queryKey: ["sharepoint", "drives", selectedSiteId],
+    queryKey: ["sharepoint", "drives", selectedSiteId, openEpoch],
     queryFn: () => fetchSharePointDrives(selectedSiteId),
-    enabled: open && !!selectedSiteId && scopeChoice === "folders",
+    enabled:
+      open && openEpoch > 0 && !!selectedSiteId && scopeChoice === "folders",
   });
 
   useEffect(() => {
