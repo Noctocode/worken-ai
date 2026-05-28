@@ -461,7 +461,7 @@ export class DriveImportService {
    * poll `getImportProgress()` to track it. Only `scope.kind === 'all'`
    * is supported — folder-scoped imports are fast enough to be sync.
    */
-  async startImportAllAsync(
+  startImportAllAsync(
     userId: string,
     scope: ImportScope,
   ): Promise<{ started: true }> {
@@ -529,7 +529,7 @@ export class DriveImportService {
       }
     });
 
-    return { started: true };
+    return Promise.resolve({ started: true } as const);
   }
 
   /**
