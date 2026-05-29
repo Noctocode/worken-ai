@@ -532,8 +532,8 @@ export const Appbar = () => {
       <MobileTopbar />
       <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
-        {config.title ? (
-          <h4 className="text-[26px] font-bold text-text-1">{config.title}</h4>
+        {config.titleKey ? (
+          <h4 className="text-[26px] font-bold text-text-1">{t(config.titleKey)}</h4>
         ) : (
           <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
             {breadcrumbs.map((crumb, i) => {
@@ -580,7 +580,7 @@ export const Appbar = () => {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
               type="text"
-              placeholder={config.appbarSearch.placeholder}
+              placeholder={t(config.appbarSearch.placeholderKey)}
               className="h-10 w-full border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
               onChange={(e) =>
                 window.dispatchEvent(
@@ -601,7 +601,7 @@ export const Appbar = () => {
             className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
           >
             <Plus className="h-4 w-4" />
-            {config.appbarAction.label}
+            {t(config.appbarAction.labelKey)}
           </Button>
         )}
 
