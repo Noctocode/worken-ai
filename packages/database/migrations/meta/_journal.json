@@ -50,6 +50,13 @@
       "when": 1779910000000,
       "tag": "0006_drop_enabled_models",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1779930000000,
+      "tag": "0007_web_search",
+      "breakpoints": true
     }
   ]
 }

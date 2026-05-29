@@ -16,64 +16,68 @@ import {
   numeric,
 } from "drizzle-orm/pg-core";
 
-export const users = pgTable("users", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  email: text("email").notNull().unique(),
-  role: text("role").notNull().default("basic"),
-  // Subscription plan. New rows default to 'free'; existing rows get
-  // 'free' too on the first `db:push` thanks to the default. Future
-  // plans (e.g. 'pro', 'enterprise') will live on this column without
-  // a schema change. Kept loose-typed for now — once we know the full
-  // tier set we can lock it down with an enum.
-  plan: text("plan").notNull().default("free"),
-  inviteStatus: text("invite_status").notNull().default("active"),
-  name: text("name"),
-  picture: text("picture"),
-  googleId: text("google_id").unique(),
-  passwordHash: text("password_hash"),
-  emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
-  verificationTokenHash: text("verification_token_hash"),
-  verificationTokenExpiresAt: timestamp("verification_token_expires_at", {
-    withTimezone: true,
-  }),
-  passwordResetTokenHash: text("password_reset_token_hash"),
-  passwordResetExpiresAt: timestamp("password_reset_expires_at", {
-    withTimezone: true,
-  }),
-  profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
-  // Tenant pointer. The source of truth for "which company tenant is
-  // this user in". `companyName` / `industry` / `teamSize` below are
-  // *display caches* on the user row — every read should treat
-  // `company_id` as authoritative. NULL when the user hasn't picked
-  // a company profile yet (mid-onboarding) or when profileType is
-  // 'personal'. ON DELETE SET NULL so a company can be torn down
-  // without nuking its members' user rows.
-  companyId: uuid("company_id").references(() => companies.id, {
-    onDelete: "set null",
-  }),
-  // Display caches written alongside `companyId` on onboarding /
-  // invite. Kept on the user row to avoid joining `companies` on
-  // every /auth/me, dashboard tile, or org-users listing. NOT the
-  // tenant identifier — same name on two different `company_id`s is
-  // legitimate (two distinct tenants that picked the same display
-  // name), and these fields should never be used for filtering.
-  companyName: text("company_name"),
-  industry: text("industry"),
-  teamSize: text("team_size"),
-  infraChoice: text("infra_choice"), // 'managed' | 'on-premise'
-  onboardingCompletedAt: timestamp("onboarding_completed_at", {
-    withTimezone: true,
-  }),
-  monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
-  openrouterKeyId: text("openrouter_key_id"),
-  openrouterKeyEncrypted: text("openrouter_key_encrypted"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-}, (table) => [
-  // Reverse lookup: "every user in tenant X" — drives
-  // /teams?tab=users and any future tenant-scoped query.
-  index("users_company_id_idx").on(table.companyId),
-]);
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull().unique(),
+    role: text("role").notNull().default("basic"),
+    // Subscription plan. New rows default to 'free'; existing rows get
+    // 'free' too on the first `db:push` thanks to the default. Future
+    // plans (e.g. 'pro', 'enterprise') will live on this column without
+    // a schema change. Kept loose-typed for now — once we know the full
+    // tier set we can lock it down with an enum.
+    plan: text("plan").notNull().default("free"),
+    inviteStatus: text("invite_status").notNull().default("active"),
+    name: text("name"),
+    picture: text("picture"),
+    googleId: text("google_id").unique(),
+    passwordHash: text("password_hash"),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
+    verificationTokenHash: text("verification_token_hash"),
+    verificationTokenExpiresAt: timestamp("verification_token_expires_at", {
+      withTimezone: true,
+    }),
+    passwordResetTokenHash: text("password_reset_token_hash"),
+    passwordResetExpiresAt: timestamp("password_reset_expires_at", {
+      withTimezone: true,
+    }),
+    profileType: text("profile_type"), // 'company' | 'personal' — null = not set yet
+    // Tenant pointer. The source of truth for "which company tenant is
+    // this user in". `companyName` / `industry` / `teamSize` below are
+    // *display caches* on the user row — every read should treat
+    // `company_id` as authoritative. NULL when the user hasn't picked
+    // a company profile yet (mid-onboarding) or when profileType is
+    // 'personal'. ON DELETE SET NULL so a company can be torn down
+    // without nuking its members' user rows.
+    companyId: uuid("company_id").references(() => companies.id, {
+      onDelete: "set null",
+    }),
+    // Display caches written alongside `companyId` on onboarding /
+    // invite. Kept on the user row to avoid joining `companies` on
+    // every /auth/me, dashboard tile, or org-users listing. NOT the
+    // tenant identifier — same name on two different `company_id`s is
+    // legitimate (two distinct tenants that picked the same display
+    // name), and these fields should never be used for filtering.
+    companyName: text("company_name"),
+    industry: text("industry"),
+    teamSize: text("team_size"),
+    infraChoice: text("infra_choice"), // 'managed' | 'on-premise'
+    onboardingCompletedAt: timestamp("onboarding_completed_at", {
+      withTimezone: true,
+    }),
+    monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(0),
+    openrouterKeyId: text("openrouter_key_id"),
+    openrouterKeyEncrypted: text("openrouter_key_encrypted"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Reverse lookup: "every user in tenant X" — drives
+    // /teams?tab=users and any future tenant-scoped query.
+    index("users_company_id_idx").on(table.companyId),
+  ],
+);
 
 /**
  * Tenant identity. A `companies` row IS a tenant — UUID-based, so
@@ -109,6 +113,11 @@ export const companies = pgTable("companies", {
   //   - >0   → enforced; the gate blocks when tenant spend +
   //     estimate >= cap.
   monthlyBudgetCents: integer("monthly_budget_cents"),
+  // Org-wide default for whether projects may use OpenRouter web search
+  // (the `plugins: [{ id: "web" }]` augmentation). Teams can override via
+  // `teams.web_search_enabled`; the effective capability is
+  // `team.webSearchEnabled ?? company.webSearchEnabled`.
+  webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -120,10 +129,16 @@ export const teams = pgTable("teams", {
   ownerId: uuid("owner_id")
     .references(() => users.id)
     .notNull(),
-  parentTeamId: uuid("parent_team_id").references(() => teams.id, { onDelete: "set null" }),
+  parentTeamId: uuid("parent_team_id").references(() => teams.id, {
+    onDelete: "set null",
+  }),
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
+  // Per-team override for the web-search capability. NULL → inherit the
+  // org default (`companies.web_search_enabled`); true/false → force on/off
+  // for this team's projects regardless of the org default.
+  webSearchEnabled: boolean("web_search_enabled"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -187,6 +202,11 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   model: text("model").notNull(),
+  // Per-project switch for OpenRouter web search. When true AND the
+  // effective capability (team ?? company) is enabled, chat requests for
+  // this project carry `plugins: [{ id: "web" }]`. Gated so a project
+  // can't silently enable web search the org/team hasn't allowed.
+  webSearch: boolean("web_search").notNull().default(false),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -326,7 +346,9 @@ export const observabilityEvents = pgTable(
     userId: uuid("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
-    teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    teamId: uuid("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
     eventType: text("event_type").notNull(), // 'arena_call' | 'evaluator_call' | 'guardrail_trigger' | future
     model: text("model"),
     provider: text("provider"), // 'openai' | 'anthropic' | 'google' | 'openrouter:other' | 'system'
@@ -338,14 +360,26 @@ export const observabilityEvents = pgTable(
     success: boolean("success").notNull().default(true),
     errorMessage: text("error_message"),
     promptPreview: text("prompt_preview"), // first 200 chars, never the full prompt
-    metadata: jsonb("metadata"),            // small extras, e.g. { arenaRunId, guardrailId, severity }
+    metadata: jsonb("metadata"), // small extras, e.g. { arenaRunId, guardrailId, severity }
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
-    index("observability_events_user_created_idx").on(table.userId, table.createdAt),
-    index("observability_events_team_created_idx").on(table.teamId, table.createdAt),
-    index("observability_events_model_created_idx").on(table.model, table.createdAt),
-    index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
+    index("observability_events_user_created_idx").on(
+      table.userId,
+      table.createdAt,
+    ),
+    index("observability_events_team_created_idx").on(
+      table.teamId,
+      table.createdAt,
+    ),
+    index("observability_events_model_created_idx").on(
+      table.model,
+      table.createdAt,
+    ),
+    index("observability_events_type_created_idx").on(
+      table.eventType,
+      table.createdAt,
+    ),
     // Org-wide spend aggregate runs on every chat call when an admin
     // has set a Company Monthly Budget — `assertOrgBudgetNotExceeded`
     // sums cost_usd filtered by success=true AND createdAt >=
@@ -608,101 +642,105 @@ export const knowledgeFolders = pgTable(
   ],
 );
 
-export const knowledgeFiles = pgTable("knowledge_files", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  folderId: uuid("folder_id")
-    .references(() => knowledgeFolders.id, { onDelete: "cascade" })
-    .notNull(),
-  name: text("name").notNull(),
-  fileType: text("file_type"),
-  sizeBytes: integer("size_bytes").notNull().default(0),
-  storagePath: text("storage_path"),
-  uploadedById: uuid("uploaded_by_id").references(() => users.id),
-  // Where the file is in the chunk + embed pipeline. Chunks land
-  // in knowledge_chunks with `fileId` set. Lifecycle: pending →
-  // processing → done | failed. Image-only / unsupported types
-  // gracefully fail with `ingestion_error` set; the file row + disk
-  // copy stay so download keeps working.
-  ingestionStatus: text("ingestion_status").notNull().default("pending"),
-  ingestionError: text("ingestion_error"),
-  ingestionCompletedAt: timestamp("ingestion_completed_at"),
-  // RAG visibility at chat / arena time. Personal accounts →
-  // uploader-only; company accounts → org-wide. Set from the
-  // uploader's profileType at upload time.
-  scope: text("scope").notNull().default("personal"),
-  // Within company-scope, a second layer of gating:
-  //   - 'all'    : every company user can pull these chunks at chat /
-  //                arena time (default; matches pre-feature behaviour).
-  //   - 'admins' : restricted to role='admin' (admin-only privilege).
-  //   - 'teams'  : restricted to members of the team set in
-  //                `knowledge_file_teams`. Empty link set === no one
-  //                can read; the upload path validates non-empty.
-  // The choice is exposed at upload time and is editable post-upload
-  // via PATCH /knowledge-core/files/:id/visibility. Irrelevant for
-  // scope='personal' (owner-only already), kept on every row for
-  // shape uniformity + search-filter simplicity.
-  visibility: text("visibility").notNull().default("all"),
-  // Content hash (hex SHA-256) of the uploaded bytes. Used by the
-  // upload path to skip files the same uploader already has elsewhere
-  // in their Knowledge Core — we surface them as duplicates on the FE
-  // instead of inserting another row. Nullable for legacy rows
-  // uploaded before this column existed; those simply opt out of
-  // duplicate detection until they're re-uploaded.
-  contentSha256: text("content_sha256"),
-  // Provenance: 'upload' for files added via the KC dropzone, 'drive'
-  // for files imported from a connected Google Drive. Drives the
-  // ingestion path (drive-source rows download from Drive before
-  // parsing) and lets the FE render a small Drive badge next to the
-  // file row.
-  source: text("source").notNull().default("upload"),
-  // External system's ID for this file. For source='drive' this is
-  // Drive's `fileId`. Nullable for source='upload'. The partial
-  // unique index below makes the same Drive file unimportable twice
-  // by the same uploader.
-  externalId: text("external_id"),
-  // Direct link back to the file in its external system. For Drive
-  // this is the `webViewLink` ("Open in Drive" button). Nullable
-  // outside of source='drive'.
-  externalUrl: text("external_url"),
-  // SharePoint needs a (driveId, itemId) pair to download — itemId
-  // alone is ambiguous across libraries. Drive rows leave this NULL.
-  externalDriveId: text("external_drive_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-}, (table) => [
-  // Fast lookup for the upload-path dupe check: given an uploader and
-  // a set of candidate hashes, find any pre-existing row. Two-column
-  // index so the per-user scope is enforced in the same probe.
-  index("knowledge_files_owner_hash_idx").on(
-    table.uploadedById,
-    table.contentSha256,
-  ),
-  // De-dupe import of the same Drive / OneDrive file by the same
-  // user. Partial so upload-source rows (external_id NULL) don't
-  // collide, AND so SharePoint rows fall through to the SP-specific
-  // index below — SharePoint item ids are drive-scoped, while Drive
-  // and OneDrive ids are globally unique within the user's scope
-  // (Drive has no driveId concept; OneDrive is single-drive per
-  // user). external_drive_id IS NULL is the predicate that
-  // distinguishes them. Probed on every Drive / OneDrive import to
-  // decide insert-vs-skip.
-  uniqueIndex("knowledge_files_owner_external_unique")
-    .on(table.uploadedById, table.externalId)
-    .where(
-      sql`${table.externalId} IS NOT NULL AND ${table.externalDriveId} IS NULL`,
+export const knowledgeFiles = pgTable(
+  "knowledge_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    folderId: uuid("folder_id")
+      .references(() => knowledgeFolders.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    fileType: text("file_type"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    storagePath: text("storage_path"),
+    uploadedById: uuid("uploaded_by_id").references(() => users.id),
+    // Where the file is in the chunk + embed pipeline. Chunks land
+    // in knowledge_chunks with `fileId` set. Lifecycle: pending →
+    // processing → done | failed. Image-only / unsupported types
+    // gracefully fail with `ingestion_error` set; the file row + disk
+    // copy stay so download keeps working.
+    ingestionStatus: text("ingestion_status").notNull().default("pending"),
+    ingestionError: text("ingestion_error"),
+    ingestionCompletedAt: timestamp("ingestion_completed_at"),
+    // RAG visibility at chat / arena time. Personal accounts →
+    // uploader-only; company accounts → org-wide. Set from the
+    // uploader's profileType at upload time.
+    scope: text("scope").notNull().default("personal"),
+    // Within company-scope, a second layer of gating:
+    //   - 'all'    : every company user can pull these chunks at chat /
+    //                arena time (default; matches pre-feature behaviour).
+    //   - 'admins' : restricted to role='admin' (admin-only privilege).
+    //   - 'teams'  : restricted to members of the team set in
+    //                `knowledge_file_teams`. Empty link set === no one
+    //                can read; the upload path validates non-empty.
+    // The choice is exposed at upload time and is editable post-upload
+    // via PATCH /knowledge-core/files/:id/visibility. Irrelevant for
+    // scope='personal' (owner-only already), kept on every row for
+    // shape uniformity + search-filter simplicity.
+    visibility: text("visibility").notNull().default("all"),
+    // Content hash (hex SHA-256) of the uploaded bytes. Used by the
+    // upload path to skip files the same uploader already has elsewhere
+    // in their Knowledge Core — we surface them as duplicates on the FE
+    // instead of inserting another row. Nullable for legacy rows
+    // uploaded before this column existed; those simply opt out of
+    // duplicate detection until they're re-uploaded.
+    contentSha256: text("content_sha256"),
+    // Provenance: 'upload' for files added via the KC dropzone, 'drive'
+    // for files imported from a connected Google Drive. Drives the
+    // ingestion path (drive-source rows download from Drive before
+    // parsing) and lets the FE render a small Drive badge next to the
+    // file row.
+    source: text("source").notNull().default("upload"),
+    // External system's ID for this file. For source='drive' this is
+    // Drive's `fileId`. Nullable for source='upload'. The partial
+    // unique index below makes the same Drive file unimportable twice
+    // by the same uploader.
+    externalId: text("external_id"),
+    // Direct link back to the file in its external system. For Drive
+    // this is the `webViewLink` ("Open in Drive" button). Nullable
+    // outside of source='drive'.
+    externalUrl: text("external_url"),
+    // SharePoint needs a (driveId, itemId) pair to download — itemId
+    // alone is ambiguous across libraries. Drive rows leave this NULL.
+    externalDriveId: text("external_drive_id"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Fast lookup for the upload-path dupe check: given an uploader and
+    // a set of candidate hashes, find any pre-existing row. Two-column
+    // index so the per-user scope is enforced in the same probe.
+    index("knowledge_files_owner_hash_idx").on(
+      table.uploadedById,
+      table.contentSha256,
     ),
-  // De-dupe import of the same SharePoint file by the same user.
-  // Unlike Drive / OneDrive, SharePoint item ids are drive-scoped
-  // (the same itemId can appear in two different document libraries),
-  // so the dedup key is the (driveId, itemId) PAIR. Non-overlapping
-  // with the index above by design: SP rows always set
-  // external_drive_id (so the upper index's predicate excludes them);
-  // Drive / OneDrive rows always leave it NULL (so this index's
-  // predicate excludes them via source='sharepoint'). Probed on every
-  // SharePoint import to decide insert-vs-skip.
-  uniqueIndex("knowledge_files_owner_sp_external_unique")
-    .on(table.uploadedById, table.externalDriveId, table.externalId)
-    .where(sql`${table.source} = 'sharepoint'`),
-]);
+    // De-dupe import of the same Drive / OneDrive file by the same
+    // user. Partial so upload-source rows (external_id NULL) don't
+    // collide, AND so SharePoint rows fall through to the SP-specific
+    // index below — SharePoint item ids are drive-scoped, while Drive
+    // and OneDrive ids are globally unique within the user's scope
+    // (Drive has no driveId concept; OneDrive is single-drive per
+    // user). external_drive_id IS NULL is the predicate that
+    // distinguishes them. Probed on every Drive / OneDrive import to
+    // decide insert-vs-skip.
+    uniqueIndex("knowledge_files_owner_external_unique")
+      .on(table.uploadedById, table.externalId)
+      .where(
+        sql`${table.externalId} IS NOT NULL AND ${table.externalDriveId} IS NULL`,
+      ),
+    // De-dupe import of the same SharePoint file by the same user.
+    // Unlike Drive / OneDrive, SharePoint item ids are drive-scoped
+    // (the same itemId can appear in two different document libraries),
+    // so the dedup key is the (driveId, itemId) PAIR. Non-overlapping
+    // with the index above by design: SP rows always set
+    // external_drive_id (so the upper index's predicate excludes them);
+    // Drive / OneDrive rows always leave it NULL (so this index's
+    // predicate excludes them via source='sharepoint'). Probed on every
+    // SharePoint import to decide insert-vs-skip.
+    uniqueIndex("knowledge_files_owner_sp_external_unique")
+      .on(table.uploadedById, table.externalDriveId, table.externalId)
+      .where(sql`${table.source} = 'sharepoint'`),
+  ],
+);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets
 // a project "attach" KC files so the chat RAG for that project
@@ -1183,7 +1221,7 @@ export const driveImportSources = pgTable(
     // Visibility applied to files imported from this source. Stored
     // so Re-sync can reproduce the original setting without asking the
     // user again. Defaults to 'all'.
-    visibility: text("visibility").notNull().default('all'),
+    visibility: text("visibility").notNull().default("all"),
     // JSON-serialised string[] — team / project ids that files from
     // this source should be linked to. NULL unless visibility is
     // 'teams' or 'project'.

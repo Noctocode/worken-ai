@@ -47,6 +47,11 @@ export type ChatStreamEvent =
        *  caller backfills from the OpenRouter catalog. */
       costUsd?: number;
     }
+  | {
+      type: 'citations';
+      /** Web-search sources OpenRouter attached to the answer. */
+      citations: { url: string; title?: string }[];
+    }
   | { type: 'error'; message: string; status?: number };
 
 export interface StreamOptions {
@@ -54,6 +59,11 @@ export interface StreamOptions {
    *  aborts the underlying HTTP call instead of running it to
    *  completion and discarding the bytes. */
   signal?: AbortSignal;
+  /** When true, augments the OpenRouter request with the web search
+   *  plugin (`plugins: [{ id: "web" }]`) so the model can browse the
+   *  live web. OpenRouter (openai-sdk) path only; ignored for native
+   *  Anthropic BYOK. */
+  webSearch?: boolean;
 }
 
 @Injectable()
@@ -139,6 +149,10 @@ export class ChatService {
           stream: true,
           stream_options: { include_usage: true },
           ...(enableReasoning && { reasoning: { enabled: true } }),
+          // OpenRouter web search plugin — lets the model browse the live
+          // web. Kept off the model id (no `:online` suffix) so catalog
+          // pricing / observability lookups still match the base model.
+          ...(options.webSearch && { plugins: [{ id: 'web' }] }),
         },
         { signal: options.signal },
       );
@@ -262,6 +276,12 @@ export class ChatService {
       }
     };
 
+    // Web-search citations OpenRouter attaches via `delta.annotations`.
+    // They usually arrive on the final content chunk; we dedupe by URL
+    // across the stream and emit one `citations` event at the end so the
+    // FE can render a Sources list.
+    const citations = new Map<string, string | undefined>();
+
     try {
       for await (const chunk of stream) {
         // OpenRouter emits `reasoning` deltas through a non-standard
@@ -271,10 +291,23 @@ export class ChatService {
         // inlining it into the assistant text.
         const choice = chunk.choices?.[0];
         const delta = choice?.delta as
-          | { content?: string; reasoning?: string }
+          | {
+              content?: string;
+              reasoning?: string;
+              annotations?: {
+                type?: string;
+                url_citation?: { url?: string; title?: string };
+              }[];
+            }
           | undefined;
         if (delta?.reasoning) {
           yield { type: 'reasoning', delta: delta.reasoning };
+        }
+        for (const ann of delta?.annotations ?? []) {
+          const url = ann.url_citation?.url;
+          if (url && !citations.has(url)) {
+            citations.set(url, ann.url_citation?.title ?? undefined);
+          }
         }
         if (delta?.content) {
           for (const ev of sanitize(delta.content)) {
@@ -306,6 +339,13 @@ export class ChatService {
           delta: pending,
         };
         pending = '';
+      }
+      // Emit collected web-search sources once, after the answer text.
+      if (citations.size > 0) {
+        yield {
+          type: 'citations',
+          citations: Array.from(citations, ([url, title]) => ({ url, title })),
+        };
       }
     } catch (err) {
       // User-initiated Stop arrives as an AbortError once the

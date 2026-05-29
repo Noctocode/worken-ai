@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
-import { projects } from '@worken/database/schema';
+import { companies, projects, teams, users } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
@@ -51,6 +51,39 @@ export class ChatController {
     private readonly modelSuggestions: ModelSuggestionService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
+
+  /**
+   * Resolve whether web search is ALLOWED for this chat: a per-team
+   * override (`teams.web_search_enabled`) takes precedence when set,
+   * otherwise the user's org default (`companies.web_search_enabled`).
+   * Returns false when neither is enabled (or the user has no company).
+   */
+  private async resolveWebSearchCapability(
+    userId: string,
+    teamId: string | null,
+  ): Promise<boolean> {
+    if (teamId) {
+      const [team] = await this.db
+        .select({ flag: teams.webSearchEnabled })
+        .from(teams)
+        .where(eq(teams.id, teamId))
+        .limit(1);
+      // Non-null override wins; null falls through to the org default.
+      if (team?.flag != null) return team.flag;
+    }
+    const [u] = await this.db
+      .select({ companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!u?.companyId) return false;
+    const [company] = await this.db
+      .select({ flag: companies.webSearchEnabled })
+      .from(companies)
+      .where(eq(companies.id, u.companyId))
+      .limit(1);
+    return company?.flag ?? false;
+  }
 
   /**
    * Token-streaming chat endpoint. Returns text/event-stream so the
@@ -95,11 +128,19 @@ export class ChatController {
     );
 
     const [proj] = await this.db
-      .select({ teamId: projects.teamId })
+      .select({ teamId: projects.teamId, webSearch: projects.webSearch })
       .from(projects)
       .where(eq(projects.id, conversation.projectId))
       .limit(1);
     const teamId = proj?.teamId ?? null;
+
+    // Effective web search = the project switch AND the org/team
+    // capability. Short-circuit on the project switch so the capability
+    // lookup (extra queries) only runs when the project actually wants
+    // web search.
+    const webSearch =
+      !!proj?.webSearch &&
+      (await this.resolveWebSearchCapability(user.id, teamId));
 
     const inputDecision = await this.guardrails.evaluate({
       text: body.content,
@@ -244,6 +285,7 @@ export class ChatController {
     let usageCompletionTokens: number | undefined;
     let usageTotalTokens: number | undefined;
     let usageCostUsd: number | undefined;
+    let citationsCollected: { url: string; title?: string }[] = [];
     let streamErrored = false;
     let streamErrorPayload: { message: string; status?: number } | null = null;
     let blockedDuringStream = false;
@@ -257,7 +299,7 @@ export class ChatController {
         transport.apiKey,
         transport.baseURL,
         transport.kind,
-        { signal: abortController.signal },
+        { signal: abortController.signal, webSearch },
       )) {
         if (event.type === 'content') {
           pending += event.delta;
@@ -290,6 +332,9 @@ export class ChatController {
         } else if (event.type === 'reasoning') {
           reasoningText += event.delta;
           sendEvent('reasoning', { text: event.delta });
+        } else if (event.type === 'citations') {
+          citationsCollected = event.citations;
+          sendEvent('citations', { citations: event.citations });
         } else if (event.type === 'usage') {
           usagePromptTokens = event.promptTokens;
           usageCompletionTokens = event.completionTokens;
@@ -453,6 +498,7 @@ export class ChatController {
     // a "stopped early" badge without re-running the LLM.
     const metadata: Record<string, unknown> = {};
     if (reasoningText) metadata.reasoning_details = reasoningText;
+    if (citationsCollected.length > 0) metadata.citations = citationsCollected;
     if (clientDisconnected) metadata.partial = true;
 
     await this.conversationsService.addMessage(

@@ -112,7 +112,12 @@ export class TeamsController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @Body() body: { name?: string; description?: string },
+    @Body()
+    body: {
+      name?: string;
+      description?: string;
+      webSearchEnabled?: boolean | null;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.teamsService.update(id, user.id, body);
