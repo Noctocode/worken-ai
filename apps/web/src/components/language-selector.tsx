@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe } from "lucide-react";
+import { ChevronDown, Globe } from "lucide-react";
 
 import { useLanguage, type Language } from "@/lib/i18n";
 import { Button } from "@/components/ui/button";
@@ -42,6 +42,7 @@ export function LanguageSelector({ collapsed }: { collapsed: boolean }) {
           >
             <Globe className="size-5 shrink-0 text-text-3" />
             <span>{current.label}</span>
+            <ChevronDown className="ml-auto size-4 shrink-0 text-text-3" />
           </Button>
         )}
       </DropdownMenuTrigger>
