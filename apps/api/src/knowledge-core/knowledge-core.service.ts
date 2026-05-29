@@ -415,15 +415,26 @@ export class KnowledgeCoreService {
       }
     }
 
-    // Symmetric SharePoint cleanup — mirrors the Drive logic above.
+    // SharePoint cleanup — three cases reflecting the two-level
+    // nesting used by sharepoint-import.service.ts:
     //
-    //   1. Top-level "SharePoint" folder: drop ALL sharepoint sources.
-    //   2. Direct child of "SharePoint" (site- or folder-scope child):
-    //      drop the matching source by siteName / folderName.
+    //   1. Top-level "SharePoint" folder:
+    //        drop ALL sharepoint sources for this user.
     //
-    // `ensureChildFolder` in sharepoint-import.service.ts always names
-    // KC children identically to the SharePoint site or folder, so
-    // name matching is stable for the per-user single-row case.
+    //   2. Direct child of "SharePoint" (a SITE folder):
+    //        drop every source anchored to this site —
+    //        BOTH scope='site' (siteName === folder.name) AND
+    //        scope='folder' (siteName === folder.name, any
+    //        folderName) because every folder-scope source under
+    //        this site has now lost its KC location.
+    //
+    //   3. Grandchild of "SharePoint" (a FOLDER under a site):
+    //        drop the matching scope='folder' source by
+    //        (siteName=parent.name, folderName=folder.name).
+    //
+    // Name matching is stable for the per-user single-row case —
+    // `ensureChildFolder` reuses one KC folder per name under any
+    // given parent.
     const isSharePointParent =
       folder.name === 'SharePoint' && folder.parentFolderId === null;
 
@@ -434,6 +445,7 @@ export class KnowledgeCoreService {
     } else if (folder.parentFolderId) {
       const [parent] = await this.db
         .select({
+          id: knowledgeFolders.id,
           name: knowledgeFolders.name,
           parentFolderId: knowledgeFolders.parentFolderId,
         })
@@ -444,28 +456,43 @@ export class KnowledgeCoreService {
         parent?.name === 'SharePoint' && parent.parentFolderId === null;
 
       if (parentIsSharePoint) {
-        // Two source kinds can match this KC child:
-        //   - scope='site' source with siteName === folder.name
-        //   - scope='folder' source with folderName === folder.name
-        // Run two separate deletes so each shape uses its proper match.
+        // Case 2 — folder being deleted is a SITE folder.
         await this.db
           .delete(sharepointImportSources)
           .where(
             and(
               eq(sharepointImportSources.ownerId, userId),
-              eq(sharepointImportSources.scope, 'site'),
               eq(sharepointImportSources.siteName, folder.name),
             ),
           );
-        await this.db
-          .delete(sharepointImportSources)
-          .where(
-            and(
-              eq(sharepointImportSources.ownerId, userId),
-              eq(sharepointImportSources.scope, 'folder'),
-              eq(sharepointImportSources.folderName, folder.name),
-            ),
-          );
+      } else if (parent?.parentFolderId) {
+        // Case 3 — folder being deleted MAY be a folder under a site
+        // under SharePoint. Walk one more step up to verify the
+        // grandparent is the top-level "SharePoint" folder.
+        const [grandparent] = await this.db
+          .select({
+            name: knowledgeFolders.name,
+            parentFolderId: knowledgeFolders.parentFolderId,
+          })
+          .from(knowledgeFolders)
+          .where(eq(knowledgeFolders.id, parent.parentFolderId));
+
+        const grandparentIsSharePoint =
+          grandparent?.name === 'SharePoint' &&
+          grandparent.parentFolderId === null;
+
+        if (grandparentIsSharePoint) {
+          await this.db
+            .delete(sharepointImportSources)
+            .where(
+              and(
+                eq(sharepointImportSources.ownerId, userId),
+                eq(sharepointImportSources.scope, 'folder'),
+                eq(sharepointImportSources.siteName, parent.name),
+                eq(sharepointImportSources.folderName, folder.name),
+              ),
+            );
+        }
       }
     }
 

@@ -211,10 +211,23 @@ export class SharePointImportService {
       }
       this.enforceImportCountCap(totalFiles, 'folder');
 
+      // Nest folder-scope imports two levels deep under the
+      // "SharePoint" parent so two different sites with a folder
+      // sharing the same display name (e.g. "Reports") land in
+      // distinct KC folders:
+      //   SharePoint > {siteName} > {folderName}
+      // Previously they collapsed into one mixed-content folder.
+      // Site-scope imports already nest at SharePoint > {siteName}.
+      const kcSiteFolderId = await this.ensureChildFolder(
+        userId,
+        parentFolderId,
+        siteName,
+      );
+
       for (const entry of perFolder) {
         const kcChildFolderId = await this.ensureChildFolder(
           userId,
-          parentFolderId,
+          kcSiteFolderId,
           entry.folderName,
         );
         const inserted = await this.upsertFilesAndSource(userId, {
@@ -774,13 +787,16 @@ export class SharePointImportService {
   }
 
   /**
-   * TODO(follow-up): nest folder-scope imports one level deeper
-   * (`SharePoint > {siteName} > {folderName}`) so two SharePoint
-   * folders with the same display name in different sites don't
-   * collapse into a single KC folder. Same limitation exists on
-   * the Google Drive integration today (it has been in production
-   * without complaints), so fixing only SharePoint would be
-   * inconsistent — wait for a unified fix across both providers.
+   * Find-or-create a KC child folder named `name` under `parentId`
+   * for this user. Used by the import paths to materialise the
+   * `SharePoint > {siteName} > {folderName}` tree one level at a
+   * time. The same name under different parents is allowed; the
+   * same name under the same parent is reused (so re-imports of
+   * the same source land in the existing KC folder).
+   *
+   * Google Drive has a parallel `ensureChildFolder` with a known
+   * cross-folder-name collision; we intentionally don't fix the
+   * Drive side here per scope discipline on this PR.
    */
   private async ensureChildFolder(
     userId: string,
