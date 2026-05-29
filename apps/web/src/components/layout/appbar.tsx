@@ -363,16 +363,30 @@ export const Appbar = () => {
                 disabled={
                   webSearchMutation.isPending || !_project.webSearchSupported
                 }
-                aria-pressed={_project.webSearch}
+                role="switch"
+                aria-checked={_project.webSearch}
                 title={t("appbar.webSearch")}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-4 text-[15px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  _project.webSearch
-                    ? "border-primary-6 bg-primary-1 text-primary-7"
-                    : "border-border-2 bg-bg-white text-text-2 hover:bg-bg-1"
-                }`}
+                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-4 py-4 cursor-pointer hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Globe className="h-4 w-4" />
-                {t("appbar.webSearch")}
+                <Globe
+                  className={`h-4 w-4 ${
+                    _project.webSearch ? "text-primary-6" : "text-text-2"
+                  }`}
+                />
+                <span className="text-[15px] text-text-1">
+                  {t("appbar.webSearch")}
+                </span>
+                <span
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                    _project.webSearch ? "bg-primary-6" : "bg-border-3"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                      _project.webSearch ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
               </button>
             </DisabledReasonTooltip>
           )}
