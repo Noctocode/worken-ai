@@ -50,6 +50,25 @@ Overview blade — that's your `MICROSOFT_CLIENT_ID`. Also copy the
 **Directory (tenant) ID** — that's the GUID you'd use for
 single-tenant `MICROSOFT_TENANT_ID`.
 
+### 1b. Add the OneDrive redirect URI (same app)
+
+OneDrive uses the **same Azure App registration** as SharePoint —
+same client ID, same client secret, same API permissions. The only
+extra setup step is registering a second redirect URI for the
+OneDrive callback.
+
+In the same App registration:
+- Left sidebar → **Authentication** → **Platform configurations** →
+  the **Web** platform you set up above → **Add URI**:
+  - `http://localhost:3001/onedrive/callback` for dev, or
+  - `https://api.YOURDOMAIN/onedrive/callback` for prod.
+- Click **Save** at the top of the page.
+
+The Authentication blade should now list BOTH redirect URIs under
+Web. That's it for OneDrive — no new permissions, no new client
+secret, no new admin consent (the `Files.Read.All` you already
+granted covers OneDrive too).
+
 ### 2. Configure API permissions
 
 Still inside your app registration: left sidebar → **API permissions**
@@ -99,6 +118,7 @@ MICROSOFT_CLIENT_ID=<paste the GUID from Application (client) ID>
 MICROSOFT_CLIENT_SECRET=<paste the secret VALUE from step 3>
 MICROSOFT_TENANT_ID=common
 SHAREPOINT_REDIRECT_URI=http://localhost:3001/sharepoint/callback
+ONEDRIVE_REDIRECT_URI=http://localhost:3001/onedrive/callback
 ```
 
 #### Choosing `MICROSOFT_TENANT_ID`
@@ -180,7 +200,8 @@ What you DO need:
    `AADSTS65001` wall.
 3. **Set the prod env vars**: same `MICROSOFT_CLIENT_ID`, separate
    `MICROSOFT_CLIENT_SECRET`, the prod-appropriate
-   `MICROSOFT_TENANT_ID`, and prod `SHAREPOINT_REDIRECT_URI`.
+   `MICROSOFT_TENANT_ID`, and prod `SHAREPOINT_REDIRECT_URI` +
+   `ONEDRIVE_REDIRECT_URI`.
 
 ---
 

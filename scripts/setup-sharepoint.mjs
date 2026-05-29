@@ -160,6 +160,17 @@ if (spRedirect !== 'http://localhost:3001/sharepoint/callback') {
   pass(`SHAREPOINT_REDIRECT_URI = ${spRedirect}`);
 }
 
+const odRedirect =
+  env.ONEDRIVE_REDIRECT_URI ||
+  'http://localhost:3001/onedrive/callback';
+if (odRedirect !== 'http://localhost:3001/onedrive/callback') {
+  info(
+    `ONEDRIVE_REDIRECT_URI overridden: ${odRedirect}\n  Make sure this URI is in your Azure app's "Redirect URIs" (Web platform).`,
+  );
+} else {
+  pass(`ONEDRIVE_REDIRECT_URI = ${odRedirect}`);
+}
+
 const encKey = env.OPENROUTER_ENCRYPTION_KEY ?? '';
 if (!encKey) {
   fail(
@@ -196,9 +207,13 @@ console.log('');
 // ──────────────────────────────────────────────────────────────────
 // 3. Print the redirect URI for Azure copy-paste
 // ──────────────────────────────────────────────────────────────────
-console.log(`${C.bold}Redirect URI to register in Azure${C.reset}`);
+console.log(`${C.bold}Redirect URIs to register in Azure${C.reset}`);
 console.log(`${C.dim}App registrations → your app → Authentication → Platform configurations → Web → Redirect URIs${C.reset}`);
-console.log(`  ${C.yellow}${spRedirect}${C.reset}\n`);
+console.log(`  ${C.yellow}${spRedirect}${C.reset}`);
+console.log(`  ${C.yellow}${odRedirect}${C.reset}`);
+console.log(
+  `  ${C.dim}(Register BOTH — SharePoint and OneDrive each have their own callback URL on the same Azure App.)${C.reset}\n`,
+);
 
 // ──────────────────────────────────────────────────────────────────
 // 4. Ping the Microsoft OIDC discovery doc for the tenant
