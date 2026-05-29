@@ -171,13 +171,9 @@ export function MicrosoftConnectConfirmDialog({
         <DialogHeader>
           <DialogTitle>Disconnect from {primaryLabel}?</DialogTitle>
           <DialogDescription>
-            Stop using {primaryLabel} on this Microsoft connection.
-            {otherLabel === otherLabel /* always true */ && (
-              <>
-                {" "}If {otherLabel} is also enabled, you can keep it
-                connected or disconnect from both at once.
-              </>
-            )}
+            Stop using {primaryLabel} on this Microsoft connection. If{" "}
+            {otherLabel} is also enabled, you can keep it connected or
+            disconnect from both at once.
           </DialogDescription>
         </DialogHeader>
 

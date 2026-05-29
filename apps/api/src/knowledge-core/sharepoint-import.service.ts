@@ -113,8 +113,11 @@ export class SharePointImportService {
 
   /**
    * Import (or Re-sync) files from a SharePoint site / folder into KC.
-   * Files we already have (matched by `(uploaded_by_id, external_id)`)
-   * are skipped — Re-sync is just "add new files since last time".
+   * Files we already have (matched by
+   * `(uploaded_by_id, external_drive_id, external_id)` — SharePoint
+   * item ids are drive-scoped, so the driveId is part of the key, see
+   * `findExistingSharePointKeys`) are skipped — Re-sync is just
+   * "add new files since last time".
    *
    * Whole-site scope (`kind: 'site'`) goes through the async path
    * (`startImportSiteAsync`) — this method handles it as a synchronous

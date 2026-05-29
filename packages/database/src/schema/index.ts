@@ -676,21 +676,29 @@ export const knowledgeFiles = pgTable("knowledge_files", {
     table.uploadedById,
     table.contentSha256,
   ),
-  // De-dupe import of the same Drive file by the same user. Partial
-  // so upload-source rows (external_id NULL) don't collide. Probed
-  // on every Drive import to decide insert-vs-skip. Drive's fileId
-  // is globally unique, so external_id alone is the right key.
+  // De-dupe import of the same Drive / OneDrive file by the same
+  // user. Partial so upload-source rows (external_id NULL) don't
+  // collide, AND so SharePoint rows fall through to the SP-specific
+  // index below — SharePoint item ids are drive-scoped, while Drive
+  // and OneDrive ids are globally unique within the user's scope
+  // (Drive has no driveId concept; OneDrive is single-drive per
+  // user). external_drive_id IS NULL is the predicate that
+  // distinguishes them. Probed on every Drive / OneDrive import to
+  // decide insert-vs-skip.
   uniqueIndex("knowledge_files_owner_external_unique")
     .on(table.uploadedById, table.externalId)
-    .where(sql`${table.externalId} IS NOT NULL`),
+    .where(
+      sql`${table.externalId} IS NOT NULL AND ${table.externalDriveId} IS NULL`,
+    ),
   // De-dupe import of the same SharePoint file by the same user.
-  // Unlike Drive, SharePoint item ids are drive-scoped (the same
-  // itemId can appear in two different document libraries), so the
-  // dedup key is the (driveId, itemId) PAIR. The two unique indexes
-  // are non-overlapping — this one only fires for source='sharepoint'
-  // rows, where external_drive_id is always set; the one above only
-  // matters for Drive rows, where external_drive_id is always NULL.
-  // Probed on every SharePoint import to decide insert-vs-skip.
+  // Unlike Drive / OneDrive, SharePoint item ids are drive-scoped
+  // (the same itemId can appear in two different document libraries),
+  // so the dedup key is the (driveId, itemId) PAIR. Non-overlapping
+  // with the index above by design: SP rows always set
+  // external_drive_id (so the upper index's predicate excludes them);
+  // Drive / OneDrive rows always leave it NULL (so this index's
+  // predicate excludes them via source='sharepoint'). Probed on every
+  // SharePoint import to decide insert-vs-skip.
   uniqueIndex("knowledge_files_owner_sp_external_unique")
     .on(table.uploadedById, table.externalDriveId, table.externalId)
     .where(sql`${table.source} = 'sharepoint'`),
