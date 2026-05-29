@@ -206,26 +206,35 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   // ── Async progress polling ────────────────────────────────────────
   // Enabled whenever the dialog is open so we also pick up a job that
   // started before the dialog was opened (e.g. user closed and reopened).
-  const { data: progress } = useQuery<DriveImportProgress | null>({
-    queryKey: ["drive", "import-progress"],
-    queryFn: fetchDriveImportProgress,
-    enabled: open,
-    refetchInterval: (query) => {
-      const p = query.state.data;
-      if (!p) return asyncJobActive ? 2000 : false;
-      if (p.phase === "scanning" || p.phase === "importing") return 2000;
-      return false;
-    },
-    staleTime: 0,
-  });
+  const { data: progress, isSuccess: progressFetched } =
+    useQuery<DriveImportProgress | null>({
+      queryKey: ["drive", "import-progress"],
+      queryFn: fetchDriveImportProgress,
+      enabled: open,
+      refetchInterval: (query) => {
+        const p = query.state.data;
+        if (!p) return asyncJobActive ? 2000 : false;
+        if (p.phase === "scanning" || p.phase === "importing") return 2000;
+        return false;
+      },
+      staleTime: 0,
+    });
 
-  // Restore asyncJobActive flag when dialog opens and a job is already running.
+  // Keep asyncJobActive authoritative against the server: once a poll has
+  // resolved, the flag mirrors whether a job is actually scanning/importing.
+  // This both restores a running job on (re)open and clears a stale flag
+  // when the server reports no job (e.g. it finished while the dialog was
+  // closed and the progress entry was GC'd) — preventing a "stuck on
+  // scanning" view. The effect only re-runs when progress.phase changes,
+  // so it doesn't race the optimistic setAsyncJobActive(true) on start
+  // (phase is still null at that point, so the effect stays put until the
+  // first scanning poll confirms it).
   useEffect(() => {
-    if (!open) return;
-    if (progress?.phase === "scanning" || progress?.phase === "importing") {
-      setAsyncJobActive(true);
-    }
-  }, [open, progress?.phase]);
+    if (!open || !progressFetched) return;
+    const running =
+      progress?.phase === "scanning" || progress?.phase === "importing";
+    setAsyncJobActive(running);
+  }, [open, progressFetched, progress?.phase]);
 
   // React to terminal phases (done / cancelled / error).
   useEffect(() => {
@@ -454,13 +463,21 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             : "";
 
   // ── Progress view (shown while async job is active) ───────────────
+  // Treat the job as running the instant it's been started (asyncJobActive),
+  // even before the first progress poll lands — otherwise the dialog drops
+  // back to the config view for up to one poll interval and the user can
+  // fire a second import (BE then rejects with "already in progress").
+  // A loaded progress in a terminal phase (done/cancelled/error) ends it.
   const isRunning =
     asyncJobActive &&
-    progress &&
-    (progress.phase === "scanning" || progress.phase === "importing");
+    (!progress ||
+      progress.phase === "scanning" ||
+      progress.phase === "importing");
 
   if (isRunning) {
-    const { phase, scanned, total, imported } = progress;
+    const phase = progress?.phase ?? "scanning";
+    const total = progress?.total ?? 0;
+    const imported = progress?.imported ?? 0;
     const pct = total > 0 ? Math.round((imported / total) * 100) : 0;
 
     return (
