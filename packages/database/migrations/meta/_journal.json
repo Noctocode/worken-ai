@@ -41,28 +41,7 @@
       "idx": 5,
       "version": "7",
       "when": 1779900000000,
-      "tag": "0005_sharepoint",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1779980000000,
-      "tag": "0006_sharepoint_hardening",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1780060000000,
-      "tag": "0007_onedrive",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1780140000000,
-      "tag": "0008_knowledge_files_dedup_hardening",
+      "tag": "0005_sharepoint_onedrive",
       "breakpoints": true
     }
   ]
