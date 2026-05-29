@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import * as fs from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import {
   knowledgeChunks,
   knowledgeFiles,
@@ -12,12 +13,25 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { GoogleDriveClientService } from '../google-drive/google-drive-client.service.js';
+import { OneDriveGraphService } from '../onedrive/onedrive-graph.service.js';
+import { SharePointGraphService } from '../sharepoint/sharepoint-graph.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
 // shared so the two modules stay decoupled. If you rename the onboarding
 // folder, update both.
 const ONBOARDING_FOLDER_NAME = 'Onboarding';
+
+/**
+ * Per-file size cap for Drive imports. Matches the import-time cap in
+ * DriveImportService (kept duplicated rather than shared to avoid an
+ * extra import cycle for two small constants). Both must stay in
+ * sync — if you change one, change the other.
+ *
+ * 50MB matches the existing multer limit on manual uploads.
+ */
+const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
@@ -55,6 +69,16 @@ export class KnowledgeIngestionService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
     private readonly notifications: NotificationsService,
+    // Used by the drive-source branch in ingestOneFile to fetch bytes
+    // before parsing. Injected from GoogleDriveModule via the
+    // KnowledgeCoreModule import. Not required for upload-source rows.
+    private readonly driveClient: GoogleDriveClientService,
+    // Same role for source='sharepoint' rows — injected from
+    // SharePointModule via KnowledgeCoreModule.
+    private readonly sharepointGraph: SharePointGraphService,
+    // Same role for source='onedrive' rows — injected from
+    // OneDriveModule via KnowledgeCoreModule.
+    private readonly onedriveGraph: OneDriveGraphService,
   ) {}
 
   /**
@@ -77,29 +101,52 @@ export class KnowledgeIngestionService {
   }
 
   private async runUserFileIngestion(userId: string): Promise<void> {
-    // Files are scoped to folders, and folders are owned by users.
-    // We claim only files this user uploaded that are still pending.
-    const claimed = await this.db
-      .update(knowledgeFiles)
-      .set({ ingestionStatus: 'processing' })
-      .where(
-        and(
-          eq(knowledgeFiles.uploadedById, userId),
-          eq(knowledgeFiles.ingestionStatus, 'pending'),
-        ),
-      )
-      .returning({
-        id: knowledgeFiles.id,
-        storagePath: knowledgeFiles.storagePath,
-        name: knowledgeFiles.name,
-        scope: knowledgeFiles.scope,
-        visibility: knowledgeFiles.visibility,
-      });
+    // Process pending files in small batches so the FE shows a clear
+    // queue progression ("Queued" → "Adding" → "In context") instead
+    // of flipping every file to "Adding" at once. Each iteration claims
+    // INGESTION_BATCH_SIZE rows atomically via a subquery, processes
+    // them sequentially, then loops to pick up the next batch. Remaining
+    // files stay 'pending' ("Queued") until their turn.
+    const INGESTION_BATCH_SIZE = 5;
 
-    if (claimed.length === 0) return;
+    while (true) {
+      // Atomic claim: SELECT … LIMIT N inside the WHERE so only
+      // INGESTION_BATCH_SIZE rows transition pending→processing per round.
+      const claimed = await this.db
+        .update(knowledgeFiles)
+        .set({ ingestionStatus: 'processing' })
+        .where(
+          inArray(
+            knowledgeFiles.id,
+            this.db
+              .select({ id: knowledgeFiles.id })
+              .from(knowledgeFiles)
+              .where(
+                and(
+                  eq(knowledgeFiles.uploadedById, userId),
+                  eq(knowledgeFiles.ingestionStatus, 'pending'),
+                ),
+              )
+              .orderBy(desc(knowledgeFiles.createdAt))
+              .limit(INGESTION_BATCH_SIZE),
+          ),
+        )
+        .returning({
+          id: knowledgeFiles.id,
+          storagePath: knowledgeFiles.storagePath,
+          name: knowledgeFiles.name,
+          scope: knowledgeFiles.scope,
+          visibility: knowledgeFiles.visibility,
+          source: knowledgeFiles.source,
+          externalId: knowledgeFiles.externalId,
+          externalDriveId: knowledgeFiles.externalDriveId,
+        });
 
-    for (const file of claimed) {
-      await this.ingestOneFile(userId, file);
+      if (claimed.length === 0) break;
+
+      for (const file of claimed) {
+        await this.ingestOneFile(userId, file);
+      }
     }
   }
 
@@ -111,9 +158,76 @@ export class KnowledgeIngestionService {
       name: string;
       scope: string;
       visibility: string;
+      source: string;
+      externalId: string | null;
+      externalDriveId: string | null;
     },
   ): Promise<void> {
     try {
+      // Drive-source rows arrive with storagePath=null — the import
+      // endpoint inserts metadata only, then we download here. We
+      // persist the storagePath + sizeBytes back on the row so the
+      // user can download/re-ingest later without another Drive call.
+      if (file.source === 'drive' && !file.storagePath) {
+        if (!file.externalId) {
+          throw new Error(
+            'Drive-source file is missing externalId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchDriveBytes(userId, file);
+        // Resolve actual byte size now that the file is on disk —
+        // Drive doesn't report reliable sizes for native formats before
+        // export, so we update sizeBytes here to keep folder totals accurate.
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath, sizeBytes: actualBytes })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
+      // Same pattern for SharePoint-source rows. Graph item ids alone
+      // aren't enough to download — we need (driveId, itemId), so the
+      // import path persists driveId as `externalDriveId` on the row.
+      if (file.source === 'sharepoint' && !file.storagePath) {
+        if (!file.externalId || !file.externalDriveId) {
+          throw new Error(
+            'SharePoint-source file is missing externalId or externalDriveId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchSharePointBytes(userId, file);
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath, sizeBytes: actualBytes })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
+      // Same pattern for OneDrive-source rows. OneDrive is single-drive
+      // per user (/me/drive), so itemId alone is enough — no
+      // externalDriveId needed (it stays NULL for OneDrive rows).
+      if (file.source === 'onedrive' && !file.storagePath) {
+        if (!file.externalId) {
+          throw new Error(
+            'OneDrive-source file is missing externalId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchOneDriveBytes(userId, file);
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath, sizeBytes: actualBytes })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
       if (!file.storagePath) {
         throw new Error('File has no storage path on disk');
       }
@@ -493,6 +607,131 @@ export class KnowledgeIngestionService {
       )
       .orderBy(desc(similarity))
       .limit(limit);
+  }
+
+  /**
+   * Pull a Drive-source file's bytes via the Drive client, write
+   * them to a deterministic path under `uploads/knowledge-core/drive/`,
+   * and return the relative storagePath the row should record.
+   *
+   * The basename is the row's UUID so we never collide with a manual
+   * upload (those live one directory up under `uploads/knowledge-core/`
+   * with multer-generated `<rand>-<safe-name>` basenames). Existing
+   * file on disk is silently overwritten — the only way to get here
+   * twice for the same row is an explicit re-ingest, which intends
+   * to refresh.
+   *
+   * Size cap belt-and-braces: DriveImportService strips files larger
+   * than this BEFORE inserting a KC row, but Google native formats
+   * (Doc/Sheet/Slide) report sizeBytes=null from Drive and slip past
+   * the import-time check — they get caught here post-export. The
+   * surrounding try/catch persists the message as ingestion_error so
+   * the user can see why a particular file was skipped.
+   */
+  private async fetchDriveBytes(
+    userId: string,
+    file: { id: string; name: string; externalId: string | null },
+  ): Promise<string> {
+    if (!file.externalId) {
+      throw new Error('Drive-source file is missing externalId');
+    }
+    const download = await this.driveClient.downloadFile(
+      userId,
+      file.externalId,
+    );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `File is ${mb}MB — Drive imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per file. Skipped.`,
+      );
+    }
+    const ext = this.extFromName(file.name);
+    const storagePath = `uploads/knowledge-core/drive/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  /**
+   * Same role as fetchDriveBytes for SharePoint-source rows. Graph's
+   * pre-authenticated download URL is fetched at download time (URLs
+   * expire after ~1h), then the bytes are written under
+   * `uploads/knowledge-core/sharepoint/`.
+   *
+   * Re-applies the 50 MB cap belt-and-braces — SharePoint reports
+   * size up-front in the listing, so this is mostly redundant, but
+   * the cost is one buffer.length comparison.
+   */
+  private async fetchSharePointBytes(
+    userId: string,
+    file: {
+      id: string;
+      name: string;
+      externalId: string | null;
+      externalDriveId: string | null;
+    },
+  ): Promise<string> {
+    if (!file.externalId || !file.externalDriveId) {
+      throw new Error(
+        'SharePoint-source file is missing externalId or externalDriveId',
+      );
+    }
+    const download = await this.sharepointGraph.downloadFile(
+      userId,
+      file.externalDriveId,
+      file.externalId,
+    );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `File is ${mb}MB — SharePoint imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per file. Skipped.`,
+      );
+    }
+    const ext = this.extFromName(file.name);
+    const storagePath = `uploads/knowledge-core/sharepoint/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  /**
+   * Same role as fetchDriveBytes for OneDrive-source rows.
+   * `/me/drive/items/{itemId}` exposes a short-lived
+   * @microsoft.graph.downloadUrl that we hit without auth header
+   * (URL is pre-authenticated). Single-drive structure means no
+   * external_drive_id is needed (kept NULL on OneDrive rows).
+   */
+  private async fetchOneDriveBytes(
+    userId: string,
+    file: { id: string; name: string; externalId: string | null },
+  ): Promise<string> {
+    if (!file.externalId) {
+      throw new Error('OneDrive-source file is missing externalId');
+    }
+    const download = await this.onedriveGraph.downloadFile(
+      userId,
+      file.externalId,
+    );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `File is ${mb}MB — OneDrive imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per file. Skipped.`,
+      );
+    }
+    const ext = this.extFromName(file.name);
+    const storagePath = `uploads/knowledge-core/onedrive/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  private extFromName(filename: string): string {
+    const dot = filename.lastIndexOf('.');
+    if (dot === -1 || dot === filename.length - 1) return '';
+    return filename.slice(dot).toLowerCase();
   }
 
   private inferMimeFromName(filename: string): string {

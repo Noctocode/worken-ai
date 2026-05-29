@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { deleteTeam, type TeamListItem } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
@@ -46,6 +47,7 @@ function ProjectedBadge({
   projected: number;
   budget: number;
 }) {
+  const { t } = useLanguage();
   if (budget <= 0) return <span className="text-text-1 text-sm">—</span>;
 
   const overBudget = projected > budget;
@@ -55,7 +57,7 @@ function ProjectedBadge({
       <div className="flex items-center gap-1.5">
         <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
         <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
-          Over Budget
+          {t("mgmt.rows.overBudget")}
         </span>
       </div>
     );
@@ -63,7 +65,7 @@ function ProjectedBadge({
     <div className="flex items-center gap-1.5">
       <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
       <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
-        On track
+        {t("mgmt.rows.onTrack")}
       </span>
     </div>
   );
@@ -113,6 +115,7 @@ export function TeamRow({
   team: TeamListItem;
   isOwner: boolean;
 }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -126,12 +129,12 @@ export function TeamRow({
   const deleteMutation = useMutation({
     mutationFn: () => deleteTeam(team.id),
     onSuccess: () => {
-      toast.success(`Deleted "${team.name}".`);
+      toast.success(`${t("mgmt.rows.deletedToast")} "${team.name}".`);
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setConfirmOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't delete team.");
+      toast.error(err.message || t("mgmt.rows.couldntDeleteTeam"));
     },
   });
 
@@ -139,7 +142,7 @@ export function TeamRow({
     <tr
       role="link"
       tabIndex={0}
-      aria-label={`Open ${team.name}`}
+      aria-label={t("mgmt.rows.openTeam").replace("{name}", team.name)}
       className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-bg-1/50 focus:outline-none focus-visible:bg-bg-1/60 focus-visible:ring-1 focus-visible:ring-primary-6"
       onClick={() => router.push(`/teams/${team.id}`)}
       onKeyDown={(e) => {
@@ -159,7 +162,7 @@ export function TeamRow({
               className="gap-1 text-[11px] border-warning-2 bg-warning-1 text-warning-6"
             >
               <Crown className="h-3 w-3" />
-              Owner
+              {t("mgmt.rows.owner")}
             </Badge>
           )}
         </div>
@@ -229,14 +232,14 @@ export function TeamRow({
             <DropdownMenuItem asChild>
               <Link href={`/teams/${team.id}`} className="gap-2">
                 <Eye className="h-4 w-4" />
-                View team
+                {t("mgmt.rows.viewTeam")}
               </Link>
             </DropdownMenuItem>
             {team.canManage && (
               <CreateTeamDialog team={team}>
                 <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                   <Pencil className="h-4 w-4" />
-                  Edit team
+                  {t("mgmt.rows.editTeam")}
                 </DropdownMenuItem>
               </CreateTeamDialog>
             )}
@@ -249,22 +252,21 @@ export function TeamRow({
                 setConfirmOpen(true);
               }}
               title={
-                team.canManage ? undefined : "Not available for basic users"
+                team.canManage ? undefined : t("mgmt.rows.notAvailBasic")
               }
             >
               <Trash2 className="h-4 w-4" />
-              Remove team
+              {t("mgmt.rows.removeTeam")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove team</DialogTitle>
+              <DialogTitle>{t("mgmt.rows.removeTeam")}</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete{" "}
-                <strong>{team.name}</strong>? This action cannot be undone and
-                will remove all members and subteams.
+                {t("mgmt.rows.removeTeamDesc1")}{" "}
+                <strong>{team.name}</strong>{t("mgmt.rows.removeTeamDesc2")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -273,14 +275,14 @@ export function TeamRow({
                 onClick={() => setConfirmOpen(false)}
                 disabled={deleteMutation.isPending}
               >
-                Cancel
+                {t("mgmt.rows.cancel")}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending ? "Removing..." : "Remove"}
+                {deleteMutation.isPending ? t("mgmt.rows.removing") : t("mgmt.rows.remove")}
               </Button>
             </DialogFooter>
           </DialogContent>

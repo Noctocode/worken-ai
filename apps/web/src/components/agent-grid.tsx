@@ -3,6 +3,7 @@
 import { AGENTS, type AgentPreset } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
+import { useLanguage } from "@/lib/i18n";
 
 interface AgentGridProps {
   /** Currently highlighted agent. Cards match on `agent.id`. */
@@ -25,6 +26,7 @@ interface AgentGridProps {
  * model dialog on the dashboard ProjectCard.
  */
 export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
+  const { t } = useLanguage();
   const { models: availableModels } = useAvailableModels();
   const { effective: effectiveModels } = useUserModels();
 
@@ -58,8 +60,10 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
             title={
               resolvedModel
                 ? willFallback
-                  ? `Preferred ${agent.model} not enabled — will use ${resolvedModel.name}${suffix}`
-                  : `Uses ${resolvedModel.name}${suffix}`
+                  ? t("agentGrid.preferredNotEnabled")
+                      .replace("{model}", agent.model)
+                      .replace("{fallback}", `${resolvedModel.name}${suffix}`)
+                  : t("agentGrid.uses").replace("{model}", `${resolvedModel.name}${suffix}`)
                 : agent.model
             }
             className={`flex flex-col items-center gap-2.5 p-4 cursor-pointer transition-colors rounded-lg w-[calc(50%-5px)] sm:w-auto sm:min-w-[200px] sm:flex-1 sm:max-w-[220px] ${
@@ -81,7 +85,7 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
                 }`}
               >
                 {willFallback
-                  ? `↳ ${resolvedModel.name}${suffix} (fallback)`
+                  ? `↳ ${resolvedModel.name}${suffix} ${t("agentGrid.fallback")}`
                   : `${resolvedModel.name}${suffix}`}
               </span>
             )}

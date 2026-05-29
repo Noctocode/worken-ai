@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/components/providers";
 import { removeOrgUser, updateUserBudget, type OrgUser } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
@@ -42,6 +43,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 }
 
 export function UserRow({ user }: { user: OrgUser }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -66,7 +68,7 @@ export function UserRow({ user }: { user: OrgUser }) {
       setConfirmOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove user.");
+      toast.error(err.message || t("mgmt.rows.couldntRemoveUser"));
       setConfirmOpen(false);
     },
   });
@@ -88,12 +90,12 @@ export function UserRow({ user }: { user: OrgUser }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
       queryClient.invalidateQueries({ queryKey: ["users", user.id] });
-      toast.success("Monthly budget updated.");
+      toast.success(t("mgmt.rows.budgetUpdated"));
       setBudgetOpen(false);
       setBudgetInput("");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't update budget.");
+      toast.error(err.message || t("mgmt.rows.couldntUpdateBudget"));
     },
   });
 
@@ -110,7 +112,7 @@ export function UserRow({ user }: { user: OrgUser }) {
   const submitBudget = () => {
     const parsed = parseFloat(budgetInput);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      toast.error("Budget must be a non-negative number.");
+      toast.error(t("mgmt.rows.budgetNonNegative"));
       return;
     }
     budgetMutation.mutate(parsed);
@@ -120,7 +122,7 @@ export function UserRow({ user }: { user: OrgUser }) {
     <tr
       role="link"
       tabIndex={0}
-      aria-label={`Open ${user.name ?? user.email}`}
+      aria-label={`${t("mgmt.rows.openUser")} ${user.name ?? user.email}`}
       className="h-14 cursor-pointer border-b border-bg-1 transition-colors hover:bg-bg-1/50 focus:outline-none focus-visible:bg-bg-1/60 focus-visible:ring-1 focus-visible:ring-primary-6"
       onClick={() => router.push(detailHref)}
       onKeyDown={(e) => {
@@ -162,7 +164,7 @@ export function UserRow({ user }: { user: OrgUser }) {
               ? "bg-primary-1 text-primary-7"
               : "bg-bg-3 text-text-2"
         }`}>
-          {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
+          {user.role === "admin" ? t("mgmt.rows.roleAdmin") : user.role === "advanced" ? t("mgmt.rows.roleAdvanced") : t("mgmt.rows.roleBasic")}
         </span>
       </td>
       {/* Status */}
@@ -172,7 +174,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             ? "bg-warning-1 text-warning-6"
             : "bg-success-1 text-success-7"
         }`}>
-          {user.inviteStatus === "pending" ? "Pending" : "Active"}
+          {user.inviteStatus === "pending" ? t("mgmt.rows.pending") : t("mgmt.rows.active")}
         </span>
       </td>
       {/* Teams */}
@@ -222,11 +224,11 @@ export function UserRow({ user }: { user: OrgUser }) {
           <span className="text-sm text-text-1">{formatCurrency(projected)}</span>
           {overBudget ? (
             <span className="rounded-sm bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3 whitespace-nowrap">
-              Over Budget
+              {t("mgmt.rows.overBudget")}
             </span>
           ) : budget > 0 ? (
             <span className="rounded-sm bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1 whitespace-nowrap">
-              On track
+              {t("mgmt.rows.onTrack")}
             </span>
           ) : null}
         </div>
@@ -245,8 +247,8 @@ export function UserRow({ user }: { user: OrgUser }) {
               className="relative h-7 w-7 text-text-3 hover:text-text-1"
               aria-label={
                 needsBudget
-                  ? `Actions for ${user.name ?? user.email} — budget not set`
-                  : `Actions for ${user.name ?? user.email}`
+                  ? `${t("mgmt.rows.actionsFor")} ${user.name ?? user.email} — ${t("mgmt.rows.budgetNotSet")}`
+                  : `${t("mgmt.rows.actionsFor")} ${user.name ?? user.email}`
               }
             >
               <MoreVertical className="h-4 w-4" />
@@ -266,15 +268,15 @@ export function UserRow({ user }: { user: OrgUser }) {
             <DropdownMenuItem asChild className="gap-2">
               <Link href={detailHref}>
                 <Eye className="h-4 w-4" />
-                View user
+                {t("mgmt.rows.viewUser")}
               </Link>
             </DropdownMenuItem>
             <DisabledReasonTooltip
               disabled={!canEditBudget}
               reason={
                 isSelf
-                  ? "Your admin manages your budget"
-                  : "Only admins can change another user's budget"
+                  ? t("mgmt.rows.yourAdminManages")
+                  : t("mgmt.rows.onlyAdminsBudget")
               }
             >
               <DropdownMenuItem
@@ -291,12 +293,12 @@ export function UserRow({ user }: { user: OrgUser }) {
                 ) : (
                   <Wallet className="h-4 w-4" />
                 )}
-                {needsBudget ? "Set budget" : "Change budget"}
+                {needsBudget ? t("mgmt.rows.setBudget") : t("mgmt.rows.changeBudget")}
               </DropdownMenuItem>
             </DisabledReasonTooltip>
             <DisabledReasonTooltip
               disabled={!canRemove}
-              reason="Only admins can remove users"
+              reason={t("mgmt.rows.onlyAdminsRemove")}
             >
               <DropdownMenuItem
                 className="gap-2 text-danger-6 focus:text-danger-6"
@@ -308,7 +310,7 @@ export function UserRow({ user }: { user: OrgUser }) {
                 }}
               >
                 <UserX className="h-4 w-4" />
-                Remove user
+                {t("mgmt.rows.removeUser")}
               </DropdownMenuItem>
             </DisabledReasonTooltip>
           </DropdownMenuContent>
@@ -324,7 +326,7 @@ export function UserRow({ user }: { user: OrgUser }) {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                {needsBudget ? "Set monthly budget" : "Change monthly budget"}
+                {needsBudget ? t("mgmt.rows.setBudgetTitle") : t("mgmt.rows.changeBudgetTitle")}
               </DialogTitle>
               <DialogDescription>
                 {user.name ? (
@@ -346,7 +348,7 @@ export function UserRow({ user }: { user: OrgUser }) {
             >
               <div className="space-y-2">
                 <Label htmlFor={`user-row-budget-${user.id}`}>
-                  Monthly cap (USD)
+                  {t("mgmt.rows.monthlyCapLabel")}
                 </Label>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-text-3">
@@ -366,9 +368,7 @@ export function UserRow({ user }: { user: OrgUser }) {
                   />
                 </div>
                 <p className="text-[12px] text-text-3">
-                  Caps the user&apos;s personal-project and arena spend.
-                  Enter <strong>0</strong> to suspend AI access until the
-                  cap is raised again.
+                  {t("mgmt.rows.budgetDescPrefix")}<strong>0</strong>{t("mgmt.rows.budgetDescSuffix")}
                 </p>
               </div>
               <DialogFooter className="gap-2">
@@ -378,7 +378,7 @@ export function UserRow({ user }: { user: OrgUser }) {
                   onClick={() => setBudgetOpen(false)}
                   disabled={budgetMutation.isPending}
                 >
-                  Cancel
+                  {t("mgmt.rows.cancel")}
                 </Button>
                 <Button
                   type="submit"
@@ -387,7 +387,7 @@ export function UserRow({ user }: { user: OrgUser }) {
                   }
                   className="bg-primary-6 text-white hover:bg-primary-7"
                 >
-                  {budgetMutation.isPending ? "Saving..." : "Save"}
+                  {budgetMutation.isPending ? t("mgmt.rows.saving") : t("mgmt.rows.save")}
                 </Button>
               </DialogFooter>
             </form>
@@ -396,11 +396,11 @@ export function UserRow({ user }: { user: OrgUser }) {
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove user</DialogTitle>
+              <DialogTitle>{t("mgmt.rows.removeUserTitle")}</DialogTitle>
               <DialogDescription>
-                Are you sure you want to remove{" "}
-                <strong>{user.name ?? user.email}</strong> from the
-                organization? This action cannot be undone.
+                {t("mgmt.rows.removeUserDesc1Full")}{" "}
+                <strong>{user.name ?? user.email}</strong>{" "}
+                {t("mgmt.rows.removeUserDesc2Full")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -409,14 +409,14 @@ export function UserRow({ user }: { user: OrgUser }) {
                 onClick={() => setConfirmOpen(false)}
                 disabled={removeMutation.isPending}
               >
-                Cancel
+                {t("mgmt.rows.cancel")}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => removeMutation.mutate()}
                 disabled={removeMutation.isPending}
               >
-                {removeMutation.isPending ? "Removing..." : "Remove"}
+                {removeMutation.isPending ? t("mgmt.rows.removing") : t("mgmt.rows.remove")}
               </Button>
             </DialogFooter>
           </DialogContent>

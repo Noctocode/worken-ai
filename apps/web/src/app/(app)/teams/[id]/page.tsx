@@ -75,6 +75,7 @@ import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { TeamIntegrationsSection } from "@/components/team-integrations-section";
 import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -109,6 +110,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 /* ─── Dialogs ────────────────────────────────────────────────────────────── */
 
 function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; children: React.ReactNode }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -129,21 +131,21 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Subteam</DialogTitle>
-          <DialogDescription>Create a new subteam under this team.</DialogDescription>
+          <DialogTitle>{t("teamDetail.addSubteam")}</DialogTitle>
+          <DialogDescription>{t("teamDetail.addSubteamDesc")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) mutation.mutate(); }} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="subteam-name">Name</Label>
-            <Input id="subteam-name" placeholder="Subteam name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Label htmlFor="subteam-name">{t("teamDetail.name")}</Label>
+            <Input id="subteam-name" placeholder={t("teamDetail.subteamNamePh")} value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="subteam-desc">Description</Label>
-            <Textarea id="subteam-desc" placeholder="What is this subteam for?" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+            <Label htmlFor="subteam-desc">{t("teamDetail.description")}</Label>
+            <Textarea id="subteam-desc" placeholder={t("teamDetail.subteamDescPh")} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={mutation.isPending || !name.trim()}>
-              {mutation.isPending ? "Creating..." : "Create Subteam"}
+              {mutation.isPending ? t("teamDetail.creating") : t("teamDetail.createSubteam")}
             </Button>
           </DialogFooter>
         </form>
@@ -153,6 +155,7 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
 }
 
 function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListItem; parentTeamId: string; children: React.ReactNode }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -198,25 +201,25 @@ function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListIt
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Edit Subteam</DialogTitle>
-          <DialogDescription>Update the subteam details.</DialogDescription>
+          <DialogTitle>{t("teamDetail.editSubteam")}</DialogTitle>
+          <DialogDescription>{t("teamDetail.updateDesc")}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="edit-subteam-name">Name</Label>
+            <Label htmlFor="edit-subteam-name">{t("teamDetail.name")}</Label>
             <Input id="edit-subteam-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-subteam-desc">Description</Label>
+            <Label htmlFor="edit-subteam-desc">{t("teamDetail.description")}</Label>
             <Textarea id="edit-subteam-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-subteam-budget">Monthly Budget ($)</Label>
+            <Label htmlFor="edit-subteam-budget">{t("teamDetail.monthlyBudgetLabel")}</Label>
             <Input id="edit-subteam-budget" type="number" min="0" step="0.01" value={monthlyBudget} onChange={(e) => setMonthlyBudget(e.target.value)} />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={updateMutation.isPending || !name.trim()}>
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              {updateMutation.isPending ? t("teamDetail.saving") : t("teamDetail.saveChanges")}
             </Button>
           </DialogFooter>
         </form>
@@ -226,6 +229,7 @@ function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListIt
 }
 
 function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId: string; subName: string; parentTeamId: string; children: React.ReactNode }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
 
@@ -244,15 +248,15 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Delete Subteam</DialogTitle>
+          <DialogTitle>{t("teamDetail.deleteSubteam")}</DialogTitle>
           <DialogDescription>
-            Are you sure you want to delete <strong>{subName}</strong>? This action cannot be undone.
+            {t("teamDetail.deleteSubteamDesc1")} <strong>{subName}</strong>{t("teamDetail.deleteSubteamDesc2")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>{t("teamDetail.cancel")}</Button>
           <Button variant="destructive" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? "Deleting..." : "Delete"}
+            {mutation.isPending ? t("teamDetail.deleting") : t("teamDetail.delete")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -261,6 +265,7 @@ function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId
 }
 
 function AddGuardrailDialog({ teamId, children }: { teamId: string; children: React.ReactNode }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const qc = useQueryClient();
@@ -276,7 +281,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
   // teams at once; Org-wide rules apply everywhere by definition so
   // there's nothing to add at the team level.
   const unassigned = allGuardrails.filter(
-    (g) => !g.isOrgWide && !g.teams.some((t) => t.id === teamId),
+    (g) => !g.isOrgWide && !g.teams.some((teamRef) => teamRef.id === teamId),
   );
 
   const mutation = useMutation({
@@ -287,7 +292,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
       setOpen(false);
       setSelectedId("");
     },
-    onError: () => toast.error("Failed to assign guardrail."),
+    onError: () => toast.error(t("teamDetail.failedAssign")),
   });
 
   return (
@@ -295,9 +300,9 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Guardrail</DialogTitle>
+          <DialogTitle>{t("teamDetail.addGuardrail")}</DialogTitle>
           <DialogDescription>
-            Select a guardrail to assign to this team.
+            {t("teamDetail.addGuardrailDesc")}
           </DialogDescription>
         </DialogHeader>
         {isLoading ? (
@@ -306,21 +311,21 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
           </div>
         ) : unassigned.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="text-[14px] text-text-3">No guardrails available.</p>
+            <p className="text-[14px] text-text-3">{t("teamDetail.noGuardrailsAvailable")}</p>
             <Link
               href="/guardrails"
               className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
             >
-              Create one on the Guardrails page →
+              {t("teamDetail.createOnGuardrails")}
             </Link>
           </div>
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label>Guardrail</Label>
+              <Label>{t("teamDetail.guardrail")}</Label>
               <Select value={selectedId} onValueChange={setSelectedId}>
                 <SelectTrigger className="border-border-2 text-text-1 cursor-pointer">
-                  <SelectValue placeholder="Select a guardrail" />
+                  <SelectValue placeholder={t("teamDetail.selectGuardrail")} />
                 </SelectTrigger>
                 <SelectContent>
                   {unassigned.map((g) => (
@@ -337,7 +342,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
                 disabled={!selectedId || mutation.isPending}
                 className="cursor-pointer bg-primary-6 hover:bg-primary-7"
               >
-                {mutation.isPending ? "Assigning..." : "Assign Guardrail"}
+                {mutation.isPending ? t("teamDetail.assigning") : t("teamDetail.assignGuardrail")}
               </Button>
             </DialogFooter>
           </div>
@@ -350,6 +355,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 
 export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { id } = use(params);
   const queryClient = useQueryClient();
@@ -380,7 +386,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     }) => updateMemberRole(id, memberId, role),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
     onError: (err: Error) =>
-      toast.error(err.message || "Couldn't update member role."),
+      toast.error(err.message || t("teamDetail.couldntUpdateRole")),
   });
   const removeMutation = useMutation({
     mutationFn: (memberId: string) => removeTeamMember(id, memberId),
@@ -388,17 +394,17 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       queryClient.invalidateQueries({ queryKey: ["teams", id] });
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       queryClient.invalidateQueries({ queryKey: ["org-users"] });
-      toast.success("Member removed from the team.");
+      toast.success(t("teamDetail.memberRemoved"));
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove member.");
+      toast.error(err.message || t("teamDetail.couldntRemove"));
     },
   });
   const toggleMutation = useMutation({
     mutationFn: (guardrailId: string) =>
       toggleGuardrailTeamActive(guardrailId, id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
-    onError: (err: Error) => toast.error(err.message || "Failed to toggle guardrail."),
+    onError: (err: Error) => toast.error(err.message || t("teamDetail.failedToggle")),
   });
   const removeGuardrailMutation = useMutation({
     mutationFn: (guardrailId: string) =>
@@ -406,9 +412,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["guardrails", id] });
       queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
-      toast.success("Guardrail removed from team.");
+      toast.success(t("teamDetail.guardrailRemoved"));
     },
-    onError: () => toast.error("Failed to remove guardrail."),
+    onError: () => toast.error(t("teamDetail.failedRemoveGuardrail")),
   });
   const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(null);
   const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
@@ -434,12 +440,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const deleteTeamMutation = useMutation({
     mutationFn: () => deleteTeam(id),
     onSuccess: () => {
-      toast.success(`Deleted "${team?.name ?? "team"}".`);
+      toast.success(`${t("teamDetail.deletedToast")} "${team?.name ?? "team"}".`);
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       router.push("/teams");
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't delete team.");
+      toast.error(err.message || t("teamDetail.couldntDeleteTeam"));
     },
   });
 
@@ -529,7 +535,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   }, [guardrailsPage, guardrailsTotalPages]);
 
   if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
-  if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">Failed to load team.</p></div>;
+  if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">{t("teamDetail.failedLoad")}</p></div>;
 
   const budget = team.monthlyBudgetCents / 100;
   const spent = team.spentCents / 100;
@@ -594,13 +600,13 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const confirmEdit = async () => {
     const trimmedName = editName.trim();
     if (!trimmedName) {
-      toast.error("Team name cannot be empty.");
+      toast.error(t("teamDetail.nameEmpty"));
       return;
     }
     const raw = editBudget.replace(/\./g, "").replace(",", ".");
     const parsedBudget = parseFloat(raw);
     if (isNaN(parsedBudget) || parsedBudget < 0) {
-      toast.error("Budget must be a non-negative number.");
+      toast.error(t("teamDetail.budgetNonNegative"));
       return;
     }
 
@@ -625,7 +631,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
             ? { description: editDescription.trim() || undefined }
             : {}),
         }).catch((err: Error) => {
-          toast.error(err.message || "Couldn't save team details.");
+          toast.error(err.message || t("teamDetail.couldntSaveDetails"));
           throw err;
         }),
       );
@@ -635,7 +641,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         budgetMutation
           .mutateAsync(parsedBudget)
           .catch((err: Error) => {
-            toast.error(err.message || "Couldn't save monthly budget.");
+            toast.error(err.message || t("teamDetail.couldntSaveBudget"));
             throw err;
           }),
       );
@@ -643,7 +649,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
     const results = await Promise.allSettled(tasks);
     if (results.every((r) => r.status === "fulfilled")) {
-      toast.success("Team updated.");
+      toast.success(t("teamDetail.teamUpdated"));
       setIsEditing(false);
     }
   };
@@ -669,7 +675,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 <Input
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  placeholder="Team name"
+                  placeholder={t("teamDetail.teamNamePh")}
                   disabled={isSavingTeam}
                   className="h-10 text-[18px] font-bold"
                 />
@@ -680,12 +686,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 <Textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Description (optional)"
+                  placeholder={t("teamDetail.descPh")}
                   rows={2}
                   disabled={isSavingTeam}
                 />
               ) : (
-                <p className="text-[16px] text-text-1">{team.description ?? "No description"}</p>
+                <p className="text-[16px] text-text-1">{team.description ?? t("teamDetail.noDescription")}</p>
               )}
             </div>
           </div>
@@ -702,7 +708,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 disabled={isSavingTeam}
               >
                 <X className="h-4 w-4" />
-                Cancel
+                {t("teamDetail.cancel")}
               </Button>
               <Button
                 className="h-10 gap-2 bg-success-7 text-white hover:bg-success-7/90"
@@ -714,7 +720,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 ) : (
                   <Check className="h-4 w-4" strokeWidth={2.5} />
                 )}
-                Confirm
+                {t("teamDetail.confirm")}
               </Button>
             </div>
           )}
@@ -722,7 +728,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Monthly Budget</p>
+            <p className="text-[18px] font-bold text-text-1">{t("teamDetail.monthlyBudget")}</p>
             {editing ? (
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
@@ -754,19 +760,18 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                 {budget > 0 ? (
                   <span>{formatCurrency(budget)}</span>
                 ) : (
-                  <span className="text-text-3">Not set</span>
+                  <span className="text-text-3">{t("teamDetail.notSet")}</span>
                 )}
               </div>
             )}
             {!editing && !canManageTeam && (
               <p className="text-[12px] text-text-3">
-                Only team owners and editors can change this — ask one to
-                adjust the budget.
+                {t("teamDetail.onlyOwners")}
               </p>
             )}
           </div>
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">Spent / Remaining</p>
+            <p className="text-[18px] font-bold text-text-1">{t("teamDetail.spentRemaining")}</p>
             <div className="flex items-center gap-3 h-[56px]">
               <span className="text-[16px] text-text-2">{formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}</span>
               <SpentBar spent={spent} budget={budget} />
@@ -774,28 +779,25 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <p className="text-[18px] font-bold text-text-1">Projected</p>
+              <p className="text-[18px] font-bold text-text-1">{t("teamDetail.projected")}</p>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    aria-label="What does Projected mean?"
+                    aria-label={t("teamDetail.projectedAria")}
                     className="flex items-center justify-center text-text-3 hover:text-text-1"
                   >
                     <Info className="h-3.5 w-3.5" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  Linear forecast of this team&rsquo;s total spend by
-                  month-end, extrapolated from the daily run-rate so
-                  far. Early in the month it can swing widely, then
-                  stabilizes.
+                  {t("teamDetail.projectedTooltip")}
                 </TooltipContent>
               </Tooltip>
             </div>
             <div className="flex items-center gap-2.5 h-[56px]">
               <span className="text-[16px] text-text-1">{formatCurrency(projected)}</span>
-              <span className={`rounded-lg px-2 py-1 text-[13px] ${onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"}`}>{onTrack ? "On track" : "Over Budget"}</span>
+              <span className={`rounded-lg px-2 py-1 text-[13px] ${onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"}`}>{onTrack ? t("teamDetail.onTrack") : t("teamDetail.overBudget")}</span>
             </div>
           </div>
         </div>
@@ -804,37 +806,37 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       {/* ── Subteams ──────────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">Subteams</p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.subteams")}</p>
           {canManageTeam ? (
             <AddSubteamDialog parentTeamId={id}>
-              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Add Subteam</Button>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addSubteam")}</Button>
             </AddSubteamDialog>
           ) : (
-            <DisabledReasonTooltip disabled reason="Not available for basic users">
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />Add Subteam
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addSubteam")}
               </Button>
             </DisabledReasonTooltip>
           )}
         </div>
         {subteams.length === 0 ? (
-          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No subteams yet.</div></div>
+          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noSubteams")}</div></div>
         ) : (
           <div className="overflow-x-auto bg-bg-white rounded">
             <table className="w-full min-w-[480px] md:min-w-[640px] lg:min-w-[800px]">
               <thead>
                 <tr className="h-[33px] border-b border-bg-1">
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Team</th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">Description</th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Monthly Budget</th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">Spent / Remaining</th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Projected</th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">Members</th>
-                  <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">Actions</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colTeam")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">{t("teamDetail.colDesc")}</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colMonthlyBudget")}</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colSpentRemaining")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colProjected")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">{t("teamDetail.colMembers")}</th>
+                  <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -876,7 +878,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           <div className="flex items-center gap-1.5">
                             <span className="text-sm text-text-1">{formatCurrency(subProjected)}</span>
                             <span className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
-                              {subOverBudget ? "Over Budget" : "On track"}
+                              {subOverBudget ? t("teamDetail.overBudget") : t("teamDetail.onTrack")}
                             </span>
                           </div>
                         ) : (
@@ -915,10 +917,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             {canManageTeam ? (
                               <>
                                 <EditSubteamDialog sub={sub} parentTeamId={id}>
-                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />Edit</DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />{t("teamDetail.edit")}</DropdownMenuItem>
                                 </EditSubteamDialog>
                                 <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
-                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-danger-6 focus:text-danger-6"><Trash2 className="h-4 w-4" />Delete</DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-danger-6 focus:text-danger-6"><Trash2 className="h-4 w-4" />{t("teamDetail.subDelete")}</DropdownMenuItem>
                                 </DeleteSubteamDialog>
                               </>
                             ) : (
@@ -928,14 +930,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                   onSelect={(e) => e.preventDefault()}
                                   className="gap-2"
                                 >
-                                  <Pencil className="h-4 w-4" />Edit
+                                  <Pencil className="h-4 w-4" />{t("teamDetail.edit")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   disabled
                                   onSelect={(e) => e.preventDefault()}
                                   className="gap-2 text-danger-6 focus:text-danger-6"
                                 >
-                                  <Trash2 className="h-4 w-4" />Delete
+                                  <Trash2 className="h-4 w-4" />{t("teamDetail.subDelete")}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -969,30 +971,27 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
           <div className="flex items-start gap-2 rounded-lg border border-warning-3 bg-warning-1/40 px-3 py-2">
             <AlertTriangle className="h-4 w-4 shrink-0 text-warning-7 mt-0.5" />
             <p className="text-[13px] text-warning-7 leading-snug">
-              Member caps total{" "}
+              {t("teamDetail.memberCapsTotal")}{" "}
               <strong>{formatCurrency(allocatedCapsCents / 100)}</strong>,
-              over the team&rsquo;s monthly budget of{" "}
-              <strong>{formatCurrency(budget)}</strong>. Members will be
-              blocked once team total reaches the budget regardless of
-              individual caps — trim caps or raise the team budget to
-              line them up.
+              {t("teamDetail.overTeamBudget")}{" "}
+              <strong>{formatCurrency(budget)}</strong>{t("teamDetail.overTeamBudget2")}
             </p>
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">Users</p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.users")}</p>
           {canManageTeam ? (
             <InviteMemberDialog teamId={id}>
-              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />Invite Users</Button>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.inviteUsers")}</Button>
             </InviteMemberDialog>
           ) : (
-            <DisabledReasonTooltip disabled reason="Not available for basic users">
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />Invite Users
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.inviteUsers")}
               </Button>
             </DisabledReasonTooltip>
           )}
@@ -1002,21 +1001,21 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
             <table className="w-full min-w-[420px] md:min-w-[640px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] sm:w-[260px] lg:w-[300px]">Name</th>
-                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">Email</th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Role</th>
-                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] lg:table-cell">Monthly Cap</th>
-                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] sm:w-[260px] lg:w-[300px]">{t("teamDetail.colName")}</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">{t("teamDetail.colEmail")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colRole")}</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] lg:table-cell">{t("teamDetail.colMonthlyCap")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("teamDetail.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
                 {pagedMembers.map((m) => {
                   const capLabel =
                     m.monthlyCapCents == null
-                      ? "No cap"
+                      ? t("teamDetail.noCap")
                       : m.monthlyCapCents === 0
-                        ? "Suspended"
-                        : `${formatCurrency(m.monthlyCapCents / 100)}/mo`;
+                        ? t("teamDetail.suspended")
+                        : `${formatCurrency(m.monthlyCapCents / 100)}${t("teamDetail.perMonth")}`;
                   const capTone =
                     m.monthlyCapCents === 0
                       ? "text-danger-6"
@@ -1032,20 +1031,20 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             {memberName(m)}
                             {m.userId && m.userId === team.ownerId && (
                               <Badge className="border-transparent bg-primary-1 text-primary-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                                Team Owner
+                                {t("teamDetail.teamOwner")}
                               </Badge>
                             )}
                             {m.role === "admin" && (
                               <Badge className="border-transparent bg-warning-1 text-warning-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                                Team Admin
+                                {t("teamDetail.teamAdmin")}
                               </Badge>
                             )}
                             {m.role === "manager" && (
                               <Badge className="border-transparent bg-success-1 text-success-7 uppercase tracking-wide text-[10px] px-1.5 py-0">
-                                Team Manager
+                                {t("teamDetail.teamManager")}
                               </Badge>
                             )}
-                            {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">Pending</span>}
+                            {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">{t("teamDetail.pending")}</span>}
                           </span>
                         </div>
                       </td>
@@ -1053,7 +1052,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       <td className="bg-bg-white px-4 align-middle">
                         {m.role === "owner" ? (
                           <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
-                            Team Owner
+                            {t("teamDetail.teamOwner")}
                           </span>
                         ) : (
                           <Select
@@ -1094,13 +1093,13 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                   the current value even for a read-
                                   only editor view. */}
                               {(hasOwnerRights || m.role === "admin") && (
-                                <SelectItem value="admin">Admin</SelectItem>
+                                <SelectItem value="admin">{t("teamDetail.tmAdmin")}</SelectItem>
                               )}
                               {(hasOwnerRights || m.role === "manager") && (
-                                <SelectItem value="manager">Manager</SelectItem>
+                                <SelectItem value="manager">{t("teamDetail.tmManager")}</SelectItem>
                               )}
-                              <SelectItem value="editor">Editor</SelectItem>
-                              <SelectItem value="viewer">Viewer</SelectItem>
+                              <SelectItem value="editor">{t("teamDetail.tmEditor")}</SelectItem>
+                              <SelectItem value="viewer">{t("teamDetail.tmViewer")}</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
@@ -1108,7 +1107,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       <td className="hidden bg-bg-white px-4 align-middle w-[180px] lg:table-cell">
                         <span
                           className={`text-[14px] ${capTone}`}
-                          title="Use Actions → Change monthly cap to edit"
+                          title={t("teamDetail.capEditTitle")}
                         >
                           {capLabel}
                         </span>
@@ -1135,7 +1134,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                 }}
                               >
                                 <Wallet className="h-4 w-4" />
-                                Change monthly cap
+                                {t("teamDetail.changeMonthlyCap")}
                               </DropdownMenuItem>
                               <DropdownMenuItem
                                 className="gap-2 text-danger-6 focus:text-danger-6"
@@ -1148,7 +1147,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                   removeMutation.mutate(m.id);
                                 }}
                               >
-                                <UserX className="h-4 w-4" />Remove user
+                                <UserX className="h-4 w-4" />{t("teamDetail.removeUser")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1157,7 +1156,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                     </tr>
                   );
                 })}
-                {team.members.length === 0 && <tr><td colSpan={5} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">No members yet.</td></tr>}
+                {team.members.length === 0 && <tr><td colSpan={5} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noMembers")}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1176,37 +1175,37 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">Guardrails</p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.guardrails")}</p>
           {canManageTeam ? (
             <AddGuardrailDialog teamId={id}>
-              <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />Add Guardrail</Button>
+              <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addGuardrail")}</Button>
             </AddGuardrailDialog>
           ) : (
-            <DisabledReasonTooltip disabled reason="Not available for basic users">
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />Add Guardrail
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addGuardrail")}
               </Button>
             </DisabledReasonTooltip>
           )}
         </div>
         {guardrails.length === 0 ? (
-          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">No guardrails configured yet.</div></div>
+          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noGuardrails")}</div></div>
         ) : (
           <div className="bg-bg-white rounded overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] md:min-w-[560px] lg:min-w-[700px]">
                 <thead>
                   <tr>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">Name</th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">Type</th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Severity</th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">Triggers</th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">Status</th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">Actions</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colName")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">{t("teamDetail.colType")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colSeverity")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colTriggers")}</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">{t("teamDetail.colStatus")}</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("teamDetail.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1218,18 +1217,18 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           {g.isOrgWide && (
                             <span
                               className="rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6"
-                              title="This rule is Org-wide — it applies to every team in your company. Per-team pause / remove is disabled; manage it on the Guardrails page."
+                              title={t("teamDetail.orgWideTitle")}
                             >
-                              Org-wide
+                              {t("teamDetail.orgWide")}
                             </span>
                           )}
                         </div>
                       </td>
                       <td className="hidden px-4 align-middle md:table-cell">
                         <div className="flex flex-wrap gap-2.5">
-                          {g.type.split(",").map((t) => (
-                            <span key={t} className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">
-                              {t.trim()}
+                          {g.type.split(",").map((typeName) => (
+                            <span key={typeName} className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">
+                              {typeName.trim()}
                             </span>
                           ))}
                         </div>
@@ -1249,15 +1248,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                             }
                             onCheckedChange={() => {
                               if (g.isOrgWide) {
-                                toast.error(
-                                  "This rule is Org-wide. Manage it on the Guardrails page — per-team pause is disabled.",
-                                );
+                                toast.error(t("teamDetail.orgWideErr"));
                                 return;
                               }
                               if (!g.isActive) {
-                                toast.error(
-                                  "This guardrail is globally deactivated. Reactivate it on the Guardrails page first.",
-                                );
+                                toast.error(t("teamDetail.globallyDeactivated"));
                                 return;
                               }
                               toggleMutation.mutate(g.id);
@@ -1265,12 +1260,12 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                           />
                           <span className="text-[16px] text-text-1 whitespace-nowrap">
                             {!g.isActive
-                              ? "Inactive (global)"
+                              ? t("teamDetail.inactiveGlobal")
                               : g.isOrgWide
-                                ? "Active (org-wide)"
+                                ? t("teamDetail.activeOrgWide")
                                 : (g.teamIsActive ?? true)
-                                  ? "Active"
-                                  : "Inactive"}
+                                  ? t("teamDetail.active")
+                                  : t("teamDetail.inactive")}
                           </span>
                         </div>
                       </td>
@@ -1286,16 +1281,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                                   if (!canManageTeam || g.isOrgWide) {
                                     e.preventDefault();
                                     if (g.isOrgWide) {
-                                      toast.error(
-                                        "Org-wide rules can't be removed from a single team. Toggle Org-wide off on the Guardrails page first.",
-                                      );
+                                      toast.error(t("teamDetail.orgRemoveErr"));
                                     }
                                     return;
                                   }
                                   setRemoveGuardrailId(g.id);
                                 }}
                               >
-                                <UserX className="h-4 w-4" />Remove from team
+                                <UserX className="h-4 w-4" />{t("teamDetail.removeFromTeam")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1303,7 +1296,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                       </td>
                     </tr>
                   ))}
-                  {guardrails.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-[16px] text-text-3">No guardrails configured yet.</td></tr>}
+                  {guardrails.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noGuardrails")}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1326,11 +1319,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete team</DialogTitle>
+            <DialogTitle>{t("teamDetail.deleteTeamTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{team.name}</strong>?
-              This action cannot be undone and will remove all members and
-              subteams from this team.
+              {t("teamDetail.deleteTeamDesc1")} <strong>{team.name}</strong>{t("teamDetail.deleteTeamDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1339,14 +1330,14 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               onClick={() => setConfirmDeleteOpen(false)}
               disabled={deleteTeamMutation.isPending}
             >
-              Cancel
+              {t("teamDetail.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={() => deleteTeamMutation.mutate()}
               disabled={deleteTeamMutation.isPending}
             >
-              {deleteTeamMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteTeamMutation.isPending ? t("teamDetail.deleting") : t("teamDetail.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1374,11 +1365,10 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remove Guardrail</DialogTitle>
+            <DialogTitle>{t("teamDetail.removeGuardrailTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to remove{" "}
-              <strong>{removeGuardrailName}</strong> from this team? The
-              guardrail will not be deleted — it can be reassigned later.
+              {t("teamDetail.removeGuardrailDesc1")}{" "}
+              <strong>{removeGuardrailName}</strong> {t("teamDetail.removeGuardrailDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1387,7 +1377,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               onClick={() => setRemoveGuardrailId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("teamDetail.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1400,7 +1390,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               disabled={removeGuardrailMutation.isPending}
               className="cursor-pointer"
             >
-              {removeGuardrailMutation.isPending ? "Removing..." : "Remove"}
+              {removeGuardrailMutation.isPending ? t("teamDetail.removing") : t("teamDetail.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>

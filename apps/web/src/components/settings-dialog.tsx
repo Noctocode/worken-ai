@@ -8,6 +8,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/i18n";
 
 interface SettingsDialogProps {
   open: boolean;
@@ -33,7 +34,7 @@ export function SettingsDialog({
   open,
   onClose,
   onApply,
-  applyLabel = "Apply",
+  applyLabel,
   applyVariant = "default",
   applyDisabled = false,
   applyPending = false,
@@ -43,12 +44,14 @@ export function SettingsDialog({
   headerContent,
   children,
 }: SettingsDialogProps) {
+  const { t } = useLanguage();
+  const resolvedApplyLabel = applyLabel ?? t("dlg.settings.apply");
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-xl p-0 gap-0 overflow-hidden" showCloseButton={false}>
         <DialogTitle className="sr-only">{title}</DialogTitle>
         <DialogDescription className="sr-only">
-          {description ?? `${title} settings`}
+          {description ?? `${title} ${t("dlg.settings.settingsSuffix")}`}
         </DialogDescription>
 
         {/* Header */}
@@ -74,7 +77,7 @@ export function SettingsDialog({
             disabled={applyPending}
             className="h-[43px] border-border-2 text-text-1 text-[16px] font-normal disabled:opacity-60"
           >
-            Cancel
+            {t("dlg.settings.cancel")}
           </Button>
           <Button
             onClick={onApply ?? onClose}
@@ -86,7 +89,7 @@ export function SettingsDialog({
             } disabled:opacity-60 disabled:cursor-not-allowed`}
           >
             {applyPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-            {applyLabel}
+            {resolvedApplyLabel}
           </Button>
         </div>
       </DialogContent>

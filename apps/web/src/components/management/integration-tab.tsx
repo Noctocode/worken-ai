@@ -26,6 +26,7 @@ import {
   upsertIntegration,
   type IntegrationCard,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────
  *
@@ -103,6 +104,7 @@ function ProviderSettingsDialog({
   card: IntegrationCard;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
@@ -139,13 +141,13 @@ function ProviderSettingsDialog({
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       toast.success(
         editingKey && apiKey && useOwnKey
-          ? `${card.displayName} key saved.`
-          : `${card.displayName} settings saved.`,
+          ? `${card.displayName} ${t("mgmt.integ.keySavedToast")}`
+          : `${card.displayName} ${t("mgmt.integ.settingsSavedToast")}`,
       );
       onClose();
     },
     onError: (err: Error) => {
-      toast.error(err.message ?? "Couldn't save settings.");
+      toast.error(err.message ?? t("mgmt.integ.couldntSave"));
     },
   });
 
@@ -161,10 +163,10 @@ function ProviderSettingsDialog({
       open
       onClose={onClose}
       onApply={() => saveMutation.mutate()}
-      applyLabel={saveMutation.isPending ? "Saving…" : "Apply"}
+      applyLabel={saveMutation.isPending ? t("mgmt.integ.applySaving") : t("mgmt.integ.apply")}
       applyPending={saveMutation.isPending}
       title={card.displayName}
-      description={`Configure ${card.displayName} integration settings.`}
+      description={t("mgmt.integ.settingsTitle").replace("{name}", card.displayName)}
       headerIcon={iconForHint(card.iconHint)}
       headerContent={
         <Switch
@@ -182,10 +184,7 @@ function ProviderSettingsDialog({
           <div className="flex items-start gap-2 rounded-lg border border-warning-3 bg-warning-1/40 px-3 py-2">
             <Info className="h-4 w-4 shrink-0 text-warning-7 mt-0.5" />
             <p className="text-[13px] text-warning-7 leading-snug">
-              {card.displayName}&rsquo;s native API isn&rsquo;t OpenAI-compatible
-              yet, so a BYOK key here is stored but chat calls still route
-              through the WorkenAI default. We&rsquo;ll honor it directly
-              once native support lands.
+              {card.displayName}{t("mgmt.integ.compatibilityPrefix")}
             </p>
           </div>
         )}
@@ -194,13 +193,13 @@ function ProviderSettingsDialog({
         <div className="flex items-start gap-8">
           <div>
             <p className="text-[16px] font-normal text-text-1 mb-0.5">
-              Success rate:
+              {t("mgmt.integ.successRate")}
             </p>
             <p className="text-[18px] font-bold text-text-1">{successRatePct}%</p>
           </div>
           <div>
             <p className="text-[16px] font-normal text-text-1 mb-0.5">
-              API calls:
+              {t("mgmt.integ.apiCalls")}
             </p>
             <p className="text-[18px] font-bold text-text-1">
               {card.stats.apiCalls.toLocaleString()}
@@ -208,12 +207,12 @@ function ProviderSettingsDialog({
           </div>
           <div>
             <p className="text-[16px] font-normal text-text-1 mb-0.5">
-              Peak / day:
+              {t("mgmt.integ.peakDay")}
             </p>
             <p className="text-[18px] font-bold text-text-1">
               {card.stats.peakDailyCalls.toLocaleString()}
               <span className="text-[13px] font-normal text-text-3 ml-2">
-                calls (30d max)
+                {t("mgmt.integ.calls30d")}
               </span>
             </p>
           </div>
@@ -225,10 +224,10 @@ function ProviderSettingsDialog({
             to fit whatever copy lands in it. */}
         <div>
           <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
-            Use WORKENAI API
+            {t("mgmt.integ.useWorkenai")}
           </p>
           <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
-            Additional costs on the WorkenAI subscription will be added.
+            {t("mgmt.integ.additionalCosts")}
           </div>
         </div>
 
@@ -253,7 +252,7 @@ function ProviderSettingsDialog({
               className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
             />
             <span className="text-[14px] font-normal leading-[20px] text-text-2">
-              Use your own API KEY
+              {t("mgmt.integ.useOwnKey")}
             </span>
           </label>
 
@@ -269,7 +268,7 @@ function ProviderSettingsDialog({
               </span>
               <div className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[13px] font-semibold text-success-7">
-                  API key configured
+                  {t("mgmt.integ.keyConfigured")}
                 </span>
                 <span className="flex items-center gap-1.5 text-[13px] text-text-2">
                   <KeyRound className="h-3.5 w-3.5 text-text-3" />
@@ -286,7 +285,7 @@ function ProviderSettingsDialog({
                 }}
                 className="text-[13px] font-medium text-primary-6 hover:underline"
               >
-                Replace
+                {t("mgmt.integ.replace")}
               </button>
             </div>
           )}
@@ -299,8 +298,8 @@ function ProviderSettingsDialog({
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={
                   card.hasApiKey
-                    ? "Enter a new key to replace the saved one"
-                    : "Enter your API key"
+                    ? t("mgmt.integ.enterNewKey")
+                    : t("mgmt.integ.enterApiKey")
                 }
                 className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
               />
@@ -313,7 +312,7 @@ function ProviderSettingsDialog({
                   }}
                   className="text-[13px] text-text-3 hover:underline"
                 >
-                  Cancel — keep the saved key
+                  {t("mgmt.integ.cancelKeepKey")}
                 </button>
               )}
             </>
@@ -321,7 +320,7 @@ function ProviderSettingsDialog({
         </div>
 
         <p className="text-[16px] font-normal leading-[24px] text-text-1">
-          API calls will incur a small Technology fee.
+          {t("mgmt.integ.techFee")}
         </p>
       </div>
     </SettingsDialog>
@@ -331,6 +330,7 @@ function ProviderSettingsDialog({
 /* ─── Add Custom LLM dialog ─────────────────────────────────────────── */
 
 function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useLanguage();
   const [customName, setCustomName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -349,11 +349,11 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       // Models picker reads from /models — invalidate so the auto-
       // created alias shows up immediately without a refresh.
       queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
-      toast.success(`${customName || "Custom LLM"} added.`);
+      toast.success(`${customName || t("mgmt.integ.customLLMFallback")} ${t("mgmt.integ.addedToast")}`);
       onClose();
     },
     onError: (err: Error) => {
-      toast.error(err.message ?? "Couldn't add custom LLM.");
+      toast.error(err.message ?? t("mgmt.integ.couldntAdd"));
     },
   });
 
@@ -365,49 +365,49 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       open
       onClose={onClose}
       onApply={() => createMutation.mutate()}
-      applyLabel={createMutation.isPending ? "Adding…" : "Apply"}
+      applyLabel={createMutation.isPending ? t("mgmt.integ.addingDots") : t("mgmt.integ.apply")}
       applyPending={createMutation.isPending}
       applyDisabled={!canSubmit}
-      title="Add Custom LLM"
-      description="Register an OpenAI-compatible endpoint and pick the name you'll see in the model dropdown."
+      title={t("mgmt.integ.addTitle")}
+      description={t("mgmt.integ.addDesc")}
     >
       <div className="space-y-4">
         <div>
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
-            Display name
+            {t("mgmt.integ.displayName")}
           </p>
           <input
             type="text"
             value={customName}
             onChange={(e) => setCustomName(e.target.value)}
-            placeholder="e.g. Local Llama 3.1"
+            placeholder={t("mgmt.integ.displayNamePlaceholder")}
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
           <p className="text-[12px] text-text-3 mt-1">
-            What you&rsquo;ll see in the model dropdown.
+            {t("mgmt.integ.displayNameHint")}
           </p>
         </div>
         <div>
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
-            API URL
+            {t("mgmt.integ.apiUrl")}
           </p>
           <input
             type="text"
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
-            placeholder="https://your-endpoint/v1"
+            placeholder={t("mgmt.integ.apiUrlPlaceholder")}
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
         <div>
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
-            API key (optional)
+            {t("mgmt.integ.apiKeyOptional")}
           </p>
           <input
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="Leave blank if the endpoint accepts anonymous"
+            placeholder={t("mgmt.integ.anonymousPlaceholder")}
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
         </div>
@@ -423,7 +423,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
           }
         >
           <BookOpen className="h-4 w-4 text-success-7" />
-          Integration documentation
+          {t("mgmt.integ.integDocs")}
         </button>
       </div>
     </SettingsDialog>
@@ -443,38 +443,36 @@ function DeleteCustomLLMDialog({
   onConfirm: () => void;
   isPending: boolean;
 }) {
+  const { t } = useLanguage();
   const n = card.boundAliasCount;
   return (
     <SettingsDialog
       open
       onClose={onClose}
       onApply={onConfirm}
-      applyLabel={isPending ? "Deleting…" : n > 0 ? "Delete anyway" : "Delete"}
+      applyLabel={isPending ? t("mgmt.integ.deletingDots") : n > 0 ? t("mgmt.integ.deleteAnyway") : t("mgmt.integ.delete")}
       applyPending={isPending}
       applyVariant="danger"
-      title={`Delete "${card.displayName}"?`}
+      title={`${t("mgmt.integ.deleteQuestion")} "${card.displayName}"?`}
     >
       <div className="space-y-3">
         {n > 0 ? (
           <div className="flex items-start gap-2 rounded-lg border border-danger-3 bg-danger-1/40 px-3 py-2">
             <AlertTriangle className="h-4 w-4 shrink-0 text-danger-6 mt-0.5" />
             <p className="text-[13px] text-danger-6 leading-snug">
-              <strong>{n}</strong> model alias{n === 1 ? "" : "es"} currently
-              route to this Custom LLM. Deleting it will{" "}
-              <strong>unlink them</strong> — those aliases will fall back to
-              the WorkenAI default routing, which will likely fail until you
-              point them at another endpoint or remove them.
+              <strong>{n}</strong> {n === 1 ? t("mgmt.integ.aliasesSingular") : t("mgmt.integ.aliasesPlural")}{" "}
+              {t("mgmt.integ.aliasesToThis")}{" "}
+              <strong>{t("mgmt.integ.unlinkThem")}</strong>{" "}
+              {t("mgmt.integ.aliasesSuffix")}
             </p>
           </div>
         ) : (
           <p className="text-[14px] text-text-2">
-            This Custom LLM has no aliases bound to it. Removing it now is
-            safe.
+            {t("mgmt.integ.noAliases")}
           </p>
         )}
         <p className="text-[13px] text-text-3">
-          The action cannot be undone. The endpoint URL and any saved API
-          key are deleted from this workspace.
+          {t("mgmt.integ.actionUndo")}
         </p>
       </div>
     </SettingsDialog>
@@ -484,6 +482,7 @@ function DeleteCustomLLMDialog({
 /* ─── Main tab ──────────────────────────────────────────────────────── */
 
 export function IntegrationTab() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -535,7 +534,7 @@ export function IntegrationTab() {
       if (ctx?.previous) {
         queryClient.setQueryData(["integrations"], ctx.previous);
       }
-      toast.error(err.message ?? "Couldn't toggle integration.");
+      toast.error(err.message ?? t("mgmt.integ.couldntToggle"));
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
@@ -550,11 +549,11 @@ export function IntegrationTab() {
       // integrationId set to null at the DB level — refresh Models tab
       // so the badge disappears immediately.
       queryClient.invalidateQueries({ queryKey: ["models"] });
-      toast.success("Custom LLM removed.");
+      toast.success(t("mgmt.integ.customLLMRemoved"));
       setPendingDelete(null);
     },
     onError: (err: Error) => {
-      toast.error(err.message ?? "Couldn't delete.");
+      toast.error(err.message ?? t("mgmt.integ.couldntDelete"));
     },
   });
 
@@ -568,19 +567,19 @@ export function IntegrationTab() {
       <div className="flex items-center gap-4 mb-6">
         <SearchInput
           className="flex-1"
-          placeholder="Search"
+          placeholder={t("mgmt.integ.search")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
         {isAdmin ? (
           <Button variant="plusAction" onClick={() => setShowAddDialog(true)}>
             <Plus className="h-4 w-4 text-white" />
-            Add Custom LLM
+            {t("mgmt.integ.addCustomLLM")}
           </Button>
         ) : (
           <DisabledReasonTooltip
             disabled
-            reason="Only admins can add integrations"
+            reason={t("mgmt.integ.adminOnly")}
           >
             <Button
               variant="plusAction"
@@ -588,7 +587,7 @@ export function IntegrationTab() {
               className="disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Plus className="h-4 w-4 text-white" />
-              Add Custom LLM
+              {t("mgmt.integ.addCustomLLM")}
             </Button>
           </DisabledReasonTooltip>
         )}
@@ -602,7 +601,7 @@ export function IntegrationTab() {
       )}
       {error && (
         <div className="py-12 text-center text-sm text-danger-6">
-          Failed to load integrations. Is the API running?
+          {t("mgmt.integ.failedLoad")}
         </div>
       )}
 
@@ -626,7 +625,7 @@ export function IntegrationTab() {
                   : "cursor-not-allowed opacity-80"
               }`}
               onClick={() => isAdmin && setSelected(card)}
-              title={isAdmin ? undefined : "Only admins can change integrations"}
+              title={isAdmin ? undefined : t("mgmt.integ.changeAdminOnly")}
             >
               {/* Header: icon + name + toggle */}
               <div className="flex items-center justify-between">
@@ -646,7 +645,7 @@ export function IntegrationTab() {
                     title={
                       isAdmin
                         ? undefined
-                        : "Only admins can change integrations"
+                        : t("mgmt.integ.changeAdminOnly")
                     }
                     className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
                   />
@@ -659,10 +658,10 @@ export function IntegrationTab() {
               {card.hasApiKey && (
                 <span
                   className="mt-2 inline-flex w-fit items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7"
-                  title="Your own API key is saved for this provider"
+                  title={t("mgmt.integ.keySetTooltip")}
                 >
                   <Check className="h-3 w-3" strokeWidth={2.5} />
-                  Key set
+                  {t("mgmt.integ.keySet")}
                 </span>
               )}
 
@@ -689,12 +688,12 @@ export function IntegrationTab() {
                     }`}
                     title={
                       isAdmin
-                        ? "Delete custom LLM"
-                        : "Only admins can delete integrations"
+                        ? t("mgmt.integ.deleteCustomLLM")
+                        : t("mgmt.integ.deleteAdminOnly")
                     }
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                    Delete
+                    {t("mgmt.integ.delete")}
                     {card.boundAliasCount > 0 && (
                       <span className="ml-1 rounded-full bg-danger-1 px-1.5 py-0 text-[10px] font-medium text-danger-6">
                         {card.boundAliasCount}
@@ -705,7 +704,7 @@ export function IntegrationTab() {
                   <span />
                 )}
                 <span className="text-[14px] font-normal text-text-3">
-                  Settings
+                  {t("mgmt.integ.settings")}
                 </span>
               </div>
             </div>
@@ -714,7 +713,7 @@ export function IntegrationTab() {
 
           {filtered.length === 0 && (
             <div className="col-span-full py-12 text-center text-sm text-text-3">
-              No integrations match your search.
+              {t("mgmt.integ.noMatch")}
             </div>
           )}
         </div>

@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { deleteTeam, type TeamListItem } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Mobile-only card variant of `TeamRow`. Same data shape, same
@@ -40,6 +41,7 @@ export function TeamCard({
   team: TeamListItem;
   isOwner: boolean;
 }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -56,12 +58,12 @@ export function TeamCard({
   const deleteMutation = useMutation({
     mutationFn: () => deleteTeam(team.id),
     onSuccess: () => {
-      toast.success(`Deleted "${team.name}".`);
+      toast.success(`${t("mgmt.rows.deletedToast")} "${team.name}".`);
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       setConfirmOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't delete team.");
+      toast.error(err.message || t("mgmt.rows.couldntDeleteTeam"));
     },
   });
 
@@ -71,7 +73,7 @@ export function TeamCard({
     <div
       role="link"
       tabIndex={0}
-      aria-label={`Open ${team.name}`}
+      aria-label={t("mgmt.rows.openTeam").replace("{name}", team.name)}
       onClick={cardClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -93,7 +95,7 @@ export function TeamCard({
               className="shrink-0 gap-1 text-[11px] border-warning-2 bg-warning-1 text-warning-6"
             >
               <Crown className="h-3 w-3" />
-              Owner
+              {t("mgmt.rows.owner")}
             </Badge>
           )}
         </div>
@@ -105,7 +107,7 @@ export function TeamCard({
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Actions for ${team.name}`}
+                aria-label={`${t("mgmt.rows.actionsFor")} ${team.name}`}
                 className="h-8 w-8 shrink-0 rounded-lg border border-border-2 text-text-2 hover:bg-bg-1 hover:text-text-1"
               >
                 <MoreVertical className="h-4 w-4" />
@@ -115,14 +117,14 @@ export function TeamCard({
               <DropdownMenuItem asChild>
                 <Link href={`/teams/${team.id}`} className="gap-2">
                   <Eye className="h-4 w-4" />
-                  View team
+                  {t("mgmt.rows.viewTeam")}
                 </Link>
               </DropdownMenuItem>
               {team.canManage && (
                 <CreateTeamDialog team={team}>
                   <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
                     <Pencil className="h-4 w-4" />
-                    Edit team
+                    {t("mgmt.rows.editTeam")}
                   </DropdownMenuItem>
                 </CreateTeamDialog>
               )}
@@ -135,11 +137,11 @@ export function TeamCard({
                   setConfirmOpen(true);
                 }}
                 title={
-                  team.canManage ? undefined : "Not available for basic users"
+                  team.canManage ? undefined : t("mgmt.rows.notAvailBasic")
                 }
               >
                 <Trash2 className="h-4 w-4" />
-                Remove team
+                {t("mgmt.rows.removeTeam")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -155,7 +157,7 @@ export function TeamCard({
 
       {/* Monthly Budget */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] text-text-3">Monthly Budget</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.monthlyBudget")}</span>
         <span className="text-[13px] font-semibold text-text-1">
           {budget > 0 ? formatCurrency(budget) : "—"}
         </span>
@@ -165,7 +167,7 @@ export function TeamCard({
       {budget > 0 ? (
         <>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-text-3">Spent / Remaining:</span>
+            <span className="text-[12px] text-text-3">{t("mgmt.rows.spentRemaining")}</span>
             <span className="text-[13px] font-semibold text-text-1">
               {formatCurrency(spent)}{" "}
               <span className="font-normal text-text-3">/</span>{" "}
@@ -183,7 +185,7 @@ export function TeamCard({
         </>
       ) : (
         <div className="flex items-center justify-between">
-          <span className="text-[12px] text-text-3">Spent / Remaining:</span>
+          <span className="text-[12px] text-text-3">{t("mgmt.rows.spentRemaining")}</span>
           <span className="text-[13px] text-text-1">—</span>
         </div>
       )}
@@ -191,36 +193,36 @@ export function TeamCard({
       {/* Projected + status badge */}
       {budget > 0 ? (
         <div className="flex items-center justify-between gap-2">
-          <span className="text-[12px] text-text-3">Projected</span>
+          <span className="text-[12px] text-text-3">{t("mgmt.rows.projected")}</span>
           <div className="flex items-center gap-2">
             <span className="text-[13px] font-semibold text-text-1">
               {formatCurrency(projected)}
             </span>
             {projected > budget && spent > budget ? (
               <span className="rounded bg-danger-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3">
-                Over Budget
+                {t("mgmt.rows.overBudget")}
               </span>
             ) : overBudget ? (
               <span className="rounded bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3">
-                Will Exceed
+                {t("mgmt.rows.willExceed")}
               </span>
             ) : (
               <span className="rounded bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
-                On track
+                {t("mgmt.rows.onTrack")}
               </span>
             )}
           </div>
         </div>
       ) : (
         <div className="flex items-center justify-between">
-          <span className="text-[12px] text-text-3">Projected</span>
+          <span className="text-[12px] text-text-3">{t("mgmt.rows.projected")}</span>
           <span className="text-[13px] text-text-1">—</span>
         </div>
       )}
 
       {/* Members */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] text-text-3">Members</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.members")}</span>
         {team.members.length > 0 ? (
           <div className="flex items-center">
             <div className="flex -space-x-2">
@@ -259,11 +261,9 @@ export function TeamCard({
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove team</DialogTitle>
+              <DialogTitle>{t("mgmt.rows.removeTeam")}</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete <strong>{team.name}</strong>?
-                This action cannot be undone and will remove all members and
-                subteams.
+                {t("mgmt.rows.removeTeamDesc1")} <strong>{team.name}</strong>{t("mgmt.rows.removeTeamDesc2")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -272,14 +272,14 @@ export function TeamCard({
                 onClick={() => setConfirmOpen(false)}
                 disabled={deleteMutation.isPending}
               >
-                Cancel
+                {t("mgmt.rows.cancel")}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => deleteMutation.mutate()}
                 disabled={deleteMutation.isPending}
               >
-                {deleteMutation.isPending ? "Removing..." : "Remove"}
+                {deleteMutation.isPending ? t("mgmt.rows.removing") : t("mgmt.rows.remove")}
               </Button>
             </DialogFooter>
           </DialogContent>

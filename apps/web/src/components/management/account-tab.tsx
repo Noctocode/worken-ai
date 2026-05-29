@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -88,42 +89,44 @@ function Section({
  * FE deploy. Add an entry here when the new plan launches and the
  * marketing copy is final.
  */
-const PLAN_DETAILS: Record<
-  string,
-  { label: string; tagline: string; tone: "neutral" | "primary" | "premium" }
-> = {
-  free: {
-    label: "Free",
-    tagline: "You're on the Free plan.",
-    tone: "neutral",
-  },
-};
-
-function getPlanDetails(plan: string) {
-  if (PLAN_DETAILS[plan]) return PLAN_DETAILS[plan];
+function getPlanDetails(
+  plan: string,
+  t: (key: import("@/lib/translations/en").TranslationKey) => string,
+): { label: string; tagline: string; tone: "neutral" | "primary" | "premium" } {
+  if (plan === "free") {
+    return {
+      label: t("mgmt.account.planFree"),
+      tagline: t("mgmt.account.freeTagline"),
+      tone: "neutral",
+    };
+  }
   return {
     label: plan
       .split(/[-_\s]+/)
       .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
       .join(" "),
-    tagline: "Custom plan.",
-    tone: "neutral" as const,
+    tagline: t("mgmt.account.customPlan"),
+    tone: "neutral",
   };
 }
 
-function buildPermissions(role: "admin" | "advanced" | "basic") {
+function buildPermissions(
+  role: "admin" | "advanced" | "basic",
+  t: (key: import("@/lib/translations/en").TranslationKey) => string,
+) {
   const isAdvanced = role === "admin" || role === "advanced";
   const isAdmin = role === "admin";
   return [
-    { label: "View projects and teams you belong to", allowed: true },
-    { label: "Create projects", allowed: isAdvanced },
-    { label: "Create teams", allowed: isAdvanced },
-    { label: "Invite users to a team", allowed: isAdvanced },
-    { label: "Remove users from the organization", allowed: isAdmin },
+    { label: t("mgmt.account.perm.view"), allowed: true },
+    { label: t("mgmt.account.perm.createProjects"), allowed: isAdvanced },
+    { label: t("mgmt.account.perm.createTeams"), allowed: isAdvanced },
+    { label: t("mgmt.account.perm.inviteUsers"), allowed: isAdvanced },
+    { label: t("mgmt.account.perm.removeUsers"), allowed: isAdmin },
   ];
 }
 
 export function AccountTab() {
+  const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { data, isLoading, error } = useQuery<OnboardingProfile>({
     queryKey: ["onboarding", "profile"],
@@ -141,7 +144,7 @@ export function AccountTab() {
   if (error || !data) {
     return (
       <div className="py-24 text-center text-sm text-text-3">
-        Failed to load your account.
+        {t("mgmt.account.failedLoad")}
       </div>
     );
   }
@@ -150,14 +153,14 @@ export function AccountTab() {
   const InfraIcon = data.infraChoice === "on-premise" ? Server : Cloud;
   const role = currentUser?.role ?? "basic";
   const isAdvanced = role === "admin" || role === "advanced";
-  const permissions = buildPermissions(role as "admin" | "advanced" | "basic");
+  const permissions = buildPermissions(role as "admin" | "advanced" | "basic", t);
 
   return (
     <div className="py-5">
       {/* Section header — matches Teams / Users / Models pattern */}
       <div className="mb-5">
         <span className="text-[18px] font-bold text-black-900">
-          My Account
+          {t("mgmt.account.title")}
         </span>
       </div>
 
@@ -192,7 +195,11 @@ export function AccountTab() {
                   : "bg-bg-3 text-text-2"
             }`}
           >
-            {role === "admin" ? "Admin" : isAdvanced ? "Advanced" : "Basic"}
+            {role === "admin"
+              ? t("mgmt.account.roleAdmin")
+              : isAdvanced
+                ? t("mgmt.account.roleAdvanced")
+                : t("mgmt.account.roleBasic")}
           </Badge>
         </div>
 
@@ -201,37 +208,37 @@ export function AccountTab() {
           <Section
             title={
               data.profileType === "company"
-                ? "Company Profile"
+                ? t("mgmt.account.companyProfile")
                 : data.profileType === "personal"
-                  ? "Private Professional Profile"
-                  : "Profile"
+                  ? t("mgmt.account.personalProfile")
+                  : t("mgmt.account.profile")
             }
             icon={ProfileIcon}
           >
             {data.profileType === "company" && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <Field label="Company name" value={data.companyName} />
-                <Field label="Industry" value={data.industry} />
-                <Field label="Team size" value={data.teamSize} />
+                <Field label={t("mgmt.account.companyName")} value={data.companyName} />
+                <Field label={t("mgmt.account.industry")} value={data.industry} />
+                <Field label={t("mgmt.account.teamSize")} value={data.teamSize} />
               </div>
             )}
             {data.profileType === "personal" && (
-              <Field label="Full name" value={data.name} />
+              <Field label={t("mgmt.account.fullName")} value={data.name} />
             )}
             {!data.profileType && (
               <p className="text-[13px] text-text-3">
-                Profile type not set yet.
+                {t("mgmt.account.profileNotSet")}
               </p>
             )}
           </Section>
 
-          <Section title="AI Infrastructure" icon={InfraIcon}>
+          <Section title={t("mgmt.account.infrastructure")} icon={InfraIcon}>
             <p className="text-[14px] text-text-1">
               {data.infraChoice === "managed"
-                ? "Managed Cloud — Hosted by WorkenAI"
+                ? t("mgmt.account.managedCloud")
                 : data.infraChoice === "on-premise"
-                  ? "On-Premise / Private Cloud"
-                  : "Not set"}
+                  ? t("mgmt.account.onPremise")
+                  : t("mgmt.account.notSet")}
             </p>
           </Section>
         </div>
@@ -240,9 +247,9 @@ export function AccountTab() {
             plus an Upgrade CTA. The button currently fires a "Coming
             soon" toast — paid plans aren't built yet. Wire it up to a
             real upgrade flow once billing lands. */}
-        <Section title="Plan" icon={Sparkles}>
+        <Section title={t("mgmt.account.plan")} icon={Sparkles}>
           {(() => {
-            const planDetails = getPlanDetails(data.plan);
+            const planDetails = getPlanDetails(data.plan, t);
             const badgeClass =
               planDetails.tone === "premium"
                 ? "bg-warning-1 text-warning-7"
@@ -264,13 +271,9 @@ export function AccountTab() {
                 <Button
                   variant="outline"
                   className="shrink-0"
-                  onClick={() =>
-                    toast.info(
-                      "Upgrade flow is coming soon — paid plans aren't live yet.",
-                    )
-                  }
+                  onClick={() => toast.info(t("mgmt.account.upgradeSoon"))}
                 >
-                  Upgrade account
+                  {t("mgmt.account.upgradeAccount")}
                 </Button>
               </div>
             );
@@ -278,11 +281,11 @@ export function AccountTab() {
         </Section>
 
         {/* Permissions — full width list */}
-        <Section title="Access tier & permissions" icon={ShieldCheck}>
+        <Section title={t("mgmt.account.accessTier")} icon={ShieldCheck}>
           <p className="mb-3 text-[13px] text-text-3">
             {isAdvanced
-              ? "You have full access to team and project management."
-              : "You can view projects and teams you belong to. Upgrade to Advanced for full access."}
+              ? t("mgmt.account.fullAccess")
+              : t("mgmt.account.viewOnly")}
           </p>
           <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {permissions.map((p) => (
@@ -320,11 +323,10 @@ export function AccountTab() {
         </Section>
 
         {/* Connected providers (legacy onboarding-time keys) */}
-        <Section title="Language Model Providers" icon={Key}>
+        <Section title={t("mgmt.account.providers")} icon={Key}>
           {data.providers.length === 0 ? (
             <p className="text-[13px] text-text-3">
-              No providers connected. Manage API keys in Management →
-              Integration.
+              {t("mgmt.account.noProviders")}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -337,7 +339,7 @@ export function AccountTab() {
                     {PROVIDER_LABELS[p.provider] ?? p.provider}
                   </span>
                   <span className="text-[12px] text-text-3">
-                    •••• connected
+                    {t("mgmt.account.connected")}
                   </span>
                 </li>
               ))}
@@ -346,10 +348,10 @@ export function AccountTab() {
         </Section>
 
         {/* Knowledge documents */}
-        <Section title="Knowledge Documents" icon={FileText}>
+        <Section title={t("mgmt.account.knowledgeDocs")} icon={FileText}>
           {data.documents.length === 0 ? (
             <p className="text-[13px] text-text-3">
-              No documents uploaded yet.
+              {t("mgmt.account.noDocs")}
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -371,10 +373,10 @@ export function AccountTab() {
                   <a
                     href={`${API_URL}/onboarding/documents/${d.id}/download`}
                     className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium text-primary-6 transition-colors hover:bg-primary-1/40"
-                    title={`Download ${d.filename}`}
+                    title={`${t("mgmt.account.download")} ${d.filename}`}
                   >
                     <Download className="h-3.5 w-3.5" />
-                    Download
+                    {t("mgmt.account.download")}
                   </a>
                 </li>
               ))}

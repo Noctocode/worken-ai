@@ -1,0 +1,18 @@
+export const resources = {
+  'resources.title': 'Prompt Engineering Hub',
+  'resources.subtitle': 'Access enterprise-grade tools and resources to build, optimize, and master AI prompts for procurement workflows. Designed specifically for Fortune 500 teams.',
+  'resources.enterpriseTemplates': 'Enterprise Templates',
+  'resources.aiPoweredAnalysis': 'AI-Powered Analysis',
+  'resources.bestPractices': 'Best Practices',
+  'resources.promptLibrary': 'Prompt Library',
+  'resources.promptBuilder': 'Prompt Builder',
+  'resources.promptImprover': 'Prompt Improver',
+  'resources.learnAcademy': 'Learn Academy',
+  'resources.shortcuts': 'Shortcuts',
+  'resources.quickStartGuide': 'Quick Start Guide',
+  'resources.openTool': 'Open Tool',
+  'resources.startWithBuilder': 'Start with Builder',
+  'resources.optimizeWithImprover': 'Optimize with Improver',
+  'resources.learnInAcademy': 'Learn in Academy',
+  'resources.enterpriseBestPractices': 'Enterprise Prompt Engineering Best Practices',
+} as const;

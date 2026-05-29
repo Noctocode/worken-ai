@@ -46,17 +46,8 @@ import {
 } from "@/components/ui/dialog";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
+import { useLanguage } from "@/lib/i18n";
 
-const CATEGORIES: Array<{
-  title: string;
-  subtitle: string;
-  icon: typeof FolderClosed;
-}> = [
-  { title: "Project Case Studies", subtitle: "Past proposals", icon: FolderClosed },
-  { title: "CVs/Resumes", subtitle: "Team profiles", icon: Users },
-  { title: "IT Stack Docs", subtitle: "Technical specs", icon: Server },
-  { title: "Certificates", subtitle: "Professional creds", icon: Award },
-];
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
 
@@ -81,6 +72,18 @@ export default function SetupProfileStep6Page() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { state, files, setFiles, reset } = useOnboarding();
+  const { t } = useLanguage();
+
+  const CATEGORIES: Array<{
+    title: string;
+    subtitle: string;
+    icon: typeof FolderClosed;
+  }> = [
+    { title: t("onboarding.step6.cat.caseStudies"), subtitle: t("onboarding.step6.cat.caseStudiesSub"), icon: FolderClosed },
+    { title: t("onboarding.step6.cat.cvs"), subtitle: t("onboarding.step6.cat.cvsSub"), icon: Users },
+    { title: t("onboarding.step6.cat.itStack"), subtitle: t("onboarding.step6.cat.itStackSub"), icon: Server },
+    { title: t("onboarding.step6.cat.certs"), subtitle: t("onboarding.step6.cat.certsSub"), icon: Award },
+  ];
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [phase, setPhase] = useState<SubmitPhase>("idle");
@@ -337,19 +340,22 @@ export default function SetupProfileStep6Page() {
 
           <div className="flex flex-col gap-2 text-center">
             <h1 className="text-[28px] font-bold leading-tight text-text-1">
-              {allDone ? "Your AI is ready" : "Setting up your AI…"}
+              {allDone ? t("onboarding.step6.done.title") : t("onboarding.step6.preparing.title")}
             </h1>
             <p className="text-[15px] font-normal leading-snug text-text-2">
               {allDone
-                ? "Knowledge Core is initialized. Redirecting to your workspace."
-                : "We're adding your documents to your AI's context so the assistant can draw on them. This usually takes under a minute."}
+                ? t("onboarding.step6.done.subtitle")
+                : t("onboarding.step6.preparing.subtitle")}
             </p>
           </div>
 
           <div className="w-full flex flex-col gap-3">
             <div className="flex items-center justify-between text-[13px] font-medium text-text-2">
               <span>
-                {completed} of {total} document{total === 1 ? "" : "s"}
+                {completed} {t("onboarding.step6.doc.of")} {total}{" "}
+                {total === 1
+                  ? t("onboarding.step6.doc.singular")
+                  : t("onboarding.step6.doc.plural")}
               </span>
               <span>{pct}%</span>
             </div>
@@ -389,12 +395,12 @@ export default function SetupProfileStep6Page() {
                   </span>
                   <span className="text-[11px] uppercase tracking-wide text-text-3">
                     {doc.status === "done"
-                      ? "Added"
+                      ? t("onboarding.step6.doc.added")
                       : doc.status === "failed"
-                        ? "Skipped"
+                        ? t("onboarding.step6.doc.skipped")
                         : doc.status === "processing"
-                          ? "Adding"
-                          : "Queued"}
+                          ? t("onboarding.step6.doc.adding")
+                          : t("onboarding.step6.doc.queued")}
                   </span>
                 </li>
               ))}
@@ -414,7 +420,7 @@ export default function SetupProfileStep6Page() {
               onClick={finishAndRedirect}
               className="text-[13px] font-medium text-text-3 underline-offset-2 hover:text-text-1 hover:underline"
             >
-              Skip and continue to dashboard
+              {t("onboarding.step6.skip")}
             </button>
           ) : null}
           {!allDone && preparingElapsedSec >= 60 ? (
@@ -426,12 +432,10 @@ export default function SetupProfileStep6Page() {
                 />
                 <div className="flex flex-col gap-1">
                   <p className="text-[14px] font-semibold text-text-1">
-                    This is taking longer than expected.
+                    {t("onboarding.step6.timeout.title")}
                   </p>
                   <p className="text-[13px] font-normal text-text-2">
-                    Onboarding is already saved — you can continue to your
-                    workspace and any unfinished files will stay queued.
-                    Retry them anytime from Knowledge Core.
+                    {t("onboarding.step6.timeout.body")}
                   </p>
                 </div>
               </div>
@@ -439,7 +443,7 @@ export default function SetupProfileStep6Page() {
                 onClick={finishAndRedirect}
                 className="self-start bg-primary-6 hover:bg-primary-7 text-white"
               >
-                Continue anyway
+                {t("onboarding.step6.timeout.cta")}
               </Button>
             </div>
           ) : null}
@@ -468,11 +472,10 @@ export default function SetupProfileStep6Page() {
         <div className="w-full flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Initialize your Knowledge Core
+              {t("onboarding.step6.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Upload documents so your enterprise AI can answer using
-              your internal expertise and institutional knowledge.
+              {t("onboarding.step6.subtitle")}
             </p>
           </div>
 
@@ -491,11 +494,9 @@ export default function SetupProfileStep6Page() {
                 />
                 <p className="text-[13px] leading-relaxed text-text-2">
                   <span className="font-semibold text-text-1">
-                    These files will be shared with your whole company workspace.
+                    {t("onboarding.step6.companyBannerBold")}
                   </span>{" "}
-                  Anyone you invite can pull them into chat as context. Avoid
-                  uploading personal documents here — you can add private files
-                  later from Knowledge Core.
+                  {t("onboarding.step6.companyBannerText")}
                 </p>
               </div>
 
@@ -507,7 +508,7 @@ export default function SetupProfileStep6Page() {
                   Knowledge Core later. */}
               <div className="flex flex-col gap-1.5 rounded border border-border-2 bg-bg-white px-4 py-3">
                 <label className="text-[13px] font-semibold text-text-1">
-                  Who can use these documents?
+                  {t("onboarding.step6.visibilityLabel")}
                 </label>
                 <Select
                   value={knowledgeVisibility}
@@ -522,21 +523,21 @@ export default function SetupProfileStep6Page() {
                     <SelectItem value="all">
                       <span className="inline-flex items-center gap-2">
                         <Users className="h-3.5 w-3.5" />
-                        Everyone in the company
+                        {t("onboarding.step6.visibilityAll")}
                       </span>
                     </SelectItem>
                     <SelectItem value="admins">
                       <span className="inline-flex items-center gap-2">
                         <Shield className="h-3.5 w-3.5" />
-                        Admins only
+                        {t("onboarding.step6.visibilityAdmins")}
                       </span>
                     </SelectItem>
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-text-3">
                   {knowledgeVisibility === "admins"
-                    ? "Only admins will see these in chat / arena. You can change this per-file in Knowledge Core later."
-                    : "All company users will see these in chat / arena. You can restrict any file to admins later in Knowledge Core."}
+                    ? t("onboarding.step6.visibilityAdminsDesc")
+                    : t("onboarding.step6.visibilityAllDesc")}
                 </p>
               </div>
             </div>
@@ -548,9 +549,9 @@ export default function SetupProfileStep6Page() {
               />
               <p className="text-[13px] leading-relaxed text-text-2">
                 <span className="font-semibold text-text-1">
-                  These files stay private to your account.
+                  {t("onboarding.step6.personalBannerBold")}
                 </span>{" "}
-                Only you will see them in chat.
+                {t("onboarding.step6.personalBannerText")}
               </p>
             </div>
           ) : null}
@@ -581,14 +582,14 @@ export default function SetupProfileStep6Page() {
             </div>
             <div className="pointer-events-none flex flex-col items-start gap-1">
               <span className="text-base font-bold text-text-1">
-                Drop files here or click to browse
+                {t("onboarding.step6.dropzoneTitle")}
               </span>
               <span className="text-[13px] font-medium text-text-3">
-                Supports PDF, DOCX, TXT (Max 50MB per file)
+                {t("onboarding.step6.dropzoneSubtitle")}
               </span>
             </div>
             <span className="pointer-events-none ml-auto inline-flex h-[42px] items-center rounded bg-primary-7 px-6 text-sm font-medium text-text-white">
-              Select Files
+              {t("onboarding.step6.selectFiles")}
             </span>
             <input
               ref={fileInputRef}
@@ -623,8 +624,7 @@ export default function SetupProfileStep6Page() {
           {/* Upload status / selected files */}
           {files.length === 0 ? (
             <div className="rounded border border-border-2 bg-bg-1 px-6 py-5 text-center text-[13px] text-text-3">
-              No files uploaded yet — this step is optional. You can finish
-              setup now and add documents later from Knowledge Core.
+              {t("onboarding.step6.noFiles")}
             </div>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -645,7 +645,7 @@ export default function SetupProfileStep6Page() {
                   <button
                     type="button"
                     onClick={() => removeFile(i)}
-                    title="Remove file"
+                    title={t("setupSix.removeFile")}
                     className="rounded-md p-1.5 text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
                   >
                     <X className="h-4 w-4" />
@@ -662,7 +662,7 @@ export default function SetupProfileStep6Page() {
               onClick={() => router.back()}
               disabled={mutation.isPending}
             >
-              Back
+              {t("common.back")}
             </Button>
             <Button
               className="h-12 w-[200px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
@@ -670,10 +670,10 @@ export default function SetupProfileStep6Page() {
               disabled={mutation.isPending}
             >
               {mutation.isPending
-                ? "Saving..."
+                ? t("onboarding.step6.saving")
                 : files.length === 0
-                  ? "Skip & Finish Setup"
-                  : "Complete Setup"}
+                  ? t("onboarding.step6.skipFinish")
+                  : t("onboarding.step6.complete")}
             </Button>
           </div>
         </div>
@@ -695,12 +695,11 @@ export default function SetupProfileStep6Page() {
       >
         <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
-            <DialogTitle>Setup couldn&apos;t finish</DialogTitle>
+            <DialogTitle>{t("onboarding.step6.fail.title")}</DialogTitle>
             <DialogDescription>{failMessage}</DialogDescription>
           </DialogHeader>
           <p className="text-[13px] text-text-2">
-            Your progress through the wizard is saved. You can retry the same
-            submit, or start over by deleting this half-created account.
+            {t("onboarding.step6.fail.body")}
           </p>
           <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button
@@ -710,8 +709,8 @@ export default function SetupProfileStep6Page() {
               className="text-danger-6 hover:text-danger-7 hover:bg-danger-1/40"
             >
               {abortingAccount
-                ? "Deleting account…"
-                : "Start over (delete account)"}
+                ? t("onboarding.step6.fail.startingOver")
+                : t("onboarding.step6.fail.startOver")}
             </Button>
             <Button
               onClick={() => {
@@ -721,7 +720,7 @@ export default function SetupProfileStep6Page() {
               disabled={mutation.isPending || abortingAccount}
               className="bg-primary-6 hover:bg-primary-7 text-white"
             >
-              {mutation.isPending ? "Retrying…" : "Try again"}
+              {mutation.isPending ? t("onboarding.step6.fail.retrying") : t("onboarding.step6.fail.retry")}
             </Button>
           </DialogFooter>
         </DialogContent>

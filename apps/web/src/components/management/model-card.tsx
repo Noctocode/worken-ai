@@ -36,6 +36,7 @@ import {
 } from "@/lib/api";
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
+import { useLanguage } from "@/lib/i18n";
 
 function providerOf(modelId: string): string | null {
   const idx = modelId.indexOf("/");
@@ -50,6 +51,7 @@ function providerOf(modelId: string): string | null {
  * existing table.
  */
 export function ModelCard({ model }: { model: ModelConfig }) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -64,10 +66,10 @@ export function ModelCard({ model }: { model: ModelConfig }) {
     onSuccess: () => {
       invalidateModelMutations(queryClient);
       setDeleteConfirmOpen(false);
-      toast.success(`Deleted "${model.customName}".`);
+      toast.success(`${t("mgmt.rows.deletedToast")} "${model.customName}".`);
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to delete model."),
+      toast.error(err.message || t("mgmt.rows.deleteFailed")),
   });
 
   const fallbacks = (model.fallbackModels ?? []) as string[];
@@ -101,7 +103,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
             <Button
               variant="ghost"
               size="icon"
-              aria-label={`Actions for ${model.customName}`}
+              aria-label={`${t("mgmt.rows.actionsFor")} ${model.customName}`}
               className="h-8 w-8 shrink-0 rounded-lg border border-border-2 text-text-2 hover:bg-bg-1 hover:text-text-1"
             >
               <MoreVertical className="h-4 w-4" />
@@ -113,14 +115,14 @@ export function ModelCard({ model }: { model: ModelConfig }) {
               onClick={() => setEditOpen(true)}
             >
               <Pencil className="h-4 w-4" />
-              Edit model
+              {t("mgmt.rows.editModel")}
             </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
               onClick={() => setDeleteConfirmOpen(true)}
             >
               <Trash2 className="h-4 w-4" />
-              Delete model
+              {t("mgmt.rows.removeModel")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -128,7 +130,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
 
       {/* Status switch */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] text-text-3">Status</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.statusLabel")}</span>
         <div className="flex items-center gap-2">
           <Switch
             checked={model.isActive}
@@ -136,7 +138,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
             disabled={toggleMutation.isPending}
           />
           <span className="text-[13px] font-medium text-text-1">
-            {model.isActive ? "Active" : "Inactive"}
+            {model.isActive ? t("mgmt.rows.active") : t("mgmt.rows.inactive")}
           </span>
         </div>
       </div>
@@ -145,7 +147,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
 
       {/* Model identifier + routing badge */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12px] text-text-3">Model</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.modelLabel")}</span>
         <div className="flex flex-wrap items-center gap-1.5">
           <Bot className="h-4 w-4 shrink-0 text-text-3" />
           <span className="break-all text-[13px] text-text-1">
@@ -154,19 +156,19 @@ export function ModelCard({ model }: { model: ModelConfig }) {
           {customIntegration && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-7"
-              title={`Routes to Custom LLM at ${customIntegration.apiUrl ?? "—"}`}
+              title={`${t("mgmt.rows.routesCustom")} ${customIntegration.apiUrl ?? "—"}`}
             >
               <Globe className="h-3 w-3" />
-              Custom
+              {t("mgmt.rows.custom")}
             </span>
           )}
           {byokIntegration && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7"
-              title={`Routes through your ${byokIntegration.displayName} key (BYOK)`}
+              title={`${t("mgmt.rows.routesBYOK")} ${byokIntegration.displayName} ${t("mgmt.rows.routesBYOKSuffix")}`}
             >
               <KeySquare className="h-3 w-3" />
-              BYOK
+              {t("mgmt.rows.byok")}
             </span>
           )}
         </div>
@@ -174,7 +176,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
 
       {/* Fallback models */}
       <div className="flex flex-col gap-1.5">
-        <span className="text-[12px] text-text-3">Fallback models</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.fallbackModels")}</span>
         {fallbacks.length > 0 ? (
           <div className="flex flex-wrap items-center gap-1.5">
             {fallbacks.map((fb) => (
@@ -209,12 +211,10 @@ export function ModelCard({ model }: { model: ModelConfig }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete model</DialogTitle>
+            <DialogTitle>{t("mgmt.rows.deleteModelTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>{model.customName}</strong>? This action cannot be undone.
-              Projects routed to this alias will fall back to the WorkenAI
-              default.
+              {t("mgmt.rows.deleteModelDesc1")}{" "}
+              <strong>{model.customName}</strong>{t("mgmt.rows.deleteModelDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -224,7 +224,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
               disabled={deleteMutation.isPending}
               className="cursor-pointer"
             >
-              Cancel
+              {t("mgmt.rows.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -235,10 +235,10 @@ export function ModelCard({ model }: { model: ModelConfig }) {
               {deleteMutation.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deleting…
+                  {t("mgmt.rows.deleting")}
                 </>
               ) : (
-                "Delete"
+                t("mgmt.rows.deleteBtn")
               )}
             </Button>
           </DialogFooter>

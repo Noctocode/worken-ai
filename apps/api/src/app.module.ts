@@ -11,6 +11,7 @@ import { CompareModelsModule } from './compare-models/compare-models.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
+import { GoogleDriveModule } from './google-drive/google-drive.module';
 import { GuardrailsSectionModule } from './guardrails/guardrails-section.module';
 import { IntegrationsModule } from './integrations/integrations.module';
 import { KnowledgeCoreModule } from './knowledge-core/knowledge-core.module';
@@ -20,8 +21,10 @@ import { ModelsModule } from './models/models.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { OneDriveModule } from './onedrive/onedrive.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
+import { SharePointModule } from './sharepoint/sharepoint.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
@@ -38,6 +41,7 @@ import { UsersModule } from './users/users.module';
     CompareModelsModule,
     ConversationsModule,
     DocumentsModule,
+    GoogleDriveModule,
     GuardrailsSectionModule,
     IntegrationsModule,
     KnowledgeCoreModule,
@@ -45,9 +49,11 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     ObservabilityModule,
     OnboardingModule,
+    OneDriveModule,
     OrgSettingsModule,
     ProjectsModule,
     PromptsModule,
+    SharePointModule,
     ShortcutsModule,
     TeamsModule,
     TendersModule,

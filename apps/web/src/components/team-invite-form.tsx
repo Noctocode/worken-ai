@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLanguage } from "@/lib/i18n";
 
 type Role = "admin" | "manager" | "editor" | "viewer";
 
@@ -29,9 +30,11 @@ interface TeamInviteFormProps {
 
 export function TeamInviteForm({
   mode,
-  submitLabel = "Send Invite",
+  submitLabel,
   onSuccess,
 }: TeamInviteFormProps) {
+  const { t } = useLanguage();
+  const resolvedSubmitLabel = submitLabel ?? t("teamForm.sendInvite");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("viewer");
   const [selectedTeamId, setSelectedTeamId] = useState<string>(
@@ -63,7 +66,7 @@ export function TeamInviteForm({
     mutationFn: () => inviteTeamMember(selectedTeamId, email.trim(), role),
     onSuccess: (data) => {
       toast.success(
-        `${data.resent ? "Invitation resent" : "Invitation sent"} to ${email.trim()}`,
+        `${data.resent ? t("teamForm.resent") : t("teamForm.sent")} to ${email.trim()}`,
       );
       qc.invalidateQueries({ queryKey: ["teams"] });
       qc.invalidateQueries({ queryKey: ["teams", selectedTeamId] });
@@ -75,7 +78,7 @@ export function TeamInviteForm({
       onSuccess?.();
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to send invitation");
+      toast.error(err.message || t("teamForm.failed"));
     },
   });
 
@@ -90,10 +93,10 @@ export function TeamInviteForm({
     return (
       <div className="space-y-4">
         <p className="text-sm text-text-2">
-          Create a team first before inviting users.
+          {t("teamForm.createTeamFirst")}
         </p>
         <Button type="button" disabled className="w-full">
-          {submitLabel}
+          {resolvedSubmitLabel}
         </Button>
       </div>
     );
@@ -103,7 +106,7 @@ export function TeamInviteForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       {mode.kind === "select" && (
         <div className="space-y-2">
-          <Label htmlFor="invite-team">Team</Label>
+          <Label htmlFor="invite-team">{t("teamForm.team")}</Label>
           <Select
             value={selectedTeamId}
             onValueChange={setSelectedTeamId}
@@ -112,7 +115,7 @@ export function TeamInviteForm({
             <SelectTrigger id="invite-team" className="w-full border-border-3">
               <SelectValue
                 placeholder={
-                  teamsQuery.isLoading ? "Loading teams..." : "Select a team"
+                  teamsQuery.isLoading ? t("teamForm.loading") : t("teamForm.selectTeam")
                 }
               />
             </SelectTrigger>
@@ -128,11 +131,11 @@ export function TeamInviteForm({
       )}
 
       <div className="space-y-2">
-        <Label htmlFor="invite-email">Email</Label>
+        <Label htmlFor="invite-email">{t("teamForm.email")}</Label>
         <Input
           id="invite-email"
           type="email"
-          placeholder="user@example.com"
+          placeholder={t("teamForm.emailPlaceholder")}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -141,29 +144,21 @@ export function TeamInviteForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="invite-role">Role</Label>
+        <Label htmlFor="invite-role">{t("teamForm.role")}</Label>
         <Select value={role} onValueChange={(v) => setRole(v as Role)}>
           <SelectTrigger id="invite-role" className="w-full border-border-3">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="admin">
-              Admin — Owner-equivalent (manage budget, invites, roles)
-            </SelectItem>
-            <SelectItem value="manager">
-              Manager — Owner-equivalent, operational lead
-            </SelectItem>
-            <SelectItem value="editor">Editor — Can edit projects and content</SelectItem>
-            <SelectItem value="viewer">
-              Viewer — Read-only access
-            </SelectItem>
+            <SelectItem value="admin">{t("teamForm.admin")}</SelectItem>
+            <SelectItem value="manager">{t("teamForm.manager")}</SelectItem>
+            <SelectItem value="editor">{t("teamForm.editor")}</SelectItem>
+            <SelectItem value="viewer">{t("teamForm.viewer")}</SelectItem>
           </SelectContent>
         </Select>
         {(role === "admin" || role === "manager") && (
           <p className="text-[11px] text-text-3">
-            Only the team owner, admin, or manager can seed another
-            admin or manager. Editors trying to send this invite
-            will see an error.
+            {t("teamForm.permissionHint")}
           </p>
         )}
       </div>
@@ -173,7 +168,7 @@ export function TeamInviteForm({
         disabled={mutation.isPending || !email.trim() || !selectedTeamId}
         className="w-full"
       >
-        {mutation.isPending ? "Sending..." : submitLabel}
+        {mutation.isPending ? t("teamForm.sending") : resolvedSubmitLabel}
       </Button>
     </form>
   );

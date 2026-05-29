@@ -25,6 +25,7 @@ import {
   type Notification,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 type Filter = "all" | "unread" | "actionable";
 
@@ -82,13 +83,14 @@ function formatFull(iso: string): string {
  * is the dedicated history page.
  */
 function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
+  const { t } = useLanguage();
   if (!state || state === "pending") return null;
   const label =
     state === "accepted"
-      ? "Accepted"
+      ? t("notifications.accepted")
       : state === "declined"
-        ? "Declined"
-        : "Expired";
+        ? t("notifications.declined")
+        : t("notifications.expired");
   const tone =
     state === "accepted"
       ? "bg-success-1 text-success-7"
@@ -114,6 +116,7 @@ function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
  * popover.
  */
 export default function NotificationsPage() {
+  const { t } = useLanguage();
   const [filter, setFilter] = useState<Filter>("all");
   const queryClient = useQueryClient();
 
@@ -151,26 +154,26 @@ export default function NotificationsPage() {
         // accepted." would be a lie here.
         const label =
           result.terminalState === "expired"
-            ? "This invitation has expired."
+            ? t("notifications.invitationExpired")
             : result.terminalState === "declined"
-              ? "This invitation has been declined."
-              : "This invitation was already accepted.";
+              ? t("notifications.invitationAlreadyDeclined")
+              : t("notifications.invitationAlreadyAccepted");
         toast.message(label);
       } else {
-        toast.success("Invitation accepted.");
+        toast.success(t("notifications.invitationAccepted"));
       }
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to accept."),
+      toast.error(err.message || t("notifications.failedAccept")),
   });
   const declineMutation = useMutation({
     mutationFn: (id: string) => declineNotification(id),
     onSuccess: () => {
       invalidate();
-      toast.success("Invitation declined.");
+      toast.success(t("notifications.invitationDeclined"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to decline."),
+      toast.error(err.message || t("notifications.failedDecline")),
   });
   const dismissMutation = useMutation({
     mutationFn: (id: string) => dismissNotification(id),
@@ -184,7 +187,7 @@ export default function NotificationsPage() {
     mutationFn: () => markAllNotificationsRead(),
     onSuccess: () => {
       invalidate();
-      toast.success("All notifications marked as read.");
+      toast.success(t("notifications.allMarkedRead"));
     },
   });
 
@@ -211,10 +214,10 @@ export default function NotificationsPage() {
               )}
             >
               {f === "all"
-                ? "All"
+                ? t("notifications.all")
                 : f === "unread"
-                  ? "Unread"
-                  : "Needs action"}
+                  ? t("notifications.unread")
+                  : t("notifications.needsAction")}
             </button>
           ))}
         </div>
@@ -226,8 +229,8 @@ export default function NotificationsPage() {
           className="cursor-pointer gap-1.5 rounded-lg"
         >
           <CheckCheck className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Mark all read</span>
-          <span className="sm:hidden">Read all</span>
+          <span className="hidden sm:inline">{t("notifications.markAllRead")}</span>
+          <span className="sm:hidden">{t("notifications.readAll")}</span>
         </Button>
       </div>
 
@@ -238,17 +241,17 @@ export default function NotificationsPage() {
         {isLoading ? (
           <div className="flex items-center justify-center px-4 py-16 text-[13px] text-text-3">
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Loading…
+            {t("common.loading")}
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center gap-2 px-4 py-16 text-center text-text-3">
             <Bell className="h-6 w-6 text-text-3" />
             <p className="text-[14px]">
               {filter === "all"
-                ? "You're all caught up."
+                ? t("notifications.allCaughtUp")
                 : filter === "unread"
-                  ? "No unread notifications."
-                  : "No invitations waiting on you."}
+                  ? t("notifications.noUnread")
+                  : t("notifications.noInvitations")}
             </p>
           </div>
         ) : (
@@ -287,7 +290,7 @@ export default function NotificationsPage() {
                           onClick={() => acceptMutation.mutate(n.id)}
                           className="cursor-pointer rounded-lg bg-primary-6 text-white hover:bg-primary-7"
                         >
-                          Accept
+                          {t("notifications.accept")}
                         </Button>
                         <Button
                           size="sm"
@@ -296,7 +299,7 @@ export default function NotificationsPage() {
                           onClick={() => declineMutation.mutate(n.id)}
                           className="cursor-pointer rounded-lg"
                         >
-                          Decline
+                          {t("notifications.decline")}
                         </Button>
                       </div>
                     )}
@@ -308,7 +311,7 @@ export default function NotificationsPage() {
                       skip the generic text for them. */}
                   {n.status === "acted" && n.type !== "team_invite" && (
                     <span className="mt-1 text-[11px] italic text-text-3">
-                      Resolved
+                      {t("notifications.resolved")}
                     </span>
                   )}
                 </div>
@@ -316,8 +319,8 @@ export default function NotificationsPage() {
                   {n.readAt == null && (
                     <button
                       type="button"
-                      title="Mark read"
-                      aria-label="Mark read"
+                      title={t("notifications.markRead")}
+                      aria-label={t("notifications.markRead")}
                       onClick={() => markReadMutation.mutate(n.id)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-text-3 hover:bg-bg-1 hover:text-text-1"
                     >
@@ -326,8 +329,8 @@ export default function NotificationsPage() {
                   )}
                   <button
                     type="button"
-                    title="Dismiss"
-                    aria-label="Dismiss"
+                    title={t("notifications.dismiss")}
+                    aria-label={t("notifications.dismiss")}
                     onClick={() => dismissMutation.mutate(n.id)}
                     className="flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-text-3 hover:bg-bg-1 hover:text-text-1"
                   >

@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 interface PaginationProps {
   /** 1-indexed current page. */
@@ -94,6 +95,7 @@ export function Pagination({
   // before the parent reconciled. Clamping up-front keeps the visible
   // run, the Prev/Next disabled state, and the active highlight all
   // sourced from the same value.
+  const { t } = useLanguage();
   const clampedPage = Math.min(Math.max(1, page), Math.max(1, totalPages));
   const items = useMemo(
     () => paginationRange(clampedPage, totalPages, siblingCount),
@@ -107,7 +109,7 @@ export function Pagination({
 
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={t("pagination.label")}
       // No top divider on the bar itself — the table card already
       // has its own bottom edge, and the 2px primary-blue accent on
       // the current page is the only horizontal line that should
@@ -149,7 +151,7 @@ export function Pagination({
                   if (!isCurrent) onPageChange(item);
                 }}
                 aria-current={isCurrent ? "page" : undefined}
-                aria-label={`Page ${item}`}
+                aria-label={t("pagination.page").replace("{n}", String(item))}
                 className={`flex items-center justify-center border-t-2 text-[13px] transition-colors ${
                   compact ? "min-w-7 px-2" : "min-w-10 px-4"
                 } ${
@@ -186,9 +188,10 @@ function StepLink({
   compact?: boolean;
   onClick: () => void;
 }) {
+  const { t } = useLanguage();
   const isPrev = direction === "prev";
   const Icon = isPrev ? ArrowLeft : ArrowRight;
-  const label = isPrev ? "Previous" : "Next";
+  const label = isPrev ? t("pagination.previous") : t("pagination.next");
   return (
     <button
       type="button"

@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { updateUserBudget } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -86,68 +88,73 @@ function PlanIcon({ type, active }: { type: PlanIconType; active: boolean }) {
 
 // ─── Demo data ────────────────────────────────────────────────────────────────
 
-const PLANS: Plan[] = [
-  {
-    id: "user-seat",
-    name: "User Seat Plan",
-    description: "Per-user monthly subscription with unlimited tenders",
-    innerCard: { label: "Number of Users", value: "25 users × $149/user" },
-    features: [
-      { text: "Unlimited tender analysis" },
-      { text: "Full platform access per user" },
-      { text: "Email & chat support" },
-      { text: "7-day data retention" },
-    ],
-    iconType: "user-seat",
-  },
-  {
-    id: "team-org",
-    name: "Team/Organization Plan",
-    description: "Volume discounts for enterprise teams",
-    features: [
-      { text: "Everything in User Seat" },
-      { text: "Volume discounts (10+ users)" },
-      { text: "Priority support & onboarding" },
-      { text: "Custom data retention" },
-      { text: "Advanced security features" },
-      { text: "SSO & SAML integration" },
-    ],
-    iconType: "team-org",
-  },
-  {
-    id: "per-tender",
-    name: "Per-Tender Plan",
-    description: "Pay only for tenders you analyze",
-    features: [
-      { text: "Credit-based pricing" },
-      { text: "No monthly commitment" },
-      { text: "Rollover unused credits" },
-      { text: "Volume pricing available" },
-    ],
-    iconType: "per-tender",
-  },
-  {
-    id: "byok",
-    name: "BYOK (Bring Your Own Key)",
-    description: "Use your own LLM API keys",
-    features: [
-      { text: "You manage LLM costs" },
-      { text: "Platform orchestration fee only" },
-      { text: "Full data control" },
-      { text: "Any supported LLM provider" },
-      { text: "Enterprise SLA available" },
-    ],
-    iconType: "byok",
-  },
-];
+function buildPlans(t: (key: TranslationKey) => string): Plan[] {
+  return [
+    {
+      id: "user-seat",
+      name: t("mgmt.billing.plan.userSeat"),
+      description: t("mgmt.billing.plan.userSeatDesc"),
+      innerCard: { label: t("mgmt.billing.plan.userSeatCard"), value: "25 × $149" },
+      features: [
+        { text: t("mgmt.billing.feat.unlimitedTenders") },
+        { text: t("mgmt.billing.feat.fullAccess") },
+        { text: t("mgmt.billing.feat.support") },
+        { text: t("mgmt.billing.feat.retention7") },
+      ],
+      iconType: "user-seat",
+    },
+    {
+      id: "team-org",
+      name: t("mgmt.billing.plan.teamOrg"),
+      description: t("mgmt.billing.plan.teamOrgDesc"),
+      features: [
+        { text: t("mgmt.billing.feat.everythingSeat") },
+        { text: t("mgmt.billing.feat.volume") },
+        { text: t("mgmt.billing.feat.priority") },
+        { text: t("mgmt.billing.feat.customRetention") },
+        { text: t("mgmt.billing.feat.advancedSecurity") },
+        { text: t("mgmt.billing.feat.sso") },
+      ],
+      iconType: "team-org",
+    },
+    {
+      id: "per-tender",
+      name: t("mgmt.billing.plan.perTender"),
+      description: t("mgmt.billing.plan.perTenderDesc"),
+      features: [
+        { text: t("mgmt.billing.feat.credits") },
+        { text: t("mgmt.billing.feat.noCommitment") },
+        { text: t("mgmt.billing.feat.rollover") },
+        { text: t("mgmt.billing.feat.volumePricing") },
+      ],
+      iconType: "per-tender",
+    },
+    {
+      id: "byok",
+      name: t("mgmt.billing.plan.byok"),
+      description: t("mgmt.billing.plan.byokDesc"),
+      features: [
+        { text: t("mgmt.billing.feat.youManage") },
+        { text: t("mgmt.billing.feat.orchestrationFee") },
+        { text: t("mgmt.billing.feat.dataControl") },
+        { text: t("mgmt.billing.feat.anyProvider") },
+        { text: t("mgmt.billing.feat.sla") },
+      ],
+      iconType: "byok",
+    },
+  ];
+}
 
-const INVOICES: InvoiceEntry[] = [
-  { id: "1", invoiceId: "INV-2024-86", date: "Jun 1, 2024", amount: "$4,400", status: "Paid" },
-  { id: "2", invoiceId: "INV-2024-85", date: "May 1, 2024", amount: "$4,800", status: "Paid" },
-  { id: "3", invoiceId: "INV-2024-84", date: "Apr 1, 2024", amount: "$4,200", status: "Paid" },
-  { id: "4", invoiceId: "INV-2024-83", date: "Mar 1, 2024", amount: "$3,600", status: "Paid" },
-  { id: "5", invoiceId: "INV-2024-82", date: "Feb 1, 2024", amount: "$3,000", status: "Paid" },
-];
+function buildInvoices(t: (key: TranslationKey) => string): InvoiceEntry[] {
+  const paid = t("mgmt.billing.statusPaid") as "Paid";
+  return [
+    { id: "1", invoiceId: "INV-2024-86", date: "Jun 1, 2024", amount: "$4,400", status: paid },
+    { id: "2", invoiceId: "INV-2024-85", date: "May 1, 2024", amount: "$4,800", status: paid },
+    { id: "3", invoiceId: "INV-2024-84", date: "Apr 1, 2024", amount: "$4,200", status: paid },
+    { id: "4", invoiceId: "INV-2024-83", date: "Mar 1, 2024", amount: "$3,600", status: paid },
+    { id: "5", invoiceId: "INV-2024-82", date: "Feb 1, 2024", amount: "$3,000", status: paid },
+  ];
+}
 
 const TEAM_COSTS: TeamCostEntry[] = [
   { name: "Procurement", users: 12, amount: "$1,850" },
@@ -162,38 +169,39 @@ const TOKEN_USAGE = [1100000, 1350000, 1550000, 2050000];
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function CurrentPlanCard() {
+  const { t } = useLanguage();
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
       <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h3 className="text-[16px] font-bold text-text-heading leading-[24px]">Current Plan</h3>
-          <p className="text-[12px] text-text-4 leading-[18px]">Team/Organization Plan - 25 users</p>
+          <h3 className="text-[16px] font-bold text-text-heading leading-[24px]">{t("mgmt.billing.currentPlan")}</h3>
+          <p className="text-[12px] text-text-4 leading-[18px]">{t("mgmt.billing.currentPlanSub")}</p>
         </div>
         <span className="w-fit rounded-[4px] bg-success-3 px-3 py-1.5 text-[13px] font-medium text-success-8">
-          Active
+          {t("mgmt.billing.active")}
         </span>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-bg-1 bg-bg-2 px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">Monthly Cost</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">{t("mgmt.billing.monthlyCost")}</p>
           <p className="text-[22px] font-bold text-text-heading leading-tight">$3,166</p>
-          <p className="text-[11px] text-success-8 mt-0.5">15% volume discount</p>
+          <p className="text-[11px] text-success-8 mt-0.5">{t("mgmt.billing.volumeDiscount")}</p>
         </div>
         <div className="rounded-lg border border-bg-1 bg-bg-2 px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">Tokens Used (MTD)</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">{t("mgmt.billing.tokensUsedMtd")}</p>
           <p className="text-[22px] font-bold text-text-heading leading-tight">2.2M</p>
-          <p className="text-[11px] text-text-4 mt-0.5">~$4,400 LLM cost</p>
+          <p className="text-[11px] text-text-4 mt-0.5">{t("mgmt.billing.llmCost")}</p>
         </div>
         <div className="rounded-lg border border-bg-1 bg-bg-2 px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">Billing Cycle</p>
-          <p className="text-[22px] font-bold text-text-heading leading-tight">Monthly</p>
-          <p className="text-[11px] text-text-4 mt-0.5">Renews Jun 15, 2024</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">{t("mgmt.billing.billingCycle")}</p>
+          <p className="text-[22px] font-bold text-text-heading leading-tight">{t("mgmt.billing.monthly")}</p>
+          <p className="text-[11px] text-text-4 mt-0.5">{t("mgmt.billing.renews")}</p>
         </div>
         <div className="rounded-lg border border-bg-1 bg-bg-2 px-4 py-3">
-          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">Budget Status</p>
-          <p className="text-[16px] font-bold text-success-8 leading-[24px]">Under Budget</p>
-          <p className="text-[11px] text-text-4 mt-0.5">44% of cap used</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-text-4 mb-1">{t("mgmt.billing.budgetStatus")}</p>
+          <p className="text-[16px] font-bold text-success-8 leading-[24px]">{t("mgmt.billing.underBudget")}</p>
+          <p className="text-[11px] text-text-4 mt-0.5">{t("mgmt.billing.ofCapUsed")}</p>
         </div>
       </div>
     </div>
@@ -252,6 +260,7 @@ function PlanCard({
 }
 
 function TokenUsageChart() {
+  const { t } = useLanguage();
   const yMax = 2400000;
   const yLabels = [2400000, 1800000, 1200000, 600000, 0];
   const chartH = 220;
@@ -266,7 +275,7 @@ function TokenUsageChart() {
 
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
-      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Token Usage & Cost Trends</h3>
+      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">{t("mgmt.billing.tokenUsageTitle")}</h3>
 
       <div className="flex">
         <div className="flex flex-col justify-between pr-2 pb-6" style={{ height: chartH }}>
@@ -327,13 +336,14 @@ function TokenUsageChart() {
 }
 
 function CostByTeamChart() {
+  const { t } = useLanguage();
   const yMax = 200;
   const yLabels = [200, 150, 100, 50, 0];
   const barValues = [185, 124, 89, 62];
 
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
-      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Cost by Team</h3>
+      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">{t("mgmt.billing.costByTeam")}</h3>
 
       <div className="flex">
         <div className="flex flex-col justify-between pr-2 pb-6 h-[180px]">
@@ -380,7 +390,7 @@ function CostByTeamChart() {
           <div key={team.name} className="flex items-center justify-between text-[11px] leading-[16px]">
             <span className="text-text-4">{team.name}</span>
             <div className="flex items-center gap-4">
-              <span className="text-text-4">{team.users} users</span>
+              <span className="text-text-4">{team.users} {t("mgmt.billing.users")}</span>
               <span className="font-semibold text-text-heading">{team.amount}</span>
             </div>
           </div>
@@ -396,6 +406,7 @@ function CostByTeamChart() {
 const DEFAULT_BUDGET_USD = 10;
 
 function BudgetControls() {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   // Reuse the AuthProvider's cache (queryKey ['auth','me']) instead
   // of firing a second /auth/me request under a different key. That
@@ -426,16 +437,16 @@ function BudgetControls() {
       updateUserBudget(user!.id, budgetUsd),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
-      toast.success("Monthly budget updated.");
+      toast.success(t("mgmt.billing.budgetUpdated"));
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to save budget."),
+      toast.error(err instanceof Error ? err.message : t("mgmt.billing.failedSaveBudget")),
   });
 
   const handleSave = () => {
     const parsed = Number(budgetCap);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      toast.error("Budget must be a non-negative number.");
+      toast.error(t("mgmt.billing.budgetNonNegative"));
       return;
     }
     saveMutation.mutate(parsed);
@@ -443,9 +454,9 @@ function BudgetControls() {
 
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white p-4 sm:p-6">
-      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">Budget Controls</h3>
+      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-4">{t("mgmt.billing.budgetControls")}</h3>
 
-      <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">Monthly Budget Cap</p>
+      <p className="text-[13px] font-bold text-text-heading leading-[18px] mb-2">{t("mgmt.billing.monthlyBudgetCap")}</p>
 
       <div className="flex items-center gap-2 mb-2">
         <div className="flex flex-1 items-center rounded-lg border border-border-6 bg-bg-white px-3 py-2.5">
@@ -469,7 +480,7 @@ function BudgetControls() {
             {saveMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              "Save"
+              t("mgmt.billing.save")
             )}
           </Button>
         )}
@@ -477,7 +488,7 @@ function BudgetControls() {
 
       {!canSelfEdit && !isLoading && (
         <p className="text-[12px] text-text-4 leading-[18px] mb-2">
-          Your company admin manages this cap in Management → Users.
+          {t("mgmt.billing.adminManages")}
         </p>
       )}
 
@@ -488,9 +499,9 @@ function BudgetControls() {
         <div className="flex items-start gap-3 rounded-lg border border-warning-2 bg-warning-1 dark:border-border-4 dark:bg-bg-1 p-3">
           <AlertTriangle className="h-4 w-4 text-warning-5 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-bold text-text-heading leading-[18px]">Overage Warnings</p>
+            <p className="text-[13px] font-bold text-text-heading leading-[18px]">{t("mgmt.billing.overageWarnings")}</p>
             <p className="text-[12px] text-text-4 leading-[18px]">
-              Alert when approaching 80% of budget cap
+              {t("mgmt.billing.overageDesc")}
             </p>
           </div>
         </div>
@@ -498,9 +509,9 @@ function BudgetControls() {
         <div className="flex items-start gap-3 rounded-lg border border-success-4 bg-success-5 dark:border-text-5 dark:bg-success-1 p-3">
           <Lightbulb className="h-4 w-4 text-success-8 shrink-0 mt-0.5" />
           <div>
-            <p className="text-[13px] font-bold text-success-8 dark:text-text-1 leading-[18px]">Optimization Suggestion</p>
+            <p className="text-[13px] font-bold text-success-8 dark:text-text-1 leading-[18px]">{t("mgmt.billing.optSuggestion")}</p>
             <p className="text-[12px] text-text-4 leading-[18px]">
-              Switching to BYOK could save approximately $2,200/month based on your usage patterns
+              {t("mgmt.billing.optDesc")}
             </p>
           </div>
         </div>
@@ -510,22 +521,24 @@ function BudgetControls() {
 }
 
 function InvoiceHistoryTable() {
+  const { t } = useLanguage();
+  const invoices = buildInvoices(t);
   return (
     <div className="rounded-lg border border-bg-1 bg-bg-white overflow-hidden">
-      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-4 sm:px-6 pt-5 pb-3">Invoice History</h3>
+      <h3 className="text-[16px] font-bold text-text-heading leading-[24px] px-4 sm:px-6 pt-5 pb-3">{t("mgmt.billing.invoiceHistory")}</h3>
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[500px]">
           <thead>
             <tr className="h-[40px] border-y border-bg-1">
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Invoice ID</th>
-              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">Date</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Amount</th>
-              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">Status</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">{t("mgmt.billing.colInvoiceId")}</th>
+              <th className="px-4 sm:px-6 text-left text-[12px] font-medium text-text-2 uppercase tracking-wide">{t("mgmt.billing.colDate")}</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">{t("mgmt.billing.colAmount")}</th>
+              <th className="px-4 sm:px-6 text-right text-[12px] font-medium text-text-2 uppercase tracking-wide">{t("mgmt.billing.colStatus")}</th>
             </tr>
           </thead>
           <tbody>
-            {INVOICES.map((inv) => (
+            {invoices.map((inv) => (
               <tr key={inv.id} className="h-14 border-b border-bg-1 last:border-0 transition-colors hover:bg-bg-1/50">
                 <td className="px-4 sm:px-6 font-mono text-[13px] font-medium text-text-heading leading-[19.5px]">{inv.invoiceId}</td>
                 <td className="px-4 sm:px-6">
@@ -550,6 +563,8 @@ function InvoiceHistoryTable() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function BillingTab() {
+  const { t } = useLanguage();
+  const plans = buildPlans(t);
   const [selectedPlan, setSelectedPlan] = useState("user-seat");
 
   return (
@@ -557,9 +572,9 @@ export function BillingTab() {
       <CurrentPlanCard />
 
       <div>
-        <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-3">Available Plans</h3>
+        <h3 className="text-[16px] font-bold text-text-heading leading-[24px] mb-3">{t("mgmt.billing.availablePlans")}</h3>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          {PLANS.map((plan) => (
+          {plans.map((plan) => (
             <PlanCard
               key={plan.id}
               plan={plan}

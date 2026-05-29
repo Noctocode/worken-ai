@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { apiFetch, fetchInviteDetails, fetchCurrentUserOptional, acceptInvite, type InviteDetails, type User } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 type LoadError =
   | { kind: "not_found" }
@@ -46,6 +47,7 @@ function classifyAcceptError(message: string): "expired" | "revoked" | "already_
 }
 
 function InviteContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const [state, setState] = useState<PageState>({ kind: "loading" });
@@ -100,7 +102,7 @@ function InviteContent() {
     try {
       await acceptInvite(token);
       setState({ kind: "accepted", invite });
-      toast.success(`Welcome to ${invite.teamName}!`);
+      toast.success(`${t("invite.welcomeTo")} ${invite.teamName}!`);
       setTimeout(() => {
         window.location.href = "/";
       }, 1500);
@@ -125,7 +127,7 @@ function InviteContent() {
         });
       }
     }
-  }, [token, state]);
+  }, [token, state, t]);
 
   const handleSignOutAndRetry = useCallback(async () => {
     try {
@@ -157,7 +159,7 @@ function InviteContent() {
         {state.kind === "loading" && (
           <div className="flex flex-col items-center gap-3 py-4 self-stretch">
             <Loader2 className="h-8 w-8 animate-spin text-text-3" />
-            <p className="text-base text-text-2">Loading invitation…</p>
+            <p className="text-base text-text-2">{t("invite.loading")}</p>
           </div>
         )}
 
@@ -231,22 +233,23 @@ function ReadyPanel({
   token: string;
   onAccept: () => void;
 }) {
-  const greetingName = user?.name?.split(" ")[0]?.trim() || "there";
+  const { t } = useLanguage();
+  const greetingName = user?.name?.split(" ")[0]?.trim() || t("invite.hiThere");
   const setPasswordHref = `/invite/set-password?token=${encodeURIComponent(token)}`;
   const loginHref = `/login?token=${encodeURIComponent(token)}&email=${encodeURIComponent(invite.email)}`;
   return (
     <>
       <HeaderText
-        title={`Hi ${greetingName}!`}
+        title={`${t("invite.hi")} ${greetingName}!`}
         subtitle={
           <>
-            You were invited to workspace{" "}
+            {t("invite.invitedToWorkspace")}{" "}
             <span className="font-semibold text-text-1">
               “{invite.teamName}”
             </span>{" "}
-            by{" "}
+            {t("invite.by")}{" "}
             <span className="font-semibold text-text-1">
-              {invite.inviterName ?? "a teammate"}
+              {invite.inviterName ?? t("invite.teammate")}
             </span>
             .
           </>
@@ -257,7 +260,7 @@ function ReadyPanel({
           onClick={onAccept}
           className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
         >
-          Accept Invitation
+          {t("invite.acceptInvitation")}
         </Button>
       ) : invite.hasAccount ? (
         // Registered user — skip the signup page and send them to /login.
@@ -267,7 +270,7 @@ function ReadyPanel({
             asChild
             className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
           >
-            <Link href={loginHref}>Sign in to accept</Link>
+            <Link href={loginHref}>{t("invite.signInToAccept")}</Link>
           </Button>
         </div>
       ) : (
@@ -276,15 +279,15 @@ function ReadyPanel({
             asChild
             className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
           >
-            <Link href={setPasswordHref}>Accept Invitation</Link>
+            <Link href={setPasswordHref}>{t("invite.acceptInvitation")}</Link>
           </Button>
           <p className="text-sm text-text-2">
-            {"Already have an account? "}
+            {t("invite.alreadyHaveAccount")}
             <Link
               href={loginHref}
               className="text-primary-6 hover:text-primary-7 font-medium"
             >
-              Log in
+              {t("invite.logIn")}
             </Link>
           </p>
         </div>
@@ -302,17 +305,18 @@ function MismatchPanel({
   user: User;
   onSignOut: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <>
       <HeaderText
-        title="Wrong account"
+        title={t("invite.wrongAccount")}
         subtitle={
           <>
-            This invitation was sent to{" "}
-            <span className="font-semibold text-text-1">{invite.email}</span>,
-            but you’re signed in as{" "}
-            <span className="font-semibold text-text-1">{user.email}</span>.
-            Please sign out and try again.
+            {t("invite.wrongAccountSentTo")}{" "}
+            <span className="font-semibold text-text-1">{invite.email}</span>
+            {t("invite.wrongAccountSignedAs")}{" "}
+            <span className="font-semibold text-text-1">{user.email}</span>
+            {t("invite.wrongAccountPlease")}
           </>
         }
       />
@@ -320,20 +324,21 @@ function MismatchPanel({
         onClick={onSignOut}
         className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
       >
-        Sign out
+        {t("invite.signOut")}
       </Button>
     </>
   );
 }
 
 function AcceptingPanel({ invite }: { invite: InviteDetails }) {
+  const { t } = useLanguage();
   return (
     <>
       <HeaderText
-        title="Joining…"
+        title={t("invite.joining")}
         subtitle={
           <>
-            Accepting your invitation to{" "}
+            {t("invite.accepting")}{" "}
             <span className="font-semibold text-text-1">
               “{invite.teamName}”
             </span>
@@ -346,18 +351,19 @@ function AcceptingPanel({ invite }: { invite: InviteDetails }) {
         className="w-full h-[52px] px-6 bg-primary-6 text-text-white text-base font-normal rounded-lg gap-2"
       >
         <Loader2 className="h-4 w-4 animate-spin" />
-        Accepting…
+        {t("invite.acceptingDots")}
       </Button>
     </>
   );
 }
 
 function AcceptedPanel({ invite }: { invite: InviteDetails }) {
+  const { t } = useLanguage();
   return (
     <>
       <HeaderText
-        title={`Welcome to ${invite.teamName}!`}
-        subtitle="Redirecting you to your workspace…"
+        title={`${t("invite.welcomeTo")} ${invite.teamName}!`}
+        subtitle={t("invite.redirecting")}
       />
       <Loader2 className="h-6 w-6 animate-spin text-text-3" />
     </>
@@ -371,11 +377,12 @@ function AcceptErrorPanel({
   message: string;
   onRetry: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <>
       <HeaderText
-        title="Something went wrong"
-        subtitle="We couldn’t accept the invitation. Please try again."
+        title={t("invite.somethingWentWrong")}
+        subtitle={t("invite.couldntAccept")}
       />
       <div className="self-stretch space-y-3">
         <p className="rounded-md border border-danger-5 bg-bg-1 px-3 py-2 text-sm text-danger-6 text-left">
@@ -385,7 +392,7 @@ function AcceptErrorPanel({
           onClick={onRetry}
           className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
         >
-          Try again
+          {t("invite.tryAgain")}
         </Button>
       </div>
     </>
@@ -393,6 +400,7 @@ function AcceptErrorPanel({
 }
 
 function ErrorPanel({ error }: { error: LoadError }) {
+  const { t } = useLanguage();
   let title: string;
   let subtitle: React.ReactNode;
   let primary: { label: string; href: string } | null = null;
@@ -400,34 +408,34 @@ function ErrorPanel({ error }: { error: LoadError }) {
 
   switch (error.kind) {
     case "missing_token":
-      title = "Invitation not found";
-      subtitle = "The link is missing a token. Please use the link from your invitation email.";
-      secondary = { label: "Back to login", href: "/login" };
+      title = t("invite.notFound");
+      subtitle = t("invite.missingTokenDesc");
+      secondary = { label: t("invite.backToLogin"), href: "/login" };
       break;
     case "not_found":
-      title = "Invitation not found";
-      subtitle = "The link may be incorrect or incomplete.";
-      secondary = { label: "Back to login", href: "/login" };
+      title = t("invite.notFound");
+      subtitle = t("invite.notFoundDesc");
+      secondary = { label: t("invite.backToLogin"), href: "/login" };
       break;
     case "expired":
-      title = "This invitation has expired";
-      subtitle = "Please ask the person who invited you to send a new invitation.";
-      secondary = { label: "Back to login", href: "/login" };
+      title = t("invite.expired");
+      subtitle = t("invite.expiredDesc");
+      secondary = { label: t("invite.backToLogin"), href: "/login" };
       break;
     case "revoked":
-      title = "This invitation is no longer valid";
-      subtitle = "The invitation was revoked by the company admin.";
-      secondary = { label: "Back to login", href: "/login" };
+      title = t("invite.noLongerValid");
+      subtitle = t("invite.revokedDesc");
+      secondary = { label: t("invite.backToLogin"), href: "/login" };
       break;
     case "already_accepted":
-      title = "This invitation has already been accepted";
-      subtitle = "You can sign in to your account.";
-      primary = { label: "Go to login", href: "/login" };
+      title = t("invite.alreadyAccepted");
+      subtitle = t("invite.alreadyAcceptedDesc");
+      primary = { label: t("invite.goToLogin"), href: "/login" };
       break;
     case "unknown":
-      title = "Invalid invitation";
+      title = t("invite.invalid");
       subtitle = error.message;
-      secondary = { label: "Back to login", href: "/login" };
+      secondary = { label: t("invite.backToLogin"), href: "/login" };
       break;
   }
 

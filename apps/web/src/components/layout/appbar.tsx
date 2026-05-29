@@ -42,14 +42,17 @@ import { getRouteConfig } from "@/lib/route-config";
 import { fetchProject, fetchTeam } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useAuth } from "@/components/providers";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 const AI_CHAT_TABS = [
-  { value: "all", label: "All" },
-  { value: "personal", label: "Personal" },
-  { value: "team", label: "Team" },
+  { value: "all", labelKey: "appbar.tabAll" as TranslationKey },
+  { value: "personal", labelKey: "appbar.tabPersonal" as TranslationKey },
+  { value: "team", labelKey: "appbar.tabTeam" as TranslationKey },
 ] as const;
 
 export const Appbar = () => {
+  const { t } = useLanguage();
   const breadcrumbs = useBreadcrumbs();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -129,7 +132,7 @@ export const Appbar = () => {
         <div className="flex items-center gap-1">
           <DisabledReasonTooltip
             disabled={!canManageCurrentTeam}
-            reason="Not available for basic users"
+            reason={t("appbar.notAvailBasic")}
           >
             <Button
               variant="ghost"
@@ -139,14 +142,14 @@ export const Appbar = () => {
               onClick={() =>
                 window.dispatchEvent(new CustomEvent("team-detail:edit"))
               }
-              title={canManageCurrentTeam ? "Edit team" : undefined}
+              title={canManageCurrentTeam ? t("appbar.editTeam") : undefined}
             >
               <Pencil className="h-4 w-4" />
             </Button>
           </DisabledReasonTooltip>
           <DisabledReasonTooltip
             disabled={!canManageCurrentTeam}
-            reason="Not available for basic users"
+            reason={t("appbar.notAvailBasic")}
           >
             <Button
               variant="ghost"
@@ -156,7 +159,7 @@ export const Appbar = () => {
               onClick={() =>
                 window.dispatchEvent(new CustomEvent("team-detail:delete"))
               }
-              title={canManageCurrentTeam ? "Delete team" : undefined}
+              title={canManageCurrentTeam ? t("appbar.deleteTeam") : undefined}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -215,7 +218,7 @@ export const Appbar = () => {
                 onClick={() =>
                   window.dispatchEvent(new CustomEvent("user-detail:edit"))
                 }
-                title="Edit user"
+                title={t("appbar.editUser")}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -228,7 +231,7 @@ export const Appbar = () => {
                 onClick={() =>
                   window.dispatchEvent(new CustomEvent("user-detail:delete"))
                 }
-                title="Remove user"
+                title={t("appbar.removeUser")}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -261,7 +264,7 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 items-center gap-6 lg:gap-12 px-6 py-6 ${config.bg}`}
         >
-        <h4 className="text-text-1 shrink-0">AI Chat</h4>
+        <h4 className="text-text-1 shrink-0">{t("appbar.aiChat")}</h4>
 
         <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
           {AI_CHAT_TABS.map((tab) => (
@@ -274,7 +277,7 @@ export const Appbar = () => {
                   : "bg-bg-white text-text-1 hover:bg-bg-1"
               }`}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           ))}
         </div>
@@ -282,7 +285,7 @@ export const Appbar = () => {
         <div className="flex flex-1 items-center gap-[8px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">
           <Search className="h-5 w-5 shrink-0 text-text-3" />
           <input
-            placeholder="Search"
+            placeholder={t("appbar.search")}
             className="flex-1 bg-transparent text-[16px] leading-[24px] text-text-1 outline-none placeholder:text-text-3"
           />
         </div>
@@ -310,18 +313,18 @@ export const Appbar = () => {
             </Button>
           </Link>
 
-          <h4 className="text-[26px] font-bold text-text-1">{_project?.name ?? "Loading..."}</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{_project?.name ?? t("appbar.loading")}</h4>
 
           {_project?.teamId && (
             <div className="flex items-center gap-2 rounded-lg bg-bg-white px-2 py-1">
               <Users className="h-[18px] w-[18px] text-text-2" />
-              <span className="text-[13px] text-text-2">team</span>
+              <span className="text-[13px] text-text-2">{t("appbar.team")}</span>
             </div>
           )}
 
           <button className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1">
             <span className="text-[16px] text-text-1">
-              {_project ? getModelLabel(_project.model) : "Model"}
+              {_project ? getModelLabel(_project.model) : t("appbar.model")}
             </span>
             <ChevronDown className="h-4 w-4 text-text-2" />
           </button>
@@ -367,7 +370,7 @@ export const Appbar = () => {
                 className="z-50 w-[320px] rounded-lg border border-border-2 bg-bg-white p-4 shadow-lg"
               >
                 <div className="flex items-center justify-between mb-3">
-                  <span className="text-[14px] font-bold text-text-1">Team Members ({members.length})</span>
+                  <span className="text-[14px] font-bold text-text-1">{t("appbar.teamMembers")} ({members.length})</span>
                   <Popover.Close asChild>
                     <button className="cursor-pointer text-text-3 hover:text-text-1">
                       <X className="h-4 w-4" />
@@ -392,7 +395,7 @@ export const Appbar = () => {
                           {m.status === "accepted" ? (
                             <CheckCircle className="h-3 w-3 shrink-0 text-success-7" />
                           ) : (
-                            <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-warning-2 text-warning-5">Pending</span>
+                            <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-warning-2 text-warning-5">{t("appbar.pending")}</span>
                           )}
                         </div>
                       </div>
@@ -414,7 +417,7 @@ export const Appbar = () => {
             <InviteMembersDialog project={_project}>
               <Button variant="plusAction" className="rounded-lg w-[174px]">
                 <Plus className="h-4 w-4 text-text-white" />
-                Invite Member
+                {t("appbar.inviteMember")}
               </Button>
             </InviteMembersDialog>
           )}
@@ -442,7 +445,7 @@ export const Appbar = () => {
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h4 className="text-[26px] font-bold text-text-1">Create Project</h4>
+          <h4 className="text-[26px] font-bold text-text-1">{t("appbar.createProject")}</h4>
         </div>
         </header>
       </>
@@ -463,7 +466,7 @@ export const Appbar = () => {
             className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2 hover:text-primary-6"
           >
             <ArrowLeft className="h-4 w-4" />
-            Back to Dashboard
+            {t("appbar.backToDashboard")}
           </Link>
         </div>
         </header>
@@ -493,29 +496,29 @@ export const Appbar = () => {
             href="/tender-ai"
             className="hidden text-[14px] text-text-2 hover:text-primary-6 sm:inline"
           >
-            Dashboard
+            {t("appbar.dashboard")}
           </Link>
           <ChevronRight className="hidden h-3.5 w-3.5 text-text-3 sm:inline" />
           <span className="text-[14px] font-medium text-text-1">
-            Tender Details
+            {t("appbar.tenderDetails")}
           </span>
         </div>
         <div className="hidden items-center gap-2 sm:flex">
           <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
             <Download className="h-3.5 w-3.5" />
-            Download PDF
+            {t("appbar.downloadPDF")}
           </Button>
           <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
             <FileSpreadsheet className="h-3.5 w-3.5" />
-            Export CSV
+            {t("appbar.exportCSV")}
           </Button>
           <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
             <FolderPlus className="h-3.5 w-3.5" />
-            Create Project
+            {t("appbar.createTenderProject")}
           </Button>
           <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
             <Share2 className="h-3.5 w-3.5" />
-            Share with Team
+            {t("appbar.shareWithTeam")}
           </Button>
         </div>
         </header>
@@ -529,8 +532,8 @@ export const Appbar = () => {
       <MobileTopbar />
       <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
       <div className="flex items-center gap-4">
-        {config.title ? (
-          <h4 className="text-[26px] font-bold text-text-1">{config.title}</h4>
+        {config.titleKey ? (
+          <h4 className="text-[26px] font-bold text-text-1">{t(config.titleKey)}</h4>
         ) : (
           <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
             {breadcrumbs.map((crumb, i) => {
@@ -577,7 +580,7 @@ export const Appbar = () => {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
             <Input
               type="text"
-              placeholder={config.appbarSearch.placeholder}
+              placeholder={t(config.appbarSearch.placeholderKey)}
               className="h-10 w-full border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
               onChange={(e) =>
                 window.dispatchEvent(
@@ -598,7 +601,7 @@ export const Appbar = () => {
             className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
           >
             <Plus className="h-4 w-4" />
-            {config.appbarAction.label}
+            {t(config.appbarAction.labelKey)}
           </Button>
         )}
 
@@ -608,7 +611,7 @@ export const Appbar = () => {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
               <Input
                 type="text"
-                placeholder="Search projects..."
+                placeholder={t("appbar.searchProjects")}
                 className="w-64 border-slate-200 bg-white pl-10 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:ring-offset-0 focus-visible:border-blue-500"
               />
               <div className="absolute right-2 top-1/2 -translate-y-1/2">
@@ -647,13 +650,14 @@ export const Appbar = () => {
 // SelectValue rendering — wrapping a custom <span> inside the trigger
 // was eating the click target on first paint.
 const OBSERVABILITY_RANGES = [
-  { value: "24h", label: "Time Range: Last 24 hours" },
-  { value: "7d", label: "Time Range: Last 7 days" },
-  { value: "30d", label: "Time Range: Last 30 days" },
-  { value: "90d", label: "Time Range: Last 90 days" },
+  { value: "24h", labelKey: "appbar.timeRange24h" as TranslationKey },
+  { value: "7d", labelKey: "appbar.timeRange7d" as TranslationKey },
+  { value: "30d", labelKey: "appbar.timeRange30d" as TranslationKey },
+  { value: "90d", labelKey: "appbar.timeRange90d" as TranslationKey },
 ] as const;
 
 function ObservabilityAppbarSlot() {
+  const { t } = useLanguage();
   const [range, setRange] = useState<string>("7d");
   // Page → appbar signal: enables / disables Export CSV based on
   // whether the current filter set has any rows on the BE. Default
@@ -709,7 +713,7 @@ function ObservabilityAppbarSlot() {
               value={opt.value}
               className="rounded-md px-3 py-2 text-sm text-text-1"
             >
-              {opt.label}
+              {t(opt.labelKey)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -722,10 +726,10 @@ function ObservabilityAppbarSlot() {
         }
         title={
           exporting
-            ? "Preparing CSV…"
+            ? t("appbar.preparingCSV")
             : exportEnabled
-              ? "Export the currently filtered events as CSV"
-              : "No events match the current filters"
+              ? t("appbar.exportTooltip")
+              : t("appbar.noEventsMatch")
         }
         // Project Button defaults to h-12 (size=default in this fork), so
         // the Time Range Select at h-9 looked shorter. Pin h-9 + matching
@@ -733,7 +737,7 @@ function ObservabilityAppbarSlot() {
         className="h-9 shrink-0 cursor-pointer gap-2 rounded-lg border-border-2 bg-bg-white px-3 text-sm font-normal text-text-1 disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Download className="h-4 w-4" />
-        {exporting ? "Exporting…" : "Export CSV"}
+        {exporting ? t("appbar.exporting") : t("appbar.exportCSVButton")}
       </Button>
     </>
   );

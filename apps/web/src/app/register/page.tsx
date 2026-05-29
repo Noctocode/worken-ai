@@ -23,11 +23,13 @@ import {
   signupWithPassword,
   type InviteDetails,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const MIN_PASSWORD_LENGTH = 8;
 
 function RegisterContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const invitedEmail = searchParams.get("email");
@@ -77,8 +79,8 @@ function RegisterContent() {
       if (result.verified) {
         toast.success(
           inviteQuery.data
-            ? `Welcome to ${inviteQuery.data.teamName}!`
-            : "Account created",
+            ? `${t("auth.welcomeToTeam")} ${inviteQuery.data.teamName}!`
+            : t("auth.accountCreated"),
         );
         window.location.href = "/setup-profile";
       } else {
@@ -96,21 +98,19 @@ function RegisterContent() {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (!trimmedName) {
-      setValidationError("Please enter your name");
+      setValidationError(t("auth.enterName"));
       return;
     }
     if (!trimmedEmail) {
-      setValidationError("Please enter your email");
+      setValidationError(t("auth.enterEmail"));
       return;
     }
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setValidationError(
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      );
+      setValidationError(t("auth.passwordMinError"));
       return;
     }
     if (password !== confirmPassword) {
-      setValidationError("Passwords don't match");
+      setValidationError(t("auth.passwordsDontMatch"));
       return;
     }
     mutation.mutate();
@@ -132,21 +132,22 @@ function RegisterContent() {
             />
           </div>
           <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-            Create an Account
+            {t("auth.createAccount")}
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
             {token && inviteQuery.data
-              ? `You're signing up to join ${inviteQuery.data.teamName}`
-              : "Enter your details to create a new workspace"}
+              ? `${t("auth.signingUpToJoin")} ${inviteQuery.data.teamName}`
+              : t("auth.createDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {loggedInAsOther && (
             <div className="mb-6 rounded-lg border border-[#FF7D00]/30 bg-[#FFF3E6] px-4 py-3 text-left text-sm text-[#995200]">
               <p>
-                You are currently logged in as{" "}
-                <strong>{currentUserQuery.data!.email}</strong>. This invitation
-                is for <strong>{invitedEmail}</strong>.
+                {t("auth.currentlyLoggedAs")}{" "}
+                <strong>{currentUserQuery.data!.email}</strong>
+                {t("auth.invitationFor")}{" "}
+                <strong>{invitedEmail}</strong>.
               </p>
               <button
                 type="button"
@@ -156,7 +157,7 @@ function RegisterContent() {
                   window.location.href = `/register?email=${encodeURIComponent(invitedEmail!)}`;
                 }}
               >
-                Sign out and continue with {invitedEmail}
+                {t("auth.signOutContinueWith")} {invitedEmail}
               </button>
             </div>
           )}
@@ -165,7 +166,7 @@ function RegisterContent() {
               <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="text"
-                placeholder="Full Name"
+                placeholder={t("auth.fullName")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -176,7 +177,7 @@ function RegisterContent() {
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="email"
-                placeholder="Email Address"
+                placeholder={t("auth.email")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -188,7 +189,7 @@ function RegisterContent() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="password"
-                placeholder="Password (min 8 characters)"
+                placeholder={t("auth.passwordMinChars")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -200,7 +201,7 @@ function RegisterContent() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="password"
-                placeholder="Confirm password"
+                placeholder={t("auth.confirmPassword")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -220,12 +221,12 @@ function RegisterContent() {
               size="lg"
             >
               <LogIn className="h-4 w-4" />
-              {mutation.isPending ? "Creating account..." : "Continue"}
+              {mutation.isPending ? t("auth.creatingAccount") : t("auth.continue")}
             </Button>
           </form>
           <div className="flex items-center gap-2 my-6">
             <div className="flex-1 h-0 border-t border-divider" />
-            <span className="text-sm text-text-2">or continue with</span>
+            <span className="text-sm text-text-2">{t("auth.orContinueWith")}</span>
             <div className="flex-1 h-0 border-t border-divider" />
           </div>
           <Button
@@ -248,9 +249,9 @@ function RegisterContent() {
             Google
           </Button>
           <p className="text-sm text-text-2 mt-6">
-            {"Already have an account? "}
-            <Link href="/login" className="text-primary-6 hover:text-primary-7 font-medium">Sign in</Link>
-            {" to your workspace"}
+            {t("auth.alreadyHaveAccount")}
+            <Link href="/login" className="text-primary-6 hover:text-primary-7 font-medium">{t("auth.signIn")}</Link>
+            {t("auth.toYourWorkspace")}
           </p>
         </CardContent>
       </Card>

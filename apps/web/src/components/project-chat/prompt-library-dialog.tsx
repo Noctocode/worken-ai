@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { fetchPrompts, type PromptSummary } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * "Prompt Library" composer button.
@@ -33,6 +34,7 @@ export function PromptLibraryDialog({
   children: React.ReactNode;
   onPick: (body: string) => void;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
 
@@ -60,15 +62,15 @@ export function PromptLibraryDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[640px]">
         <DialogHeader>
-          <DialogTitle>Prompt Library</DialogTitle>
+          <DialogTitle>{t("promptLib.title")}</DialogTitle>
           <DialogDescription>
-            Insert a saved prompt into your message.
+            {t("promptLib.desc")}
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
           <Input
-            placeholder="Search prompts…"
+            placeholder={t("promptLib.search")}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             className="pl-9"
@@ -86,8 +88,8 @@ export function PromptLibraryDialog({
               <BookOpen className="h-8 w-8 text-text-3" strokeWidth={1.5} />
               <p className="text-[13px] text-text-2">
                 {prompts.length === 0
-                  ? "No prompts yet. Create one in Resources › Prompt Library."
-                  : "No prompts match your search."}
+                  ? t("promptLib.noPrompts")
+                  : t("promptLib.noMatch")}
               </p>
             </div>
           )}

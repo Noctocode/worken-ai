@@ -23,12 +23,14 @@ import { createProject, fetchTeams } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
+import { useLanguage } from "@/lib/i18n";
 
 export function CreateProjectDialog({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -81,43 +83,43 @@ export function CreateProjectDialog({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create New Project</DialogTitle>
+            <DialogTitle>{t("dlg.createProj.title")}</DialogTitle>
             <DialogDescription>
-              Start a new AI project with your preferred model.
+              {t("dlg.createProj.desc")}
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="project-name">Name</Label>
+              <Label htmlFor="project-name">{t("dlg.createProj.name")}</Label>
               <Input
                 id="project-name"
-                placeholder="My AI Project"
+                placeholder={t("dlg.createProj.namePlaceholder")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="project-description">Description</Label>
+              <Label htmlFor="project-description">{t("dlg.createProj.description")}</Label>
               <Textarea
                 id="project-description"
-                placeholder="What is this project about?"
+                placeholder={t("dlg.createProj.descPlaceholder")}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
               />
             </div>
             <div className="space-y-2">
-              <Label>Model</Label>
+              <Label>{t("dlg.createProj.model")}</Label>
               <Select value={model} onValueChange={setModel} required>
                 <SelectTrigger className="w-full">
                   <SelectValue
                     placeholder={
                       modelsLoading
-                        ? "Loading models…"
+                        ? t("dlg.createProj.modelsLoading")
                         : models.length === 0
-                          ? "No models enabled — ask an admin"
-                          : "Select a model"
+                          ? t("dlg.createProj.noModels")
+                          : t("dlg.createProj.selectModel")
                     }
                   />
                 </SelectTrigger>
@@ -132,13 +134,13 @@ export function CreateProjectDialog({
             </div>
             {teams && teams.length > 0 && (
               <div className="space-y-2">
-                <Label>Workspace</Label>
+                <Label>{t("dlg.createProj.workspace")}</Label>
                 <Select value={teamId} onValueChange={setTeamId}>
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="personal">Personal</SelectItem>
+                    <SelectItem value="personal">{t("dlg.createProj.personal")}</SelectItem>
                     {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>
                         {team.name}
@@ -153,7 +155,7 @@ export function CreateProjectDialog({
                 type="submit"
                 disabled={mutation.isPending || !name.trim() || !model}
               >
-                {mutation.isPending ? "Creating..." : "Create Project"}
+                {mutation.isPending ? t("dlg.createProj.creating") : t("dlg.createProj.create")}
               </Button>
             </DialogFooter>
           </form>

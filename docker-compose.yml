@@ -1,3 +1,13 @@
+# Lock the Compose project name so the postgres + redis volumes keep a
+# stable prefix regardless of what the working directory is called. By
+# default Compose prefixes volume names with the project name, which
+# defaults to the directory name — so renaming/cloning the repo into
+# a differently-named directory silently creates EMPTY volumes and
+# the dev DB looks wiped (login starts 500-ing because `users`
+# doesn't exist on the new volume). Fixing the name here makes the
+# behaviour identical no matter where the repo is checked out.
+name: worken-ai
+
 services:
   postgres:
     image: pgvector/pgvector:pg16

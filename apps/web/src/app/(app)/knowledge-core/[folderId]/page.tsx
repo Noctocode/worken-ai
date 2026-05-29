@@ -3,7 +3,6 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   Download,
   FileText,
   FolderInput,
@@ -61,6 +60,7 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  deleteKnowledgeFolder,
   type KnowledgeFileVisibility,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
@@ -69,6 +69,7 @@ import { useAuth } from "@/components/providers";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
+import { useLanguage } from "@/lib/i18n";
 
 const TYPE_STYLES: Record<string, string> = {
   PDF: "bg-danger-1 text-danger-6",
@@ -123,11 +124,12 @@ function IngestionStatusBadge({
   status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
+  const { t } = useLanguage();
   if (status === "done") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
         <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-        In context
+        {t("kcFolder.inContext")}
       </span>
     );
   }
@@ -135,10 +137,10 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
-        title={error ?? "Could not extract searchable text from this file."}
+        title={error ?? t("kcFolder.couldExtract")}
       >
         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
-        Skipped
+        {t("kcFolder.skipped")}
       </span>
     );
   }
@@ -146,17 +148,17 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Excluded from context — Include in context to make this file searchable again."
+        title={t("kcFolder.excludedTitle")}
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
-        Excluded
+        {t("kcFolder.excluded")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-      {status === "processing" ? "Adding" : "Queued"}
+      {status === "processing" ? t("kcFolder.adding") : t("kcFolder.queued")}
     </span>
   );
 }
@@ -176,32 +178,31 @@ function VisibilityBadge({
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
 }) {
+  const { t } = useLanguage();
   if (visibility === "admins") {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
-        title="Only admins can see this file in chat / arena."
+        title={t("kcFolder.adminsOnlyTitle")}
       >
         <Shield className="h-3 w-3" strokeWidth={2} />
-        Admins only
+        {t("kcFolder.adminsOnly")}
       </span>
     );
   }
   if (visibility === "teams") {
-    // Team list as a comma-joined hover tooltip; the pill itself
-    // stays compact so the row keeps a single-line layout.
-    const names = teams.map((t) => t.name).join(", ");
+    const names = teams.map((team) => team.name).join(", ");
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Only members of these teams can see this file in chat / arena: ${names}.`
-            : "Visibility is set to specific teams, but no team is linked yet — no one can see this file."
+            ? `${t("kcFolder.teamsTooltipPrefix")} ${names}.`
+            : t("kcFolder.teamsEmptyTooltip")
         }
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+        {teams.length > 0 ? `${t("kcFolder.teams")} (${teams.length})` : t("kcFolder.teams")}
       </span>
     );
   }
@@ -212,22 +213,22 @@ function VisibilityBadge({
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Surfaced only in the chat of these projects: ${names}.`
-            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+            ? `${t("kcFolder.projectsTooltipPrefix")} ${names}.`
+            : t("kcFolder.projectsEmptyTooltip")
         }
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
+        {projects.length > 0 ? `${t("kcFolder.projects")} (${projects.length})` : t("kcFolder.project")}
       </span>
     );
   }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title="Every company user can see this file in chat / arena."
+      title={t("kcFolder.everyoneTitle")}
     >
       <Users className="h-3 w-3" strokeWidth={2} />
-      Everyone
+      {t("kcFolder.everyone")}
     </span>
   );
 }
@@ -237,6 +238,7 @@ export default function FolderDetailPage({
 }: {
   params: Promise<{ folderId: string }>;
 }) {
+  const { t } = useLanguage();
   const { folderId } = use(params);
   const [query, setQuery] = useState("");
   const { user: currentUser } = useAuth();
@@ -312,21 +314,17 @@ export default function FolderDetailPage({
       // for what was skipped) so the user always knows the exact
       // result of their drop.
       if (uploaded.length > 0) {
-        toast.success(`Uploaded ${uploaded.length} file(s).`);
+        toast.success(`${t("kcFolder.uploadedN1")} ${uploaded.length} ${t("kcFolder.uploadedN2")}`);
       }
       if (duplicates.length > 0) {
-        // When the existing copy was uploaded under a different
-        // filename (same content, renamed re-upload), surface BOTH
-        // names — otherwise the user reads "X is already in KC" and
-        // wonders where their file went because X isn't in the list.
         const titleForOne = (d: (typeof duplicates)[number]) =>
           d.existing.name && d.existing.name !== d.name
-            ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
-            : `"${d.name}" is already in your Knowledge Core.`;
+            ? `"${d.name}" ${t("kcFolder.matchesExisting1")} "${d.existing.name}" ${t("kcFolder.matchesExisting2")}`
+            : `"${d.name}" ${t("kcFolder.alreadyInKC")}`;
         toast.info(
           duplicates.length === 1
             ? titleForOne(duplicates[0])
-            : `${duplicates.length} file(s) were already in your Knowledge Core.`,
+            : `${duplicates.length} ${t("kcFolder.multipleInKC")}`,
           {
             description: duplicates
               .map((d) =>
@@ -345,7 +343,7 @@ export default function FolderDetailPage({
       if (nameConflicts.length > 0) {
         if (variables.nameConflictActions) {
           toast.info(
-            `${nameConflicts.length} file(s) were skipped.`,
+            `${nameConflicts.length} ${t("kcFolder.skippedN")}`,
             {
               description: nameConflicts
                 .map((c) => `"${c.name}"`)
@@ -364,7 +362,7 @@ export default function FolderDetailPage({
       }
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to upload files."),
+      toast.error(err.message || t("kcFolder.failedUpload")),
   });
 
   const resolveNameConflicts = (
@@ -386,7 +384,7 @@ export default function FolderDetailPage({
     setPendingConflicts(null);
     if (filesToResend.length === 0) {
       if (skippedCount > 0) {
-        toast.info(`Skipped ${skippedCount} file(s).`);
+        toast.info(t("kcFolder.skippedConflict").replace("{n}", String(skippedCount)));
       }
       return;
     }
@@ -409,11 +407,11 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("Adding to context.");
+      toast.success(t("kcFolder.addingToContext"));
     },
     onError: (err: Error) =>
       toast.error(
-        err.message || "Failed to include this file in context.",
+        err.message || t("kcFolder.failedInclude"),
       ),
   });
 
@@ -428,11 +426,11 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("Excluded from context.");
+      toast.success(t("kcFolder.excludedFromContext"));
     },
     onError: (err: Error) =>
       toast.error(
-        err.message || "Failed to exclude this file from context.",
+        err.message || t("kcFolder.failedExclude"),
       ),
   });
 
@@ -454,12 +452,12 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       toast.success(
         visibility === "admins"
-          ? "File is now visible only to admins."
-          : "File is now visible to everyone.",
+          ? t("kcFolder.adminsOnlyToast")
+          : t("kcFolder.everyoneToast"),
       );
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to update visibility."),
+      toast.error(err.message || t("kcFolder.failedVisibility")),
   });
 
   const deleteMutation = useMutation({
@@ -470,9 +468,9 @@ export default function FolderDetailPage({
       });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("File deleted.");
+      toast.success(t("kcFolder.fileDeleted"));
     },
-    onError: () => toast.error("Failed to delete file."),
+    onError: () => toast.error(t("kcFolder.failedDelete")),
   });
 
   const { data: allFolders = [] } = useQuery({
@@ -498,9 +496,9 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       setMoveFileId(null);
       setMoveTargetId("");
-      toast.success("File moved.");
+      toast.success(t("kcFolder.fileMoved"));
     },
-    onError: () => toast.error("Failed to move file."),
+    onError: () => toast.error(t("kcFolder.failedMove")),
   });
 
   const [stagedFiles, setStagedFiles] = useState<File[]>([]);
@@ -554,26 +552,23 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       const updatedCopy =
         res.visibility === "admins"
-          ? `${res.affectedIds.length} file(s) are now visible only to admins.`
-          : `${res.affectedIds.length} file(s) are now visible to everyone.`;
-      // BE skips rows that are mid-ingestion to avoid leaving the
-      // file row + about-to-be-inserted chunks out of sync. Surface
-      // that to the admin so they know to retry once those finish.
+          ? `${res.affectedIds.length} ${t("kcFolder.bulkAdminToast")}`
+          : `${res.affectedIds.length} ${t("kcFolder.bulkEveryoneToast")}`;
       if (res.skippedIds.length === 0) {
         toast.success(updatedCopy);
       } else if (res.affectedIds.length === 0) {
         toast.warning(
-          `All ${res.skippedIds.length} selected file(s) are still being added to context. Try again once they finish.`,
+          t("kcFolder.allMidIngestion").replace("{n}", String(res.skippedIds.length)),
         );
       } else {
         toast.warning(
-          `${updatedCopy} ${res.skippedIds.length} file(s) were skipped because they're still being added to context — try those again in a moment.`,
+          `${updatedCopy} ${t("kcFolder.partialIngestion").replace("{n}", String(res.skippedIds.length))}`,
         );
       }
       clearSelection();
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to update visibility."),
+      toast.error(err.message || t("kcFolder.failedVisibility")),
   });
 
   // Bulk include + delete fan out to the existing per-file
@@ -597,14 +592,14 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       if (rejected === 0) {
-        toast.success(`Adding ${fulfilled} file(s) to context.`);
+        toast.success(t("kcFolder.addingN").replace("{n}", String(fulfilled)));
       } else if (fulfilled === 0) {
         toast.error(
-          `Couldn't add any of the ${rejected} file(s) to context.`,
+          t("kcFolder.couldntAddAny").replace("{n}", String(rejected)),
         );
       } else {
         toast.warning(
-          `Added ${fulfilled} file(s); ${rejected} couldn't be added (likely already being added).`,
+          t("kcFolder.partiallyAdded").replace("{ok}", String(fulfilled)).replace("{fail}", String(rejected)),
         );
       }
       clearSelection();
@@ -627,12 +622,12 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       if (rejected === 0) {
-        toast.success(`Deleted ${fulfilled} file(s).`);
+        toast.success(t("kcFolder.deletedN").replace("{n}", String(fulfilled)));
       } else if (fulfilled === 0) {
-        toast.error(`Delete failed for all ${rejected} file(s).`);
+        toast.error(t("kcFolder.deleteFailedAll").replace("{n}", String(rejected)));
       } else {
         toast.warning(
-          `Deleted ${fulfilled} file(s); ${rejected} failed.`,
+          t("kcFolder.partiallyDeleted").replace("{ok}", String(fulfilled)).replace("{fail}", String(rejected)),
         );
       }
       clearSelection();
@@ -642,6 +637,23 @@ export default function FolderDetailPage({
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
   const deleteFileName =
     folder?.files.find((f) => f.id === deleteFileId)?.name ?? "";
+
+  // Subfolder delete — same confirm-dialog pattern as root /knowledge-core
+  const [deleteSubfolderId, setDeleteSubfolderId] = useState<string | null>(null);
+  const deleteSubfolderName =
+    folder?.children.find((c) => c.id === deleteSubfolderId)?.name ?? "";
+
+  const deleteSubfolderMutation = useMutation({
+    mutationFn: (id: string) => deleteKnowledgeFolder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folder", folderId] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
+      queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
+      setDeleteSubfolderId(null);
+      toast.success(t("kcFolder.folderDeleted"));
+    },
+    onError: () => toast.error(t("kcFolder.failedDeleteFolder")),
+  });
 
   // Same pattern as on the root /knowledge-core page — full
   // visibility editor lives in a shared dialog, opened per file by
@@ -661,11 +673,11 @@ export default function FolderDetailPage({
   const confirmUpload = () => {
     if (stagedFiles.length === 0) return;
     if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error("Pick at least one team for Teams visibility.");
+      toast.error(t("kcFolder.pickTeam"));
       return;
     }
     if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error("Pick at least one project for Project visibility.");
+      toast.error(t("kcFolder.pickProject"));
       return;
     }
     uploadMutation.mutate({
@@ -764,14 +776,36 @@ export default function FolderDetailPage({
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Back link */}
-      <Link
-        href="/knowledge-core"
-        className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[14px] text-text-2 hover:text-primary-6"
+      {/* Breadcrumbs — KC root → every ancestor → current. Replaces
+          the old "Back to Folders" link so users can jump up several
+          levels at once instead of clicking Back repeatedly. Current
+          folder is non-clickable; ancestors are links. */}
+      <nav
+        aria-label={t("kcFolder.breadcrumb")}
+        className="flex flex-wrap items-center gap-1 text-[14px] text-text-3"
       >
-        <ArrowLeft className="h-4 w-4" />
-        Back to Folders
-      </Link>
+        <Link
+          href="/knowledge-core"
+          className="cursor-pointer hover:text-primary-6"
+        >
+          {t("kcFolder.folders")}
+        </Link>
+        {folder.breadcrumb.map((crumb) => (
+          <span key={crumb.id} className="flex items-center gap-1">
+            <span className="text-text-3/60">/</span>
+            <Link
+              href={`/knowledge-core/${crumb.id}`}
+              className="cursor-pointer hover:text-primary-6"
+            >
+              {crumb.name}
+            </Link>
+          </span>
+        ))}
+        <span className="flex items-center gap-1">
+          <span className="text-text-3/60">/</span>
+          <span className="text-text-1 font-medium">{folder.name}</span>
+        </span>
+      </nav>
 
       {/* Folder info card */}
       <div className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 sm:flex-row sm:items-center sm:justify-between">
@@ -785,10 +819,10 @@ export default function FolderDetailPage({
               {folder.name}
             </h1>
             <div className="flex flex-wrap items-center gap-3 text-[13px] text-text-3">
-              <span>{folder.files.length} files</span>
-              <span>{formatBytes(totalBytes)} total</span>
+              <span>{folder.files.length} {t("kcFolder.files")}</span>
+              <span>{formatBytes(totalBytes)} {t("kcFolder.totalSuffix")}</span>
               <span>
-                Last modified {formatDate(folder.updatedAt)}
+                {t("kcFolder.lastModified")} {formatDate(folder.updatedAt)}
               </span>
             </div>
           </div>
@@ -807,11 +841,76 @@ export default function FolderDetailPage({
           >
             <span>
               <Upload className="h-4 w-4" />
-              Upload Files
+              {t("kcFolder.uploadFiles")}
             </span>
           </Button>
         </label>
       </div>
+
+      {/* Subfolders section — only when this folder has children.
+          Same card layout as the KC root folder grid so the user
+          gets a familiar drill-down experience. Drive imports
+          surface here ("Google Drive" parent shows "Test" / etc.
+          as children); user-created nested folders show up the
+          same way. */}
+      {folder.children.length > 0 && (
+        <section className="flex flex-col gap-4">
+          <h2 className="text-[16px] font-bold text-text-1">{t("kcFolder.subfolders")}</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {folder.children.map((child) => (
+              <Link
+                key={child.id}
+                href={`/knowledge-core/${child.id}`}
+                className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-6 transition-colors hover:bg-primary-1"
+              >
+                <div className="flex items-start justify-between">
+                  <Folder
+                    className="h-8 w-8 text-primary-6"
+                    strokeWidth={1.5}
+                  />
+                  {/* Intercept click so the Link doesn't navigate when
+                      the user opens / interacts with the dropdown. */}
+                  <div
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                  >
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => setDeleteSubfolderId(child.id)}
+                          className="text-danger-6 focus:text-danger-6"
+                        >
+                          <Trash2 className="mr-2 h-3.5 w-3.5" />
+                          {t("kcFolder.delete")}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className="truncate text-[15px] font-semibold text-text-1">
+                    {child.name}
+                  </span>
+                  <span className="text-[12px] text-text-3">
+                    {child.fileCount} {child.fileCount === 1 ? t("kcFolder.file") : t("kcFolder.files")} ·{" "}
+                    {formatBytes(child.totalBytes)}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Search */}
       <div className="relative sm:max-w-xs">
@@ -819,7 +918,7 @@ export default function FolderDetailPage({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search files..."
+          placeholder={t("kcFolder.searchFiles")}
           className="h-10 pl-9 placeholder:text-text-3"
         />
       </div>
@@ -832,8 +931,8 @@ export default function FolderDetailPage({
       {selectedIds.size > 0 && (
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-lg border border-primary-2 bg-primary-1/40 px-4 py-3 backdrop-blur">
           <span className="text-[13px] font-semibold text-text-1">
-            {selectedIds.size} file{selectedIds.size !== 1 ? "s" : ""}{" "}
-            selected
+            {selectedIds.size} {selectedIds.size !== 1 ? t("kcFolder.files") : t("kcFolder.file")}{" "}
+            {t("kcFolder.filesSelected")}
           </span>
           <div className="ml-auto flex flex-wrap items-center gap-2">
             {isAdmin && (
@@ -846,7 +945,7 @@ export default function FolderDetailPage({
                   className="cursor-pointer gap-1.5"
                 >
                   <Shield className="h-3.5 w-3.5" />
-                  Admin-only
+                  {t("kcFolder.adminOnly")}
                 </Button>
                 <Button
                   variant="outline"
@@ -856,7 +955,7 @@ export default function FolderDetailPage({
                   className="cursor-pointer gap-1.5"
                 >
                   <Users className="h-3.5 w-3.5" />
-                  Visible to everyone
+                  {t("kcFolder.visibleEveryone")}
                 </Button>
               </>
             )}
@@ -868,7 +967,7 @@ export default function FolderDetailPage({
               className="cursor-pointer gap-1.5"
             >
               <RotateCw className="h-3.5 w-3.5" />
-              Include in context
+              {t("kcFolder.includeInContext")}
             </Button>
             <Button
               variant="outline"
@@ -878,7 +977,7 @@ export default function FolderDetailPage({
               className="cursor-pointer gap-1.5 border-danger-3 text-danger-6 hover:bg-danger-1"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              Delete
+              {t("kcFolder.delete")}
             </Button>
             <Button
               variant="ghost"
@@ -887,7 +986,7 @@ export default function FolderDetailPage({
               disabled={bulkBusy}
               className="cursor-pointer"
             >
-              Cancel
+              {t("kcFolder.cancel")}
             </Button>
           </div>
         </div>
@@ -902,17 +1001,17 @@ export default function FolderDetailPage({
               <tr className="border-b border-border-2 text-[12px] font-semibold uppercase tracking-wide text-text-3">
                 <th className="px-5 py-3 w-10">
                   <Checkbox
-                    aria-label="Select all files"
+                    aria-label={t("kcFolder.selectAll")}
                     checked={headerCheckboxState}
                     onCheckedChange={toggleSelectAllFiltered}
                     disabled={filtered.length === 0}
                   />
                 </th>
-                <th className="px-5 py-3">Name</th>
-                <th className="px-5 py-3">Type</th>
-                <th className="px-5 py-3">Size</th>
-                <th className="px-5 py-3">Uploaded By</th>
-                <th className="px-5 py-3">Date</th>
+                <th className="px-5 py-3">{t("kcFolder.colName")}</th>
+                <th className="px-5 py-3">{t("kcFolder.colType")}</th>
+                <th className="px-5 py-3">{t("kcFolder.colSize")}</th>
+                <th className="px-5 py-3">{t("kcFolder.colUploadedBy")}</th>
+                <th className="px-5 py-3">{t("kcFolder.colDate")}</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -926,7 +1025,7 @@ export default function FolderDetailPage({
                 >
                   <td className="px-5 py-4">
                     <Checkbox
-                      aria-label={`Select ${f.name}`}
+                      aria-label={`${t("kcFolder.selectFile")} ${f.name}`}
                       checked={selectedIds.has(f.id)}
                       onCheckedChange={() => toggleSelected(f.id)}
                     />
@@ -983,7 +1082,7 @@ export default function FolderDetailPage({
                             rel="noopener noreferrer"
                           >
                             <Download className="mr-2 h-3.5 w-3.5" />
-                            Download
+                            {t("kcFolder.download")}
                           </a>
                         </DropdownMenuItem>
                         <DropdownMenuItem
@@ -993,7 +1092,7 @@ export default function FolderDetailPage({
                           }}
                         >
                           <FolderInput className="mr-2 h-3.5 w-3.5" />
-                          Move to...
+                          {t("kcFolder.moveTo")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => reingestMutation.mutate(f.id)}
@@ -1003,7 +1102,7 @@ export default function FolderDetailPage({
                           }
                         >
                           <RotateCw className="mr-2 h-3.5 w-3.5" />
-                          Include in context
+                          {t("kcFolder.includeInContext")}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => untrainMutation.mutate(f.id)}
@@ -1014,7 +1113,7 @@ export default function FolderDetailPage({
                           }
                         >
                           <Unplug className="mr-2 h-3.5 w-3.5" />
-                          Exclude from context
+                          {t("kcFolder.excludeFromContext")}
                         </DropdownMenuItem>
                         {isAdmin && (
                           <DropdownMenuItem
@@ -1029,25 +1128,22 @@ export default function FolderDetailPage({
                             {f.visibility === "admins" ? (
                               <>
                                 <Users className="mr-2 h-3.5 w-3.5" />
-                                Make visible to everyone
+                                {t("kcFolder.makeVisibleEveryone")}
                               </>
                             ) : (
                               <>
                                 <Shield className="mr-2 h-3.5 w-3.5" />
-                                Make admin-only
+                                {t("kcFolder.makeAdminOnly")}
                               </>
                             )}
                           </DropdownMenuItem>
                         )}
-                        {/* Open to file owners too; folder detail
-                            requires folder ownership to load, so the
-                            caller is always the uploader (or admin). */}
                         <DropdownMenuItem
                           onSelect={() => setEditingVisibilityFileId(f.id)}
                           disabled={f.ingestionStatus === "processing"}
                         >
                           <Settings2 className="mr-2 h-3.5 w-3.5" />
-                          Change visibility…
+                          {t("kcFolder.changeVisibility")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -1055,7 +1151,7 @@ export default function FolderDetailPage({
                           className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
+                          {t("kcFolder.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -1069,8 +1165,8 @@ export default function FolderDetailPage({
                     className="px-5 py-10 text-center text-[13px] text-text-3"
                   >
                     {query
-                      ? "No files match your search."
-                      : "No files in this folder yet. Upload some above."}
+                      ? t("kcFolder.noFilesMatch")
+                      : t("kcFolder.noFilesYet")}
                   </td>
                 </tr>
               )}
@@ -1088,7 +1184,7 @@ export default function FolderDetailPage({
               }`}
             >
               <Checkbox
-                aria-label={`Select ${f.name}`}
+                aria-label={`${t("kcFolder.selectFile")} ${f.name}`}
                 checked={selectedIds.has(f.id)}
                 onCheckedChange={() => toggleSelected(f.id)}
               />
@@ -1113,7 +1209,7 @@ export default function FolderDetailPage({
                 </div>
                 <span className="text-[12px] text-text-3">
                   {formatBytes(f.sizeBytes)} •{" "}
-                  {f.uploadedByName ?? "Unknown"} •{" "}
+                  {f.uploadedByName ?? t("kcFolder.unknown")} •{" "}
                   {formatDateTime(f.createdAt)}
                 </span>
               </div>
@@ -1134,7 +1230,7 @@ export default function FolderDetailPage({
                     }}
                   >
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
-                    Move to...
+                    {t("kcFolder.moveTo")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => reingestMutation.mutate(f.id)}
@@ -1144,7 +1240,7 @@ export default function FolderDetailPage({
                     }
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
-                    Include in context
+                    {t("kcFolder.includeInContext")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => untrainMutation.mutate(f.id)}
@@ -1155,7 +1251,7 @@ export default function FolderDetailPage({
                     }
                   >
                     <Unplug className="mr-2 h-3.5 w-3.5" />
-                    Exclude from context
+                    {t("kcFolder.excludeFromContext")}
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
@@ -1170,12 +1266,12 @@ export default function FolderDetailPage({
                       {f.visibility === "admins" ? (
                         <>
                           <Users className="mr-2 h-3.5 w-3.5" />
-                          Make visible to everyone
+                          {t("kcFolder.makeVisibleEveryone")}
                         </>
                       ) : (
                         <>
                           <Shield className="mr-2 h-3.5 w-3.5" />
-                          Make admin-only
+                          {t("kcFolder.makeAdminOnly")}
                         </>
                       )}
                     </DropdownMenuItem>
@@ -1185,7 +1281,7 @@ export default function FolderDetailPage({
                     disabled={f.ingestionStatus === "processing"}
                   >
                     <Settings2 className="mr-2 h-3.5 w-3.5" />
-                    Change visibility…
+                    {t("kcFolder.changeVisibility")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -1193,7 +1289,7 @@ export default function FolderDetailPage({
                     className="text-danger-6 focus:text-danger-6"
                   >
                     <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    Delete
+                    {t("kcFolder.delete")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -1202,8 +1298,8 @@ export default function FolderDetailPage({
           {filtered.length === 0 && (
             <p className="py-8 text-center text-[13px] text-text-3">
               {query
-                ? "No files match your search."
-                : "No files yet."}
+                ? t("kcFolder.noFilesMatch")
+                : t("kcFolder.noFilesYetShort")}
             </p>
           )}
         </div>
@@ -1223,14 +1319,14 @@ export default function FolderDetailPage({
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Move File</DialogTitle>
+            <DialogTitle>{t("kcFolder.moveFile")}</DialogTitle>
           </DialogHeader>
           <p className="text-[13px] text-text-2">
-            Move <strong>{moveFileName}</strong> to:
+            {t("kcFolder.movePrefix")} <strong>{moveFileName}</strong> {t("kcFolder.moveSuffix")}
           </p>
           <Select value={moveTargetId} onValueChange={setMoveTargetId}>
             <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
-              <SelectValue placeholder="Select folder" />
+              <SelectValue placeholder={t("kcFolder.selectFolder")} />
             </SelectTrigger>
             <SelectContent>
               {allFolders
@@ -1248,14 +1344,14 @@ export default function FolderDetailPage({
               onClick={() => setMoveFileId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("kcFolder.cancel")}
             </Button>
             <Button
               onClick={() => moveMutation.mutate()}
               disabled={!moveTargetId || moveMutation.isPending}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {moveMutation.isPending ? "Moving..." : "Move"}
+              {moveMutation.isPending ? t("kcFolder.moving") : t("kcFolder.move")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1271,12 +1367,11 @@ export default function FolderDetailPage({
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Upload {stagedFiles.length} file
-              {stagedFiles.length !== 1 ? "s" : ""}
+              {t("kcFolder.uploadTitle")} {stagedFiles.length} {stagedFiles.length !== 1 ? t("kcFolder.files") : t("kcFolder.file")}
             </DialogTitle>
             <DialogDescription>
-              These files will be uploaded to{" "}
-              <strong>{folder?.name}</strong>.
+              {t("kcFolder.uploadDescPrefix")}{" "}
+              <strong>{folder?.name}</strong>{t("kcFolder.uploadDescSuffix")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
@@ -1312,7 +1407,7 @@ export default function FolderDetailPage({
               checkbox panel below appears when 'teams' is active. */}
           <div className="flex flex-col gap-1.5 pt-1">
             <label className="text-[12px] font-medium text-text-1">
-              Visibility
+              {t("kcFolder.visibility")}
             </label>
             <Select
               value={stagedVisibility}
@@ -1325,42 +1420,41 @@ export default function FolderDetailPage({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Everyone in the company</SelectItem>
+                <SelectItem value="all">{t("kcFolder.everyoneOpt")}</SelectItem>
                 {isAdmin && (
-                  <SelectItem value="admins">Admins only</SelectItem>
+                  <SelectItem value="admins">{t("kcFolder.adminsOpt")}</SelectItem>
                 )}
-                <SelectItem value="teams">Specific teams…</SelectItem>
-                <SelectItem value="project">Specific project…</SelectItem>
+                <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
+                <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {stagedVisibility === "admins"
-                ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
+                ? t("kcFolder.hintAdmins")
                 : stagedVisibility === "teams"
-                  ? "Only members of the teams you pick below will see these files in chat / arena."
+                  ? t("kcFolder.hintTeams")
                   : stagedVisibility === "project"
-                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
-                    : "Every user in the company can see these files in chat / arena."}
+                    ? t("kcFolder.hintProject")
+                    : t("kcFolder.hintEveryone")}
             </p>
           </div>
 
           {stagedVisibility === "teams" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
-                Teams with access
+                {t("kcFolder.teamsWithAccess")}
               </label>
               {userTeams.length === 0 ? (
                 <p className="text-[11px] text-text-3">
-                  You aren&rsquo;t a member of any team yet — create or
-                  join a team first to use this visibility option.
+                  {t("kcFolder.notTeamMember")}
                 </p>
               ) : (
                 <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
-                  {userTeams.map((t) => {
-                    const checked = stagedTeamIds.includes(t.id);
+                  {userTeams.map((team) => {
+                    const checked = stagedTeamIds.includes(team.id);
                     return (
                       <label
-                        key={t.id}
+                        key={team.id}
                         className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
                       >
                         <input
@@ -1370,13 +1464,13 @@ export default function FolderDetailPage({
                           onChange={() => {
                             setStagedTeamIds((prev) =>
                               checked
-                                ? prev.filter((id) => id !== t.id)
-                                : [...prev, t.id],
+                                ? prev.filter((id) => id !== team.id)
+                                : [...prev, team.id],
                             );
                           }}
                           className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
                         />
-                        <span className="truncate">{t.name}</span>
+                        <span className="truncate">{team.name}</span>
                       </label>
                     );
                   })}
@@ -1388,12 +1482,11 @@ export default function FolderDetailPage({
           {stagedVisibility === "project" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
-                Projects with access
+                {t("kcFolder.projectsWithAccess")}
               </label>
               {userProjects.length === 0 ? (
                 <p className="text-[11px] text-text-3">
-                  You don&rsquo;t have access to any projects yet — create
-                  one first to use this visibility option.
+                  {t("kcFolder.noProjectAccess")}
                 </p>
               ) : (
                 <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
@@ -1445,14 +1538,14 @@ export default function FolderDetailPage({
               disabled={uploadMutation.isPending}
               className="cursor-pointer"
             >
-              Cancel
+              {t("kcFolder.cancel")}
             </Button>
             <Button
               onClick={confirmUpload}
               disabled={uploadMutation.isPending || stagedFiles.length === 0}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {uploadMutation.isPending ? "Uploading..." : "Upload"}
+              {uploadMutation.isPending ? t("kcFolder.uploading") : t("kcFolder.upload")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1465,10 +1558,10 @@ export default function FolderDetailPage({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete File</DialogTitle>
+            <DialogTitle>{t("kcFolder.deleteFileTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>{deleteFileName}</strong>? This action cannot be undone.
+              {t("kcFolder.deleteFileDesc1")}{" "}
+              <strong>{deleteFileName}</strong>{t("kcFolder.deleteFileDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1477,7 +1570,7 @@ export default function FolderDetailPage({
               onClick={() => setDeleteFileId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("kcFolder.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1490,7 +1583,7 @@ export default function FolderDetailPage({
               disabled={deleteMutation.isPending}
               className="cursor-pointer"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? t("kcFolder.deleting") : t("kcFolder.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1508,12 +1601,10 @@ export default function FolderDetailPage({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete {selectedIds.size} file
-              {selectedIds.size !== 1 ? "s" : ""}?
+              {t("kcFolder.deleteNFilesTitle")} {selectedIds.size} {selectedIds.size !== 1 ? t("kcFolder.files") : t("kcFolder.file")}{t("kcFolder.deleteNFilesSuffix")}
             </DialogTitle>
             <DialogDescription>
-              This will permanently delete the selected files and all of
-              their embeddings. This action cannot be undone.
+              {t("kcFolder.deleteNFilesDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1523,7 +1614,7 @@ export default function FolderDetailPage({
               disabled={bulkDeleteMutation.isPending}
               className="cursor-pointer"
             >
-              Cancel
+              {t("kcFolder.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1531,7 +1622,46 @@ export default function FolderDetailPage({
               disabled={bulkDeleteMutation.isPending}
               className="cursor-pointer"
             >
-              {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+              {bulkDeleteMutation.isPending ? t("kcFolder.deleting") : t("kcFolder.delete")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Subfolder confirm dialog */}
+      <Dialog
+        open={deleteSubfolderId !== null}
+        onOpenChange={(open) =>
+          !open && !deleteSubfolderMutation.isPending && setDeleteSubfolderId(null)
+        }
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("kcFolder.deleteFolderTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("kcFolder.deleteFolderDesc1")}{" "}
+              <strong>{deleteSubfolderName}</strong> {t("kcFolder.deleteFolderDesc2")}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteSubfolderId(null)}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              {t("kcFolder.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (deleteSubfolderId)
+                  deleteSubfolderMutation.mutate(deleteSubfolderId);
+              }}
+              disabled={deleteSubfolderMutation.isPending}
+              className="cursor-pointer"
+            >
+              {deleteSubfolderMutation.isPending ? t("kcFolder.deleting") : t("kcFolder.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -50,6 +50,7 @@ import {
   type Shortcut,
   type ShortcutInput,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 interface DraftShortcut {
   label: string;
@@ -66,6 +67,7 @@ const EMPTY_DRAFT: DraftShortcut = {
 };
 
 export default function ShortcutsPage() {
+  const { t } = useLanguage();
   const [items, setItems] = useState<Shortcut[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -90,7 +92,7 @@ export default function ShortcutsPage() {
       .catch((err) => {
         if (cancelled) return;
         const message =
-          err instanceof Error ? err.message : "Couldn't load shortcuts.";
+          err instanceof Error ? err.message : t("shortcuts.errLoad");
         setLoadError(message);
         toast.error(message);
       })
@@ -100,7 +102,7 @@ export default function ShortcutsPage() {
     return () => {
       cancelled = true;
     };
-  }, [reloadKey]);
+  }, [reloadKey, t]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -144,16 +146,18 @@ export default function ShortcutsPage() {
     const label = draft.label.trim();
     const body = draft.body;
     if (!label) {
-      toast.error("Please give your shortcut a label.");
+      toast.error(t("shortcuts.errLabel"));
       return;
     }
     if (!body.trim()) {
-      toast.error("The shortcut body can't be empty.");
+      toast.error(t("shortcuts.errEmptyBody"));
       return;
     }
     if (body.length > SHORTCUT_BODY_MAX) {
       toast.error(
-        `Body is too long (${body.length}/${SHORTCUT_BODY_MAX} characters).`,
+        t("shortcuts.errBodyLong")
+          .replace("{n}", String(body.length))
+          .replace("{max}", String(SHORTCUT_BODY_MAX)),
       );
       return;
     }
@@ -178,16 +182,16 @@ export default function ShortcutsPage() {
                 new Date(a.updatedAt).getTime(),
             ),
         );
-        toast.success("Shortcut updated.");
+        toast.success(t("shortcuts.updated"));
       } else {
         const created = await createShortcut(payload);
         setItems((prev) => [created, ...prev]);
-        toast.success("Shortcut saved.");
+        toast.success(t("shortcuts.saved"));
       }
       setDraftOpen(false);
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Couldn't save shortcut.";
+        err instanceof Error ? err.message : t("shortcuts.errSave");
       toast.error(message);
     } finally {
       setSaving(false);
@@ -202,11 +206,11 @@ export default function ShortcutsPage() {
     setDeleteTarget(null);
     try {
       await deleteShortcut(target.id);
-      toast.success(`Deleted "${target.label}".`);
+      toast.success(t("shortcuts.deleted").replace("{label}", target.label));
     } catch (err) {
       setItems(previous);
       const message =
-        err instanceof Error ? err.message : "Couldn't delete shortcut.";
+        err instanceof Error ? err.message : t("shortcuts.errDelete");
       toast.error(message);
     }
   };
@@ -218,7 +222,7 @@ export default function ShortcutsPage() {
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Resources
+        {t("shortcuts.backToResources")}
       </Link>
 
       {/* Toolbar */}
@@ -228,16 +232,16 @@ export default function ShortcutsPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search"
+            placeholder={t("shortcuts.search")}
             className="h-11 pl-9 pr-3 text-base rounded-md border-border-2 placeholder:text-text-3"
           />
         </div>
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger className="h-11 w-full sm:w-[198px] rounded-md border-border-2 text-base">
-            <SelectValue placeholder="All" />
+            <SelectValue placeholder={t("shortcuts.all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="all">{t("shortcuts.all")}</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -251,13 +255,13 @@ export default function ShortcutsPage() {
           className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
         >
           <Plus className="h-4 w-4" />
-          New Shortcut
+          {t("shortcuts.new")}
         </button>
       </div>
 
       {loading ? (
         <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
-          Loading shortcuts…
+          {t("shortcuts.loading")}
         </div>
       ) : loadError ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
@@ -266,7 +270,7 @@ export default function ShortcutsPage() {
             strokeWidth={1.5}
           />
           <h3 className="text-[16px] font-semibold text-text-1">
-            Couldn&apos;t load your shortcuts
+            {t("shortcuts.couldntLoad")}
           </h3>
           <p className="max-w-[480px] text-[13px] text-text-2">
             {loadError}
@@ -277,18 +281,17 @@ export default function ShortcutsPage() {
             className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md border border-border-2 bg-bg-white px-4 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
           >
             <RotateCcw className="h-4 w-4" />
-            Retry
+            {t("shortcuts.retry")}
           </button>
         </div>
       ) : items.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
           <LayoutGrid className="h-8 w-8 text-text-3" strokeWidth={1.5} />
           <h3 className="text-[16px] font-semibold text-text-1">
-            No shortcuts yet
+            {t("shortcuts.noneYet")}
           </h3>
           <p className="max-w-[420px] text-[13px] text-text-2">
-            Save reusable phrases — formatting directives, tone instructions,
-            personas — and drop them into the composer in one click.
+            {t("shortcuts.noneYetDesc")}
           </p>
           <button
             type="button"
@@ -296,7 +299,7 @@ export default function ShortcutsPage() {
             className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
           >
             <Plus className="h-4 w-4" />
-            Create your first shortcut
+            {t("shortcuts.createFirst")}
           </button>
         </div>
       ) : (
@@ -329,8 +332,8 @@ export default function ShortcutsPage() {
                         <button
                           type="button"
                           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded border border-border-2 bg-bg-white text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-                          aria-label="More actions"
-                          title="More actions"
+                          aria-label={t("shortcuts.moreActions")}
+                          title={t("shortcuts.moreActions")}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
@@ -343,7 +346,7 @@ export default function ShortcutsPage() {
                           }}
                         >
                           <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Edit
+                          {t("shortcuts.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -354,7 +357,7 @@ export default function ShortcutsPage() {
                           className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
+                          {t("shortcuts.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -369,7 +372,7 @@ export default function ShortcutsPage() {
 
           {filtered.length === 0 && (
             <div className="rounded-lg border border-border-2 bg-bg-white p-8 text-center text-sm text-text-3">
-              No shortcuts match your search.
+              {t("shortcuts.noMatch")}
             </div>
           )}
         </div>
@@ -385,29 +388,29 @@ export default function ShortcutsPage() {
         <DialogContent className="max-w-[560px]">
           <DialogHeader>
             <DialogTitle>
-              {editing ? "Edit shortcut" : "New shortcut"}
+              {editing ? t("shortcuts.editTitle") : t("shortcuts.newTitle")}
             </DialogTitle>
             <DialogDescription>
-              Short reusable text you can drop into the composer.
+              {t("shortcuts.dialogDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium text-text-2">
-                Label <span className="text-danger-6">*</span>
+                {t("shortcuts.labelField")} <span className="text-danger-6">*</span>
               </label>
               <Input
                 value={draft.label}
                 onChange={(e) => setDraft({ ...draft, label: e.target.value })}
                 className="h-10 rounded border-border-2 text-[13px]"
-                placeholder="e.g. Respond in JSON"
+                placeholder={t("shortcuts.labelPh")}
                 autoFocus
               />
             </div>
             <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-medium text-text-2">
-                  Body <span className="text-danger-6">*</span>
+                  {t("shortcuts.bodyField")} <span className="text-danger-6">*</span>
                 </label>
                 <span
                   className={`text-[11px] ${
@@ -424,13 +427,13 @@ export default function ShortcutsPage() {
                 onChange={(e) => setDraft({ ...draft, body: e.target.value })}
                 rows={4}
                 className="rounded border-border-2 font-mono text-[13px]"
-                placeholder="The text that gets inserted into the composer."
+                placeholder={t("shortcuts.bodyPh")}
               />
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-text-2">
-                  Category
+                  {t("shortcuts.categoryField")}
                 </label>
                 <Input
                   value={draft.category}
@@ -438,12 +441,12 @@ export default function ShortcutsPage() {
                     setDraft({ ...draft, category: e.target.value })
                   }
                   className="h-10 rounded border-border-2 text-[13px]"
-                  placeholder="e.g. Formatting"
+                  placeholder={t("shortcuts.categoryPh")}
                 />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-text-2">
-                  Description
+                  {t("shortcuts.descriptionField")}
                 </label>
                 <Input
                   value={draft.description}
@@ -451,7 +454,7 @@ export default function ShortcutsPage() {
                     setDraft({ ...draft, description: e.target.value })
                   }
                   className="h-10 rounded border-border-2 text-[13px]"
-                  placeholder="When to use this shortcut"
+                  placeholder={t("shortcuts.descriptionPh")}
                 />
               </div>
             </div>
@@ -463,7 +466,7 @@ export default function ShortcutsPage() {
               disabled={saving}
               className="cursor-pointer"
             >
-              Cancel
+              {t("shortcuts.cancel")}
             </Button>
             <Button
               onClick={handleSave}
@@ -477,11 +480,11 @@ export default function ShortcutsPage() {
             >
               {saving
                 ? editing
-                  ? "Updating…"
-                  : "Saving…"
+                  ? t("shortcuts.updating")
+                  : t("shortcuts.saving")
                 : editing
-                  ? "Update"
-                  : "Save"}
+                  ? t("shortcuts.update")
+                  : t("shortcuts.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -494,11 +497,9 @@ export default function ShortcutsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete shortcut</DialogTitle>
+            <DialogTitle>{t("shortcuts.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>&ldquo;{deleteTarget?.label}&rdquo;</strong>? This action
-              cannot be undone.
+              {t("shortcuts.deleteConfirm").replace("{label}", deleteTarget?.label ?? "")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -507,14 +508,14 @@ export default function ShortcutsPage() {
               onClick={() => setDeleteTarget(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("shortcuts.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmDelete}
               className="cursor-pointer"
             >
-              Delete
+              {t("shortcuts.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

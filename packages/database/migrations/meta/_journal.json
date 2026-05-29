@@ -33,8 +33,22 @@
     {
       "idx": 4,
       "version": "7",
-      "when": 1779810000000,
-      "tag": "0004_drop_enabled_models",
+      "when": 1779820000000,
+      "tag": "0004_google_drive",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1779900000000,
+      "tag": "0005_sharepoint_onedrive",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779910000000,
+      "tag": "0006_drop_enabled_models",
       "breakpoints": true
     }
   ]

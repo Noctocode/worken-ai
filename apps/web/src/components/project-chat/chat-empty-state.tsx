@@ -2,6 +2,7 @@
 
 import { Bot } from "lucide-react";
 import type { Project } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Empty-state hero shown when a chat has no messages yet.
@@ -14,6 +15,7 @@ import type { Project } from "@/lib/api";
  * description.
  */
 export function ChatEmptyState({ project }: { project: Project }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
       <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-bg-1">
@@ -29,7 +31,7 @@ export function ChatEmptyState({ project }: { project: Project }) {
       )}
       {!project.description && (
         <p className="text-[13px] text-text-3">
-          Send a message to begin chatting with your AI assistant.
+          {t("chatEmpty.sendMessage")}
         </p>
       )}
     </div>
