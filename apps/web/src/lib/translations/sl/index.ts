@@ -15,6 +15,9 @@ import { learnAcademy } from "./learnAcademy";
 import { resources } from "./resources";
 import { docs } from "./docs";
 import { drive } from "./drive";
+import { sharepoint } from "./sharepoint";
+import { onedrive } from "./onedrive";
+import { msConnect } from "./msConnect";
 import { observability } from "./observability";
 import { notifications } from "./notifications";
 import { guardrails } from "./guardrails";
@@ -38,6 +41,9 @@ export const sl: Record<TranslationKey, string> = {
   ...resources,
   ...docs,
   ...drive,
+  ...sharepoint,
+  ...onedrive,
+  ...msConnect,
   ...observability,
   ...notifications,
   ...guardrails,

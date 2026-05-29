@@ -664,6 +664,9 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // this is the `webViewLink` ("Open in Drive" button). Nullable
   // outside of source='drive'.
   externalUrl: text("external_url"),
+  // SharePoint needs a (driveId, itemId) pair to download — itemId
+  // alone is ambiguous across libraries. Drive rows leave this NULL.
+  externalDriveId: text("external_drive_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   // Fast lookup for the upload-path dupe check: given an uploader and
@@ -673,12 +676,32 @@ export const knowledgeFiles = pgTable("knowledge_files", {
     table.uploadedById,
     table.contentSha256,
   ),
-  // De-dupe import of the same Drive file by the same user. Partial
-  // so upload-source rows (external_id NULL) don't collide. Probed
-  // on every Drive import to decide insert-vs-skip.
+  // De-dupe import of the same Drive / OneDrive file by the same
+  // user. Partial so upload-source rows (external_id NULL) don't
+  // collide, AND so SharePoint rows fall through to the SP-specific
+  // index below — SharePoint item ids are drive-scoped, while Drive
+  // and OneDrive ids are globally unique within the user's scope
+  // (Drive has no driveId concept; OneDrive is single-drive per
+  // user). external_drive_id IS NULL is the predicate that
+  // distinguishes them. Probed on every Drive / OneDrive import to
+  // decide insert-vs-skip.
   uniqueIndex("knowledge_files_owner_external_unique")
     .on(table.uploadedById, table.externalId)
-    .where(sql`${table.externalId} IS NOT NULL`),
+    .where(
+      sql`${table.externalId} IS NOT NULL AND ${table.externalDriveId} IS NULL`,
+    ),
+  // De-dupe import of the same SharePoint file by the same user.
+  // Unlike Drive / OneDrive, SharePoint item ids are drive-scoped
+  // (the same itemId can appear in two different document libraries),
+  // so the dedup key is the (driveId, itemId) PAIR. Non-overlapping
+  // with the index above by design: SP rows always set
+  // external_drive_id (so the upper index's predicate excludes them);
+  // Drive / OneDrive rows always leave it NULL (so this index's
+  // predicate excludes them via source='sharepoint'). Probed on every
+  // SharePoint import to decide insert-vs-skip.
+  uniqueIndex("knowledge_files_owner_sp_external_unique")
+    .on(table.uploadedById, table.externalDriveId, table.externalId)
+    .where(sql`${table.source} = 'sharepoint'`),
 ]);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets
@@ -1080,6 +1103,16 @@ export const oauthConnections = pgTable(
       .defaultNow()
       .notNull(),
     lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    // Per-product enable flags. For the Microsoft provider, a single
+    // row backs BOTH the SharePoint and OneDrive UI sections — the
+    // user can opt into each independently via this flag map. Default
+    // empty for non-Microsoft providers (Google Drive ignores it).
+    //
+    // Shape: { sharepoint?: boolean; onedrive?: boolean }
+    features: jsonb("features")
+      .$type<{ sharepoint?: boolean; onedrive?: boolean }>()
+      .notNull()
+      .default({}),
     updatedAt: timestamp("updated_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1170,6 +1203,138 @@ export const driveImportSources = pgTable(
     // At most one "Entire Drive" source per owner — same idea but
     // for scope='all' where drive_folder_id is NULL.
     uniqueIndex("drive_import_sources_owner_all_unique")
+      .on(table.ownerId)
+      .where(sql`${table.scope} = 'all'`),
+  ],
+);
+
+/**
+ * Per-site / per-folder record of what's been imported from a
+ * connected SharePoint (Microsoft Graph) account. Parallels
+ * `driveImportSources` but the hierarchy is one level deeper
+ * (site → drive/library → folder), so the row carries siteId,
+ * driveId, and folderId — only siteId is required.
+ *
+ *   - `scope = 'site'`  : whole-site import (BFS across every drive
+ *     in the site). One row per (owner, siteId) via the partial
+ *     unique index.
+ *   - `scope = 'folder'`: a specific folder inside a specific drive
+ *     inside a site. One row per (owner, siteId, driveId, folderId).
+ *
+ * Re-sync semantics match Drive: only NEW files are added (dedup by
+ * the `(uploaded_by_id, external_drive_id, external_id)` triple on
+ * `knowledge_files` — see the `knowledge_files_owner_sp_external_unique`
+ * partial unique index added in migration 0006), existing rows stay
+ * put even if the SharePoint copy changed.
+ *
+ * Defer (low value): a CHECK constraint enforcing the scope/column
+ * invariant (`scope='site' → drive_id/folder_id NULL`, inverse for
+ * folder). The import code already enforces this — a CHECK only
+ * guards against future hand-written SQL.
+ */
+export const sharepointImportSources = pgTable(
+  "sharepoint_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'site' for a whole-site import, 'folder' for a specific folder
+    // inside a specific drive.
+    scope: text("scope").notNull(),
+    // SharePoint site id (Graph's `sites/{id}` value). Always set —
+    // every import is anchored to a site.
+    siteId: text("site_id").notNull(),
+    // Display cache of the site's `displayName`. Shown in the
+    // Re-sync UI and used as the KC child-folder name for site-scope
+    // imports.
+    siteName: text("site_name").notNull(),
+    // SharePoint drive (document library) id. NULL when scope='site'
+    // (the import spans every drive on the site).
+    driveId: text("drive_id"),
+    // Display cache of the drive's `name`. NULL when scope='site'.
+    driveName: text("drive_name"),
+    // SharePoint item id of the folder being imported. NULL when
+    // scope='site'.
+    folderId: text("folder_id"),
+    // Display cache of the folder name. NULL when scope='site'.
+    folderName: text("folder_name"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    visibility: text("visibility").notNull().default("all"),
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one whole-site source per (owner, site).
+    uniqueIndex("sharepoint_import_sources_owner_site_unique")
+      .on(table.ownerId, table.siteId)
+      .where(sql`${table.scope} = 'site'`),
+    // At most one folder source per (owner, site, drive, folder).
+    uniqueIndex("sharepoint_import_sources_owner_folder_unique")
+      .on(table.ownerId, table.siteId, table.driveId, table.folderId)
+      .where(sql`${table.scope} = 'folder'`),
+  ],
+);
+
+/**
+ * Per-folder (or whole-OneDrive) record of what's been imported from
+ * a user's OneDrive for Business. Direct mirror of
+ * `driveImportSources` (single-drive structure — OneDrive has no
+ * site/library hierarchy), with `onedrive_folder_id` storing the
+ * Graph driveItem id for folder-scope imports.
+ *
+ * Re-sync semantics match Drive: only NEW files are added (dedup by
+ * `knowledge_files.external_id` = OneDrive item id; external_id is
+ * unique per user because each user has a single `/me/drive`),
+ * existing rows stay put even if the OneDrive copy changed.
+ */
+export const onedriveImportSources = pgTable(
+  "onedrive_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'all' for "Entire OneDrive" imports, 'folder' for a specific
+    // folder. NULL onedriveFolderId is allowed only when scope='all'.
+    scope: text("scope").notNull(),
+    onedriveFolderId: text("onedrive_folder_id"),
+    onedriveFolderName: text("onedrive_folder_name").notNull(),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    visibility: text("visibility").notNull().default("all"),
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one source per (owner, folder) — re-imports of the same
+    // OneDrive folder fold into the existing row as a Re-sync.
+    uniqueIndex("onedrive_import_sources_owner_folder_unique")
+      .on(table.ownerId, table.onedriveFolderId)
+      .where(sql`${table.onedriveFolderId} IS NOT NULL`),
+    // At most one whole-OneDrive source per owner.
+    uniqueIndex("onedrive_import_sources_owner_all_unique")
       .on(table.ownerId)
       .where(sql`${table.scope} = 'all'`),
   ],

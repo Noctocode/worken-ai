@@ -87,10 +87,11 @@ export class TeamsService {
     const budgetCents = monthlyBudgetCents ?? 1000;
     // Self-referencing FK (parent_team_id → teams.id) breaks drizzle's
     // .returning() type inference into a `QueryResult<never>` union that
-    // can't be destructured. Cast back to the inferred row type — the
-    // SQL semantics are unchanged, only the TS surface is being
-    // narrowed back to what drizzle would have inferred without the
-    // self-reference.
+    // can't be destructured. A single-step `as Array<...>` works in some
+    // TypeScript setups but the CI environment refuses to narrow across
+    // the union (TS2488 — "must have a [Symbol.iterator]"). Double-cast
+    // through `unknown` is the canonical workaround and is guaranteed
+    // identical across every TS version. SQL semantics unchanged.
     const insertedTeams = (await this.db
       .insert(teams)
       .values({
@@ -100,7 +101,7 @@ export class TeamsService {
         parentTeamId: parentTeamId ?? null,
         monthlyBudgetCents: budgetCents,
       })
-      .returning()) as Array<typeof teams.$inferSelect>;
+      .returning()) as unknown as Array<typeof teams.$inferSelect>;
     const [team] = insertedTeams;
 
     // Auto-add owner as accepted member with owner role

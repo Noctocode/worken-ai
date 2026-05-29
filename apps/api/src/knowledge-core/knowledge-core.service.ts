@@ -3,11 +3,14 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import {
   driveImportSources,
+  onedriveImportSources,
+  sharepointImportSources,
   knowledgeFolders,
   knowledgeFiles,
   knowledgeFileTeams,
@@ -65,25 +68,116 @@ export type NameConflictAction = 'overwrite' | 'keep_both' | 'skip';
 
 @Injectable()
 export class KnowledgeCoreService {
+  private readonly logger = new Logger(KnowledgeCoreService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
   ) {}
 
   /**
+   * Recursive file count + total bytes for a set of root folders.
+   * Walks each root's full descendant subtree via a Postgres
+   * recursive CTE and aggregates `knowledge_files` rows attached to
+   * any folder in that subtree. Returns a map keyed by root id.
+   *
+   * Used by the folder-card surface (KC root + folder detail page)
+   * so a parent folder like "SharePoint" or "Google Drive" shows
+   * the total file count across every nested subfolder, not just
+   * files directly attached to the parent — without this, the new
+   * `SharePoint > {siteName} > {folderName}` nesting (added in
+   * Phase 2 of the SharePoint hardening) reports "0 files" on the
+   * SharePoint parent card even when subfolders are full.
+   */
+  private async getRecursiveFolderTotals(
+    rootFolderIds: string[],
+  ): Promise<Map<string, { fileCount: number; totalBytes: number }>> {
+    const result = new Map<string, { fileCount: number; totalBytes: number }>();
+    if (rootFolderIds.length === 0) return result;
+
+    // Defensive — if the recursive query ever throws (driver
+    // incompatibility, syntax regression, etc.), the caller still
+    // gets folders back with 0 counts. Don't break the entire
+    // KC root view over a count chip.
+    const fillZeros = () => {
+      for (const id of rootFolderIds) {
+        if (!result.has(id)) {
+          result.set(id, { fileCount: 0, totalBytes: 0 });
+        }
+      }
+      return result;
+    };
+
+    try {
+      // Use drizzle's `inArray` inside the SQL template so the uuid[]
+      // parameter is properly cast (raw `ANY(${rootFolderIds})` ships
+      // the array as text[] which fails the UUID column comparison).
+      const queryResult = await this.db.execute<{
+        root_id: string;
+        file_count: number;
+        total_bytes: number;
+      }>(sql`
+      WITH RECURSIVE descendants AS (
+        SELECT
+          ${knowledgeFolders.id} AS folder_id,
+          ${knowledgeFolders.id} AS root_id
+        FROM ${knowledgeFolders}
+        WHERE ${inArray(knowledgeFolders.id, rootFolderIds)}
+        UNION ALL
+        SELECT child.id, d.root_id
+        FROM ${knowledgeFolders} AS child
+        JOIN descendants d
+          ON child.parent_folder_id = d.folder_id
+      )
+      SELECT
+        d.root_id AS root_id,
+        COUNT(f.id)::int AS file_count,
+        COALESCE(SUM(f.size_bytes), 0)::bigint AS total_bytes
+      FROM descendants d
+      LEFT JOIN ${knowledgeFiles} f
+        ON f.folder_id = d.folder_id
+      GROUP BY d.root_id
+    `);
+
+      // drizzle's pg adapter returns QueryResult with rows on `.rows`,
+      // but other adapters return the array directly. Handle both.
+      const rows = (queryResult as { rows?: unknown[] }).rows ?? queryResult;
+      if (Array.isArray(rows)) {
+        for (const r of rows as {
+          root_id: string;
+          file_count: number | string;
+          total_bytes: number | string;
+        }[]) {
+          result.set(r.root_id, {
+            fileCount: Number(r.file_count),
+            totalBytes: Number(r.total_bytes),
+          });
+        }
+      }
+      // Roots with no files / no descendants don't appear in the CTE
+      // result — fill them in as zeros so the FE map lookup never
+      // returns undefined.
+      return fillZeros();
+    } catch (err) {
+      this.logger.warn(
+        `getRecursiveFolderTotals failed (${err instanceof Error ? err.message : String(err)}); returning zero counts.`,
+      );
+      return fillZeros();
+    }
+  }
+
+  /**
    * Folder list for the /knowledge-core root view. Only top-level
    * folders (`parent_folder_id IS NULL`) — nested children are
    * surfaced inside their parent's detail page, not at the root.
    *
-   * fileCount + totalBytes count only files DIRECTLY in each folder,
-   * not files inside descendant folders. A recursive total would be
-   * nicer UX-wise ("Google Drive has 17 files across subfolders")
-   * but adds query complexity for marginal value at this stage; the
-   * folder detail page shows each subfolder's own count and the user
-   * can drill down for specifics.
+   * fileCount + totalBytes are RECURSIVE — they include every file in
+   * every descendant subfolder. Drives the "SharePoint has 17 files
+   * across 3 sites" UX even when the SharePoint root folder itself
+   * has no direct file children.
    */
   async findAllFolders(userId: string) {
-    const rows = await this.db
+    const folderRows = await this.db
       .select({
         id: knowledgeFolders.id,
         name: knowledgeFolders.name,
@@ -91,17 +185,8 @@ export class KnowledgeCoreService {
         parentFolderId: knowledgeFolders.parentFolderId,
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
-        fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
-        totalBytes:
-          sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
-            'total_bytes',
-          ),
       })
       .from(knowledgeFolders)
-      .leftJoin(
-        knowledgeFiles,
-        eq(knowledgeFiles.folderId, knowledgeFolders.id),
-      )
       .where(
         and(
           eq(knowledgeFolders.ownerId, userId),
@@ -110,21 +195,20 @@ export class KnowledgeCoreService {
           isNull(knowledgeFolders.parentFolderId),
         ),
       )
-      .groupBy(
-        knowledgeFolders.id,
-        knowledgeFolders.name,
-        knowledgeFolders.ownerId,
-        knowledgeFolders.parentFolderId,
-        knowledgeFolders.createdAt,
-        knowledgeFolders.updatedAt,
-      )
       .orderBy(desc(knowledgeFolders.updatedAt));
 
-    return rows.map((r) => ({
-      ...r,
-      fileCount: Number(r.fileCount),
-      totalBytes: Number(r.totalBytes),
-    }));
+    const totals = await this.getRecursiveFolderTotals(
+      folderRows.map((r) => r.id),
+    );
+
+    return folderRows.map((r) => {
+      const t = totals.get(r.id) ?? { fileCount: 0, totalBytes: 0 };
+      return {
+        ...r,
+        fileCount: t.fileCount,
+        totalBytes: t.totalBytes,
+      };
+    });
   }
 
   async findFolder(id: string, userId: string) {
@@ -176,8 +260,9 @@ export class KnowledgeCoreService {
     }));
 
     // Subfolders living directly under this folder. Each row carries
-    // its own file count + size so the FE can render the same folder
-    // card as on the KC root.
+    // its own RECURSIVE file count + size (same shape as the KC root
+    // cards) so a subfolder whose own children are full reports the
+    // full total, not 0.
     const childRows = await this.db
       .select({
         id: knowledgeFolders.id,
@@ -186,38 +271,28 @@ export class KnowledgeCoreService {
         parentFolderId: knowledgeFolders.parentFolderId,
         createdAt: knowledgeFolders.createdAt,
         updatedAt: knowledgeFolders.updatedAt,
-        fileCount: sql<string>`count(${knowledgeFiles.id})`.as('file_count'),
-        totalBytes:
-          sql<string>`coalesce(sum(${knowledgeFiles.sizeBytes}), 0)`.as(
-            'total_bytes',
-          ),
       })
       .from(knowledgeFolders)
-      .leftJoin(
-        knowledgeFiles,
-        eq(knowledgeFiles.folderId, knowledgeFolders.id),
-      )
       .where(
         and(
           eq(knowledgeFolders.parentFolderId, id),
           eq(knowledgeFolders.ownerId, userId),
         ),
       )
-      .groupBy(
-        knowledgeFolders.id,
-        knowledgeFolders.name,
-        knowledgeFolders.ownerId,
-        knowledgeFolders.parentFolderId,
-        knowledgeFolders.createdAt,
-        knowledgeFolders.updatedAt,
-      )
       .orderBy(desc(knowledgeFolders.updatedAt));
 
-    const children = childRows.map((r) => ({
-      ...r,
-      fileCount: Number(r.fileCount),
-      totalBytes: Number(r.totalBytes),
-    }));
+    const childTotals = await this.getRecursiveFolderTotals(
+      childRows.map((r) => r.id),
+    );
+
+    const children = childRows.map((r) => {
+      const t = childTotals.get(r.id) ?? { fileCount: 0, totalBytes: 0 };
+      return {
+        ...r,
+        fileCount: t.fileCount,
+        totalBytes: t.totalBytes,
+      };
+    });
 
     // Breadcrumb chain — the lineage from the KC root down to this
     // folder's parent, in display order. Used by the FE to render
@@ -384,7 +459,10 @@ export class KnowledgeCoreService {
         .where(eq(driveImportSources.ownerId, userId));
     } else if (folder.parentFolderId) {
       const [parent] = await this.db
-        .select({ name: knowledgeFolders.name, parentFolderId: knowledgeFolders.parentFolderId })
+        .select({
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
         .from(knowledgeFolders)
         .where(eq(knowledgeFolders.id, folder.parentFolderId));
 
@@ -406,6 +484,124 @@ export class KnowledgeCoreService {
               eq(driveImportSources.ownerId, userId),
               eq(driveImportSources.scope, 'folder'),
               eq(driveImportSources.driveFolderName, folder.name),
+            ),
+          );
+      }
+    }
+
+    // SharePoint cleanup — three cases reflecting the two-level
+    // nesting used by sharepoint-import.service.ts:
+    //
+    //   1. Top-level "SharePoint" folder:
+    //        drop ALL sharepoint sources for this user.
+    //
+    //   2. Direct child of "SharePoint" (a SITE folder):
+    //        drop every source anchored to this site —
+    //        BOTH scope='site' (siteName === folder.name) AND
+    //        scope='folder' (siteName === folder.name, any
+    //        folderName) because every folder-scope source under
+    //        this site has now lost its KC location.
+    //
+    //   3. Grandchild of "SharePoint" (a FOLDER under a site):
+    //        drop the matching scope='folder' source by
+    //        (siteName=parent.name, folderName=folder.name).
+    //
+    // Name matching is stable for the per-user single-row case —
+    // `ensureChildFolder` reuses one KC folder per name under any
+    // given parent.
+    const isSharePointParent =
+      folder.name === 'SharePoint' && folder.parentFolderId === null;
+
+    if (isSharePointParent) {
+      await this.db
+        .delete(sharepointImportSources)
+        .where(eq(sharepointImportSources.ownerId, userId));
+    } else if (folder.parentFolderId) {
+      const [parent] = await this.db
+        .select({
+          id: knowledgeFolders.id,
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, folder.parentFolderId));
+
+      const parentIsSharePoint =
+        parent?.name === 'SharePoint' && parent.parentFolderId === null;
+
+      if (parentIsSharePoint) {
+        // Case 2 — folder being deleted is a SITE folder.
+        await this.db
+          .delete(sharepointImportSources)
+          .where(
+            and(
+              eq(sharepointImportSources.ownerId, userId),
+              eq(sharepointImportSources.siteName, folder.name),
+            ),
+          );
+      } else if (parent?.parentFolderId) {
+        // Case 3 — folder being deleted MAY be a folder under a site
+        // under SharePoint. Walk one more step up to verify the
+        // grandparent is the top-level "SharePoint" folder.
+        const [grandparent] = await this.db
+          .select({
+            name: knowledgeFolders.name,
+            parentFolderId: knowledgeFolders.parentFolderId,
+          })
+          .from(knowledgeFolders)
+          .where(eq(knowledgeFolders.id, parent.parentFolderId));
+
+        const grandparentIsSharePoint =
+          grandparent?.name === 'SharePoint' &&
+          grandparent.parentFolderId === null;
+
+        if (grandparentIsSharePoint) {
+          await this.db
+            .delete(sharepointImportSources)
+            .where(
+              and(
+                eq(sharepointImportSources.ownerId, userId),
+                eq(sharepointImportSources.scope, 'folder'),
+                eq(sharepointImportSources.siteName, parent.name),
+                eq(sharepointImportSources.folderName, folder.name),
+              ),
+            );
+        }
+      }
+    }
+
+    // OneDrive cleanup — direct parallel of Drive's single-level
+    // structure (OneDrive has no site dimension):
+    //   1. Top-level "OneDrive" folder: drop ALL onedrive sources.
+    //   2. Direct child of "OneDrive" (folder-scope source): drop
+    //      the matching scope='folder' row by onedriveFolderName.
+    const isOneDriveParent =
+      folder.name === 'OneDrive' && folder.parentFolderId === null;
+
+    if (isOneDriveParent) {
+      await this.db
+        .delete(onedriveImportSources)
+        .where(eq(onedriveImportSources.ownerId, userId));
+    } else if (folder.parentFolderId) {
+      const [parent] = await this.db
+        .select({
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, folder.parentFolderId));
+
+      const parentIsOneDrive =
+        parent?.name === 'OneDrive' && parent.parentFolderId === null;
+
+      if (parentIsOneDrive) {
+        await this.db
+          .delete(onedriveImportSources)
+          .where(
+            and(
+              eq(onedriveImportSources.ownerId, userId),
+              eq(onedriveImportSources.scope, 'folder'),
+              eq(onedriveImportSources.onedriveFolderName, folder.name),
             ),
           );
       }
