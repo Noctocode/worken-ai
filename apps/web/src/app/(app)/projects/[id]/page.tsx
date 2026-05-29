@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Sparkles,
   Bot,
+  Globe,
   Loader2,
   Square,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import {
   updateProject,
   type AlternativeModelSuggestion,
   type ConversationMessage,
+  type WebCitation,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
@@ -64,6 +66,10 @@ interface LocalMessage {
    *  Stripped from any message the user dismisses so re-renders don't
    *  resurrect the bubble. Not persisted across reloads. */
   alternativeModel?: AlternativeModelSuggestion;
+  /** Web-search sources OpenRouter attached to this answer. Accumulated
+   *  from the `citations` SSE event and hydrated from metadata.citations
+   *  on reload. Renders a "Sources" list under the bubble. */
+  citations?: WebCitation[];
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -121,12 +127,10 @@ export default function ProjectChatPage() {
     : null;
   const pausedByokIntegration =
     projectProvider && project
-      ? integrations.find(
+      ? (integrations.find(
           (i) =>
-            i.providerId === projectProvider &&
-            i.hasApiKey &&
-            !i.isEnabled,
-        ) ?? null
+            i.providerId === projectProvider && i.hasApiKey && !i.isEnabled,
+        ) ?? null)
       : null;
 
   const updateModelMutation = useMutation({
@@ -214,6 +218,9 @@ export default function ProjectChatPage() {
             typeof meta?.reasoning_details === "string"
               ? (meta.reasoning_details as string)
               : undefined,
+          citations: Array.isArray(meta?.citations)
+            ? (meta.citations as WebCitation[])
+            : undefined,
           partial: meta?.partial === true,
           userId: m.userId,
           userName: m.userName,
@@ -223,10 +230,7 @@ export default function ProjectChatPage() {
     );
     setMessages((prev) => {
       const trailing = prev[prev.length - 1];
-      if (
-        trailing?.isError &&
-        beMessages.length < prev.length
-      ) {
+      if (trailing?.isError && beMessages.length < prev.length) {
         return [...beMessages, trailing];
       }
       return beMessages;
@@ -395,9 +399,15 @@ export default function ProjectChatPage() {
           reasoningBuffer += event.text;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId
-                ? { ...m, reasoning: reasoningBuffer }
-                : m,
+              m.id === assistantId ? { ...m, reasoning: reasoningBuffer } : m,
+            ),
+          );
+        } else if (event.type === "citations") {
+          // Web-search sources — attach to the assistant turn so the
+          // "Sources" list renders under the bubble.
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId ? { ...m, citations: event.citations } : m,
             ),
           );
         } else if (event.type === "blocked") {
@@ -490,8 +500,7 @@ export default function ProjectChatPage() {
       //   - Anything else → pre-flight 4xx (guardrail input,
       //     budget gate, …) or network failure. Replace the
       //     placeholder bubble with the humanised message.
-      const isAbort =
-        err instanceof DOMException && err.name === "AbortError";
+      const isAbort = err instanceof DOMException && err.name === "AbortError";
       if (!isAbort) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -507,9 +516,7 @@ export default function ProjectChatPage() {
         // (stream got torn down) — mark the local message partial
         // here so the badge shows without a sidebar reload.
         setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantId ? { ...m, partial: true } : m,
-          ),
+          prev.map((m) => (m.id === assistantId ? { ...m, partial: true } : m)),
         );
         // Refresh the sidebar so the new conversation + latest
         // timestamp show up despite the abort short-circuiting the
@@ -599,7 +606,9 @@ export default function ProjectChatPage() {
                 />
                 <div className="flex-1 text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    {t("projDetail.keyPausedPrefix")} {pausedByokIntegration.displayName} {t("projDetail.keyPausedSuffix")}
+                    {t("projDetail.keyPausedPrefix")}{" "}
+                    {pausedByokIntegration.displayName}{" "}
+                    {t("projDetail.keyPausedSuffix")}
                   </p>
                   <p className="text-text-3">
                     {t("projDetail.routingViaDefault")}{" "}
@@ -860,6 +869,38 @@ export default function ProjectChatPage() {
                           {msg.reasoning}
                         </div>
                       </details>
+                    ) : null}
+                    {/* Web-search sources (Figma-less v1). Renders when
+                        the answer carried citations — streamed via the
+                        `citations` SSE event or hydrated from
+                        metadata.citations on reload. */}
+                    {msg.role === "assistant" &&
+                    msg.citations &&
+                    msg.citations.length > 0 ? (
+                      <div className="mt-2 rounded-md border border-border-2 bg-bg-1/40 px-3 py-2 text-[12px]">
+                        <div className="mb-1.5 flex items-center gap-1.5 font-medium text-text-2">
+                          <Globe className="h-3.5 w-3.5 text-primary-6" />
+                          {t("projDetail.sources")}
+                        </div>
+                        <ol className="flex flex-col gap-1">
+                          {msg.citations.map((c, i) => (
+                            <li
+                              key={`${c.url}-${i}`}
+                              className="flex gap-1.5 text-text-3"
+                            >
+                              <span className="tabular-nums">{i + 1}.</span>
+                              <a
+                                href={c.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="truncate text-primary-6 hover:underline"
+                              >
+                                {c.title || c.url}
+                              </a>
+                            </li>
+                          ))}
+                        </ol>
+                      </div>
                     ) : null}
                     {/* Per-message action row (Figma `Icons` frame —
                         30:10464, 168:7221). Hidden mid-stream so we
