@@ -17,6 +17,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { effectiveWebSearchCapability } from '../integrations/web-search-capability.js';
 
 /** Compact preview shape for the avatar stack on team project cards. */
 export interface ProjectMemberPreview {
@@ -85,26 +86,33 @@ export class ProjectsService {
     userId: string,
     teamId: string | null,
   ): Promise<boolean> {
+    let teamFlag: boolean | null | undefined;
     if (teamId) {
       const [team] = await this.db
         .select({ flag: teams.webSearchEnabled })
         .from(teams)
         .where(eq(teams.id, teamId))
         .limit(1);
-      if (team?.flag != null) return team.flag;
+      teamFlag = team?.flag;
     }
-    const [u] = await this.db
-      .select({ companyId: users.companyId })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    if (!u?.companyId) return false;
-    const [company] = await this.db
-      .select({ flag: companies.webSearchEnabled })
-      .from(companies)
-      .where(eq(companies.id, u.companyId))
-      .limit(1);
-    return company?.flag ?? false;
+    // Only hit the org default when the team override doesn't decide it.
+    let companyFlag: boolean | null | undefined;
+    if (teamFlag == null) {
+      const [u] = await this.db
+        .select({ companyId: users.companyId })
+        .from(users)
+        .where(eq(users.id, userId))
+        .limit(1);
+      if (u?.companyId) {
+        const [company] = await this.db
+          .select({ flag: companies.webSearchEnabled })
+          .from(companies)
+          .where(eq(companies.id, u.companyId))
+          .limit(1);
+        companyFlag = company?.flag;
+      }
+    }
+    return effectiveWebSearchCapability(teamFlag, companyFlag);
   }
 
   async findAll(userId: string, filter: 'all' | 'personal' | 'team' = 'all') {
