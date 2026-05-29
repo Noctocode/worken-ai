@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   AlertTriangle,
-  FolderOpen,
+  Cloud,
   Loader2,
   MoreVertical,
   RefreshCw,
@@ -15,14 +15,14 @@ import {
 } from "lucide-react";
 
 import {
-  connectSharePoint,
-  deleteSharePointSource,
-  disconnectSharePoint,
-  enableSharePoint,
+  connectOneDrive,
+  deleteOneDriveSource,
+  disconnectOneDrive,
+  enableOneDrive,
+  fetchOneDriveSources,
   fetchOneDriveStatus,
-  fetchSharePointSources,
   fetchSharePointStatus,
-  resyncSharePointSource,
+  resyncOneDriveSource,
 } from "@/lib/api";
 import { relativeTime } from "@/lib/relative-time";
 import { Button } from "@/components/ui/button";
@@ -32,21 +32,28 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ImportFromSharePointDialog } from "@/components/import-from-sharepoint-dialog";
+import { ImportFromOneDriveDialog } from "@/components/import-from-onedrive-dialog";
 import {
   MicrosoftConnectConfirmDialog,
   type MicrosoftConfirmMode,
 } from "@/components/microsoft-connect-confirm-dialog";
 
 /**
- * SharePoint section on the /knowledge-core page. Same three states
- * as DriveSection: not connected → connected → connected with sources.
+ * OneDrive section on the /knowledge-core page. Same three states as
+ * DriveSection (not connected / connected / connected with sources)
+ * PLUS a confirm dialog before connect or disconnect, since OneDrive
+ * shares its Microsoft OAuth connection with SharePoint:
  *
- * Owns the SharePoint OAuth callback toast: reads
- * `?sharepoint=connected` / `?sharepoint=error=...` on mount and
- * scrubs the param so a refresh doesn't re-toast.
+ *   - Connect when no Microsoft connection exists → dialog asks
+ *     "Both products / Just OneDrive / Cancel" and redirects to the
+ *     OAuth flow with the chosen products.
+ *   - Connect when Microsoft is already connected via SharePoint →
+ *     dialog asks "Enable OneDrive / Cancel" and just POSTs /enable
+ *     (no OAuth round-trip).
+ *   - Disconnect → dialog asks "Just OneDrive / Both products /
+ *     Cancel" and calls /onedrive/connection?both=...
  */
-export function SharePointSection() {
+export function OneDriveSection() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -57,50 +64,54 @@ export function SharePointSection() {
   );
 
   const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ["sharepoint", "status"],
-    queryFn: fetchSharePointStatus,
-  });
-  const { data: odStatus } = useQuery({
     queryKey: ["onedrive", "status"],
     queryFn: fetchOneDriveStatus,
+  });
+  // Read SharePoint status too so the confirm dialog can pick the
+  // right mode (initial / addon / disconnect-with-other-still-on).
+  const { data: spStatus } = useQuery({
+    queryKey: ["sharepoint", "status"],
+    queryFn: fetchSharePointStatus,
   });
 
   const connected = status?.connected === true;
   const microsoftConnectionExists =
     status?.connectionExists === true ||
-    odStatus?.connectionExists === true;
-  const odEnabled = odStatus?.connected === true;
+    spStatus?.connectionExists === true;
+  const spEnabled = spStatus?.connected === true;
 
   const { data: sources = [] } = useQuery({
-    queryKey: ["sharepoint", "sources"],
-    queryFn: fetchSharePointSources,
+    queryKey: ["onedrive", "sources"],
+    queryFn: fetchOneDriveSources,
     enabled: connected,
   });
 
+  // OAuth callback toast handling.
   useEffect(() => {
-    const flag = searchParams.get("sharepoint");
+    const flag = searchParams.get("onedrive");
     if (!flag) return;
     if (flag === "connected") {
-      toast.success("SharePoint connected.");
-      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
+      toast.success("OneDrive connected.");
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
+      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
     } else if (flag.startsWith("error=")) {
       const reason = flag.slice("error=".length);
-      toast.error(`Couldn't connect SharePoint: ${reason}`);
+      toast.error(`Couldn't connect OneDrive: ${reason}`);
     }
     const next = new URLSearchParams(searchParams.toString());
-    next.delete("sharepoint");
+    next.delete("onedrive");
     const qs = next.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
+  // ── Connect/disconnect mutations ────────────────────────────────
   const enableMutation = useMutation({
-    mutationFn: enableSharePoint,
+    mutationFn: enableOneDrive,
     onSuccess: () => {
-      toast.success("SharePoint enabled.");
-      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
+      toast.success("OneDrive enabled.");
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
+      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
       setConfirmMode(null);
     },
     onError: (err) =>
@@ -108,51 +119,19 @@ export function SharePointSection() {
   });
 
   const disconnectMutation = useMutation({
-    mutationFn: (both: boolean) => disconnectSharePoint(both),
+    mutationFn: (both: boolean) => disconnectOneDrive(both),
     onSuccess: () => {
-      toast.success("SharePoint disconnected.");
-      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
+      toast.success("OneDrive disconnected.");
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
+      void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
       setConfirmMode(null);
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : "Failed to disconnect"),
   });
 
-  const handleConnectClick = () => {
-    if (microsoftConnectionExists) {
-      setConfirmMode({ kind: "connectAddon", primary: "sharepoint" });
-    } else {
-      setConfirmMode({ kind: "connectInitial", primary: "sharepoint" });
-    }
-  };
-
-  const handleConnectConfirm = (
-    products: ("sharepoint" | "onedrive")[],
-  ) => {
-    if (confirmMode?.kind === "connectAddon") {
-      enableMutation.mutate();
-      return;
-    }
-    connectSharePoint(products);
-  };
-
-  const handleDisconnectClick = () => {
-    setConfirmMode({ kind: "disconnect", primary: "sharepoint" });
-  };
-
-  const handleDisconnectConfirm = (both: boolean) => {
-    disconnectMutation.mutate(both);
-  };
-
-  // Future-proofing — currently we always show the disconnect dialog
-  // with both choices. When OneDrive isn't enabled, "Both" is a no-op
-  // delta from "Just SharePoint" (both delete the whole row) so the
-  // dialog still behaves correctly.
-  void odEnabled;
-
   const resyncMutation = useMutation({
-    mutationFn: (id: string) => resyncSharePointSource(id),
+    mutationFn: (id: string) => resyncOneDriveSource(id),
     onSuccess: (result) => {
       if (result.added === 0) {
         toast.info("Up to date — no new files.");
@@ -166,9 +145,7 @@ export function SharePointSection() {
           `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
         );
       }
-      void queryClient.invalidateQueries({
-        queryKey: ["sharepoint", "sources"],
-      });
+      void queryClient.invalidateQueries({ queryKey: ["onedrive", "sources"] });
       void queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
     },
@@ -176,13 +153,11 @@ export function SharePointSection() {
       toast.error(err instanceof Error ? err.message : "Re-sync failed"),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteSharePointSource(id),
+  const deleteSourceMutation = useMutation({
+    mutationFn: (id: string) => deleteOneDriveSource(id),
     onSuccess: () => {
-      toast.success("SharePoint source removed.");
-      void queryClient.invalidateQueries({
-        queryKey: ["sharepoint", "sources"],
-      });
+      toast.success("OneDrive source removed.");
+      void queryClient.invalidateQueries({ queryKey: ["onedrive", "sources"] });
     },
     onError: (err) =>
       toast.error(
@@ -190,11 +165,58 @@ export function SharePointSection() {
       ),
   });
 
+  // ── Confirm dialog mode logic ───────────────────────────────────
+  const handleConnectClick = () => {
+    if (microsoftConnectionExists) {
+      // Microsoft already connected (via SharePoint) — just enable.
+      setConfirmMode({ kind: "connectAddon", primary: "onedrive" });
+    } else {
+      // No Microsoft connection — full OAuth, optionally enable both.
+      setConfirmMode({ kind: "connectInitial", primary: "onedrive" });
+    }
+  };
+
+  const handleConnectConfirm = (
+    products: ("sharepoint" | "onedrive")[],
+  ) => {
+    if (confirmMode?.kind === "connectAddon") {
+      // No OAuth — just toggle the flag.
+      enableMutation.mutate();
+      return;
+    }
+    // connectInitial → kick off OAuth flow with the chosen products.
+    connectOneDrive(products);
+  };
+
+  const handleDisconnectClick = () => {
+    setConfirmMode({ kind: "disconnect", primary: "onedrive" });
+  };
+
+  const handleDisconnectConfirm = (both: boolean) => {
+    disconnectMutation.mutate(both);
+  };
+
+  // Show "disconnect both" option only if SharePoint is also enabled —
+  // otherwise the dialog hides the two-step choice and just confirms
+  // a full disconnect.
+  const disconnectShowsBoth = spEnabled;
+  const effectiveConfirmMode = useMemo<MicrosoftConfirmMode | null>(() => {
+    if (!confirmMode) return null;
+    if (confirmMode.kind === "disconnect" && !disconnectShowsBoth) {
+      // SharePoint isn't enabled; "Both" doesn't make sense — but the
+      // dialog component handles this by including both buttons. We
+      // simplify by mapping a no-SP disconnect through the same dialog
+      // and treating the "Both" click as a full delete (same outcome).
+      return confirmMode;
+    }
+    return confirmMode;
+  }, [confirmMode, disconnectShowsBoth]);
+
   if (statusLoading) {
     return (
       <section className="flex items-center gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <Loader2 className="h-4 w-4 animate-spin text-text-3" />
-        <span className="text-[13px] text-text-3">Checking SharePoint…</span>
+        <span className="text-[13px] text-text-3">Checking OneDrive…</span>
       </section>
     );
   }
@@ -205,14 +227,14 @@ export function SharePointSection() {
         <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
-              <FolderOpen className="h-4 w-4 text-primary-6" />
+              <Cloud className="h-4 w-4 text-primary-6" />
             </span>
             <div className="flex flex-col">
               <p className="text-[14px] font-medium text-text-1">
-                Connect SharePoint
+                Connect OneDrive
               </p>
               <p className="text-[12px] text-text-3">
-                Import documents from any SharePoint site you have access to.
+                Import documents from your personal OneDrive for Business.
               </p>
             </div>
           </div>
@@ -221,14 +243,14 @@ export function SharePointSection() {
             variant="outline"
             className="cursor-pointer gap-2 text-[13px]"
           >
-            <FolderOpen className="h-3.5 w-3.5" />
+            <Cloud className="h-3.5 w-3.5" />
             Connect
           </Button>
         </section>
         <MicrosoftConnectConfirmDialog
           open={confirmMode !== null}
           onOpenChange={(o) => !o && setConfirmMode(null)}
-          mode={confirmMode}
+          mode={effectiveConfirmMode}
           onConnectConfirm={handleConnectConfirm}
           loading={enableMutation.isPending}
         />
@@ -251,18 +273,18 @@ export function SharePointSection() {
               {reauthRequired ? (
                 <AlertTriangle className="h-4 w-4 text-warning-7" />
               ) : (
-                <FolderOpen className="h-4 w-4 text-primary-6" />
+                <Cloud className="h-4 w-4 text-primary-6" />
               )}
             </span>
             <div className="flex min-w-0 flex-col">
               <p className="truncate text-[14px] font-medium text-text-1">
                 {reauthRequired
-                  ? "SharePoint needs reconnecting"
-                  : "SharePoint"}
+                  ? "OneDrive needs reconnecting"
+                  : "OneDrive"}
               </p>
               <p className="truncate text-[12px] text-text-3">
                 {reauthRequired
-                  ? "We can't reach your SharePoint — reconnect to keep importing."
+                  ? "We can't reach your OneDrive — reconnect to keep importing."
                   : status?.accountEmail
                     ? `Connected as ${status.accountEmail}`
                     : "Connected"}
@@ -284,8 +306,8 @@ export function SharePointSection() {
                 variant="outline"
                 className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
               >
-                <FolderOpen className="h-3.5 w-3.5" />
-                Import from SharePoint
+                <Cloud className="h-3.5 w-3.5" />
+                Import from OneDrive
               </Button>
             )}
             <DropdownMenu>
@@ -293,7 +315,7 @@ export function SharePointSection() {
                 <button
                   type="button"
                   className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label="SharePoint options"
+                  aria-label="OneDrive options"
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
@@ -324,11 +346,9 @@ export function SharePointSection() {
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-[13px] font-medium text-text-1">
-                      {s.displayName}
+                      {s.scope === "all" ? "Entire OneDrive" : s.onedriveFolderName}
                     </span>
                     <span className="text-[11px] text-text-3">
-                      {s.scope === "site" ? "Entire site" : `Folder in ${s.siteName}`}
-                      {" · "}
                       {s.fileCountAtLastSync} file
                       {s.fileCountAtLastSync === 1 ? "" : "s"} · synced{" "}
                       {relativeTime(s.lastSyncedAt)}
@@ -354,7 +374,7 @@ export function SharePointSection() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteMutation.mutate(s.id)}
+                      onClick={() => deleteSourceMutation.mutate(s.id)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-white hover:text-danger-6"
                       title="Remove source (keeps imported files)"
                       aria-label="Remove source"
@@ -369,7 +389,7 @@ export function SharePointSection() {
         )}
       </section>
 
-      <ImportFromSharePointDialog
+      <ImportFromOneDriveDialog
         open={importOpen}
         onOpenChange={setImportOpen}
       />
@@ -377,7 +397,7 @@ export function SharePointSection() {
       <MicrosoftConnectConfirmDialog
         open={confirmMode !== null}
         onOpenChange={(o) => !o && setConfirmMode(null)}
-        mode={confirmMode}
+        mode={effectiveConfirmMode}
         onConnectConfirm={handleConnectConfirm}
         onDisconnectConfirm={handleDisconnectConfirm}
         loading={

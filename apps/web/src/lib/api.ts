@@ -3635,6 +3635,19 @@ export interface SharePointStatus {
   status?: "active" | "reauth_required";
   scope?: string;
   lastSyncedAt?: string;
+  /**
+   * Whether the underlying Microsoft connection row exists at all
+   * (regardless of which products are enabled). Lets the FE decide
+   * whether the Connect button needs a full OAuth round-trip or can
+   * just toggle the per-product feature flag via /enable.
+   */
+  connectionExists?: boolean;
+  /**
+   * Whether the OTHER Microsoft product (OneDrive in this case) is
+   * currently enabled on the same connection. Drives the confirm
+   * dialog's mode selection (initial / addon / disconnect).
+   */
+  otherProductEnabled?: boolean;
 }
 
 export interface SharePointSite {
@@ -3702,16 +3715,40 @@ export async function fetchSharePointStatus(): Promise<SharePointStatus> {
 }
 
 /**
- * Kick off the Microsoft OAuth flow. Hard-redirects the browser the
- * same way `connectDrive` does — the API 302s on to Microsoft and
- * eventually bounces back to `/knowledge-core?sharepoint=connected`.
+ * Kick off the Microsoft OAuth flow for SharePoint. `products`
+ * encodes the confirm-dialog choice: `['sharepoint']` for "Just
+ * SharePoint" or `['sharepoint', 'onedrive']` for "Both products".
+ * Defaults to `['sharepoint']`.
  */
-export function connectSharePoint(): void {
-  window.location.href = `${BASE_URL}/sharepoint/connect`;
+export function connectSharePoint(
+  products: ("sharepoint" | "onedrive")[] = ["sharepoint"],
+): void {
+  const qs = products.join(",");
+  window.location.href = `${BASE_URL}/sharepoint/connect?products=${encodeURIComponent(qs)}`;
 }
 
-export async function disconnectSharePoint(): Promise<void> {
-  const res = await apiFetch("/sharepoint/connection", { method: "DELETE" });
+/**
+ * Enable the SharePoint feature on an EXISTING Microsoft connection
+ * (no OAuth round-trip). Throws 400 if no connection exists. Used by
+ * the "Microsoft already connected via OneDrive — just enable SP"
+ * confirm-dialog branch.
+ */
+export async function enableSharePoint(): Promise<void> {
+  const res = await apiFetch("/sharepoint/enable", { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to enable SharePoint");
+  }
+}
+
+/**
+ * Disconnect SharePoint. `both=true` deletes the whole Microsoft
+ * connection row (also disconnects OneDrive if enabled). `both=false`
+ * (default) only flips the SharePoint feature flag off.
+ */
+export async function disconnectSharePoint(both = false): Promise<void> {
+  const url = `/sharepoint/connection${both ? "?both=true" : ""}`;
+  const res = await apiFetch(url, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to disconnect SharePoint");
 }
 
@@ -3873,5 +3910,194 @@ export async function cancelSharePointImport(): Promise<{ cancelled: true }> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to cancel SharePoint import");
+  return res.json();
+}
+
+// ──────────────────────────────────────────────────────────────────
+// OneDrive — Knowledge Core integration (shares Microsoft connection)
+// ──────────────────────────────────────────────────────────────────
+
+export interface OneDriveStatus {
+  connected: boolean;
+  accountEmail?: string;
+  status?: "active" | "reauth_required";
+  scope?: string;
+  lastSyncedAt?: string;
+  connectionExists?: boolean;
+  otherProductEnabled?: boolean;
+}
+
+export interface OneDriveFolder {
+  id: string;
+  name: string;
+  hasChildren: boolean;
+}
+
+export interface OneDriveSource {
+  id: string;
+  scope: "all" | "folder";
+  onedriveFolderId: string | null;
+  onedriveFolderName: string;
+  lastSyncedAt: string;
+  fileCountAtLastSync: number;
+  createdAt: string;
+}
+
+export interface OneDriveImportResult {
+  added: number;
+  skippedDuplicates: number;
+  skippedUnsupported: number;
+  skippedTooLarge: number;
+  sources: { id: string; onedriveFolderName: string }[];
+}
+
+export type OneDriveImportScope = (
+  | { kind: "all" }
+  | { kind: "folders"; folderIds: string[] }
+) & {
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
+
+export async function fetchOneDriveStatus(): Promise<OneDriveStatus> {
+  const res = await apiFetch("/onedrive/status");
+  if (!res.ok) throw new Error("Failed to fetch OneDrive status");
+  return res.json();
+}
+
+/**
+ * Kick off the Microsoft OAuth flow for OneDrive. `products` encodes
+ * the confirm-dialog choice; defaults to `['onedrive']`.
+ */
+export function connectOneDrive(
+  products: ("sharepoint" | "onedrive")[] = ["onedrive"],
+): void {
+  const qs = products.join(",");
+  window.location.href = `${BASE_URL}/onedrive/connect?products=${encodeURIComponent(qs)}`;
+}
+
+/**
+ * Enable the OneDrive feature on an EXISTING Microsoft connection
+ * (no OAuth round-trip). Used by the "Microsoft already connected
+ * via SharePoint — just enable OneDrive" confirm-dialog branch.
+ */
+export async function enableOneDrive(): Promise<void> {
+  const res = await apiFetch("/onedrive/enable", { method: "POST" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to enable OneDrive");
+  }
+}
+
+export async function disconnectOneDrive(both = false): Promise<void> {
+  const url = `/onedrive/connection${both ? "?both=true" : ""}`;
+  const res = await apiFetch(url, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to disconnect OneDrive");
+}
+
+export async function fetchOneDriveFolders(
+  parentId?: string,
+): Promise<OneDriveFolder[]> {
+  const qs = parentId ? `?parentId=${encodeURIComponent(parentId)}` : "";
+  const res = await apiFetch(`/onedrive/folders${qs}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list OneDrive folders");
+  }
+  return res.json();
+}
+
+export async function importFromOneDrive(
+  scope: OneDriveImportScope,
+): Promise<OneDriveImportResult> {
+  const res = await apiFetch("/knowledge-core/onedrive/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to import from OneDrive");
+  }
+  return res.json();
+}
+
+export async function fetchOneDriveSources(): Promise<OneDriveSource[]> {
+  const res = await apiFetch("/knowledge-core/onedrive/sources");
+  if (!res.ok) throw new Error("Failed to list OneDrive sources");
+  return res.json();
+}
+
+export async function resyncOneDriveSource(
+  sourceId: string,
+): Promise<OneDriveImportResult> {
+  const res = await apiFetch(
+    `/knowledge-core/onedrive/sources/${sourceId}/resync`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-sync OneDrive source");
+  }
+  return res.json();
+}
+
+export async function deleteOneDriveSource(sourceId: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/onedrive/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete OneDrive source");
+}
+
+export async function fetchOneDriveFileCount(): Promise<{
+  count: number;
+  hasMore: boolean;
+}> {
+  const res = await apiFetch("/knowledge-core/onedrive/file-count");
+  if (!res.ok) throw new Error("Failed to estimate OneDrive file count");
+  return res.json();
+}
+
+export interface OneDriveImportProgress {
+  phase: "scanning" | "importing" | "done" | "cancelled" | "error";
+  scanned: number;
+  total: number;
+  imported: number;
+  error?: string;
+}
+
+export async function startOneDriveImportAsync(scope: {
+  kind: "all";
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+}): Promise<{ started: true }> {
+  const res = await apiFetch("/knowledge-core/onedrive/import/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to start OneDrive import");
+  }
+  return res.json();
+}
+
+export async function fetchOneDriveImportProgress(): Promise<OneDriveImportProgress | null> {
+  const res = await apiFetch("/knowledge-core/onedrive/import/progress");
+  if (!res.ok) throw new Error("Failed to fetch import progress");
+  const body = (await res.json()) as {
+    progress: OneDriveImportProgress | null;
+  };
+  return body.progress;
+}
+
+export async function cancelOneDriveImport(): Promise<{ cancelled: true }> {
+  const res = await apiFetch("/knowledge-core/onedrive/import/active", {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to cancel OneDrive import");
   return res.json();
 }
