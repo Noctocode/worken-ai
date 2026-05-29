@@ -280,6 +280,10 @@ export interface Project {
   /** Whether the org/team allows web search — drives showing the toggle.
    *  Only populated by the single-project fetch (findOne). */
   webSearchAllowed?: boolean;
+  /** Whether the project's active model can actually use web search
+   *  (false for native Anthropic BYOK, which bypasses the OpenRouter
+   *  plugin). Only populated by findOne when webSearchAllowed. */
+  webSearchSupported?: boolean;
   teamId: string | null;
   teamName: string | null;
   createdAt: string;

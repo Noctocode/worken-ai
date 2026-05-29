@@ -7,9 +7,16 @@ import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js'
 import { MailModule } from '../mail/mail.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { TeamsModule } from '../teams/teams.module.js';
+import { IntegrationsModule } from '../integrations/integrations.module.js';
 
 @Module({
-  imports: [TeamsModule, NotificationsModule, KnowledgeCoreModule, MailModule],
+  imports: [
+    TeamsModule,
+    NotificationsModule,
+    KnowledgeCoreModule,
+    MailModule,
+    IntegrationsModule,
+  ],
   controllers: [ProjectsController],
   providers: [ProjectsService, ProjectKnowledgeService, ProjectMembersService],
   exports: [ProjectKnowledgeService],

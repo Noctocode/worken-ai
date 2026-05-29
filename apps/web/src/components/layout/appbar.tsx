@@ -357,23 +357,33 @@ export const Appbar = () => {
 
             {/* Per-project web search toggle — only when the org/team
               allows it. Reads project.webSearch; persists via
-              updateProject so the chat path picks it up server-side. */}
+              updateProject so the chat path picks it up server-side.
+              Disabled (with a reason) when the project's active model
+              can't use web search (native Anthropic BYOK bypasses the
+              OpenRouter plugin), so the toggle never silently no-ops. */}
             {_project?.webSearchAllowed && (
-              <button
-                type="button"
-                onClick={() => webSearchMutation.mutate(!_project.webSearch)}
-                disabled={webSearchMutation.isPending}
-                aria-pressed={_project.webSearch}
-                title={t("appbar.webSearch")}
-                className={`flex items-center gap-2 rounded-lg border px-4 py-4 text-[15px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  _project.webSearch
-                    ? "border-primary-6 bg-primary-1 text-primary-7"
-                    : "border-border-2 bg-bg-white text-text-2 hover:bg-bg-1"
-                }`}
+              <DisabledReasonTooltip
+                disabled={!_project.webSearchSupported}
+                reason={t("appbar.webSearchUnsupported")}
               >
-                <Globe className="h-4 w-4" />
-                {t("appbar.webSearch")}
-              </button>
+                <button
+                  type="button"
+                  onClick={() => webSearchMutation.mutate(!_project.webSearch)}
+                  disabled={
+                    webSearchMutation.isPending || !_project.webSearchSupported
+                  }
+                  aria-pressed={_project.webSearch}
+                  title={t("appbar.webSearch")}
+                  className={`flex items-center gap-2 rounded-lg border px-4 py-4 text-[15px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    _project.webSearch
+                      ? "border-primary-6 bg-primary-1 text-primary-7"
+                      : "border-border-2 bg-bg-white text-text-2 hover:bg-bg-1"
+                  }`}
+                >
+                  <Globe className="h-4 w-4" />
+                  {t("appbar.webSearch")}
+                </button>
+              </DisabledReasonTooltip>
             )}
           </div>
 

@@ -115,6 +115,8 @@ export const common = {
   "appbar.team": "team",
   "appbar.model": "Model",
   "appbar.webSearch": "Web search",
+  "appbar.webSearchUnsupported":
+    "Web search isn't available for this project's model.",
   "appbar.webSearchOn": "Web search enabled for this project.",
   "appbar.webSearchOff": "Web search disabled for this project.",
   "appbar.webSearchFailed": "Failed to update web search",

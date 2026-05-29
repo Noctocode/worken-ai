@@ -117,6 +117,8 @@ export const common: Record<keyof typeof commonEn, string> = {
   "appbar.team": "ekipa",
   "appbar.model": "Model",
   "appbar.webSearch": "Iskanje po spletu",
+  "appbar.webSearchUnsupported":
+    "Iskanje po spletu ni na voljo za model tega projekta.",
   "appbar.webSearchOn": "Iskanje po spletu omogočeno za ta projekt.",
   "appbar.webSearchOff": "Iskanje po spletu onemogočeno za ta projekt.",
   "appbar.webSearchFailed": "Posodobitev iskanja po spletu ni uspela",
