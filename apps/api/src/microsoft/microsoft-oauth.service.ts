@@ -13,20 +13,23 @@ import { ReauthRequiredError } from '../common/errors/reauth-required.error.js';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 
-// Re-exported so existing importers (e.g. sharepoint-graph.service.ts)
-// can keep their relative path. New code should import from
-// '../common/errors/reauth-required.error.js' directly.
+// Re-exported so callers that previously imported from sharepoint-oauth
+// (or that want a one-stop shop) don't need to chase a separate path.
+// New code can import directly from '../common/errors/reauth-required.error'.
 export { ReauthRequiredError };
 
 /**
- * Microsoft Graph scope set we request. `Files.Read.All` covers any
- * file the signed-in user has access to (OneDrive + SharePoint).
- * `Sites.Read.All` lets the import dialog list every SharePoint site
- * the user can see. `User.Read` lets us cache the connected account's
- * email for display. `offline_access` is what gets us a refresh
- * token — without it the connection dies after the first hour.
+ * Microsoft Graph scope set we request. The SUPERSET so the resulting
+ * token works for BOTH SharePoint and OneDrive regardless of which
+ * product the user used to kick off the OAuth flow:
+ *
+ *   - `Files.Read.All`  — any file the signed-in user can access
+ *                         (OneDrive + SharePoint).
+ *   - `Sites.Read.All`  — SharePoint site listing.
+ *   - `User.Read`       — connected account email for the FE chip.
+ *   - `offline_access`  — refresh token.
  */
-const SHAREPOINT_SCOPES = [
+const MICROSOFT_SCOPES = [
   'Files.Read.All',
   'Sites.Read.All',
   'User.Read',
@@ -35,52 +38,52 @@ const SHAREPOINT_SCOPES = [
 
 /**
  * Scopes we hard-require in the returned grant. Only `Files.Read.All`
- * is non-negotiable — without it there is literally nothing to
- * import. Everything else is best-effort:
- *
- *   - `Sites.Read.All` may be silently stripped by Microsoft for
- *     personal Microsoft accounts (consumer endpoint) because
- *     personal MSAs don't have SharePoint sites at all. Failing the
- *     callback for that scope would block personal-account users
- *     even though the OneDrive import path would still work for
- *     them. We warn instead and let the import dialog surface
- *     "no sites" if appropriate.
- *
- *   - `offline_access` would normally be required (refresh tokens),
- *     but the Microsoft response sometimes omits it from `scope`
- *     even when a refresh_token IS issued. We rely on the presence
- *     of `tokens.refresh_token` itself (checked elsewhere) as the
- *     real signal, and warn here rather than hard-fail.
+ * is non-negotiable. `Sites.Read.All` and `offline_access` may be
+ * silently stripped by Microsoft for personal accounts — see the
+ * lengthy reasoning the SharePoint integration documented when we
+ * relaxed these to soft-warn.
  */
 const REQUIRED_SCOPES = ['Files.Read.All'];
 const OPTIONAL_SCOPES = ['Sites.Read.All', 'offline_access'];
 
-const PROVIDER = 'sharepoint';
-
 /**
- * Refresh the access token when fewer than this many seconds remain on
- * the current one. 60s matches the Drive integration — Microsoft
- * Graph tokens live for ~1 hour by default, plenty of runway.
+ * Single provider row in `oauth_connections` covers BOTH SharePoint
+ * and OneDrive. The per-product `features` JSONB column tracks which
+ * one(s) are currently enabled for the user.
  */
+const PROVIDER = 'microsoft';
+
 const REFRESH_EARLY_MARGIN_SECONDS = 60;
-
-/**
- * State JWT used to bind a Microsoft consent callback back to the
- * user who started it. CSRF protection: without this, a third party
- * could trick a logged-in user into hitting /callback with a code
- * that connects the attacker's SharePoint to the victim's account.
- */
-const STATE_TOKEN_TTL_SECONDS = 600; // 10 min — covers consent + multi-step grant
-
+const STATE_TOKEN_TTL_SECONDS = 600;
 const GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me';
 
-export interface SharePointStatus {
+export type MicrosoftProduct = 'sharepoint' | 'onedrive';
+export type MicrosoftConnectPurpose =
+  | 'sharepoint-connect'
+  | 'onedrive-connect';
+
+/**
+ * Status the FE shows on a per-product section. Each product
+ * independently checks its enable flag — a Microsoft connection
+ * exists doesn't necessarily mean THIS product is enabled.
+ */
+export interface MicrosoftProductStatus {
   connected: boolean;
   accountEmail?: string;
   status?: 'active' | 'reauth_required';
-  /** Granted scope set. Useful for FE to surface "missing scope" diagnostics. */
   scope?: string;
   lastSyncedAt?: string;
+  /**
+   * Whether the OTHER product is also enabled on the same connection.
+   * Drives the FE's confirm-dialog mode (initial vs addon vs both).
+   */
+  otherProductEnabled?: boolean;
+  /**
+   * True iff a Microsoft connection row exists for the user (regardless
+   * of which products are enabled). Lets the FE decide whether to run
+   * a full OAuth roundtrip or just call /enable.
+   */
+  connectionExists?: boolean;
 }
 
 interface MicrosoftTokenResponse {
@@ -98,9 +101,14 @@ interface GraphMeResponse {
   userPrincipalName?: string | null;
 }
 
+interface FeaturesShape {
+  sharepoint?: boolean;
+  onedrive?: boolean;
+}
+
 @Injectable()
-export class SharePointOAuthService {
-  private readonly logger = new Logger(SharePointOAuthService.name);
+export class MicrosoftOAuthService {
+  private readonly logger = new Logger(MicrosoftOAuthService.name);
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -111,19 +119,16 @@ export class SharePointOAuthService {
 
   /**
    * Defensively trim every env value we feed into Microsoft URLs.
-   * Stray trailing whitespace on a .env line (e.g. `TENANT_ID=common `
-   * pasted from an editor that adds soft-wrap padding) survives into
-   * `ConfigService.get` verbatim and corrupts the authorize URL or
-   * the redirect_uri parameter — surfacing as AADSTS50011 or a
-   * "redirect_uri is not valid" error that's painful to attribute.
-   * This helper makes those mistakes impossible.
+   * Stray trailing whitespace on a .env line survives into the
+   * `ConfigService.get` and corrupts the authorize URL — surfacing
+   * as AADSTS50011 or "redirect_uri is not valid". This helper makes
+   * those mistakes impossible.
    */
   private readEnv(key: string, fallback?: string): string {
     const raw = this.config.get<string>(key);
     const trimmed = raw?.trim() ?? fallback ?? '';
     if (!trimmed) {
       if (fallback === undefined) {
-        // Mirror ConfigService.getOrThrow's behaviour for required vars.
         throw new Error(`Required env var ${key} is empty`);
       }
       return fallback;
@@ -132,9 +137,6 @@ export class SharePointOAuthService {
   }
 
   private get tenant(): string {
-    // Default to 'common' so multi-tenant + personal Microsoft accounts
-    // can sign in without any env tweak. Single-tenant apps override
-    // with a GUID in .env; see docs/sharepoint-setup.md.
     return this.readEnv('MICROSOFT_TENANT_ID', 'common');
   }
 
@@ -146,11 +148,24 @@ export class SharePointOAuthService {
     return this.readEnv('MICROSOFT_CLIENT_SECRET');
   }
 
-  private get redirectUri(): string {
-    return this.readEnv(
-      'SHAREPOINT_REDIRECT_URI',
-      'http://localhost:3001/sharepoint/callback',
-    );
+  /**
+   * The redirect URI we tell Microsoft to send the user back to is
+   * per-product: SharePoint and OneDrive each have their own
+   * registered redirect URI in the Azure App. Picking the right one
+   * up-front (before consent) ensures the callback lands on the
+   * controller that knows how to redirect back to the right
+   * FE section (?sharepoint=connected vs ?onedrive=connected).
+   */
+  private redirectUriFor(purpose: MicrosoftConnectPurpose): string {
+    return purpose === 'sharepoint-connect'
+      ? this.readEnv(
+          'SHAREPOINT_REDIRECT_URI',
+          'http://localhost:3001/sharepoint/callback',
+        )
+      : this.readEnv(
+          'ONEDRIVE_REDIRECT_URI',
+          'http://localhost:3001/onedrive/callback',
+        );
   }
 
   private get authorizeEndpoint(): string {
@@ -162,18 +177,23 @@ export class SharePointOAuthService {
   }
 
   /**
-   * Build the Microsoft consent URL the FE should redirect the user
-   * to. `prompt=consent` forces Microsoft to issue a fresh
-   * refresh_token even when the user has previously granted offline
-   * access for this client — matches the Drive flow's defensive
-   * "don't lose offline access on reconnect" guarantee.
-   *
-   * `state` is a short-lived signed JWT containing the initiating
-   * userId; the callback verifies it before persisting any tokens.
+   * Build the Microsoft consent URL. `productsToEnable` is encoded in
+   * the state JWT so the callback knows which feature flags to set on
+   * success — letting a user opt into "just SharePoint" or "both"
+   * from the same OAuth round-trip.
    */
-  async buildConsentUrl(userId: string): Promise<string> {
+  async buildConsentUrl(
+    userId: string,
+    purpose: MicrosoftConnectPurpose,
+    productsToEnable: MicrosoftProduct[],
+  ): Promise<string> {
+    if (productsToEnable.length === 0) {
+      throw new BadRequestException(
+        'At least one product must be specified for the consent flow.',
+      );
+    }
     const state = await this.jwt.signAsync(
-      { sub: userId, purpose: 'sharepoint-connect' },
+      { sub: userId, purpose, products: productsToEnable },
       {
         secret: this.config.getOrThrow<string>('JWT_SECRET'),
         expiresIn: STATE_TOKEN_TTL_SECONDS,
@@ -183,9 +203,9 @@ export class SharePointOAuthService {
     const params = new URLSearchParams({
       client_id: this.clientId,
       response_type: 'code',
-      redirect_uri: this.redirectUri,
+      redirect_uri: this.redirectUriFor(purpose),
       response_mode: 'query',
-      scope: SHAREPOINT_SCOPES.join(' '),
+      scope: MICROSOFT_SCOPES.join(' '),
       state,
       prompt: 'consent',
     });
@@ -194,32 +214,47 @@ export class SharePointOAuthService {
   }
 
   /**
-   * Exchange a fresh consent code for tokens and persist them under
-   * the initiating userId. Replaces an existing connection if the
-   * user is reconnecting (unique constraint on (owner_id, provider)).
+   * Exchange the fresh consent code for tokens and persist them.
+   * On success, MERGES the products from the state JWT into the
+   * existing `features` flags — so a SharePoint-only connect doesn't
+   * accidentally disable a previously-enabled OneDrive flag.
    *
-   * Validates the returned scope set against REQUIRED_SCOPES so a
-   * partial grant fails fast on the callback instead of silently
-   * 401-ing on every Graph call later.
+   * Validates scopes against REQUIRED_SCOPES (hard-fail) and
+   * OPTIONAL_SCOPES (soft-warn). See the lengthy module-level
+   * comment for personal-MSA reasoning.
    */
   async handleCallback(
     code: string,
     state: string,
-  ): Promise<{ userId: string }> {
-    // Verify the state token first — never act on a callback whose
-    // state we didn't sign.
+    expectedPurpose: MicrosoftConnectPurpose,
+  ): Promise<{ userId: string; productsEnabled: MicrosoftProduct[] }> {
     let userId: string;
+    let productsToEnable: MicrosoftProduct[];
     try {
       const payload = await this.jwt.verifyAsync<{
         sub: string;
         purpose?: string;
-      }>(state, {
-        secret: this.config.getOrThrow<string>('JWT_SECRET'),
-      });
-      if (payload.purpose !== 'sharepoint-connect') {
+        products?: MicrosoftProduct[];
+      }>(state, { secret: this.config.getOrThrow<string>('JWT_SECRET') });
+      if (payload.purpose !== expectedPurpose) {
         throw new BadRequestException('Invalid OAuth state purpose.');
       }
       userId = payload.sub;
+      productsToEnable = Array.isArray(payload.products)
+        ? payload.products.filter(
+            (p): p is MicrosoftProduct =>
+              p === 'sharepoint' || p === 'onedrive',
+          )
+        : [];
+      if (productsToEnable.length === 0) {
+        // Defensive — older callers that don't include products in the
+        // state JWT default to enabling the product that matches the
+        // purpose.
+        productsToEnable =
+          expectedPurpose === 'sharepoint-connect'
+            ? ['sharepoint']
+            : ['onedrive'];
+      }
     } catch (err) {
       if (err instanceof BadRequestException) throw err;
       throw new BadRequestException(
@@ -227,7 +262,10 @@ export class SharePointOAuthService {
       );
     }
 
-    const tokens = await this.exchangeCodeForTokens(code);
+    const tokens = await this.exchangeCodeForTokens(
+      code,
+      this.redirectUriFor(expectedPurpose),
+    );
 
     if (!tokens.access_token) {
       throw new BadRequestException(
@@ -243,9 +281,6 @@ export class SharePointOAuthService {
     const grantedScopes = (tokens.scope ?? '').split(/\s+/).filter(Boolean);
     this.assertRequiredScopes(grantedScopes);
 
-    // Pull the connected account's email for the FE status chip.
-    // Microsoft Graph returns `mail` for proper mailboxes and falls
-    // back to `userPrincipalName` for personal accounts.
     let accountEmail: string | null = null;
     try {
       const me = await this.fetchGraphMe(tokens.access_token);
@@ -261,10 +296,6 @@ export class SharePointOAuthService {
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
     const scopeString = grantedScopes.join(' ');
 
-    // Upsert: one connection per (owner, provider). Reconnect keeps
-    // the previous refresh_token if Microsoft omits a new one on this
-    // round-trip — defensive guard against losing offline access
-    // mid-rotation (rare but observed in the wild).
     const [existing] = await this.db
       .select()
       .from(oauthConnections)
@@ -274,6 +305,16 @@ export class SharePointOAuthService {
           eq(oauthConnections.provider, PROVIDER),
         ),
       );
+
+    // Merge products into existing features rather than replacing —
+    // a SharePoint-only re-connect must NOT clobber a prior OneDrive
+    // enable flag.
+    const existingFeatures: FeaturesShape =
+      (existing?.features as FeaturesShape) ?? {};
+    const mergedFeatures: FeaturesShape = { ...existingFeatures };
+    for (const p of productsToEnable) {
+      mergedFeatures[p] = true;
+    }
 
     if (existing) {
       await this.db
@@ -286,6 +327,7 @@ export class SharePointOAuthService {
           expiresAt,
           accountEmail,
           status: 'active',
+          features: mergedFeatures,
           updatedAt: new Date(),
         })
         .where(eq(oauthConnections.id, existing.id));
@@ -299,13 +341,24 @@ export class SharePointOAuthService {
         expiresAt,
         accountEmail,
         status: 'active',
+        features: mergedFeatures,
       });
     }
 
-    return { userId };
+    return { userId, productsEnabled: productsToEnable };
   }
 
-  async getStatus(userId: string): Promise<SharePointStatus> {
+  /**
+   * Status check scoped to one product. Returns connected=true ONLY
+   * when both (a) the connection row exists AND (b) the product is
+   * enabled in the row's features JSONB. Also returns whether the
+   * other product is enabled and whether the underlying row exists —
+   * the FE uses both to drive the confirm-dialog mode.
+   */
+  async getStatusFor(
+    userId: string,
+    product: MicrosoftProduct,
+  ): Promise<MicrosoftProductStatus> {
     const [row] = await this.db
       .select()
       .from(oauthConnections)
@@ -315,30 +368,83 @@ export class SharePointOAuthService {
           eq(oauthConnections.provider, PROVIDER),
         ),
       );
-    if (!row) return { connected: false };
+    if (!row) {
+      return { connected: false, connectionExists: false };
+    }
+    const features = (row.features as FeaturesShape) ?? {};
+    const productEnabled = features[product] === true;
+    const otherProduct: MicrosoftProduct =
+      product === 'sharepoint' ? 'onedrive' : 'sharepoint';
     return {
-      connected: true,
+      connected: productEnabled,
+      connectionExists: true,
       accountEmail: row.accountEmail ?? undefined,
       status: row.status as 'active' | 'reauth_required',
       scope: row.scope,
       lastSyncedAt: row.lastSyncedAt?.toISOString(),
+      otherProductEnabled: features[otherProduct] === true,
     };
   }
 
   /**
-   * Returns a valid access token for the given user, refreshing first
-   * if the stored one is within REFRESH_EARLY_MARGIN_SECONDS of
-   * expiry. Used by SharePointGraphService before every Graph call.
+   * Toggle a single product's enable flag without an OAuth round-trip.
+   * Used for the "Microsoft already connected, just enable the other
+   * product" path.
    *
-   * On refresh failure (revoked grant, no refresh_token, narrowed
-   * scopes, …), flips the connection to `status='reauth_required'`
-   * and throws ReauthRequiredError. Caller surfaces that as a 401 to
-   * the FE, which renders the "Reconnect SharePoint" prompt.
+   * When both features become false on a disable call, the whole
+   * connection row is deleted — no point keeping a token nobody is
+   * authorised to use.
+   */
+  async setFeature(
+    userId: string,
+    product: MicrosoftProduct,
+    enabled: boolean,
+  ): Promise<void> {
+    const [row] = await this.db
+      .select()
+      .from(oauthConnections)
+      .where(
+        and(
+          eq(oauthConnections.ownerId, userId),
+          eq(oauthConnections.provider, PROVIDER),
+        ),
+      );
+    if (!row) {
+      if (enabled) {
+        throw new BadRequestException(
+          `Cannot enable ${product}: no Microsoft connection exists. Run the connect flow first.`,
+        );
+      }
+      // No row + disable request → no-op.
+      return;
+    }
+    const features: FeaturesShape = { ...((row.features as FeaturesShape) ?? {}) };
+    features[product] = enabled;
+
+    const anyEnabled = features.sharepoint === true || features.onedrive === true;
+
+    if (!anyEnabled) {
+      // No products left enabled — delete the row, no orphan token.
+      await this.db
+        .delete(oauthConnections)
+        .where(eq(oauthConnections.id, row.id));
+      return;
+    }
+    await this.db
+      .update(oauthConnections)
+      .set({ features, updatedAt: new Date() })
+      .where(eq(oauthConnections.id, row.id));
+  }
+
+  /**
+   * Returns a valid access token for the given user, refreshing if
+   * needed. Token is product-agnostic — any caller (SP or OneDrive
+   * Graph services) gets the same token because they share the
+   * same Microsoft connection row.
    *
-   * IMPORTANT: Microsoft can return a narrower scope set on refresh
-   * (admin revokes consent mid-session). We re-verify required
-   * scopes against the refresh response and force reauth if anything
-   * critical was dropped.
+   * Throws ReauthRequiredError on refresh failure / no connection /
+   * narrowed scopes — caller surfaces as 401 to FE which shows the
+   * Reconnect button.
    */
   async getValidAccessToken(userId: string): Promise<string> {
     const [row] = await this.db
@@ -351,11 +457,11 @@ export class SharePointOAuthService {
         ),
       );
     if (!row) {
-      throw new ReauthRequiredError('SharePoint is not connected.');
+      throw new ReauthRequiredError('Microsoft is not connected.');
     }
     if (row.status === 'reauth_required') {
       throw new ReauthRequiredError(
-        'SharePoint connection needs reauthorization.',
+        'Microsoft connection needs reauthorization.',
       );
     }
 
@@ -366,11 +472,10 @@ export class SharePointOAuthService {
       return this.encryption.decrypt(row.accessTokenEncrypted);
     }
 
-    // Refresh path. Without a refresh_token we can't recover.
     if (!row.refreshTokenEncrypted) {
       await this.markReauthRequired(row.id);
       throw new ReauthRequiredError(
-        'SharePoint connection has no refresh token. Reconnect to continue.',
+        'Microsoft connection has no refresh token. Reconnect to continue.',
       );
     }
 
@@ -385,7 +490,6 @@ export class SharePointOAuthService {
         );
       }
 
-      // Re-verify scopes on refresh — see method docstring.
       const grantedScopes = (refreshed.scope ?? row.scope ?? '')
         .split(/\s+/)
         .filter(Boolean);
@@ -394,7 +498,7 @@ export class SharePointOAuthService {
       } catch {
         await this.markReauthRequired(row.id);
         throw new ReauthRequiredError(
-          'SharePoint permissions were narrowed since you connected. Reconnect to continue.',
+          'Microsoft permissions were narrowed since you connected. Reconnect to continue.',
         );
       }
 
@@ -403,10 +507,6 @@ export class SharePointOAuthService {
         .set({
           accessTokenEncrypted: this.encryption.encrypt(refreshed.access_token),
           expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-          // Microsoft rotates the refresh_token on every refresh —
-          // ALWAYS persist the new one. Falling back to the old
-          // refresh_token loses the rotation, which is fine until
-          // Microsoft eventually invalidates the older one.
           refreshTokenEncrypted: refreshed.refresh_token
             ? this.encryption.encrypt(refreshed.refresh_token)
             : row.refreshTokenEncrypted,
@@ -419,14 +519,16 @@ export class SharePointOAuthService {
       if (err instanceof ReauthRequiredError) throw err;
       await this.markReauthRequired(row.id);
       throw new ReauthRequiredError(
-        'Refreshing the SharePoint token failed. Reconnect to continue.',
+        'Refreshing the Microsoft token failed. Reconnect to continue.',
       );
     }
   }
 
   /**
-   * Touch lastSyncedAt on the connection. Called after a successful
-   * import / re-sync so the FE can show "Synced 5 minutes ago".
+   * Touch lastSyncedAt on the shared connection. Both SharePoint and
+   * OneDrive import services call this after a successful sync so the
+   * FE chip shows the most recent activity time regardless of which
+   * product triggered it.
    */
   async markSynced(userId: string): Promise<void> {
     await this.db
@@ -441,12 +543,15 @@ export class SharePointOAuthService {
   }
 
   /**
-   * Drop the connection. Azure has no public v2 revoke endpoint
-   * (per docs the user revokes the grant from
-   * account.microsoft.com / Entra "My Apps") so we just delete the
-   * local row. Sharepoint-import-sources rows cascade away via FK.
-   * Imported knowledge_files rows stay — the user removes those via
-   * the normal KC delete path.
+   * Full disconnect — delete the connection row regardless of which
+   * products are enabled. Used by the "Disconnect both" branch.
+   * For "Disconnect just this product" the controllers call
+   * setFeature(..., false) instead.
+   *
+   * Azure has no public v2 revoke endpoint (per docs the user revokes
+   * from account.microsoft.com / Entra "My Apps") so we just delete
+   * the local row. Source rows cascade away via FK; imported
+   * knowledge_files rows stay (user removes them via normal KC).
    */
   async disconnect(userId: string): Promise<void> {
     const [row] = await this.db
@@ -464,7 +569,7 @@ export class SharePointOAuthService {
       .where(eq(oauthConnections.id, row.id));
   }
 
-  /** Internal accessor for the Graph client. Returns the row (or throws). */
+  /** Internal accessor for Graph clients. Returns the row (or throws). */
   async requireConnection(userId: string) {
     const [row] = await this.db
       .select()
@@ -475,7 +580,7 @@ export class SharePointOAuthService {
           eq(oauthConnections.provider, PROVIDER),
         ),
       );
-    if (!row) throw new ReauthRequiredError('SharePoint is not connected.');
+    if (!row) throw new ReauthRequiredError('Microsoft is not connected.');
     return row;
   }
 
@@ -487,19 +592,12 @@ export class SharePointOAuthService {
   }
 
   private assertRequiredScopes(grantedScopes: string[]): void {
-    // Microsoft sometimes returns scopes with a full URI prefix
-    // (e.g. "https://graph.microsoft.com/Files.Read.All") for v1
-    // tokens. We compare on the trailing path component so both
-    // shapes are accepted. Case-insensitive too — the consumer
-    // endpoint has been observed returning lower-case variants.
     const granted = new Set(
       grantedScopes.map((s) => (s.split('/').pop() ?? s).toLowerCase()),
     );
     const lcRequired = REQUIRED_SCOPES.map((s) => s.toLowerCase());
     const lcOptional = OPTIONAL_SCOPES.map((s) => s.toLowerCase());
 
-    // Always log what Microsoft actually returned — invaluable when
-    // a particular tenant or account type strips scopes silently.
     this.logger.log(
       `Microsoft returned scopes: [${grantedScopes.join(', ')}]`,
     );
@@ -507,7 +605,7 @@ export class SharePointOAuthService {
     const missingRequired = lcRequired.filter((s) => !granted.has(s));
     if (missingRequired.length > 0) {
       throw new BadRequestException(
-        `SharePoint permission missing: ${missingRequired.join(', ')}. ` +
+        `Microsoft permission missing: ${missingRequired.join(', ')}. ` +
           `Reconnect and accept the requested access. ` +
           `(If you signed in with a personal Microsoft account, switch ` +
           `to a work/school account — personal accounts can't grant Files.Read.All.)`,
@@ -517,23 +615,24 @@ export class SharePointOAuthService {
     const missingOptional = lcOptional.filter((s) => !granted.has(s));
     if (missingOptional.length > 0) {
       this.logger.warn(
-        `SharePoint connect missing optional scope(s): ${missingOptional.join(', ')}. ` +
+        `Microsoft connect missing optional scope(s): ${missingOptional.join(', ')}. ` +
           `Connection will still work but some features may degrade ` +
-          `(no site list / no refresh after 1h).`,
+          `(no SharePoint site list / no refresh after 1h).`,
       );
     }
   }
 
   private async exchangeCodeForTokens(
     code: string,
+    redirectUri: string,
   ): Promise<MicrosoftTokenResponse> {
     const body = new URLSearchParams({
       client_id: this.clientId,
       client_secret: this.clientSecret,
       code,
-      redirect_uri: this.redirectUri,
+      redirect_uri: redirectUri,
       grant_type: 'authorization_code',
-      scope: SHAREPOINT_SCOPES.join(' '),
+      scope: MICROSOFT_SCOPES.join(' '),
     });
 
     const res = await fetch(this.tokenEndpoint, {
@@ -560,7 +659,7 @@ export class SharePointOAuthService {
       client_secret: this.clientSecret,
       refresh_token: refreshToken,
       grant_type: 'refresh_token',
-      scope: SHAREPOINT_SCOPES.join(' '),
+      scope: MICROSOFT_SCOPES.join(' '),
     });
 
     const res = await fetch(this.tokenEndpoint, {

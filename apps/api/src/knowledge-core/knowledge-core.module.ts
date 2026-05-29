@@ -6,6 +6,7 @@ import { DriveImportService } from './drive-import.service.js';
 import { SharePointImportService } from './sharepoint-import.service.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { GoogleDriveModule } from '../google-drive/google-drive.module.js';
+import { MicrosoftModule } from '../microsoft/microsoft.module.js';
 import { SharePointModule } from '../sharepoint/sharepoint.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
@@ -17,9 +18,13 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     // files at ingestion time; DriveImportService uses OAuth + client
     // for listing + import orchestration.
     GoogleDriveModule,
-    // Same role as GoogleDriveModule but for Microsoft Graph /
-    // SharePoint. SharePointImportService + the ingestion path's
-    // download branch lean on it.
+    // Provides the shared MicrosoftOAuthService that backs BOTH
+    // SharePoint and OneDrive. The per-product import services
+    // (SharePointImportService, OneDriveImportService) inject it
+    // directly for token + status access.
+    MicrosoftModule,
+    // SharePoint-specific Graph wrapper for site/drive/folder
+    // browsing; OAuth has moved to MicrosoftModule.
     SharePointModule,
     // Used by the ingestion path to drop a 'file_ingestion_failed'
     // notification when a file can't be chunked / embedded.

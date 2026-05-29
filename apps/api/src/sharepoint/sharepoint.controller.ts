@@ -1,4 +1,12 @@
-import { Controller, Delete, Get, Param, Query, Res } from '@nestjs/common';
+import {
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Query,
+  Res,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 
@@ -6,62 +14,77 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import { Public } from '../auth/public.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import {
-  SharePointOAuthService,
-  type SharePointStatus,
-} from './sharepoint-oauth.service.js';
+  MicrosoftOAuthService,
+  type MicrosoftProduct,
+  type MicrosoftProductStatus,
+} from '../microsoft/microsoft-oauth.service.js';
 import { SharePointGraphService } from './sharepoint-graph.service.js';
 
+const VALID_PRODUCTS: MicrosoftProduct[] = ['sharepoint', 'onedrive'];
+
+function parseProducts(raw: string | undefined): MicrosoftProduct[] {
+  if (!raw) return ['sharepoint'];
+  const list = raw
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter((s): s is MicrosoftProduct =>
+      VALID_PRODUCTS.includes(s as MicrosoftProduct),
+    );
+  return list.length > 0 ? list : ['sharepoint'];
+}
+
 /**
- * Endpoints that own the *connection* lifecycle (and raw SharePoint
- * browsing for the site/drive/folder picker). The SharePoint-to-KC
- * import/Re-sync lives on KnowledgeCoreController at
- * `/knowledge-core/sharepoint/...` — split so each surface stays
- * close to its module's other concerns.
+ * Endpoints that own the SharePoint surface of the shared Microsoft
+ * connection. OAuth lifecycle now lives in `MicrosoftOAuthService`
+ * (single row in oauth_connections backs BOTH this and OneDrive),
+ * and this controller adds the per-product feature toggle and the
+ * SharePoint-specific site/drive/folder browsing.
  */
 @Controller('sharepoint')
 export class SharePointController {
   constructor(
-    private readonly oauth: SharePointOAuthService,
+    private readonly oauth: MicrosoftOAuthService,
     private readonly graph: SharePointGraphService,
     private readonly config: ConfigService,
   ) {}
 
   /**
-   * Connection status for the current user. Drives the FE toolbar:
-   *   - `connected: false` → "Connect SharePoint" button
-   *   - `connected: true, status: 'active'` → "Import from SharePoint"
-   *     button + connected-as chip
-   *   - `connected: true, status: 'reauth_required'` → "Reconnect"
-   *     button + warning chip
+   * Status for the SharePoint UI section. `connected=true` only when
+   * the Microsoft row exists AND `features.sharepoint === true` —
+   * a user with `features.onedrive=true` only sees this section as
+   * "Not connected".
    */
   @Get('status')
-  status(@CurrentUser() user: AuthenticatedUser): Promise<SharePointStatus> {
-    return this.oauth.getStatus(user.id);
+  status(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<MicrosoftProductStatus> {
+    return this.oauth.getStatusFor(user.id, 'sharepoint');
   }
 
   /**
-   * Start the SharePoint connect flow. We 302 the user's browser
-   * straight to Microsoft's consent screen so the FE only needs
-   * `window.location.href = '/api/sharepoint/connect'`.
+   * Start the SharePoint connect flow. Accepts `?products=` so the
+   * FE confirm dialog can encode the user's choice ("Just SharePoint"
+   * vs "Both products"). Defaults to ['sharepoint'] when omitted.
    */
   @Get('connect')
   async connect(
     @CurrentUser() user: AuthenticatedUser,
+    @Query('products') productsRaw: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
-    const url = await this.oauth.buildConsentUrl(user.id);
+    const products = parseProducts(productsRaw);
+    const url = await this.oauth.buildConsentUrl(
+      user.id,
+      'sharepoint-connect',
+      products,
+    );
     res.redirect(url);
   }
 
   /**
    * Microsoft's redirect lands here with ?code + ?state. Public
-   * because the auth cookie doesn't always survive the round-trip
-   * through login.microsoftonline.com — we rely on the signed state
-   * JWT as the authoritative identity for this single endpoint.
-   *
-   * On success or failure we redirect back to /knowledge-core with a
-   * `?sharepoint=connected` / `?sharepoint=error=...` flag the FE
-   * picks up to toast accordingly.
+   * because the auth cookie doesn't always survive the round-trip.
+   * State JWT carries the products to enable.
    */
   @Public()
   @Get('callback')
@@ -78,9 +101,6 @@ export class SharePointController {
     );
 
     if (error) {
-      // Microsoft includes a verbose error_description; prefer that
-      // so the FE toast can pinpoint admin-consent issues
-      // (AADSTS65001), redirect mismatches (AADSTS50011), etc.
       const detail = errorDescription || error;
       res.redirect(
         `${frontendUrl}/knowledge-core?sharepoint=error=${encodeURIComponent(detail)}`,
@@ -96,7 +116,7 @@ export class SharePointController {
     }
 
     try {
-      await this.oauth.handleCallback(code, state);
+      await this.oauth.handleCallback(code, state, 'sharepoint-connect');
       res.redirect(`${frontendUrl}/knowledge-core?sharepoint=connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
@@ -107,13 +127,38 @@ export class SharePointController {
   }
 
   /**
-   * Drop the connection. SharePoint-import-sources rows cascade
-   * away via FK. Imported knowledge_files rows stay — the user
-   * removes them via the normal KC delete path.
+   * Enable the SharePoint feature on an EXISTING Microsoft connection
+   * (no OAuth round-trip). Throws 400 if no connection exists. Used by
+   * the "Microsoft already connected via OneDrive — just enable SP"
+   * confirm-dialog branch.
+   */
+  @Post('enable')
+  async enable(@CurrentUser() user: AuthenticatedUser) {
+    await this.oauth.setFeature(user.id, 'sharepoint', true);
+    return { success: true };
+  }
+
+  /**
+   * Disconnect from SharePoint. By default just toggles
+   * `features.sharepoint=false` and keeps the connection if OneDrive
+   * is still enabled. `?both=true` deletes the entire connection.
+   *
+   * `sharepoint_import_sources` rows cascade away via FK whenever the
+   * underlying row is deleted; for the "just this" path the source
+   * rows stay (they'll be unreachable until the user reconnects, but
+   * the user can clean them up via KC delete).
    */
   @Delete('connection')
-  async disconnect(@CurrentUser() user: AuthenticatedUser) {
-    await this.oauth.disconnect(user.id);
+  async disconnect(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('both') both: string | undefined,
+  ) {
+    const disconnectAll = both === 'true' || both === '1';
+    if (disconnectAll) {
+      await this.oauth.disconnect(user.id);
+    } else {
+      await this.oauth.setFeature(user.id, 'sharepoint', false);
+    }
     return { success: true };
   }
 

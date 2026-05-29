@@ -28,7 +28,7 @@ import {
   SharePointGraphService,
   type SharePointFileMeta,
 } from '../sharepoint/sharepoint-graph.service.js';
-import { SharePointOAuthService } from '../sharepoint/sharepoint-oauth.service.js';
+import { MicrosoftOAuthService } from '../microsoft/microsoft-oauth.service.js';
 import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
 
 /**
@@ -106,7 +106,7 @@ export class SharePointImportService {
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
-    private readonly oauth: SharePointOAuthService,
+    private readonly oauth: MicrosoftOAuthService,
     private readonly graph: SharePointGraphService,
     private readonly ingestion: KnowledgeIngestionService,
   ) {}

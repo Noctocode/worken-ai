@@ -1,9 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import {
+  MicrosoftOAuthService,
   ReauthRequiredError,
-  SharePointOAuthService,
-} from './sharepoint-oauth.service.js';
+} from '../microsoft/microsoft-oauth.service.js';
 
 /**
  * A SharePoint site as the FE picker sees it. `id` is Graph's
@@ -151,7 +151,7 @@ interface GraphDriveItem {
 export class SharePointGraphService {
   private readonly logger = new Logger(SharePointGraphService.name);
 
-  constructor(private readonly oauth: SharePointOAuthService) {}
+  constructor(private readonly oauth: MicrosoftOAuthService) {}
 
   /**
    * GET against the Graph API with the user's access token, one
