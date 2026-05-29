@@ -547,10 +547,10 @@ export async function uploadProjectKnowledgeFiles(
       JSON.stringify(options.nameConflictActions),
     );
   }
-  const res = await apiFetch(`/projects/${projectId}/knowledge-files/upload`, {
-    method: "POST",
-    body: form,
-  });
+  const res = await apiFetch(
+    `/projects/${projectId}/knowledge-files/upload`,
+    { method: "POST", body: form },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.message || "Failed to upload files");
@@ -670,9 +670,7 @@ export interface SubteamListItem extends Team {
   projectedCents: number;
 }
 
-export async function fetchSubteams(
-  teamId: string,
-): Promise<SubteamListItem[]> {
+export async function fetchSubteams(teamId: string): Promise<SubteamListItem[]> {
   const res = await apiFetch(`/teams/${teamId}/subteams`);
   if (!res.ok) throw new Error("Failed to fetch subteams");
   return res.json();
@@ -1184,7 +1182,10 @@ export async function* streamChatMessage(
           typeof data.text === "string"
         ) {
           yield { type: "reasoning", text: data.text };
-        } else if (frame.event === "replace" && typeof data.text === "string") {
+        } else if (
+          frame.event === "replace" &&
+          typeof data.text === "string"
+        ) {
           yield { type: "replace", text: data.text };
         } else if (
           frame.event === "blocked" &&
@@ -1211,8 +1212,11 @@ export async function* streamChatMessage(
           yield {
             type: "error",
             message:
-              typeof data.message === "string" ? data.message : "Stream error",
-            status: typeof data.status === "number" ? data.status : undefined,
+              typeof data.message === "string"
+                ? data.message
+                : "Stream error",
+            status:
+              typeof data.status === "number" ? data.status : undefined,
           };
         } else if (frame.event === "done") {
           yield {
@@ -1221,7 +1225,8 @@ export async function* streamChatMessage(
               typeof data.totalTokens === "number"
                 ? data.totalTokens
                 : undefined,
-            costUsd: typeof data.costUsd === "number" ? data.costUsd : null,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
             partial: data.partial === true,
           };
         }
@@ -1654,7 +1659,8 @@ export async function* streamCompareModels(
               typeof data.totalTokens === "number"
                 ? data.totalTokens
                 : undefined,
-            costUsd: typeof data.costUsd === "number" ? data.costUsd : null,
+            costUsd:
+              typeof data.costUsd === "number" ? data.costUsd : null,
             time: typeof data.time === "number" ? data.time : undefined,
           };
         } else if (frame.event === "evaluation") {
@@ -1668,8 +1674,10 @@ export async function* streamCompareModels(
                   ? T
                   : never)
               : [],
-            runId: typeof data.runId === "string" ? data.runId : undefined,
-            error: typeof data.error === "string" ? data.error : undefined,
+            runId:
+              typeof data.runId === "string" ? data.runId : undefined,
+            error:
+              typeof data.error === "string" ? data.error : undefined,
           };
         } else if (frame.event === "done") {
           yield { type: "done" };
@@ -1714,9 +1722,7 @@ export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
 }
 
 export async function deleteArenaRun(id: string): Promise<void> {
-  const res = await apiFetch(`/compare-models/runs/${id}`, {
-    method: "DELETE",
-  });
+  const res = await apiFetch(`/compare-models/runs/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete arena run");
 }
 
@@ -1798,16 +1804,11 @@ export interface PromptInput {
   topP?: number | null;
 }
 
-async function extractErrorMessage(
-  res: Response,
-  fallback: string,
-): Promise<string> {
+async function extractErrorMessage(res: Response, fallback: string): Promise<string> {
   try {
     const body = await res.text();
     const parsed = JSON.parse(body) as { message?: string | string[] };
-    const msg = Array.isArray(parsed.message)
-      ? parsed.message.join("; ")
-      : parsed.message;
+    const msg = Array.isArray(parsed.message) ? parsed.message.join("; ") : parsed.message;
     return msg || fallback;
   } catch {
     return fallback;
@@ -1899,9 +1900,7 @@ export async function createShortcut(input: ShortcutInput): Promise<Shortcut> {
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    throw new Error(
-      await extractErrorMessage(res, "Failed to create shortcut"),
-    );
+    throw new Error(await extractErrorMessage(res, "Failed to create shortcut"));
   }
   return res.json();
 }
@@ -1916,9 +1915,7 @@ export async function updateShortcut(
     body: JSON.stringify(input),
   });
   if (!res.ok) {
-    throw new Error(
-      await extractErrorMessage(res, "Failed to update shortcut"),
-    );
+    throw new Error(await extractErrorMessage(res, "Failed to update shortcut"));
   }
   return res.json();
 }
@@ -2071,7 +2068,11 @@ export interface KnowledgeFolder {
   updatedAt: string;
 }
 
-export type KnowledgeFileVisibility = "all" | "admins" | "teams" | "project";
+export type KnowledgeFileVisibility =
+  | "all"
+  | "admins"
+  | "teams"
+  | "project";
 
 /**
  * Compact representation of a team link on a knowledge file. Carries
@@ -2290,19 +2291,22 @@ export async function updateKnowledgeFileVisibility(
   teamIds: string[];
   projectIds: string[];
 }> {
-  const res = await apiFetch(`/knowledge-core/files/${fileId}/visibility`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    // Only ship the id array that matches the chosen visibility —
-    // for 'all' / 'admins' the BE clears any prior links anyway.
-    body: JSON.stringify(
-      visibility === "teams"
-        ? { visibility, teamIds }
-        : visibility === "project"
-          ? { visibility, projectIds }
-          : { visibility },
-    ),
-  });
+  const res = await apiFetch(
+    `/knowledge-core/files/${fileId}/visibility`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      // Only ship the id array that matches the chosen visibility —
+      // for 'all' / 'admins' the BE clears any prior links anyway.
+      body: JSON.stringify(
+        visibility === "teams"
+          ? { visibility, teamIds }
+          : visibility === "project"
+            ? { visibility, projectIds }
+            : { visibility },
+      ),
+    },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.message || "Failed to update visibility");
@@ -2350,9 +2354,7 @@ export async function untrainKnowledgeFile(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(
-      body?.message || "Failed to exclude this file from context",
-    );
+    throw new Error(body?.message || "Failed to exclude this file from context");
   }
   return res.json();
 }
@@ -3069,7 +3071,9 @@ export interface ObservabilityGuardrailActivity {
 export function fetchObservabilityGuardrailActivity(
   range: ObservabilityRange,
 ): Promise<ObservabilityGuardrailActivity> {
-  return fetchObservability(`/observability/guardrail-activity?range=${range}`);
+  return fetchObservability(
+    `/observability/guardrail-activity?range=${range}`,
+  );
 }
 
 // ─── Integrations (Management → Integration) ──────────────────────────────
@@ -3113,9 +3117,7 @@ export interface IntegrationCard {
   updatedAt: string | null;
 }
 
-export async function fetchIntegrationProviders(): Promise<
-  PredefinedProvider[]
-> {
+export async function fetchIntegrationProviders(): Promise<PredefinedProvider[]> {
   const res = await apiFetch("/integrations/providers");
   if (!res.ok) throw new Error("Failed to fetch provider catalog");
   return res.json();
@@ -3371,7 +3373,11 @@ export type NotificationStatus = "pending" | "acted" | "dismissed";
  * (email link, owner revoke, expiry sweep). Undefined for non-
  * invite types and orphaned rows.
  */
-export type TeamInviteState = "pending" | "accepted" | "declined" | "expired";
+export type TeamInviteState =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "expired";
 
 export interface Notification {
   id: string;
@@ -3394,9 +3400,7 @@ export async function fetchNotifications(): Promise<Notification[]> {
   return res.json();
 }
 
-export async function fetchNotificationsUnreadCount(): Promise<{
-  count: number;
-}> {
+export async function fetchNotificationsUnreadCount(): Promise<{ count: number }> {
   const res = await apiFetch("/notifications/unread-count");
   if (!res.ok) throw new Error("Failed to fetch unread count");
   return res.json();
@@ -3408,9 +3412,7 @@ export async function markNotificationRead(id: string): Promise<Notification> {
   return res.json();
 }
 
-export async function markAllNotificationsRead(): Promise<{
-  markedCount: number;
-}> {
+export async function markAllNotificationsRead(): Promise<{ markedCount: number }> {
   const res = await apiFetch("/notifications/read-all", { method: "PATCH" });
   if (!res.ok) throw new Error("Failed to mark all read");
   return res.json();
@@ -3438,9 +3440,7 @@ export async function acceptNotification(id: string): Promise<{
 }
 
 export async function declineNotification(id: string): Promise<{ ok: true }> {
-  const res = await apiFetch(`/notifications/${id}/decline`, {
-    method: "POST",
-  });
+  const res = await apiFetch(`/notifications/${id}/decline`, { method: "POST" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body?.message || "Failed to decline");
@@ -3619,12 +3619,14 @@ export interface DriveImportProgress {
  * `{ started: true }`; poll `fetchDriveImportProgress` every ~2s to
  * track the job.
  */
-export async function startDriveImportAsync(scope: {
-  kind: "all";
-  visibility?: KnowledgeFileVisibility;
-  teamIds?: string[];
-  projectIds?: string[];
-}): Promise<{ started: true }> {
+export async function startDriveImportAsync(
+  scope: {
+    kind: "all";
+    visibility?: KnowledgeFileVisibility;
+    teamIds?: string[];
+    projectIds?: string[];
+  },
+): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/drive/import/async", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -3885,9 +3887,10 @@ export async function resyncSharePointSource(
 }
 
 export async function deleteSharePointSource(sourceId: string): Promise<void> {
-  const res = await apiFetch(`/knowledge-core/sharepoint/sources/${sourceId}`, {
-    method: "DELETE",
-  });
+  const res = await apiFetch(
+    `/knowledge-core/sharepoint/sources/${sourceId}`,
+    { method: "DELETE" },
+  );
   if (!res.ok) throw new Error("Failed to delete SharePoint source");
 }
 

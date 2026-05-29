@@ -80,40 +80,18 @@ import { useLanguage } from "@/lib/i18n";
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
 function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((w) => w[0])
-    .join("")
-    .toUpperCase()
-    .slice(0, 2);
+  return name.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
 }
 
-function UserAvatar({
-  name,
-  picture,
-  size = 24,
-}: {
-  name: string;
-  picture: string | null;
-  size?: number;
-}) {
+function UserAvatar({ name, picture, size = 24 }: { name: string; picture: string | null; size?: number }) {
   if (picture) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={picture}
-        alt={name}
-        referrerPolicy="no-referrer"
-        className="rounded-full object-cover border border-border-2"
-        style={{ width: size, height: size }}
-      />
+      <img src={picture} alt={name} referrerPolicy="no-referrer" className="rounded-full object-cover border border-border-2" style={{ width: size, height: size }} />
     );
   }
   return (
-    <div
-      className="flex items-center justify-center rounded-full bg-bg-3 text-[10px] font-semibold text-text-3 border border-border-2"
-      style={{ width: size, height: size }}
-    >
+    <div className="flex items-center justify-center rounded-full bg-bg-3 text-[10px] font-semibold text-text-3 border border-border-2" style={{ width: size, height: size }}>
       {getInitials(name)}
     </div>
   );
@@ -123,10 +101,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
   const pct = budget > 0 ? Math.min((spent / budget) * 100, 100) : 0;
   return (
     <div className="flex items-center h-[7px] w-[68px] shrink-0 rounded-full border border-border-4 overflow-hidden">
-      <div
-        className={`h-full shrink-0 ${spent > budget ? "bg-danger-5" : "bg-success-2"}`}
-        style={{ width: `${pct}%` }}
-      />
+      <div className={`h-full shrink-0 ${spent > budget ? "bg-danger-5" : "bg-success-2"}`} style={{ width: `${pct}%` }} />
       <div className="h-full flex-1 bg-bg-white" />
     </div>
   );
@@ -134,13 +109,7 @@ function SpentBar({ spent, budget }: { spent: number; budget: number }) {
 
 /* ─── Dialogs ────────────────────────────────────────────────────────────── */
 
-function AddSubteamDialog({
-  parentTeamId,
-  children,
-}: {
-  parentTeamId: string;
-  children: React.ReactNode;
-}) {
+function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; children: React.ReactNode }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -148,19 +117,12 @@ function AddSubteamDialog({
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    mutationFn: () =>
-      createTeam({
-        name: name.trim(),
-        description: description.trim() || undefined,
-        parentTeamId,
-      }),
+    mutationFn: () => createTeam({ name: name.trim(), description: description.trim() || undefined, parentTeamId }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] });
       qc.invalidateQueries({ queryKey: ["teams"] });
       qc.invalidateQueries({ queryKey: ["org-users"] });
-      setOpen(false);
-      setName("");
-      setDescription("");
+      setOpen(false); setName(""); setDescription("");
     },
   });
 
@@ -170,42 +132,20 @@ function AddSubteamDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("teamDetail.addSubteam")}</DialogTitle>
-          <DialogDescription>
-            {t("teamDetail.addSubteamDesc")}
-          </DialogDescription>
+          <DialogDescription>{t("teamDetail.addSubteamDesc")}</DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (name.trim()) mutation.mutate();
-          }}
-          className="space-y-4"
-        >
+        <form onSubmit={(e) => { e.preventDefault(); if (name.trim()) mutation.mutate(); }} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="subteam-name">{t("teamDetail.name")}</Label>
-            <Input
-              id="subteam-name"
-              placeholder={t("teamDetail.subteamNamePh")}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input id="subteam-name" placeholder={t("teamDetail.subteamNamePh")} value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
             <Label htmlFor="subteam-desc">{t("teamDetail.description")}</Label>
-            <Textarea
-              id="subteam-desc"
-              placeholder={t("teamDetail.subteamDescPh")}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
+            <Textarea id="subteam-desc" placeholder={t("teamDetail.subteamDescPh")} value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={mutation.isPending || !name.trim()}>
-              {mutation.isPending
-                ? t("teamDetail.creating")
-                : t("teamDetail.createSubteam")}
+              {mutation.isPending ? t("teamDetail.creating") : t("teamDetail.createSubteam")}
             </Button>
           </DialogFooter>
         </form>
@@ -214,15 +154,7 @@ function AddSubteamDialog({
   );
 }
 
-function EditSubteamDialog({
-  sub,
-  parentTeamId,
-  children,
-}: {
-  sub: SubteamListItem;
-  parentTeamId: string;
-  children: React.ReactNode;
-}) {
+function EditSubteamDialog({ sub, parentTeamId, children }: { sub: SubteamListItem; parentTeamId: string; children: React.ReactNode }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -235,18 +167,12 @@ function EditSubteamDialog({
     if (isOpen) {
       setName(sub.name);
       setDescription(sub.description ?? "");
-      setMonthlyBudget(
-        sub.monthlyBudgetCents ? String(sub.monthlyBudgetCents / 100) : "",
-      );
+      setMonthlyBudget(sub.monthlyBudgetCents ? String(sub.monthlyBudgetCents / 100) : "");
     }
   };
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      updateTeam(sub.id, {
-        name: name.trim(),
-        description: description.trim() || undefined,
-      }),
+    mutationFn: () => updateTeam(sub.id, { name: name.trim(), description: description.trim() || undefined }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] });
       qc.invalidateQueries({ queryKey: ["teams"] });
@@ -257,8 +183,7 @@ function EditSubteamDialog({
 
   const budgetMut = useMutation({
     mutationFn: (budgetUsd: number) => updateTeamBudget(sub.id, budgetUsd),
-    onSuccess: () =>
-      qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["subteams", parentTeamId] }),
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -266,11 +191,7 @@ function EditSubteamDialog({
     if (!name.trim()) return;
     updateMutation.mutate();
     const budgetNum = monthlyBudget ? parseFloat(monthlyBudget) : null;
-    if (
-      budgetNum &&
-      budgetNum > 0 &&
-      budgetNum !== sub.monthlyBudgetCents / 100
-    ) {
+    if (budgetNum && budgetNum > 0 && budgetNum !== sub.monthlyBudgetCents / 100) {
       budgetMut.mutate(budgetNum);
     }
   };
@@ -286,45 +207,19 @@ function EditSubteamDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="edit-subteam-name">{t("teamDetail.name")}</Label>
-            <Input
-              id="edit-subteam-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
+            <Input id="edit-subteam-name" value={name} onChange={(e) => setName(e.target.value)} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-subteam-desc">
-              {t("teamDetail.description")}
-            </Label>
-            <Textarea
-              id="edit-subteam-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
+            <Label htmlFor="edit-subteam-desc">{t("teamDetail.description")}</Label>
+            <Textarea id="edit-subteam-desc" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-subteam-budget">
-              {t("teamDetail.monthlyBudgetLabel")}
-            </Label>
-            <Input
-              id="edit-subteam-budget"
-              type="number"
-              min="0"
-              step="0.01"
-              value={monthlyBudget}
-              onChange={(e) => setMonthlyBudget(e.target.value)}
-            />
+            <Label htmlFor="edit-subteam-budget">{t("teamDetail.monthlyBudgetLabel")}</Label>
+            <Input id="edit-subteam-budget" type="number" min="0" step="0.01" value={monthlyBudget} onChange={(e) => setMonthlyBudget(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button
-              type="submit"
-              disabled={updateMutation.isPending || !name.trim()}
-            >
-              {updateMutation.isPending
-                ? t("teamDetail.saving")
-                : t("teamDetail.saveChanges")}
+            <Button type="submit" disabled={updateMutation.isPending || !name.trim()}>
+              {updateMutation.isPending ? t("teamDetail.saving") : t("teamDetail.saveChanges")}
             </Button>
           </DialogFooter>
         </form>
@@ -333,17 +228,7 @@ function EditSubteamDialog({
   );
 }
 
-function DeleteSubteamDialog({
-  subId,
-  subName,
-  parentTeamId,
-  children,
-}: {
-  subId: string;
-  subName: string;
-  parentTeamId: string;
-  children: React.ReactNode;
-}) {
+function DeleteSubteamDialog({ subId, subName, parentTeamId, children }: { subId: string; subName: string; parentTeamId: string; children: React.ReactNode }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
@@ -365,22 +250,13 @@ function DeleteSubteamDialog({
         <DialogHeader>
           <DialogTitle>{t("teamDetail.deleteSubteam")}</DialogTitle>
           <DialogDescription>
-            {t("teamDetail.deleteSubteamDesc1")} <strong>{subName}</strong>
-            {t("teamDetail.deleteSubteamDesc2")}
+            {t("teamDetail.deleteSubteamDesc1")} <strong>{subName}</strong>{t("teamDetail.deleteSubteamDesc2")}
           </DialogDescription>
         </DialogHeader>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
-            {t("teamDetail.cancel")}
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={() => mutation.mutate()}
-            disabled={mutation.isPending}
-          >
-            {mutation.isPending
-              ? t("teamDetail.deleting")
-              : t("teamDetail.delete")}
+          <Button variant="outline" onClick={() => setOpen(false)}>{t("teamDetail.cancel")}</Button>
+          <Button variant="destructive" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+            {mutation.isPending ? t("teamDetail.deleting") : t("teamDetail.delete")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -388,13 +264,7 @@ function DeleteSubteamDialog({
   );
 }
 
-function AddGuardrailDialog({
-  teamId,
-  children,
-}: {
-  teamId: string;
-  children: React.ReactNode;
-}) {
+function AddGuardrailDialog({ teamId, children }: { teamId: string; children: React.ReactNode }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState("");
@@ -426,13 +296,7 @@ function AddGuardrailDialog({
   });
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) setSelectedId("");
-      }}
-    >
+    <Dialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setSelectedId(""); }}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -447,9 +311,7 @@ function AddGuardrailDialog({
           </div>
         ) : unassigned.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-6 text-center">
-            <p className="text-[14px] text-text-3">
-              {t("teamDetail.noGuardrailsAvailable")}
-            </p>
+            <p className="text-[14px] text-text-3">{t("teamDetail.noGuardrailsAvailable")}</p>
             <Link
               href="/guardrails"
               className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
@@ -480,9 +342,7 @@ function AddGuardrailDialog({
                 disabled={!selectedId || mutation.isPending}
                 className="cursor-pointer bg-primary-6 hover:bg-primary-7"
               >
-                {mutation.isPending
-                  ? t("teamDetail.assigning")
-                  : t("teamDetail.assignGuardrail")}
+                {mutation.isPending ? t("teamDetail.assigning") : t("teamDetail.assignGuardrail")}
               </Button>
             </DialogFooter>
           </div>
@@ -494,36 +354,21 @@ function AddGuardrailDialog({
 
 /* ─── Main page ──────────────────────────────────────────────────────────── */
 
-export default function TeamDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}) {
+export default function TeamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const { id } = use(params);
   const queryClient = useQueryClient();
 
-  const {
-    data: team,
-    isLoading,
-    error,
-  } = useQuery({ queryKey: ["teams", id], queryFn: () => fetchTeam(id) });
-  const { data: subteams = [] } = useQuery({
-    queryKey: ["subteams", id],
-    queryFn: () => fetchSubteams(id),
-  });
-  const { data: rawGuardrails = [] } = useQuery({
-    queryKey: ["guardrails", id],
-    queryFn: () => fetchGuardrails(id),
-  });
+  const { data: team, isLoading, error } = useQuery({ queryKey: ["teams", id], queryFn: () => fetchTeam(id) });
+  const { data: subteams = [] } = useQuery({ queryKey: ["subteams", id], queryFn: () => fetchSubteams(id) });
+  const { data: rawGuardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
   const guardrails = useMemo(
-    () =>
-      [...rawGuardrails].sort(
-        (a, b) =>
-          new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
-          a.id.localeCompare(b.id),
-      ),
+    () => [...rawGuardrails].sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime() ||
+        a.id.localeCompare(b.id),
+    ),
     [rawGuardrails],
   );
 
@@ -558,10 +403,8 @@ export default function TeamDetailPage({
   const toggleMutation = useMutation({
     mutationFn: (guardrailId: string) =>
       toggleGuardrailTeamActive(guardrailId, id),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
-    onError: (err: Error) =>
-      toast.error(err.message || t("teamDetail.failedToggle")),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["guardrails", id] }),
+    onError: (err: Error) => toast.error(err.message || t("teamDetail.failedToggle")),
   });
   const removeGuardrailMutation = useMutation({
     mutationFn: (guardrailId: string) =>
@@ -573,11 +416,8 @@ export default function TeamDetailPage({
     },
     onError: () => toast.error(t("teamDetail.failedRemoveGuardrail")),
   });
-  const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(
-    null,
-  );
-  const removeGuardrailName =
-    guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
+  const [removeGuardrailId, setRemoveGuardrailId] = useState<string | null>(null);
+  const removeGuardrailName = guardrails.find((g) => g.id === removeGuardrailId)?.name ?? "";
   const [capEditMemberId, setCapEditMemberId] = useState<string | null>(null);
 
   // Inline edit mode (driven by the appbar Pencil) — same pattern as
@@ -597,8 +437,8 @@ export default function TeamDetailPage({
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
 
-  // Per-team web-search override. null = inherit the org default,
-  // true/false = force on/off for this team's projects.
+  // Per-team web-search override. null = inherit org default; true/false
+  // = force on/off for this team's projects.
   const webSearchMutation = useMutation({
     mutationFn: (val: boolean | null) =>
       updateTeam(id, { webSearchEnabled: val }),
@@ -613,9 +453,7 @@ export default function TeamDetailPage({
   const deleteTeamMutation = useMutation({
     mutationFn: () => deleteTeam(id),
     onSuccess: () => {
-      toast.success(
-        `${t("teamDetail.deletedToast")} "${team?.name ?? "team"}".`,
-      );
+      toast.success(`${t("teamDetail.deletedToast")} "${team?.name ?? "team"}".`);
       queryClient.invalidateQueries({ queryKey: ["teams"] });
       router.push("/teams");
     },
@@ -666,7 +504,10 @@ export default function TeamDetailPage({
   );
   const pagedSubteams = useMemo(
     () =>
-      subteams.slice((subteamsPage - 1) * PAGE_SIZE, subteamsPage * PAGE_SIZE),
+      subteams.slice(
+        (subteamsPage - 1) * PAGE_SIZE,
+        subteamsPage * PAGE_SIZE,
+      ),
     [subteams, subteamsPage],
   );
   useEffect(() => {
@@ -674,9 +515,16 @@ export default function TeamDetailPage({
   }, [subteamsPage, subteamsTotalPages]);
 
   const members = team?.members ?? [];
-  const membersTotalPages = Math.max(1, Math.ceil(members.length / PAGE_SIZE));
+  const membersTotalPages = Math.max(
+    1,
+    Math.ceil(members.length / PAGE_SIZE),
+  );
   const pagedMembers = useMemo(
-    () => members.slice((membersPage - 1) * PAGE_SIZE, membersPage * PAGE_SIZE),
+    () =>
+      members.slice(
+        (membersPage - 1) * PAGE_SIZE,
+        membersPage * PAGE_SIZE,
+      ),
     [members, membersPage],
   );
   useEffect(() => {
@@ -696,22 +544,11 @@ export default function TeamDetailPage({
     [guardrails, guardrailsPage],
   );
   useEffect(() => {
-    if (guardrailsPage > guardrailsTotalPages)
-      setGuardrailsPage(guardrailsTotalPages);
+    if (guardrailsPage > guardrailsTotalPages) setGuardrailsPage(guardrailsTotalPages);
   }, [guardrailsPage, guardrailsTotalPages]);
 
-  if (isLoading)
-    return (
-      <div className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-text-3" />
-      </div>
-    );
-  if (error || !team)
-    return (
-      <div className="flex items-center justify-center py-24">
-        <p className="text-text-3">{t("teamDetail.failedLoad")}</p>
-      </div>
-    );
+  if (isLoading) return <div className="flex items-center justify-center py-24"><Loader2 className="h-8 w-8 animate-spin text-text-3" /></div>;
+  if (error || !team) return <div className="flex items-center justify-center py-24"><p className="text-text-3">{t("teamDetail.failedLoad")}</p></div>;
 
   const budget = team.monthlyBudgetCents / 100;
   const spent = team.spentCents / 100;
@@ -731,10 +568,14 @@ export default function TeamDetailPage({
     return cap != null && cap > 0 ? acc + cap : acc;
   }, 0);
   const overAllocated =
-    team.monthlyBudgetCents > 0 && allocatedCapsCents > team.monthlyBudgetCents;
+    team.monthlyBudgetCents > 0 &&
+    allocatedCapsCents > team.monthlyBudgetCents;
 
   const myMembership = team.members.find(
-    (m) => m.userId && m.userId === currentUser?.id && m.status === "accepted",
+    (m) =>
+      m.userId &&
+      m.userId === currentUser?.id &&
+      m.status === "accepted",
   );
   const canManageTeam =
     !!currentUser &&
@@ -759,7 +600,8 @@ export default function TeamDetailPage({
   // window event, so gate the rendered controls too. BE rejects either
   // way; this just keeps the UI honest.
   const editing = isEditing && canManageTeam;
-  const isSavingTeam = updateTeamMutation.isPending || budgetMutation.isPending;
+  const isSavingTeam =
+    updateTeamMutation.isPending || budgetMutation.isPending;
 
   const cancelEdit = () => {
     setIsEditing(false);
@@ -796,25 +638,25 @@ export default function TeamDetailPage({
     const tasks: Array<Promise<unknown>> = [];
     if (nameChanged || descriptionChanged) {
       tasks.push(
-        updateTeamMutation
-          .mutateAsync({
-            ...(nameChanged ? { name: trimmedName } : {}),
-            ...(descriptionChanged
-              ? { description: editDescription.trim() || undefined }
-              : {}),
-          })
-          .catch((err: Error) => {
-            toast.error(err.message || t("teamDetail.couldntSaveDetails"));
-            throw err;
-          }),
+        updateTeamMutation.mutateAsync({
+          ...(nameChanged ? { name: trimmedName } : {}),
+          ...(descriptionChanged
+            ? { description: editDescription.trim() || undefined }
+            : {}),
+        }).catch((err: Error) => {
+          toast.error(err.message || t("teamDetail.couldntSaveDetails"));
+          throw err;
+        }),
       );
     }
     if (budgetChanged) {
       tasks.push(
-        budgetMutation.mutateAsync(parsedBudget).catch((err: Error) => {
-          toast.error(err.message || t("teamDetail.couldntSaveBudget"));
-          throw err;
-        }),
+        budgetMutation
+          .mutateAsync(parsedBudget)
+          .catch((err: Error) => {
+            toast.error(err.message || t("teamDetail.couldntSaveBudget"));
+            throw err;
+          }),
       );
     }
 
@@ -875,21 +717,10 @@ export default function TeamDetailPage({
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full overflow-hidden">
               <svg viewBox="0 0 80 80" className="h-full w-full">
-                <defs>
-                  <linearGradient id="teamGrad" x1="0" y1="0" x2="1" y2="1">
-                    <stop offset="0%" stopColor="#f97316" />
-                    <stop offset="50%" stopColor="#ef4444" />
-                    <stop offset="100%" stopColor="#22c55e" />
-                  </linearGradient>
-                </defs>
+                <defs><linearGradient id="teamGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#f97316" /><stop offset="50%" stopColor="#ef4444" /><stop offset="100%" stopColor="#22c55e" /></linearGradient></defs>
                 <rect width="80" height="80" fill="url(#teamGrad)" rx="8" />
-                <circle cx="30" cy="50" r="15" fill="#1e40af" opacity="0.7" />
-                <circle cx="55" cy="35" r="12" fill="#f59e0b" opacity="0.7" />
-                <polygon
-                  points="20,20 45,15 35,40"
-                  fill="#ef4444"
-                  opacity="0.6"
-                />
+                <circle cx="30" cy="50" r="15" fill="#1e40af" opacity="0.7" /><circle cx="55" cy="35" r="12" fill="#f59e0b" opacity="0.7" />
+                <polygon points="20,20 45,15 35,40" fill="#ef4444" opacity="0.6" />
               </svg>
             </div>
             <div className="space-y-3 flex-1 min-w-0">
@@ -913,9 +744,7 @@ export default function TeamDetailPage({
                   disabled={isSavingTeam}
                 />
               ) : (
-                <p className="text-[16px] text-text-1">
-                  {team.description ?? t("teamDetail.noDescription")}
-                </p>
+                <p className="text-[16px] text-text-1">{team.description ?? t("teamDetail.noDescription")}</p>
               )}
             </div>
           </div>
@@ -952,9 +781,7 @@ export default function TeamDetailPage({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">
-              {t("teamDetail.monthlyBudget")}
-            </p>
+            <p className="text-[18px] font-bold text-text-1">{t("teamDetail.monthlyBudget")}</p>
             {editing ? (
               <div className="relative">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-[16px] text-text-2">
@@ -997,22 +824,15 @@ export default function TeamDetailPage({
             )}
           </div>
           <div className="space-y-3">
-            <p className="text-[18px] font-bold text-text-1">
-              {t("teamDetail.spentRemaining")}
-            </p>
+            <p className="text-[18px] font-bold text-text-1">{t("teamDetail.spentRemaining")}</p>
             <div className="flex items-center gap-3 h-[56px]">
-              <span className="text-[16px] text-text-2">
-                {formatCurrency(spent)} /{" "}
-                {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}
-              </span>
+              <span className="text-[16px] text-text-2">{formatCurrency(spent)} / {remaining > 0 ? formatCurrency(remaining) : formatCurrency(0)}</span>
               <SpentBar spent={spent} budget={budget} />
             </div>
           </div>
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <p className="text-[18px] font-bold text-text-1">
-                {t("teamDetail.projected")}
-              </p>
+              <p className="text-[18px] font-bold text-text-1">{t("teamDetail.projected")}</p>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -1029,14 +849,8 @@ export default function TeamDetailPage({
               </Tooltip>
             </div>
             <div className="flex items-center gap-2.5 h-[56px]">
-              <span className="text-[16px] text-text-1">
-                {formatCurrency(projected)}
-              </span>
-              <span
-                className={`rounded-lg px-2 py-1 text-[13px] ${onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"}`}
-              >
-                {onTrack ? t("teamDetail.onTrack") : t("teamDetail.overBudget")}
-              </span>
+              <span className="text-[16px] text-text-1">{formatCurrency(projected)}</span>
+              <span className={`rounded-lg px-2 py-1 text-[13px] ${onTrack ? "bg-success-1 text-text-1" : "bg-bg-1 text-text-3"}`}>{onTrack ? t("teamDetail.onTrack") : t("teamDetail.overBudget")}</span>
             </div>
           </div>
         </div>
@@ -1045,64 +859,37 @@ export default function TeamDetailPage({
       {/* ── Subteams ──────────────────────────────────────────────── */}
       <div className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">
-            {t("teamDetail.subteams")}
-          </p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.subteams")}</p>
           {canManageTeam ? (
             <AddSubteamDialog parentTeamId={id}>
-              <Button variant="plusAction" className="rounded-lg">
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.addSubteam")}
-              </Button>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addSubteam")}</Button>
             </AddSubteamDialog>
           ) : (
-            <DisabledReasonTooltip
-              disabled
-              reason={t("teamDetail.notAvailBasic")}
-            >
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.addSubteam")}
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addSubteam")}
               </Button>
             </DisabledReasonTooltip>
           )}
         </div>
         {subteams.length === 0 ? (
-          <div className="bg-bg-white rounded overflow-hidden">
-            <div className="px-4 py-8 text-center text-[16px] text-text-3">
-              {t("teamDetail.noSubteams")}
-            </div>
-          </div>
+          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noSubteams")}</div></div>
         ) : (
           <div className="overflow-x-auto bg-bg-white rounded">
             <table className="w-full min-w-[480px] md:min-w-[640px] lg:min-w-[800px]">
               <thead>
                 <tr className="h-[33px] border-b border-bg-1">
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">
-                    {t("teamDetail.colTeam")}
-                  </th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">
-                    {t("teamDetail.colDesc")}
-                  </th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">
-                    {t("teamDetail.colMonthlyBudget")}
-                  </th>
-                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">
-                    {t("teamDetail.colSpentRemaining")}
-                  </th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">
-                    {t("teamDetail.colProjected")}
-                  </th>
-                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">
-                    {t("teamDetail.colMembers")}
-                  </th>
-                  <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">
-                    {t("teamDetail.colActions")}
-                  </th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colTeam")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">{t("teamDetail.colDesc")}</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colMonthlyBudget")}</th>
+                  <th className="px-4 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colSpentRemaining")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colProjected")}</th>
+                  <th className="hidden px-4 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">{t("teamDetail.colMembers")}</th>
+                  <th className="px-4 text-right align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1112,19 +899,11 @@ export default function TeamDetailPage({
                   const subRemaining = subBudget - subSpent;
                   const subProjected = sub.projectedCents / 100;
                   const subOverBudget = subProjected > subBudget;
-                  const subExtraMembers =
-                    sub.memberCount > 4 ? sub.memberCount - 4 : 0;
+                  const subExtraMembers = sub.memberCount > 4 ? sub.memberCount - 4 : 0;
                   return (
-                    <tr
-                      key={sub.id}
-                      className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50"
-                    >
-                      <td className="px-4 align-middle text-base text-text-1 whitespace-nowrap">
-                        {sub.name}
-                      </td>
-                      <td className="hidden px-4 align-middle text-sm text-text-2 whitespace-nowrap md:table-cell">
-                        {sub.description ?? "—"}
-                      </td>
+                    <tr key={sub.id} className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
+                      <td className="px-4 align-middle text-base text-text-1 whitespace-nowrap">{sub.name}</td>
+                      <td className="hidden px-4 align-middle text-sm text-text-2 whitespace-nowrap md:table-cell">{sub.description ?? "—"}</td>
                       <td className="px-4 align-middle text-sm text-text-1 whitespace-nowrap">
                         {subBudget > 0 ? formatCurrency(subBudget) : "—"}
                       </td>
@@ -1134,9 +913,7 @@ export default function TeamDetailPage({
                             <span className="text-sm leading-tight text-text-1">
                               {formatCurrency(subSpent)} /{" "}
                               {subRemaining < 0 ? (
-                                <span className="text-danger-5">
-                                  {formatCurrency(subRemaining)}
-                                </span>
+                                <span className="text-danger-5">{formatCurrency(subRemaining)}</span>
                               ) : (
                                 formatCurrency(subRemaining)
                               )}
@@ -1152,15 +929,9 @@ export default function TeamDetailPage({
                       <td className="hidden px-4 align-middle whitespace-nowrap lg:table-cell">
                         {subBudget > 0 ? (
                           <div className="flex items-center gap-1.5">
-                            <span className="text-sm text-text-1">
-                              {formatCurrency(subProjected)}
-                            </span>
-                            <span
-                              className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}
-                            >
-                              {subOverBudget
-                                ? t("teamDetail.overBudget")
-                                : t("teamDetail.onTrack")}
+                            <span className="text-sm text-text-1">{formatCurrency(subProjected)}</span>
+                            <span className={`rounded-sm px-1.5 py-0.5 text-[11px] font-medium whitespace-nowrap ${subOverBudget ? "bg-bg-1 text-text-3" : "bg-success-1 text-text-1"}`}>
+                              {subOverBudget ? t("teamDetail.overBudget") : t("teamDetail.onTrack")}
                             </span>
                           </div>
                         ) : (
@@ -1174,27 +945,16 @@ export default function TeamDetailPage({
                               {sub.members.slice(0, 4).map((m, i) =>
                                 m.picture ? (
                                   // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    key={i}
-                                    src={m.picture}
-                                    alt={m.name ?? ""}
-                                    referrerPolicy="no-referrer"
-                                    className="h-6 w-6 rounded-full border-2 border-bg-white object-cover"
-                                  />
+                                  <img key={i} src={m.picture} alt={m.name ?? ""} referrerPolicy="no-referrer" className="h-6 w-6 rounded-full border-2 border-bg-white object-cover" />
                                 ) : (
-                                  <div
-                                    key={i}
-                                    className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-bg-white bg-bg-3 text-[9px] font-semibold text-text-3"
-                                  >
+                                  <div key={i} className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-bg-white bg-bg-3 text-[9px] font-semibold text-text-3">
                                     {(m.name ?? "?").charAt(0)}
                                   </div>
                                 ),
                               )}
                             </div>
                             {subExtraMembers > 0 && (
-                              <span className="ml-1.5 text-[12px] text-text-2">
-                                +{subExtraMembers}
-                              </span>
+                              <span className="ml-1.5 text-[12px] text-text-2">+{subExtraMembers}</span>
                             )}
                           </div>
                         ) : (
@@ -1204,38 +964,16 @@ export default function TeamDetailPage({
                       <td className="px-4 align-middle text-right">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 text-text-3 hover:text-text-1"
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
+                            <Button variant="ghost" size="icon" className="h-7 w-7 text-text-3 hover:text-text-1"><MoreVertical className="h-4 w-4" /></Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
                             {canManageTeam ? (
                               <>
                                 <EditSubteamDialog sub={sub} parentTeamId={id}>
-                                  <DropdownMenuItem
-                                    onSelect={(e) => e.preventDefault()}
-                                    className="gap-2"
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                    {t("teamDetail.edit")}
-                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2"><Pencil className="h-4 w-4" />{t("teamDetail.edit")}</DropdownMenuItem>
                                 </EditSubteamDialog>
-                                <DeleteSubteamDialog
-                                  subId={sub.id}
-                                  subName={sub.name}
-                                  parentTeamId={id}
-                                >
-                                  <DropdownMenuItem
-                                    onSelect={(e) => e.preventDefault()}
-                                    className="gap-2 text-danger-6 focus:text-danger-6"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                    {t("teamDetail.subDelete")}
-                                  </DropdownMenuItem>
+                                <DeleteSubteamDialog subId={sub.id} subName={sub.name} parentTeamId={id}>
+                                  <DropdownMenuItem onSelect={(e) => e.preventDefault()} className="gap-2 text-danger-6 focus:text-danger-6"><Trash2 className="h-4 w-4" />{t("teamDetail.subDelete")}</DropdownMenuItem>
                                 </DeleteSubteamDialog>
                               </>
                             ) : (
@@ -1245,16 +983,14 @@ export default function TeamDetailPage({
                                   onSelect={(e) => e.preventDefault()}
                                   className="gap-2"
                                 >
-                                  <Pencil className="h-4 w-4" />
-                                  {t("teamDetail.edit")}
+                                  <Pencil className="h-4 w-4" />{t("teamDetail.edit")}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   disabled
                                   onSelect={(e) => e.preventDefault()}
                                   className="gap-2 text-danger-6 focus:text-danger-6"
                                 >
-                                  <Trash2 className="h-4 w-4" />
-                                  {t("teamDetail.subDelete")}
+                                  <Trash2 className="h-4 w-4" />{t("teamDetail.subDelete")}
                                 </DropdownMenuItem>
                               </>
                             )}
@@ -1291,34 +1027,24 @@ export default function TeamDetailPage({
               {t("teamDetail.memberCapsTotal")}{" "}
               <strong>{formatCurrency(allocatedCapsCents / 100)}</strong>,
               {t("teamDetail.overTeamBudget")}{" "}
-              <strong>{formatCurrency(budget)}</strong>
-              {t("teamDetail.overTeamBudget2")}
+              <strong>{formatCurrency(budget)}</strong>{t("teamDetail.overTeamBudget2")}
             </p>
           </div>
         )}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">
-            {t("teamDetail.users")}
-          </p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.users")}</p>
           {canManageTeam ? (
             <InviteMemberDialog teamId={id}>
-              <Button variant="plusAction" className="rounded-lg">
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.inviteUsers")}
-              </Button>
+              <Button variant="plusAction" className="rounded-lg"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.inviteUsers")}</Button>
             </InviteMemberDialog>
           ) : (
-            <DisabledReasonTooltip
-              disabled
-              reason={t("teamDetail.notAvailBasic")}
-            >
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.inviteUsers")}
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.inviteUsers")}
               </Button>
             </DisabledReasonTooltip>
           )}
@@ -1328,21 +1054,11 @@ export default function TeamDetailPage({
             <table className="w-full min-w-[420px] md:min-w-[640px]">
               <thead>
                 <tr>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] sm:w-[260px] lg:w-[300px]">
-                    {t("teamDetail.colName")}
-                  </th>
-                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">
-                    {t("teamDetail.colEmail")}
-                  </th>
-                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">
-                    {t("teamDetail.colRole")}
-                  </th>
-                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] lg:table-cell">
-                    {t("teamDetail.colMonthlyCap")}
-                  </th>
-                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">
-                    {t("teamDetail.colActions")}
-                  </th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] sm:w-[260px] lg:w-[300px]">{t("teamDetail.colName")}</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 sm:table-cell">{t("teamDetail.colEmail")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colRole")}</th>
+                  <th className="hidden bg-bg-white px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[180px] lg:table-cell">{t("teamDetail.colMonthlyCap")}</th>
+                  <th className="bg-bg-white px-4 py-2 text-center align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("teamDetail.colActions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1363,11 +1079,7 @@ export default function TeamDetailPage({
                     <tr key={m.id} className="h-14 border-b border-border-2">
                       <td className="bg-bg-white px-4 align-middle w-[180px] sm:w-[260px] lg:w-[300px]">
                         <div className="flex items-center gap-2.5">
-                          <UserAvatar
-                            name={memberName(m)}
-                            picture={m.userPicture}
-                            size={24}
-                          />
+                          <UserAvatar name={memberName(m)} picture={m.userPicture} size={24} />
                           <span className="flex items-center gap-2 text-[16px] text-text-1 whitespace-nowrap">
                             {memberName(m)}
                             {m.userId && m.userId === team.ownerId && (
@@ -1385,17 +1097,11 @@ export default function TeamDetailPage({
                                 {t("teamDetail.teamManager")}
                               </Badge>
                             )}
-                            {m.status === "pending" && (
-                              <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">
-                                {t("teamDetail.pending")}
-                              </span>
-                            )}
+                            {m.status === "pending" && <span className="rounded-lg bg-bg-2 px-2 py-0.5 text-[13px] text-text-3">{t("teamDetail.pending")}</span>}
                           </span>
                         </div>
                       </td>
-                      <td className="hidden bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap sm:table-cell">
-                        {m.email}
-                      </td>
+                      <td className="hidden bg-bg-white px-4 align-middle text-[16px] text-text-1 whitespace-nowrap sm:table-cell">{m.email}</td>
                       <td className="bg-bg-white px-4 align-middle">
                         {m.role === "owner" ? (
                           <span className="inline-flex h-8 items-center rounded-md border border-border-2 bg-bg-1 px-3 text-sm font-medium text-text-1">
@@ -1440,21 +1146,13 @@ export default function TeamDetailPage({
                                   the current value even for a read-
                                   only editor view. */}
                               {(hasOwnerRights || m.role === "admin") && (
-                                <SelectItem value="admin">
-                                  {t("teamDetail.tmAdmin")}
-                                </SelectItem>
+                                <SelectItem value="admin">{t("teamDetail.tmAdmin")}</SelectItem>
                               )}
                               {(hasOwnerRights || m.role === "manager") && (
-                                <SelectItem value="manager">
-                                  {t("teamDetail.tmManager")}
-                                </SelectItem>
+                                <SelectItem value="manager">{t("teamDetail.tmManager")}</SelectItem>
                               )}
-                              <SelectItem value="editor">
-                                {t("teamDetail.tmEditor")}
-                              </SelectItem>
-                              <SelectItem value="viewer">
-                                {t("teamDetail.tmViewer")}
-                              </SelectItem>
+                              <SelectItem value="editor">{t("teamDetail.tmEditor")}</SelectItem>
+                              <SelectItem value="viewer">{t("teamDetail.tmViewer")}</SelectItem>
                             </SelectContent>
                           </Select>
                         )}
@@ -1470,15 +1168,7 @@ export default function TeamDetailPage({
                       <td className="bg-bg-white px-4 align-middle w-[93px]">
                         <div className="flex justify-center">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-text-2 hover:text-text-1"
-                              >
-                                <MoreVertical className="h-5 w-5" />
-                              </Button>
-                            </DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="gap-2"
@@ -1510,8 +1200,7 @@ export default function TeamDetailPage({
                                   removeMutation.mutate(m.id);
                                 }}
                               >
-                                <UserX className="h-4 w-4" />
-                                {t("teamDetail.removeUser")}
+                                <UserX className="h-4 w-4" />{t("teamDetail.removeUser")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1520,16 +1209,7 @@ export default function TeamDetailPage({
                     </tr>
                   );
                 })}
-                {team.members.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={5}
-                      className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3"
-                    >
-                      {t("teamDetail.noMembers")}
-                    </td>
-                  </tr>
-                )}
+                {team.members.length === 0 && <tr><td colSpan={5} className="bg-bg-white px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noMembers")}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -1548,62 +1228,37 @@ export default function TeamDetailPage({
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[18px] font-bold text-text-1">
-            {t("teamDetail.guardrails")}
-          </p>
+          <p className="text-[18px] font-bold text-text-1">{t("teamDetail.guardrails")}</p>
           {canManageTeam ? (
             <AddGuardrailDialog teamId={id}>
-              <Button variant="plusAction" className="rounded-lg w-[155px]">
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.addGuardrail")}
-              </Button>
+              <Button variant="plusAction" className="rounded-lg w-[155px]"><Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addGuardrail")}</Button>
             </AddGuardrailDialog>
           ) : (
-            <DisabledReasonTooltip
-              disabled
-              reason={t("teamDetail.notAvailBasic")}
-            >
+            <DisabledReasonTooltip disabled reason={t("teamDetail.notAvailBasic")}>
               <Button
                 variant="plusAction"
                 className="rounded-lg w-[155px] disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled
               >
-                <Plus className="h-4 w-4 text-text-white" />
-                {t("teamDetail.addGuardrail")}
+                <Plus className="h-4 w-4 text-text-white" />{t("teamDetail.addGuardrail")}
               </Button>
             </DisabledReasonTooltip>
           )}
         </div>
         {guardrails.length === 0 ? (
-          <div className="bg-bg-white rounded overflow-hidden">
-            <div className="px-4 py-8 text-center text-[16px] text-text-3">
-              {t("teamDetail.noGuardrails")}
-            </div>
-          </div>
+          <div className="bg-bg-white rounded overflow-hidden"><div className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noGuardrails")}</div></div>
         ) : (
           <div className="bg-bg-white rounded overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[420px] md:min-w-[560px] lg:min-w-[700px]">
                 <thead>
                   <tr>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">
-                      {t("teamDetail.colName")}
-                    </th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">
-                      {t("teamDetail.colType")}
-                    </th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">
-                      {t("teamDetail.colSeverity")}
-                    </th>
-                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">
-                      {t("teamDetail.colTriggers")}
-                    </th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">
-                      {t("teamDetail.colStatus")}
-                    </th>
-                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">
-                      {t("teamDetail.colActions")}
-                    </th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2">{t("teamDetail.colName")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 md:table-cell">{t("teamDetail.colType")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colSeverity")}</th>
+                    <th className="hidden px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 lg:table-cell">{t("teamDetail.colTriggers")}</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[167px]">{t("teamDetail.colStatus")}</th>
+                    <th className="px-4 py-2 text-left align-middle text-[13px] font-normal text-text-2 w-[93px]">{t("teamDetail.colActions")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1611,9 +1266,7 @@ export default function TeamDetailPage({
                     <tr key={g.id} className="h-14 border-b border-bg-1">
                       <td className="px-4 align-middle">
                         <div className="flex items-center gap-2">
-                          <span className="text-[16px] text-text-1 whitespace-nowrap">
-                            {g.name}
-                          </span>
+                          <span className="text-[16px] text-text-1 whitespace-nowrap">{g.name}</span>
                           {g.isOrgWide && (
                             <span
                               className="rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-6"
@@ -1627,19 +1280,14 @@ export default function TeamDetailPage({
                       <td className="hidden px-4 align-middle md:table-cell">
                         <div className="flex flex-wrap gap-2.5">
                           {g.type.split(",").map((typeName) => (
-                            <span
-                              key={typeName}
-                              className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap"
-                            >
+                            <span key={typeName} className="rounded-lg bg-bg-2 px-2 py-1 text-[13px] text-text-3 whitespace-nowrap">
                               {typeName.trim()}
                             </span>
                           ))}
                         </div>
                       </td>
                       <td className="hidden px-4 align-middle lg:table-cell">
-                        <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">
-                          {g.severity}
-                        </span>
+                        <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{g.severity}</span>
                       </td>
                       <td className="hidden px-4 align-middle text-[16px] text-text-1 lg:table-cell">
                         {g.triggers.toLocaleString()}
@@ -1657,9 +1305,7 @@ export default function TeamDetailPage({
                                 return;
                               }
                               if (!g.isActive) {
-                                toast.error(
-                                  t("teamDetail.globallyDeactivated"),
-                                );
+                                toast.error(t("teamDetail.globallyDeactivated"));
                                 return;
                               }
                               toggleMutation.mutate(g.id);
@@ -1679,15 +1325,7 @@ export default function TeamDetailPage({
                       <td className="px-4 align-middle w-[93px]">
                         <div className="flex justify-center">
                           <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 text-text-2 hover:text-text-1"
-                              >
-                                <MoreVertical className="h-5 w-5" />
-                              </Button>
-                            </DropdownMenuTrigger>
+                            <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-7 w-7 text-text-2 hover:text-text-1"><MoreVertical className="h-5 w-5" /></Button></DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="gap-2 text-danger-6 focus:text-danger-6"
@@ -1703,8 +1341,7 @@ export default function TeamDetailPage({
                                   setRemoveGuardrailId(g.id);
                                 }}
                               >
-                                <UserX className="h-4 w-4" />
-                                {t("teamDetail.removeFromTeam")}
+                                <UserX className="h-4 w-4" />{t("teamDetail.removeFromTeam")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -1712,16 +1349,7 @@ export default function TeamDetailPage({
                       </td>
                     </tr>
                   ))}
-                  {guardrails.length === 0 && (
-                    <tr>
-                      <td
-                        colSpan={6}
-                        className="px-4 py-8 text-center text-[16px] text-text-3"
-                      >
-                        {t("teamDetail.noGuardrails")}
-                      </td>
-                    </tr>
-                  )}
+                  {guardrails.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-[16px] text-text-3">{t("teamDetail.noGuardrails")}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -1746,8 +1374,7 @@ export default function TeamDetailPage({
           <DialogHeader>
             <DialogTitle>{t("teamDetail.deleteTeamTitle")}</DialogTitle>
             <DialogDescription>
-              {t("teamDetail.deleteTeamDesc1")} <strong>{team.name}</strong>
-              {t("teamDetail.deleteTeamDesc2")}
+              {t("teamDetail.deleteTeamDesc1")} <strong>{team.name}</strong>{t("teamDetail.deleteTeamDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1763,9 +1390,7 @@ export default function TeamDetailPage({
               onClick={() => deleteTeamMutation.mutate()}
               disabled={deleteTeamMutation.isPending}
             >
-              {deleteTeamMutation.isPending
-                ? t("teamDetail.deleting")
-                : t("teamDetail.delete")}
+              {deleteTeamMutation.isPending ? t("teamDetail.deleting") : t("teamDetail.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1796,8 +1421,7 @@ export default function TeamDetailPage({
             <DialogTitle>{t("teamDetail.removeGuardrailTitle")}</DialogTitle>
             <DialogDescription>
               {t("teamDetail.removeGuardrailDesc1")}{" "}
-              <strong>{removeGuardrailName}</strong>{" "}
-              {t("teamDetail.removeGuardrailDesc2")}
+              <strong>{removeGuardrailName}</strong> {t("teamDetail.removeGuardrailDesc2")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1819,9 +1443,7 @@ export default function TeamDetailPage({
               disabled={removeGuardrailMutation.isPending}
               className="cursor-pointer"
             >
-              {removeGuardrailMutation.isPending
-                ? t("teamDetail.removing")
-                : t("teamDetail.remove")}
+              {removeGuardrailMutation.isPending ? t("teamDetail.removing") : t("teamDetail.remove")}
             </Button>
           </DialogFooter>
         </DialogContent>

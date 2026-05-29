@@ -66,9 +66,9 @@ interface LocalMessage {
    *  Stripped from any message the user dismisses so re-renders don't
    *  resurrect the bubble. Not persisted across reloads. */
   alternativeModel?: AlternativeModelSuggestion;
-  /** Web-search sources OpenRouter attached to this answer. Accumulated
-   *  from the `citations` SSE event and hydrated from metadata.citations
-   *  on reload. Renders a "Sources" list under the bubble. */
+  /** Web-search sources OpenRouter attached to this answer. Streamed via
+   *  the `citations` SSE event and hydrated from metadata.citations on
+   *  reload; renders a "Sources" list under the bubble. */
   citations?: WebCitation[];
   userId?: string | null;
   userName?: string | null;
@@ -127,10 +127,12 @@ export default function ProjectChatPage() {
     : null;
   const pausedByokIntegration =
     projectProvider && project
-      ? (integrations.find(
+      ? integrations.find(
           (i) =>
-            i.providerId === projectProvider && i.hasApiKey && !i.isEnabled,
-        ) ?? null)
+            i.providerId === projectProvider &&
+            i.hasApiKey &&
+            !i.isEnabled,
+        ) ?? null
       : null;
 
   const updateModelMutation = useMutation({
@@ -230,7 +232,10 @@ export default function ProjectChatPage() {
     );
     setMessages((prev) => {
       const trailing = prev[prev.length - 1];
-      if (trailing?.isError && beMessages.length < prev.length) {
+      if (
+        trailing?.isError &&
+        beMessages.length < prev.length
+      ) {
         return [...beMessages, trailing];
       }
       return beMessages;
@@ -399,7 +404,9 @@ export default function ProjectChatPage() {
           reasoningBuffer += event.text;
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === assistantId ? { ...m, reasoning: reasoningBuffer } : m,
+              m.id === assistantId
+                ? { ...m, reasoning: reasoningBuffer }
+                : m,
             ),
           );
         } else if (event.type === "citations") {
@@ -500,7 +507,8 @@ export default function ProjectChatPage() {
       //   - Anything else → pre-flight 4xx (guardrail input,
       //     budget gate, …) or network failure. Replace the
       //     placeholder bubble with the humanised message.
-      const isAbort = err instanceof DOMException && err.name === "AbortError";
+      const isAbort =
+        err instanceof DOMException && err.name === "AbortError";
       if (!isAbort) {
         setMessages((prev) =>
           prev.map((m) =>
@@ -516,7 +524,9 @@ export default function ProjectChatPage() {
         // (stream got torn down) — mark the local message partial
         // here so the badge shows without a sidebar reload.
         setMessages((prev) =>
-          prev.map((m) => (m.id === assistantId ? { ...m, partial: true } : m)),
+          prev.map((m) =>
+            m.id === assistantId ? { ...m, partial: true } : m,
+          ),
         );
         // Refresh the sidebar so the new conversation + latest
         // timestamp show up despite the abort short-circuiting the
@@ -606,9 +616,7 @@ export default function ProjectChatPage() {
                 />
                 <div className="flex-1 text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    {t("projDetail.keyPausedPrefix")}{" "}
-                    {pausedByokIntegration.displayName}{" "}
-                    {t("projDetail.keyPausedSuffix")}
+                    {t("projDetail.keyPausedPrefix")} {pausedByokIntegration.displayName} {t("projDetail.keyPausedSuffix")}
                   </p>
                   <p className="text-text-3">
                     {t("projDetail.routingViaDefault")}{" "}
@@ -870,10 +878,9 @@ export default function ProjectChatPage() {
                         </div>
                       </details>
                     ) : null}
-                    {/* Web-search sources (Figma-less v1). Renders when
-                        the answer carried citations — streamed via the
-                        `citations` SSE event or hydrated from
-                        metadata.citations on reload. */}
+                    {/* Web-search sources — streamed via the `citations`
+                        SSE event or hydrated from metadata.citations on
+                        reload. */}
                     {msg.role === "assistant" &&
                     msg.citations &&
                     msg.citations.length > 0 ? (

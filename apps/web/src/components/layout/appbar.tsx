@@ -20,8 +20,8 @@ import {
   Share2,
   X,
   CheckCircle,
+  Globe,
 } from "lucide-react";
-import { Globe } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -78,9 +78,8 @@ export const Appbar = () => {
   const queryClient = useQueryClient();
 
   // Per-project web search toggle (header). Only rendered when the
-  // org/team allows it (`webSearchAllowed`). Refetches the project so
-  // the chat path (which reads project.webSearch server-side) and the
-  // toggle state stay in sync.
+  // org/team allows it; refetches the project so the chat path (which
+  // reads project.webSearch server-side) and the toggle stay in sync.
   const webSearchMutation = useMutation({
     mutationFn: (next: boolean) =>
       updateProject(projectId, { webSearch: next }),
@@ -108,7 +107,10 @@ export const Appbar = () => {
     if (!teamDetailData || !currentUser) return false;
     if (currentUser.id === teamDetailData.ownerId) return true;
     const me = teamDetailData.members.find(
-      (m) => m.userId && m.userId === currentUser.id && m.status === "accepted",
+      (m) =>
+        m.userId &&
+        m.userId === currentUser.id &&
+        m.status === "accepted",
     );
     return (
       me?.role === "owner" ||
@@ -129,61 +131,59 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-2">
-            <Link href="/teams">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-black-700 hover:text-black-900"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h4 className="text-[26px] font-bold text-text-1">{teamName}</h4>
-          </div>
-          {/* Edit + Delete dispatch window events the team detail page
+        <div className="flex items-center gap-2">
+          <Link href="/teams">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-black-700 hover:text-black-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <h4 className="text-[26px] font-bold text-text-1">{teamName}</h4>
+        </div>
+        {/* Edit + Delete dispatch window events the team detail page
             listens for — same pattern as /users/[id]. Page handles
             the inline edit-mode flip and the delete confirmation
             dialog so the chrome controls drive page state without
             prop-drilling through the layout. */}
-          <div className="flex items-center gap-1">
-            <DisabledReasonTooltip
+        <div className="flex items-center gap-1">
+          <DisabledReasonTooltip
+            disabled={!canManageCurrentTeam}
+            reason={t("appbar.notAvailBasic")}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!canManageCurrentTeam}
-              reason={t("appbar.notAvailBasic")}
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("team-detail:edit"))
+              }
+              title={canManageCurrentTeam ? t("appbar.editTeam") : undefined}
             >
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!canManageCurrentTeam}
-                onClick={() =>
-                  window.dispatchEvent(new CustomEvent("team-detail:edit"))
-                }
-                title={canManageCurrentTeam ? t("appbar.editTeam") : undefined}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </DisabledReasonTooltip>
-            <DisabledReasonTooltip
+              <Pencil className="h-4 w-4" />
+            </Button>
+          </DisabledReasonTooltip>
+          <DisabledReasonTooltip
+            disabled={!canManageCurrentTeam}
+            reason={t("appbar.notAvailBasic")}
+          >
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={!canManageCurrentTeam}
-              reason={t("appbar.notAvailBasic")}
+              onClick={() =>
+                window.dispatchEvent(new CustomEvent("team-detail:delete"))
+              }
+              title={canManageCurrentTeam ? t("appbar.deleteTeam") : undefined}
             >
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-success-7 hover:text-success-7/80 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={!canManageCurrentTeam}
-                onClick={() =>
-                  window.dispatchEvent(new CustomEvent("team-detail:delete"))
-                }
-                title={
-                  canManageCurrentTeam ? t("appbar.deleteTeam") : undefined
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </DisabledReasonTooltip>
-          </div>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </DisabledReasonTooltip>
+        </div>
         </header>
       </>
     );
@@ -199,7 +199,8 @@ export const Appbar = () => {
     //    case accounts) self-manages — they land on /users/<own-id>
     //    and want the Pencil to enter edit mode without admin
     //    involvement. Trash (delete) stays admin-only.
-    const userDetailId = pathname.match(/^\/users\/([^/]+)/)?.[1] ?? "";
+    const userDetailId =
+      pathname.match(/^\/users\/([^/]+)/)?.[1] ?? "";
     const isAdmin = currentUser?.role === "admin";
     const isSelfManaged =
       !!currentUser &&
@@ -214,48 +215,48 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between border-b border-bg-1 px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-2">
-            <Link href="/teams?tab=users">
+        <div className="flex items-center gap-2">
+          <Link href="/teams?tab=users">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-black-700 hover:text-black-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <h4 className="text-[26px] font-bold text-text-1">{userName}</h4>
+        </div>
+        {(canEdit || canDelete) && (
+          <div className="flex items-center gap-1">
+            {canEdit && (
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-black-700 hover:text-black-900"
+                className="h-8 w-8 text-success-7 hover:text-success-7/80"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("user-detail:edit"))
+                }
+                title={t("appbar.editUser")}
               >
-                <ArrowLeft className="h-4 w-4" />
+                <Pencil className="h-4 w-4" />
               </Button>
-            </Link>
-            <h4 className="text-[26px] font-bold text-text-1">{userName}</h4>
+            )}
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-success-7 hover:text-success-7/80"
+                onClick={() =>
+                  window.dispatchEvent(new CustomEvent("user-detail:delete"))
+                }
+                title={t("appbar.removeUser")}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
           </div>
-          {(canEdit || canDelete) && (
-            <div className="flex items-center gap-1">
-              {canEdit && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-success-7 hover:text-success-7/80"
-                  onClick={() =>
-                    window.dispatchEvent(new CustomEvent("user-detail:edit"))
-                  }
-                  title={t("appbar.editUser")}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              )}
-              {canDelete && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-success-7 hover:text-success-7/80"
-                  onClick={() =>
-                    window.dispatchEvent(new CustomEvent("user-detail:delete"))
-                  }
-                  title={t("appbar.removeUser")}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          )}
+        )}
         </header>
       </>
     );
@@ -282,31 +283,31 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 items-center gap-6 lg:gap-12 px-6 py-6 ${config.bg}`}
         >
-          <h4 className="text-text-1 shrink-0">{t("appbar.aiChat")}</h4>
+        <h4 className="text-text-1 shrink-0">{t("appbar.aiChat")}</h4>
 
-          <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
-            {AI_CHAT_TABS.map((tab) => (
-              <button
-                key={tab.value}
-                onClick={() => setTab(tab.value)}
-                className={`px-[14px] py-[8px] text-[16px] font-normal cursor-pointer transition-colors ${
-                  activeTab === tab.value
-                    ? "bg-bg-3 text-text-1"
-                    : "bg-bg-white text-text-1 hover:bg-bg-1"
-                }`}
-              >
-                {t(tab.labelKey)}
-              </button>
-            ))}
-          </div>
+        <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
+          {AI_CHAT_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              onClick={() => setTab(tab.value)}
+              className={`px-[14px] py-[8px] text-[16px] font-normal cursor-pointer transition-colors ${
+                activeTab === tab.value
+                  ? "bg-bg-3 text-text-1"
+                  : "bg-bg-white text-text-1 hover:bg-bg-1"
+              }`}
+            >
+              {t(tab.labelKey)}
+            </button>
+          ))}
+        </div>
 
-          <div className="flex flex-1 items-center gap-[8px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">
-            <Search className="h-5 w-5 shrink-0 text-text-3" />
-            <input
-              placeholder={t("appbar.search")}
-              className="flex-1 bg-transparent text-[16px] leading-[24px] text-text-1 outline-none placeholder:text-text-3"
-            />
-          </div>
+        <div className="flex flex-1 items-center gap-[8px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">
+          <Search className="h-5 w-5 shrink-0 text-text-3" />
+          <input
+            placeholder={t("appbar.search")}
+            className="flex-1 bg-transparent text-[16px] leading-[24px] text-text-1 outline-none placeholder:text-text-3"
+          />
+        </div>
         </header>
       </>
     );
@@ -324,177 +325,151 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 items-center justify-between py-6 px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-4">
-            <Link href="/">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-black-700 hover:text-black-900"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-black-700 hover:text-black-900">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
 
-            <h4 className="text-[26px] font-bold text-text-1">
-              {_project?.name ?? t("appbar.loading")}
-            </h4>
+          <h4 className="text-[26px] font-bold text-text-1">{_project?.name ?? t("appbar.loading")}</h4>
 
-            {_project?.teamId && (
-              <div className="flex items-center gap-2 rounded-lg bg-bg-white px-2 py-1">
-                <Users className="h-[18px] w-[18px] text-text-2" />
-                <span className="text-[13px] text-text-2">
-                  {t("appbar.team")}
-                </span>
-              </div>
-            )}
+          {_project?.teamId && (
+            <div className="flex items-center gap-2 rounded-lg bg-bg-white px-2 py-1">
+              <Users className="h-[18px] w-[18px] text-text-2" />
+              <span className="text-[13px] text-text-2">{t("appbar.team")}</span>
+            </div>
+          )}
 
-            <button className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1">
-              <span className="text-[16px] text-text-1">
-                {_project ? getModelLabel(_project.model) : t("appbar.model")}
-              </span>
-              <ChevronDown className="h-4 w-4 text-text-2" />
-            </button>
+          <button className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1">
+            <span className="text-[16px] text-text-1">
+              {_project ? getModelLabel(_project.model) : t("appbar.model")}
+            </span>
+            <ChevronDown className="h-4 w-4 text-text-2" />
+          </button>
 
-            {/* Per-project web search toggle — only when the org/team
-              allows it. Reads project.webSearch; persists via
-              updateProject so the chat path picks it up server-side.
-              Disabled (with a reason) when the project's active model
+          {/* Per-project web search toggle — only when the org/team
+              allows it. Disabled with a reason when the active model
               can't use web search (native Anthropic BYOK bypasses the
-              OpenRouter plugin), so the toggle never silently no-ops. */}
-            {_project?.webSearchAllowed && (
-              <DisabledReasonTooltip
-                disabled={!_project.webSearchSupported}
-                reason={t("appbar.webSearchUnsupported")}
+              OpenRouter plugin), so it never silently no-ops. */}
+          {_project?.webSearchAllowed && (
+            <DisabledReasonTooltip
+              disabled={!_project.webSearchSupported}
+              reason={t("appbar.webSearchUnsupported")}
+            >
+              <button
+                type="button"
+                onClick={() => webSearchMutation.mutate(!_project.webSearch)}
+                disabled={
+                  webSearchMutation.isPending || !_project.webSearchSupported
+                }
+                aria-pressed={_project.webSearch}
+                title={t("appbar.webSearch")}
+                className={`flex items-center gap-2 rounded-lg border px-4 py-4 text-[15px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  _project.webSearch
+                    ? "border-primary-6 bg-primary-1 text-primary-7"
+                    : "border-border-2 bg-bg-white text-text-2 hover:bg-bg-1"
+                }`}
               >
-                <button
-                  type="button"
-                  onClick={() => webSearchMutation.mutate(!_project.webSearch)}
-                  disabled={
-                    webSearchMutation.isPending || !_project.webSearchSupported
-                  }
-                  aria-pressed={_project.webSearch}
-                  title={t("appbar.webSearch")}
-                  className={`flex items-center gap-2 rounded-lg border px-4 py-4 text-[15px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    _project.webSearch
-                      ? "border-primary-6 bg-primary-1 text-primary-7"
-                      : "border-border-2 bg-bg-white text-text-2 hover:bg-bg-1"
-                  }`}
-                >
-                  <Globe className="h-4 w-4" />
-                  {t("appbar.webSearch")}
-                </button>
-              </DisabledReasonTooltip>
-            )}
-          </div>
+                <Globe className="h-4 w-4" />
+                {t("appbar.webSearch")}
+              </button>
+            </DisabledReasonTooltip>
+          )}
+        </div>
 
-          <div className="flex items-center gap-6">
-            <button className="cursor-pointer text-text-2 hover:text-text-1">
-              <Search className="h-6 w-6" />
-            </button>
+        <div className="flex items-center gap-6">
+          <button className="cursor-pointer text-text-2 hover:text-text-1">
+            <Search className="h-6 w-6" />
+          </button>
 
-            <Popover.Root>
-              <Popover.Trigger asChild>
-                <button className="flex items-center gap-1 cursor-pointer">
-                  <div className="flex items-center">
-                    {visibleMembers.map((m, i) =>
-                      m.userPicture ? (
+          <Popover.Root>
+            <Popover.Trigger asChild>
+              <button className="flex items-center gap-1 cursor-pointer">
+                <div className="flex items-center">
+                  {visibleMembers.map((m, i) =>
+                    m.userPicture ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        key={m.id}
+                        src={m.userPicture}
+                        alt={m.userName ?? ""}
+                        className={`${i > 0 ? "ml-[-10px]" : ""} h-8 w-8 shrink-0 rounded-full object-cover`}
+                      />
+                    ) : (
+                      <div
+                        key={m.id}
+                        className={`${i > 0 ? "ml-[-10px]" : ""} flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white`}
+                      >
+                        {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
+                      </div>
+                    ),
+                  )}
+                </div>
+                {extraCount > 0 && (
+                  <span className="ml-1 text-[11px] text-text-3">+{extraCount}</span>
+                )}
+              </button>
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Content
+                align="end"
+                sideOffset={8}
+                className="z-50 w-[320px] rounded-lg border border-border-2 bg-bg-white p-4 shadow-lg"
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-[14px] font-bold text-text-1">{t("appbar.teamMembers")} ({members.length})</span>
+                  <Popover.Close asChild>
+                    <button className="cursor-pointer text-text-3 hover:text-text-1">
+                      <X className="h-4 w-4" />
+                    </button>
+                  </Popover.Close>
+                </div>
+                <div className="flex flex-col gap-3 max-h-[300px] overflow-auto">
+                  {members.map((m) => (
+                    <div key={m.id} className="flex items-center gap-3">
+                      {m.userPicture ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          key={m.id}
-                          src={m.userPicture}
-                          alt={m.userName ?? ""}
-                          className={`${i > 0 ? "ml-[-10px]" : ""} h-8 w-8 shrink-0 rounded-full object-cover`}
-                        />
+                        <img src={m.userPicture} alt={m.userName ?? ""} className="h-8 w-8 shrink-0 rounded-full object-cover" />
                       ) : (
-                        <div
-                          key={m.id}
-                          className={`${i > 0 ? "ml-[-10px]" : ""} flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white`}
-                        >
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white">
                           {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
                         </div>
-                      ),
-                    )}
-                  </div>
-                  {extraCount > 0 && (
-                    <span className="ml-1 text-[11px] text-text-3">
-                      +{extraCount}
-                    </span>
-                  )}
-                </button>
-              </Popover.Trigger>
-              <Popover.Portal>
-                <Popover.Content
-                  align="end"
-                  sideOffset={8}
-                  className="z-50 w-[320px] rounded-lg border border-border-2 bg-bg-white p-4 shadow-lg"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[14px] font-bold text-text-1">
-                      {t("appbar.teamMembers")} ({members.length})
-                    </span>
-                    <Popover.Close asChild>
-                      <button className="cursor-pointer text-text-3 hover:text-text-1">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </Popover.Close>
-                  </div>
-                  <div className="flex flex-col gap-3 max-h-[300px] overflow-auto">
-                    {members.map((m) => (
-                      <div key={m.id} className="flex items-center gap-3">
-                        {m.userPicture ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={m.userPicture}
-                            alt={m.userName ?? ""}
-                            className="h-8 w-8 shrink-0 rounded-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white">
-                            {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
-                          </div>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[13px] font-medium text-text-1 truncate">
-                            {m.userName ?? m.email}
-                          </p>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[11px] text-text-3 truncate">
-                              {m.email}
-                            </span>
-                            {m.status === "accepted" ? (
-                              <CheckCircle className="h-3 w-3 shrink-0 text-success-7" />
-                            ) : (
-                              <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-warning-2 text-warning-5">
-                                {t("appbar.pending")}
-                              </span>
-                            )}
-                          </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-text-1 truncate">{m.userName ?? m.email}</p>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-text-3 truncate">{m.email}</span>
+                          {m.status === "accepted" ? (
+                            <CheckCircle className="h-3 w-3 shrink-0 text-success-7" />
+                          ) : (
+                            <span className="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium bg-warning-2 text-warning-5">{t("appbar.pending")}</span>
+                          )}
                         </div>
-                        <span className="text-[11px] text-text-3 capitalize shrink-0">
-                          {m.role}
-                        </span>
                       </div>
-                    ))}
-                  </div>
-                </Popover.Content>
-              </Popover.Portal>
-            </Popover.Root>
+                      <span className="text-[11px] text-text-3 capitalize shrink-0">{m.role}</span>
+                    </div>
+                  ))}
+                </div>
+              </Popover.Content>
+            </Popover.Portal>
+          </Popover.Root>
 
-            {_project?.teamId && _project && (
-              // Project-aware modal (Figma 179:16073): multi-email
-              // invite + the existing-members roster with the team and
-              // direct-invitee groups. The old single-email
-              // InviteMemberDialog still ships for /teams + dashboard;
-              // we only swap the trigger inside the projectDetail
-              // header.
-              <InviteMembersDialog project={_project}>
-                <Button variant="plusAction" className="rounded-lg w-[174px]">
-                  <Plus className="h-4 w-4 text-text-white" />
-                  {t("appbar.inviteMember")}
-                </Button>
-              </InviteMembersDialog>
-            )}
-          </div>
+          {_project?.teamId && _project && (
+            // Project-aware modal (Figma 179:16073): multi-email
+            // invite + the existing-members roster with the team and
+            // direct-invitee groups. The old single-email
+            // InviteMemberDialog still ships for /teams + dashboard;
+            // we only swap the trigger inside the projectDetail
+            // header.
+            <InviteMembersDialog project={_project}>
+              <Button variant="plusAction" className="rounded-lg w-[174px]">
+                <Plus className="h-4 w-4 text-text-white" />
+                {t("appbar.inviteMember")}
+              </Button>
+            </InviteMembersDialog>
+          )}
+        </div>
         </header>
       </>
     );
@@ -508,20 +483,18 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 py-6 items-center border-b border-bg-1 px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-2">
-            <Link href="/">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-black-700 hover:text-black-900"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <h4 className="text-[26px] font-bold text-text-1">
-              {t("appbar.createProject")}
-            </h4>
-          </div>
+        <div className="flex items-center gap-2">
+          <Link href="/">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-black-700 hover:text-black-900"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <h4 className="text-[26px] font-bold text-text-1">{t("appbar.createProject")}</h4>
+        </div>
         </header>
       </>
     );
@@ -535,15 +508,15 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 py-6 items-center px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-3">
-            <Link
-              href="/tender-ai"
-              className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2 hover:text-primary-6"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              {t("appbar.backToDashboard")}
-            </Link>
-          </div>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/tender-ai"
+            className="inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2 hover:text-primary-6"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            {t("appbar.backToDashboard")}
+          </Link>
+        </div>
         </header>
       </>
     );
@@ -557,54 +530,45 @@ export const Appbar = () => {
         <header
           className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
         >
-          <div className="flex items-center gap-3">
-            <Link href="/tender-ai">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-text-1 hover:text-text-1"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-            </Link>
-            <Link
-              href="/tender-ai"
-              className="hidden text-[14px] text-text-2 hover:text-primary-6 sm:inline"
-            >
-              {t("appbar.dashboard")}
-            </Link>
-            <ChevronRight className="hidden h-3.5 w-3.5 text-text-3 sm:inline" />
-            <span className="text-[14px] font-medium text-text-1">
-              {t("appbar.tenderDetails")}
-            </span>
-          </div>
-          <div className="hidden items-center gap-2 sm:flex">
+        <div className="flex items-center gap-3">
+          <Link href="/tender-ai">
             <Button
-              variant="outline"
-              className="cursor-pointer gap-2 text-[13px]"
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-text-1 hover:text-text-1"
             >
-              <Download className="h-3.5 w-3.5" />
-              {t("appbar.downloadPDF")}
+              <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-2 text-[13px]"
-            >
-              <FileSpreadsheet className="h-3.5 w-3.5" />
-              {t("appbar.exportCSV")}
-            </Button>
-            <Button
-              variant="outline"
-              className="cursor-pointer gap-2 text-[13px]"
-            >
-              <FolderPlus className="h-3.5 w-3.5" />
-              {t("appbar.createTenderProject")}
-            </Button>
-            <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
-              <Share2 className="h-3.5 w-3.5" />
-              {t("appbar.shareWithTeam")}
-            </Button>
-          </div>
+          </Link>
+          <Link
+            href="/tender-ai"
+            className="hidden text-[14px] text-text-2 hover:text-primary-6 sm:inline"
+          >
+            {t("appbar.dashboard")}
+          </Link>
+          <ChevronRight className="hidden h-3.5 w-3.5 text-text-3 sm:inline" />
+          <span className="text-[14px] font-medium text-text-1">
+            {t("appbar.tenderDetails")}
+          </span>
+        </div>
+        <div className="hidden items-center gap-2 sm:flex">
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <Download className="h-3.5 w-3.5" />
+            {t("appbar.downloadPDF")}
+          </Button>
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            {t("appbar.exportCSV")}
+          </Button>
+          <Button variant="outline" className="cursor-pointer gap-2 text-[13px]">
+            <FolderPlus className="h-3.5 w-3.5" />
+            {t("appbar.createTenderProject")}
+          </Button>
+          <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
+            <Share2 className="h-3.5 w-3.5" />
+            {t("appbar.shareWithTeam")}
+          </Button>
+        </div>
         </header>
       </>
     );
@@ -614,118 +578,110 @@ export const Appbar = () => {
   return (
     <>
       <MobileTopbar />
-      <header
-        className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}
-      >
-        <div className="flex items-center gap-4">
-          {config.titleKey ? (
-            <h4 className="text-[26px] font-bold text-text-1">
-              {t(config.titleKey)}
-            </h4>
-          ) : (
-            <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
-              {breadcrumbs.map((crumb, i) => {
-                const isLast = i === breadcrumbs.length - 1;
-                return (
-                  <span key={i} className="flex items-center">
-                    {i > 0 && (
-                      <ChevronRight className="mx-2 h-4 w-4 text-slate-400" />
-                    )}
-                    {isLast ? (
-                      <Badge
-                        variant="secondary"
-                        className="rounded-md bg-slate-100 px-2 py-0.5 font-normal text-slate-900 hover:bg-slate-100"
-                      >
-                        {crumb.label}
-                      </Badge>
-                    ) : crumb.href ? (
-                      <Link
-                        href={crumb.href}
-                        className="cursor-pointer transition-colors hover:text-slate-800"
-                      >
-                        {crumb.label}
-                      </Link>
-                    ) : (
-                      <span className="cursor-default">{crumb.label}</span>
-                    )}
-                  </span>
-                );
-              })}
-            </nav>
-          )}
-        </div>
+      <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
+      <div className="flex items-center gap-4">
+        {config.titleKey ? (
+          <h4 className="text-[26px] font-bold text-text-1">{t(config.titleKey)}</h4>
+        ) : (
+          <nav className="hidden items-center text-sm font-medium text-slate-500 sm:flex">
+            {breadcrumbs.map((crumb, i) => {
+              const isLast = i === breadcrumbs.length - 1;
+              return (
+                <span key={i} className="flex items-center">
+                  {i > 0 && (
+                    <ChevronRight className="mx-2 h-4 w-4 text-slate-400" />
+                  )}
+                  {isLast ? (
+                    <Badge
+                      variant="secondary"
+                      className="rounded-md bg-slate-100 px-2 py-0.5 font-normal text-slate-900 hover:bg-slate-100"
+                    >
+                      {crumb.label}
+                    </Badge>
+                  ) : crumb.href ? (
+                    <Link
+                      href={crumb.href}
+                      className="cursor-pointer transition-colors hover:text-slate-800"
+                    >
+                      {crumb.label}
+                    </Link>
+                  ) : (
+                    <span className="cursor-default">{crumb.label}</span>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
+        )}
+      </div>
 
-        {/* Right Header Controls */}
-        <div
-          className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}
-        >
-          {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
+      {/* Right Header Controls */}
+      <div className={`flex items-center gap-3 ${config.appbarExpandControls ? "flex-1" : ""}`}>
+        {config.appbarType === "observability" && <ObservabilityAppbarSlot />}
 
-          {config.appbarSearch && (
-            // Fills the right-controls container; the left margin (34px)
-            // stacks with the header's gap-4 (16px) for a consistent
-            // ~50px breathing room between the title and the search,
-            // independent of how wide the appbar gets.
-            <div className="relative hidden flex-1 sm:block ml-[34px]">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
-              <Input
-                type="text"
-                placeholder={t(config.appbarSearch.placeholderKey)}
-                className="h-10 w-full border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
-                onChange={(e) =>
-                  window.dispatchEvent(
-                    new CustomEvent(config.appbarSearch!.event, {
-                      detail: e.target.value,
-                    }),
-                  )
-                }
-              />
-            </div>
-          )}
-
-          {config.appbarAction && (
-            <Button
-              onClick={() =>
+        {config.appbarSearch && (
+          // Fills the right-controls container; the left margin (34px)
+          // stacks with the header's gap-4 (16px) for a consistent
+          // ~50px breathing room between the title and the search,
+          // independent of how wide the appbar gets.
+          <div className="relative hidden flex-1 sm:block ml-[34px]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+            <Input
+              type="text"
+              placeholder={t(config.appbarSearch.placeholderKey)}
+              className="h-10 w-full border-[#C9CDD4] bg-white pl-9 placeholder:text-text-3"
+              onChange={(e) =>
                 window.dispatchEvent(
-                  new CustomEvent(config.appbarAction!.event),
+                  new CustomEvent(config.appbarSearch!.event, {
+                    detail: e.target.value,
+                  }),
                 )
               }
-              className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
-            >
-              <Plus className="h-4 w-4" />
-              {t(config.appbarAction.labelKey)}
-            </Button>
-          )}
+            />
+          </div>
+        )}
 
-          {!config.hideSearch && (
-            <>
-              <div className="relative hidden group sm:block">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
-                <Input
-                  type="text"
-                  placeholder={t("appbar.searchProjects")}
-                  className="w-64 border-slate-200 bg-white pl-10 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:ring-offset-0 focus-visible:border-blue-500"
-                />
-                <div className="absolute right-2 top-1/2 -translate-y-1/2">
-                  <kbd className="hidden h-5 items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-medium text-slate-400 lg:inline-flex">
-                    ⌘K
-                  </kbd>
-                </div>
+        {config.appbarAction && (
+          <Button
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent(config.appbarAction!.event))
+            }
+            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
+          >
+            <Plus className="h-4 w-4" />
+            {t(config.appbarAction.labelKey)}
+          </Button>
+        )}
+
+        {!config.hideSearch && (
+          <>
+            <div className="relative hidden group sm:block">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-blue-500" />
+              <Input
+                type="text"
+                placeholder={t("appbar.searchProjects")}
+                className="w-64 border-slate-200 bg-white pl-10 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-blue-500/10 focus-visible:ring-offset-0 focus-visible:border-blue-500"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                <kbd className="hidden h-5 items-center rounded border border-slate-200 bg-slate-50 px-1.5 text-[10px] font-medium text-slate-400 lg:inline-flex">
+                  ⌘K
+                </kbd>
               </div>
+            </div>
 
-              {!config.hideNotifications && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
-                </Button>
-              )}
-            </>
-          )}
-        </div>
+            {!config.hideNotifications && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500"></span>
+              </Button>
+            )}
+          </>
+        )}
+      </div>
       </header>
     </>
   );
