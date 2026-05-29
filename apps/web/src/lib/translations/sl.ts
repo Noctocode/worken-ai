@@ -400,7 +400,7 @@ export const sl: Record<TranslationKey, string> = {
   'arena.history': 'Zgodovina',
   'arena.noHistory': 'Vaše nedavne primerjave se bodo prikazale tukaj.',
   'arena.deleteComparison': 'Izbriši primerjavo',
-  'arena.deleteConfirm': 'Ali ste prepričani, da želite izbrisati',
+  'arena.deleteConfirm': 'Ali ste prepričani, da želite izbrisati "{question}"? Tega dejanja ni mogoče razveljaviti.',
   'arena.back': 'Nazaj',
 
   // ── Knowledge Core ─────────────────────────────────────────────────
@@ -2368,7 +2368,7 @@ export const sl: Record<TranslationKey, string> = {
   'guardrails.disable': 'Onemogoči',
   'guardrails.apply': 'Uporabi',
   'knowledgeMain.uploadDescOne': 'Ta datoteka bo naložena v mapo Vse datoteke.',
-  'knowledgeMain.uploadDescMany': 'Te {n} datotek bo naloženih v mapo Vse datoteke.',
+  'knowledgeMain.uploadDescMany': 'Teh {n} datotek bo naloženih v mapo Vse datoteke.',
   'knowledgeMain.uploadTitleOne': 'Naloži {n} datoteko',
   'knowledgeMain.uploadTitleMany': 'Naloži {n} datotek',
 };

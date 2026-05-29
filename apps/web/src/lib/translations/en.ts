@@ -407,7 +407,7 @@ export const en = {
   'arena.history': 'History',
   'arena.noHistory': 'Your recent comparisons will appear here.',
   'arena.deleteComparison': 'Delete Comparison',
-  'arena.deleteConfirm': 'Are you sure you want to delete',
+  'arena.deleteConfirm': 'Are you sure you want to delete "{question}"? This action cannot be undone.',
   'arena.back': 'Back',
 
   // ── Knowledge Core ─────────────────────────────────────────────────
