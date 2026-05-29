@@ -184,11 +184,13 @@ export class ChatController {
       4096,
     );
     // Web search adds an OpenRouter surcharge the catalog price doesn't
-    // cover (Exa default: 5 results @ $4/1k ≈ $0.02/request). Fold a flat
-    // estimate into the pre-flight budget gate so an enabled project
-    // isn't silently under-gated. Actual cost is still trued up from
-    // usage.cost post-stream.
-    const WEB_SEARCH_SURCHARGE_USD = 0.02;
+    // cover. Representative flat estimate = the Exa fallback rate of
+    // $0.005/request (up to 10 results); native engines bill provider
+    // passthrough which varies, so this is approximate. Folded into the
+    // pre-flight budget gate so an enabled project isn't silently
+    // under-gated; actual cost is still trued up from usage.cost
+    // post-stream.
+    const WEB_SEARCH_SURCHARGE_USD = 0.005;
     const estimatedCostCents = Math.ceil(
       ((estimatedCostUsd ?? 0) + (webSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
         100,
