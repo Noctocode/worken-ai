@@ -43,6 +43,13 @@
       "when": 1779900000000,
       "tag": "0005_sharepoint_onedrive",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779910000000,
+      "tag": "0006_drop_enabled_models",
+      "breakpoints": true
     }
   ]
 }
