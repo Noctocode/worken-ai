@@ -416,6 +416,16 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     onSuccess: () => {
       handledPhaseRef.current = null;
       setAsyncJobActive(true);
+      // Overwrite any stale terminal progress (e.g. a previous import's
+      // "done") with a fresh scanning state. Without this, a second
+      // import in the same session keeps the old terminal entry — the
+      // progress view never shows, refetchInterval stays stopped, and
+      // the still-enabled submit button lets the user double-fire, which
+      // the BE rejects with "already in progress".
+      queryClient.setQueryData<DriveImportProgress>(
+        ["drive", "import-progress"],
+        { phase: "scanning", scanned: 0, total: 0, imported: 0 },
+      );
     },
     onError: (err) => {
       toast.error(
