@@ -29,6 +29,7 @@ import {
   type SharePointImportProgress,
   type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import {
@@ -70,6 +71,7 @@ function FolderNode({
   onToggleExpand,
   onToggleSelect,
 }: FolderNodeProps) {
+  const { t } = useLanguage();
   const isExpanded = expanded.has(folder.id);
   const isLoading = loading.has(folder.id);
   const isSelected = selected.has(folder.id);
@@ -85,16 +87,14 @@ function FolderNode({
           type="button"
           onClick={() => onToggleExpand(folder.id)}
           disabled={!folder.hasChildren}
-          // For leaf folders we hide the chevron visually but keep
-          // layout, AND drop the button from the tab order — the
-          // previous `invisible` class still let keyboard focus
-          // land on a not-actionable control.
           className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-3 ${
             folder.hasChildren
               ? "cursor-pointer hover:bg-bg-white hover:text-text-1"
               : "invisible pointer-events-none"
           }`}
-          aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+          aria-label={
+            isExpanded ? t("spDlg.collapseFolder") : t("spDlg.expandFolder")
+          }
         >
           {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -142,6 +142,7 @@ interface Props {
 }
 
 export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
@@ -282,12 +283,12 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
 
     if (phase === "done") {
       if (progress.imported === 0) {
-        toast.info("Everything from this site is already in Knowledge Core.");
+        toast.info(t("spDlg.allInKC"));
       } else {
+        const noun =
+          progress.imported === 1 ? t("spDlg.imported2") : t("spDlg.imported2Plural");
         toast.success(
-          `Imported ${progress.imported.toLocaleString()} file${
-            progress.imported === 1 ? "" : "s"
-          } from SharePoint. They'll appear as they finish ingesting.`,
+          `${t("spDlg.imported1")} ${progress.imported.toLocaleString()} ${noun} ${t("spDlg.fromSharePoint")}`,
         );
       }
       void queryClient.invalidateQueries({
@@ -297,12 +298,13 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       onOpenChange(false);
     } else if (phase === "cancelled") {
-      toast.info("SharePoint import cancelled.");
+      toast.info(t("spDlg.cancelled"));
     } else if (phase === "error") {
       toast.error(
-        `SharePoint import failed: ${progress.error ?? "Unknown error"}`,
+        `${t("spDlg.failed")} ${progress.error ?? t("spDlg.unknownError")}`,
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, onOpenChange, queryClient]);
 
   // Reset per-dialog state on every open.
@@ -365,12 +367,11 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       })
       .catch((err) => {
         setRootError(
-          err instanceof Error
-            ? err.message
-            : "Couldn't list SharePoint folders.",
+          err instanceof Error ? err.message : t("spDlg.couldntList"),
         );
       })
       .finally(() => setRootLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     open,
     scopeChoice,
@@ -402,7 +403,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         })
         .catch((err) => {
           toast.error(
-            err instanceof Error ? err.message : "Couldn't list sub-folders.",
+            err instanceof Error ? err.message : t("spDlg.couldntSubfolders"),
           );
         })
         .finally(() =>
@@ -447,19 +448,23 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         result.skippedUnsupported +
         result.skippedTooLarge;
       if (result.added === 0 && skipped === 0) {
-        toast.info("No files found to import.");
+        toast.info(t("spDlg.noFilesFound"));
       } else if (result.added === 0) {
-        toast.info(
-          "Everything from those folders is already in Knowledge Core.",
-        );
+        toast.info(t("spDlg.foldersAllInKC"));
       } else {
+        const noun =
+          result.added === 1 ? t("spDlg.imported2") : t("spDlg.imported2Plural");
         toast.success(
-          `Importing ${result.added} file${result.added === 1 ? "" : "s"} from SharePoint. They'll appear as they finish ingesting.`,
+          `${t("spDlg.importing1")} ${result.added} ${noun} ${t("spDlg.fromSharePoint")}`,
         );
       }
       if (result.skippedTooLarge > 0) {
+        const noun =
+          result.skippedTooLarge === 1
+            ? t("sharepoint.skipped2")
+            : t("sharepoint.skipped2Plural");
         toast.warning(
-          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+          `${t("sharepoint.skipped1")} ${result.skippedTooLarge} ${noun} ${t("sharepoint.skipped3")}`,
         );
       }
       void queryClient.invalidateQueries({
@@ -470,7 +475,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       onOpenChange(false);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("spDlg.importFailed"));
     },
   });
 
@@ -489,7 +494,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       setAsyncJobActive(true);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("spDlg.importFailed"));
     },
   });
 
@@ -502,7 +507,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
       });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Cancel failed."),
+      toast.error(err instanceof Error ? err.message : t("spDlg.cancelFailed")),
   });
 
   // Visibility-specific picker requirements. Written as named locals
@@ -541,13 +546,9 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
-              Importing from SharePoint…
+              {t("spDlg.importingTitle")}
             </DialogTitle>
-            <DialogDescription>
-              You can close this dialog — the import will continue in the
-              background. Use Cancel to stop and remove any files imported
-              so far.
-            </DialogDescription>
+            <DialogDescription>{t("spDlg.importingDesc")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-2">
@@ -555,7 +556,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                  Scanning your site…
+                  {t("spDlg.scanning")}
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
                   <div className="h-full w-1/3 animate-[scan-slide_1.4s_ease-in-out_infinite] rounded-full bg-primary-6" />
@@ -564,7 +565,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-3">Importing files…</span>
+                  <span className="text-text-3">{t("spDlg.importingFiles")}</span>
                   <span className="font-medium text-text-1 tabular-nums">
                     {imported.toLocaleString()} / {total.toLocaleString()}
                   </span>
@@ -586,7 +587,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               onClick={() => onOpenChange(false)}
               className="cursor-pointer"
             >
-              Close
+              {t("spDlg.close")}
             </Button>
             <Button
               variant="outline"
@@ -599,7 +600,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               ) : (
                 <XCircle className="h-3.5 w-3.5" />
               )}
-              Cancel import
+              {t("spDlg.cancelImport")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -614,77 +615,56 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="h-4 w-4 text-primary-6" />
-            Import from SharePoint
+            {t("spDlg.title")}
           </DialogTitle>
-          <DialogDescription>
-            Pick a site, then choose what to bring into Knowledge Core. Files
-            you already imported are skipped automatically.
-          </DialogDescription>
+          <DialogDescription>{t("spDlg.desc")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
           {/* Site picker */}
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Site
+              {t("spDlg.site")}
             </label>
             {sitesLoading ? (
               <div className="flex items-center gap-2 rounded border border-border-2 px-3 py-2.5 text-[13px] text-text-3">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                Loading your SharePoint sites…
+                {t("spDlg.loadingSites")}
               </div>
             ) : sitesError ? (
               <p className="rounded border border-danger-3 bg-danger-1 px-3 py-2 text-[13px] text-danger-7">
-                Couldn&rsquo;t load SharePoint sites. Try reconnecting.
+                {t("spDlg.sitesError")}
               </p>
             ) : sites.length === 0 ? (
               <div className="flex flex-col gap-1.5 rounded border border-border-2 px-3 py-2 text-[13px] text-text-3">
                 {sitesEmptyReason === "msa" ? (
                   <>
-                    <p>
-                      You&rsquo;re signed in with a personal Microsoft
-                      account. SharePoint is a work / school product —
-                      personal accounts can&rsquo;t access it.
-                    </p>
-                    <p className="text-[12px]">
-                      Disconnect SharePoint and reconnect with a work or
-                      school Microsoft account.
-                    </p>
+                    <p>{t("spDlg.msa1")}</p>
+                    <p className="text-[12px]">{t("spDlg.msa2")}</p>
                   </>
                 ) : sitesEmptyReason === "none_found" ? (
                   <>
-                    <p>
-                      Your account has no SharePoint sites visible to it
-                      yet.
-                    </p>
+                    <p>{t("spDlg.noneFound1")}</p>
                     <p className="text-[12px]">
-                      Open SharePoint in your browser, click{" "}
-                      <strong>Follow</strong> on the site(s) you want to
-                      import, then close and reopen this dialog.
+                      {t("spDlg.noneFound2a")}{" "}
+                      <strong>{t("spDlg.noneFound2b")}</strong>{" "}
+                      {t("spDlg.noneFound2c")}
                     </p>
                   </>
                 ) : sitesEmptyReason === "graph_error" ? (
                   <>
-                    <p>
-                      Microsoft refused the request to list SharePoint
-                      sites:
-                    </p>
+                    <p>{t("spDlg.graphErr1")}</p>
                     <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-bg-2 px-2 py-1 text-[11px] text-text-1">
-                      {sitesEmptyDetail ?? "Unknown error"}
+                      {sitesEmptyDetail ?? t("spDlg.unknownError")}
                     </pre>
                     <p className="text-[12px]">
-                      Most often this means the signed-in account
-                      doesn&rsquo;t have a SharePoint Online licence, or
-                      the tenant&rsquo;s SharePoint isn&rsquo;t
-                      provisioned. Hand the <strong>request-id</strong>{" "}
-                      above to your IT admin or Microsoft support.
+                      {t("spDlg.graphErr2a")}{" "}
+                      <strong>{t("spDlg.graphErr2b")}</strong>{" "}
+                      {t("spDlg.graphErr2c")}
                     </p>
                   </>
                 ) : (
-                  <p>
-                    We couldn&rsquo;t find any SharePoint sites for this
-                    account.
-                  </p>
+                  <p>{t("spDlg.noSites")}</p>
                 )}
               </div>
             ) : (
@@ -693,7 +673,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 onValueChange={(v) => setSelectedSiteId(v)}
               >
                 <SelectTrigger className="h-10 w-full cursor-pointer">
-                  <SelectValue placeholder="Pick a site…" />
+                  <SelectValue placeholder={t("spDlg.pickSite")} />
                 </SelectTrigger>
                 <SelectContent>
                   {sites.map((s) => (
@@ -721,10 +701,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 />
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[14px] font-medium text-text-1">
-                    Entire site
+                    {t("spDlg.entireSite")}
                   </span>
                   <span className="text-[12px] text-text-3">
-                    Import every supported file from every library on this site.
+                    {t("spDlg.entireSiteDesc")}
                   </span>
                 </div>
               </label>
@@ -737,10 +717,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 />
                 <div className="flex flex-col gap-0.5">
                   <span className="text-[14px] font-medium text-text-1">
-                    Choose folders
+                    {t("spDlg.chooseFolders")}
                   </span>
                   <span className="text-[12px] text-text-3">
-                    Pick a library, then specific folders. Subfolders included.
+                    {t("spDlg.chooseFoldersDesc")}
                   </span>
                 </div>
               </label>
@@ -757,30 +737,26 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                     {fileCountLoading ? (
                       <span className="flex items-center gap-1.5">
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Checking this site…
+                        {t("spDlg.checkingSite")}
                       </span>
                     ) : fileCountData ? (
                       <>
-                        This will import{" "}
+                        {t("spDlg.willImport")}{" "}
                         <span className="tabular-nums">
                           {fileCountData.count.toLocaleString()}
                           {fileCountData.hasMore ? "+" : ""}
                         </span>{" "}
                         {fileCountData.count === 1 && !fileCountData.hasMore
-                          ? "file"
-                          : "files"}
+                          ? t("spDlg.fileSing")
+                          : t("spDlg.filePlural")}
                       </>
                     ) : fileCountError ? (
-                      "This will import all supported files from this site"
+                      t("spDlg.willImportAll")
                     ) : (
-                      "This will import supported files from this site"
+                      t("spDlg.willImportSupported")
                     )}
                   </p>
-                  <p className="text-[12px] text-warning-7">
-                    Every supported document (.pdf, .docx, .xlsx) across every
-                    library on this site will be scanned and queued for
-                    ingestion. This can take several minutes.
-                  </p>
+                  <p className="text-[12px] text-warning-7">{t("spDlg.warnText")}</p>
                 </div>
               </div>
               <label className="flex cursor-pointer items-center gap-2 pl-6">
@@ -791,7 +767,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                   className="h-4 w-4 cursor-pointer accent-warning-7"
                 />
                 <span className="text-[12px] font-medium text-warning-8">
-                  I understand — import this entire site
+                  {t("spDlg.iUnderstand")}
                 </span>
               </label>
             </div>
@@ -801,12 +777,12 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
           {selectedSiteId && scopeChoice === "folders" && drives.length > 1 && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
-                Document library
+                {t("spDlg.library")}
               </label>
               {drivesLoading ? (
                 <div className="flex items-center gap-2 rounded border border-border-2 px-3 py-2.5 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Loading libraries…
+                  {t("spDlg.loadingLibraries")}
                 </div>
               ) : (
                 <Select
@@ -814,7 +790,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                   onValueChange={(v) => setSelectedDriveId(v)}
                 >
                   <SelectTrigger className="h-10 w-full cursor-pointer">
-                    <SelectValue placeholder="Pick a library…" />
+                    <SelectValue placeholder={t("spDlg.pickLibrary")} />
                   </SelectTrigger>
                   <SelectContent>
                     {drives.map((d) => (
@@ -834,7 +810,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               {rootLoading && (
                 <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Loading folders…
+                  {t("spDlg.loadingFolders")}
                 </div>
               )}
               {rootError && (
@@ -844,7 +820,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               )}
               {!rootLoading && rootFolders && rootFolders.length === 0 && (
                 <p className="px-2 py-3 text-[13px] text-text-3">
-                  No folders in this library.
+                  {t("spDlg.noFolders")}
                 </p>
               )}
               {rootFolders && rootFolders.length > 0 && (
@@ -872,7 +848,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         {selectedSiteId && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Visibility
+              {t("spDlg.visibility")}
             </label>
             <Select
               value={visibility}
@@ -886,20 +862,22 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Everyone in the company</SelectItem>
-                {isAdmin && <SelectItem value="admins">Admins only</SelectItem>}
-                <SelectItem value="teams">Specific teams…</SelectItem>
-                <SelectItem value="project">Specific project…</SelectItem>
+                <SelectItem value="all">{t("spDlg.everyone")}</SelectItem>
+                {isAdmin && (
+                  <SelectItem value="admins">{t("spDlg.adminsOnly")}</SelectItem>
+                )}
+                <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
+                <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {visibility === "admins"
-                ? "Only admins will see these files in chat / arena."
+                ? t("spDlg.visHintAdmins")
                 : visibility === "teams"
-                  ? "Only members of the teams you pick below will see these files."
+                  ? t("spDlg.visHintTeams")
                   : visibility === "project"
-                    ? "These files will only appear in the chat of the selected project(s)."
-                    : "Every user in the company can see these files in chat / arena."}
+                    ? t("spDlg.visHintProject")
+                    : t("spDlg.visHintEveryone")}
             </p>
           </div>
         )}
@@ -908,12 +886,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         {selectedSiteId && visibility === "teams" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Teams with access
+              {t("spDlg.teamsWithAccess")}
             </label>
             {userTeams.length === 0 ? (
-              <p className="text-[11px] text-text-3">
-                You aren&rsquo;t a member of any team yet.
-              </p>
+              <p className="text-[11px] text-text-3">{t("spDlg.notTeamMember")}</p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
                 {userTeams.map((t) => {
@@ -948,12 +924,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         {selectedSiteId && visibility === "project" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Projects with access
+              {t("spDlg.projectsWithAccess")}
             </label>
             {userProjects.length === 0 ? (
-              <p className="text-[11px] text-text-3">
-                You don&rsquo;t have access to any projects yet.
-              </p>
+              <p className="text-[11px] text-text-3">{t("spDlg.noProjectAccess")}</p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
                 {userProjects.map((p) => {
@@ -997,7 +971,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
             onClick={() => onOpenChange(false)}
             className="cursor-pointer"
           >
-            Cancel
+            {t("spDlg.cancel")}
           </Button>
           <Button
             onClick={() =>
@@ -1013,12 +987,12 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             {!selectedSiteId
-              ? "Pick a site"
+              ? t("spDlg.pickSiteBtn")
               : scopeChoice === "site"
-                ? "Import entire site"
+                ? t("spDlg.importEntireSite")
                 : selected.size === 0
-                  ? "Pick at least one folder"
-                  : `Import ${selected.size} folder${selected.size === 1 ? "" : "s"}`}
+                  ? t("spDlg.pickFolder")
+                  : `${t("spDlg.importNFolders1")} ${selected.size} ${selected.size === 1 ? t("spDlg.importNFolders2") : t("spDlg.importNFolders2Plural")}`}
           </Button>
         </DialogFooter>
       </DialogContent>

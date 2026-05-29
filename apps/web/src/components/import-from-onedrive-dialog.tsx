@@ -26,6 +26,7 @@ import {
   type OneDriveImportProgress,
   type KnowledgeFileVisibility,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +68,7 @@ function FolderNode({
   onToggleExpand,
   onToggleSelect,
 }: FolderNodeProps) {
+  const { t } = useLanguage();
   const isExpanded = expanded.has(folder.id);
   const isLoading = loading.has(folder.id);
   const isSelected = selected.has(folder.id);
@@ -87,7 +89,9 @@ function FolderNode({
               ? "cursor-pointer hover:bg-bg-white hover:text-text-1"
               : "invisible pointer-events-none"
           }`}
-          aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+          aria-label={
+            isExpanded ? t("odDlg.collapseFolder") : t("odDlg.expandFolder")
+          }
         >
           {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -135,6 +139,7 @@ interface Props {
 }
 
 export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
@@ -216,12 +221,12 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
 
     if (phase === "done") {
       if (progress.imported === 0) {
-        toast.info("Everything from your OneDrive is already in Knowledge Core.");
+        toast.info(t("odDlg.allInKC"));
       } else {
+        const noun =
+          progress.imported === 1 ? t("odDlg.imported2") : t("odDlg.imported2Plural");
         toast.success(
-          `Imported ${progress.imported.toLocaleString()} file${
-            progress.imported === 1 ? "" : "s"
-          } from OneDrive. They'll appear as they finish ingesting.`,
+          `${t("odDlg.imported1")} ${progress.imported.toLocaleString()} ${noun} ${t("odDlg.fromOneDrive")}`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["onedrive", "sources"] });
@@ -229,12 +234,13 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       onOpenChange(false);
     } else if (phase === "cancelled") {
-      toast.info("OneDrive import cancelled.");
+      toast.info(t("odDlg.cancelled"));
     } else if (phase === "error") {
       toast.error(
-        `OneDrive import failed: ${progress.error ?? "Unknown error"}`,
+        `${t("odDlg.failed")} ${progress.error ?? t("odDlg.unknownError")}`,
       );
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [progress, onOpenChange, queryClient]);
 
   useEffect(() => {
@@ -268,12 +274,11 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
       })
       .catch((err) => {
         setRootError(
-          err instanceof Error
-            ? err.message
-            : "Couldn't list OneDrive folders.",
+          err instanceof Error ? err.message : t("odDlg.couldntList"),
         );
       })
       .finally(() => setRootLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, scopeChoice, rootFolders, rootLoading]);
 
   const toggleExpand = useCallback(
@@ -298,9 +303,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         })
         .catch((err) => {
           toast.error(
-            err instanceof Error
-              ? err.message
-              : "Couldn't list sub-folders.",
+            err instanceof Error ? err.message : t("odDlg.couldntSubfolders"),
           );
         })
         .finally(() =>
@@ -343,17 +346,23 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         result.skippedUnsupported +
         result.skippedTooLarge;
       if (result.added === 0 && skipped === 0) {
-        toast.info("No files found to import.");
+        toast.info(t("odDlg.noFilesFound"));
       } else if (result.added === 0) {
-        toast.info("Everything from those folders is already in Knowledge Core.");
+        toast.info(t("odDlg.foldersAllInKC"));
       } else {
+        const noun =
+          result.added === 1 ? t("odDlg.imported2") : t("odDlg.imported2Plural");
         toast.success(
-          `Importing ${result.added} file${result.added === 1 ? "" : "s"} from OneDrive. They'll appear as they finish ingesting.`,
+          `${t("odDlg.importing1")} ${result.added} ${noun} ${t("odDlg.fromOneDrive")}`,
         );
       }
       if (result.skippedTooLarge > 0) {
+        const noun =
+          result.skippedTooLarge === 1
+            ? t("onedrive.skipped2")
+            : t("onedrive.skipped2Plural");
         toast.warning(
-          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+          `${t("onedrive.skipped1")} ${result.skippedTooLarge} ${noun} ${t("onedrive.skipped3")}`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["onedrive", "sources"] });
@@ -362,7 +371,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
       onOpenChange(false);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("odDlg.importFailed"));
     },
   });
 
@@ -380,7 +389,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
       setAsyncJobActive(true);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : "Import failed.");
+      toast.error(err instanceof Error ? err.message : t("odDlg.importFailed"));
     },
   });
 
@@ -393,7 +402,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
       });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Cancel failed."),
+      toast.error(err instanceof Error ? err.message : t("odDlg.cancelFailed")),
   });
 
   const teamsRuleSatisfied =
@@ -423,13 +432,9 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
-              Importing from OneDrive…
+              {t("odDlg.importingTitle")}
             </DialogTitle>
-            <DialogDescription>
-              You can close this dialog — the import will continue in the
-              background. Use Cancel to stop and remove any files imported
-              so far.
-            </DialogDescription>
+            <DialogDescription>{t("odDlg.importingDesc")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-2">
@@ -437,7 +442,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
-                  Scanning your OneDrive…
+                  {t("odDlg.scanning")}
                 </div>
                 <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
                   <div className="h-full w-1/3 animate-[scan-slide_1.4s_ease-in-out_infinite] rounded-full bg-primary-6" />
@@ -446,7 +451,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-3">Importing files…</span>
+                  <span className="text-text-3">{t("odDlg.importingFiles")}</span>
                   <span className="font-medium text-text-1 tabular-nums">
                     {imported.toLocaleString()} / {total.toLocaleString()}
                   </span>
@@ -468,7 +473,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               onClick={() => onOpenChange(false)}
               className="cursor-pointer"
             >
-              Close
+              {t("odDlg.close")}
             </Button>
             <Button
               variant="outline"
@@ -481,7 +486,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               ) : (
                 <XCircle className="h-3.5 w-3.5" />
               )}
-              Cancel import
+              {t("odDlg.cancelImport")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -496,12 +501,9 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Cloud className="h-4 w-4 text-primary-6" />
-            Import from OneDrive
+            {t("odDlg.title")}
           </DialogTitle>
-          <DialogDescription>
-            Pick what to bring into Knowledge Core. Files you already imported
-            are skipped automatically.
-          </DialogDescription>
+          <DialogDescription>{t("odDlg.desc")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
@@ -518,10 +520,10 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-[14px] font-medium text-text-1">
-                  Entire OneDrive
+                  {t("odDlg.entireOneDrive")}
                 </span>
                 <span className="text-[12px] text-text-3">
-                  Import every supported file from your OneDrive.
+                  {t("odDlg.entireOneDriveDesc")}
                 </span>
               </div>
             </label>
@@ -534,10 +536,10 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               />
               <div className="flex flex-col gap-0.5">
                 <span className="text-[14px] font-medium text-text-1">
-                  Choose folders
+                  {t("odDlg.chooseFolders")}
                 </span>
                 <span className="text-[12px] text-text-3">
-                  Pick specific folders from your OneDrive. Subfolders included.
+                  {t("odDlg.chooseFoldersDesc")}
                 </span>
               </div>
             </label>
@@ -552,30 +554,26 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
                     {fileCountLoading ? (
                       <span className="flex items-center gap-1.5">
                         <Loader2 className="h-3 w-3 animate-spin" />
-                        Checking your OneDrive…
+                        {t("odDlg.checkingOneDrive")}
                       </span>
                     ) : fileCountData ? (
                       <>
-                        This will import{" "}
+                        {t("odDlg.willImport")}{" "}
                         <span className="tabular-nums">
                           {fileCountData.count.toLocaleString()}
                           {fileCountData.hasMore ? "+" : ""}
                         </span>{" "}
                         {fileCountData.count === 1 && !fileCountData.hasMore
-                          ? "file"
-                          : "files"}
+                          ? t("odDlg.fileSing")
+                          : t("odDlg.filePlural")}
                       </>
                     ) : fileCountError ? (
-                      "This will import all supported files from your OneDrive"
+                      t("odDlg.willImportAll")
                     ) : (
-                      "This will import supported files from your OneDrive"
+                      t("odDlg.willImportSupported")
                     )}
                   </p>
-                  <p className="text-[12px] text-warning-7">
-                    Every supported document (.pdf, .docx, .xlsx) from your
-                    entire OneDrive will be scanned and queued for ingestion.
-                    This can take several minutes.
-                  </p>
+                  <p className="text-[12px] text-warning-7">{t("odDlg.warnText")}</p>
                 </div>
               </div>
               <label className="flex cursor-pointer items-center gap-2 pl-6">
@@ -586,7 +584,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
                   className="h-4 w-4 cursor-pointer accent-warning-7"
                 />
                 <span className="text-[12px] font-medium text-warning-8">
-                  I understand — import my entire OneDrive
+                  {t("odDlg.iUnderstand")}
                 </span>
               </label>
             </div>
@@ -597,7 +595,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               {rootLoading && (
                 <div className="flex items-center gap-2 px-2 py-3 text-[13px] text-text-3">
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  Loading your OneDrive folders…
+                  {t("odDlg.loadingFolders")}
                 </div>
               )}
               {rootError && (
@@ -607,7 +605,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               )}
               {!rootLoading && rootFolders && rootFolders.length === 0 && (
                 <p className="px-2 py-3 text-[13px] text-text-3">
-                  No folders in your OneDrive.
+                  {t("odDlg.noFolders")}
                 </p>
               )}
               {rootFolders && rootFolders.length > 0 && (
@@ -633,7 +631,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
 
         <div className="flex flex-col gap-1.5">
           <label className="text-[12px] font-medium text-text-1">
-            Visibility
+            {t("odDlg.visibility")}
           </label>
           <Select
             value={visibility}
@@ -647,32 +645,32 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Everyone in the company</SelectItem>
-              {isAdmin && <SelectItem value="admins">Admins only</SelectItem>}
-              <SelectItem value="teams">Specific teams…</SelectItem>
-              <SelectItem value="project">Specific project…</SelectItem>
+              <SelectItem value="all">{t("odDlg.everyone")}</SelectItem>
+              {isAdmin && (
+                <SelectItem value="admins">{t("odDlg.adminsOnly")}</SelectItem>
+              )}
+              <SelectItem value="teams">{t("odDlg.specificTeams")}</SelectItem>
+              <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
             {visibility === "admins"
-              ? "Only admins will see these files in chat / arena."
+              ? t("odDlg.visHintAdmins")
               : visibility === "teams"
-                ? "Only members of the teams you pick below will see these files."
+                ? t("odDlg.visHintTeams")
                 : visibility === "project"
-                  ? "These files will only appear in the chat of the selected project(s)."
-                  : "Every user in the company can see these files in chat / arena."}
+                  ? t("odDlg.visHintProject")
+                  : t("odDlg.visHintEveryone")}
           </p>
         </div>
 
         {visibility === "teams" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Teams with access
+              {t("odDlg.teamsWithAccess")}
             </label>
             {userTeams.length === 0 ? (
-              <p className="text-[11px] text-text-3">
-                You aren&rsquo;t a member of any team yet.
-              </p>
+              <p className="text-[11px] text-text-3">{t("odDlg.notTeamMember")}</p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
                 {userTeams.map((t) => {
@@ -706,12 +704,10 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         {visibility === "project" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
-              Projects with access
+              {t("odDlg.projectsWithAccess")}
             </label>
             {userProjects.length === 0 ? (
-              <p className="text-[11px] text-text-3">
-                You don&rsquo;t have access to any projects yet.
-              </p>
+              <p className="text-[11px] text-text-3">{t("odDlg.noProjectAccess")}</p>
             ) : (
               <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
                 {userProjects.map((p) => {
@@ -753,7 +749,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
             onClick={() => onOpenChange(false)}
             className="cursor-pointer"
           >
-            Cancel
+            {t("odDlg.cancel")}
           </Button>
           <Button
             onClick={() =>
@@ -769,10 +765,10 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
             )}
             {scopeChoice === "all"
-              ? "Import entire OneDrive"
+              ? t("odDlg.importEntire")
               : selected.size === 0
-                ? "Pick at least one folder"
-                : `Import ${selected.size} folder${selected.size === 1 ? "" : "s"}`}
+                ? t("odDlg.pickFolder")
+                : `${t("odDlg.importNFolders1")} ${selected.size} ${selected.size === 1 ? t("odDlg.importNFolders2") : t("odDlg.importNFolders2Plural")}`}
           </Button>
         </DialogFooter>
       </DialogContent>

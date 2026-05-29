@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/i18n";
 
 type Product = "sharepoint" | "onedrive";
 
@@ -28,39 +29,11 @@ interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   mode: MicrosoftConfirmMode | null;
-  /**
-   * Resolves a "Connect"-mode answer with the product list to enable.
-   * Empty array => user cancelled (also fired via onOpenChange(false)).
-   */
   onConnectConfirm?: (products: Product[]) => void;
-  /**
-   * Resolves a "Disconnect"-mode answer. `both === true` => delete the
-   * underlying Microsoft connection; `false` => only flip the primary
-   * product's enable flag off.
-   */
   onDisconnectConfirm?: (both: boolean) => void;
-  /** Show a spinner while the parent's mutation is in flight. */
   loading?: boolean;
 }
 
-/**
- * Shared confirm dialog used by both `SharePointSection` and
- * `OneDriveSection` to drive the per-product connect/disconnect UX.
- *
- * The three modes:
- *   - `connectInitial`  — no Microsoft connection yet. Offers
- *                         "Both products" (default) / "Just {primary}"
- *                         / "Cancel".
- *   - `connectAddon`    — Microsoft already connected via the other
- *                         product. No OAuth needed — just flip the
- *                         enable flag. Offers "Enable {primary}" /
- *                         "Cancel".
- *   - `disconnect`      — Offers "Just {primary}" / "Both products" /
- *                         "Cancel".
- *
- * Caller is responsible for the actual API call; this component just
- * collects the user's intent.
- */
 export function MicrosoftConnectConfirmDialog({
   open,
   onOpenChange,
@@ -69,6 +42,8 @@ export function MicrosoftConnectConfirmDialog({
   onDisconnectConfirm,
   loading,
 }: Props) {
+  const { t } = useLanguage();
+
   if (!mode) {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,18 +56,17 @@ export function MicrosoftConnectConfirmDialog({
   const other: Product = primary === "sharepoint" ? "onedrive" : "sharepoint";
   const primaryLabel = LABEL[primary];
   const otherLabel = LABEL[other];
+  const fill = (key: Parameters<typeof t>[0]) =>
+    t(key).replace("{primary}", primaryLabel).replace("{other}", otherLabel);
 
   if (mode.kind === "connectInitial") {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[480px]">
           <DialogHeader>
-            <DialogTitle>Connect {primaryLabel}</DialogTitle>
+            <DialogTitle>{fill("msConnect.connectTitle")}</DialogTitle>
             <DialogDescription>
-              Signing in with Microsoft also covers {otherLabel} —
-              they use the same account. You can enable just
-              {" "}{primaryLabel}, or both at once. Either way you only
-              sign in once.
+              {fill("msConnect.connectInitialDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -103,7 +77,7 @@ export function MicrosoftConnectConfirmDialog({
               disabled={loading}
               className="cursor-pointer"
             >
-              Cancel
+              {t("msConnect.cancel")}
             </Button>
             <Button
               variant="outline"
@@ -112,7 +86,7 @@ export function MicrosoftConnectConfirmDialog({
               className="cursor-pointer gap-2"
             >
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Just {primaryLabel}
+              {fill("msConnect.justPrimary")}
             </Button>
             <Button
               onClick={() => onConnectConfirm?.([primary, other])}
@@ -120,7 +94,7 @@ export function MicrosoftConnectConfirmDialog({
               className="cursor-pointer gap-2"
             >
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Both products
+              {t("msConnect.bothProducts")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -133,11 +107,9 @@ export function MicrosoftConnectConfirmDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Enable {primaryLabel}</DialogTitle>
+            <DialogTitle>{fill("msConnect.enableTitle")}</DialogTitle>
             <DialogDescription>
-              You&rsquo;re already signed in with Microsoft for
-              {" "}{otherLabel}. {primaryLabel} uses the same account —
-              no re-sign-in needed. Enable it now?
+              {fill("msConnect.connectAddonDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -148,7 +120,7 @@ export function MicrosoftConnectConfirmDialog({
               disabled={loading}
               className="cursor-pointer"
             >
-              Cancel
+              {t("msConnect.cancel")}
             </Button>
             <Button
               onClick={() => onConnectConfirm?.([primary])}
@@ -156,7 +128,7 @@ export function MicrosoftConnectConfirmDialog({
               className="cursor-pointer gap-2"
             >
               {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-              Enable {primaryLabel}
+              {fill("msConnect.enable")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -169,11 +141,9 @@ export function MicrosoftConnectConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Disconnect from {primaryLabel}?</DialogTitle>
+          <DialogTitle>{fill("msConnect.disconnectTitle")}</DialogTitle>
           <DialogDescription>
-            Stop using {primaryLabel} on this Microsoft connection. If{" "}
-            {otherLabel} is also enabled, you can keep it connected or
-            disconnect from both at once.
+            {fill("msConnect.disconnectDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -184,7 +154,7 @@ export function MicrosoftConnectConfirmDialog({
             disabled={loading}
             className="cursor-pointer"
           >
-            Cancel
+            {t("msConnect.cancel")}
           </Button>
           <Button
             variant="outline"
@@ -193,7 +163,7 @@ export function MicrosoftConnectConfirmDialog({
             className="cursor-pointer gap-2"
           >
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Just {primaryLabel}
+            {fill("msConnect.justPrimary")}
           </Button>
           <Button
             onClick={() => onDisconnectConfirm?.(true)}
@@ -201,7 +171,7 @@ export function MicrosoftConnectConfirmDialog({
             className="cursor-pointer gap-2 bg-danger-6 hover:bg-danger-7 text-primary-foreground"
           >
             {loading && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Both products
+            {t("msConnect.bothProducts")}
           </Button>
         </DialogFooter>
       </DialogContent>

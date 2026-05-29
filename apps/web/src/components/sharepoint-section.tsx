@@ -24,7 +24,8 @@ import {
   fetchSharePointStatus,
   resyncSharePointSource,
 } from "@/lib/api";
-import { relativeTime } from "@/lib/relative-time";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,15 +39,24 @@ import {
   type MicrosoftConfirmMode,
 } from "@/components/microsoft-connect-confirm-dialog";
 
-/**
- * SharePoint section on the /knowledge-core page. Same three states
- * as DriveSection: not connected → connected → connected with sources.
- *
- * Owns the SharePoint OAuth callback toast: reads
- * `?sharepoint=connected` / `?sharepoint=error=...` on mount and
- * scrubs the param so a refresh doesn't re-toast.
- */
+function makeRelativeTime(t: (k: TranslationKey) => string) {
+  return (iso: string): string => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return t("sharepoint.justNow");
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}${t("sharepoint.mAgo")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}${t("sharepoint.hAgo")}`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}${t("sharepoint.dAgo")}`;
+    return new Date(iso).toLocaleDateString();
+  };
+}
+
 export function SharePointSection() {
+  const { t } = useLanguage();
+  const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -81,12 +91,12 @@ export function SharePointSection() {
     const flag = searchParams.get("sharepoint");
     if (!flag) return;
     if (flag === "connected") {
-      toast.success("SharePoint connected.");
+      toast.success(t("sharepoint.connected"));
       void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
     } else if (flag.startsWith("error=")) {
       const reason = flag.slice("error=".length);
-      toast.error(`Couldn't connect SharePoint: ${reason}`);
+      toast.error(`${t("sharepoint.connectErr")} ${reason}`);
     }
     const next = new URLSearchParams(searchParams.toString());
     next.delete("sharepoint");
@@ -98,25 +108,29 @@ export function SharePointSection() {
   const enableMutation = useMutation({
     mutationFn: enableSharePoint,
     onSuccess: () => {
-      toast.success("SharePoint enabled.");
+      toast.success(t("sharepoint.enabled"));
       void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
       setConfirmMode(null);
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to enable"),
+      toast.error(
+        err instanceof Error ? err.message : t("sharepoint.failedEnable"),
+      ),
   });
 
   const disconnectMutation = useMutation({
     mutationFn: (both: boolean) => disconnectSharePoint(both),
     onSuccess: () => {
-      toast.success("SharePoint disconnected.");
+      toast.success(t("sharepoint.disconnected"));
       void queryClient.invalidateQueries({ queryKey: ["sharepoint"] });
       void queryClient.invalidateQueries({ queryKey: ["onedrive"] });
       setConfirmMode(null);
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to disconnect"),
+      toast.error(
+        err instanceof Error ? err.message : t("sharepoint.failedDisconnect"),
+      ),
   });
 
   const handleConnectClick = () => {
@@ -145,25 +159,29 @@ export function SharePointSection() {
     disconnectMutation.mutate(both);
   };
 
-  // Future-proofing — currently we always show the disconnect dialog
-  // with both choices. When OneDrive isn't enabled, "Both" is a no-op
-  // delta from "Just SharePoint" (both delete the whole row) so the
-  // dialog still behaves correctly.
   void odEnabled;
 
   const resyncMutation = useMutation({
     mutationFn: (id: string) => resyncSharePointSource(id),
     onSuccess: (result) => {
       if (result.added === 0) {
-        toast.info("Up to date — no new files.");
+        toast.info(t("sharepoint.upToDate"));
       } else {
+        const noun =
+          result.added === 1
+            ? t("sharepoint.importedN2")
+            : t("sharepoint.importedN2Plural");
         toast.success(
-          `Imported ${result.added} new file${result.added === 1 ? "" : "s"}.`,
+          `${t("sharepoint.importedN1")} ${result.added} ${noun}.`,
         );
       }
       if (result.skippedTooLarge > 0) {
+        const noun =
+          result.skippedTooLarge === 1
+            ? t("sharepoint.skipped2")
+            : t("sharepoint.skipped2Plural");
         toast.warning(
-          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+          `${t("sharepoint.skipped1")} ${result.skippedTooLarge} ${noun} ${t("sharepoint.skipped3")}`,
         );
       }
       void queryClient.invalidateQueries({
@@ -173,20 +191,22 @@ export function SharePointSection() {
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Re-sync failed"),
+      toast.error(
+        err instanceof Error ? err.message : t("sharepoint.resyncFailed"),
+      ),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteSharePointSource(id),
     onSuccess: () => {
-      toast.success("SharePoint source removed.");
+      toast.success(t("sharepoint.sourceRemoved"));
       void queryClient.invalidateQueries({
         queryKey: ["sharepoint", "sources"],
       });
     },
     onError: (err) =>
       toast.error(
-        err instanceof Error ? err.message : "Couldn't remove source",
+        err instanceof Error ? err.message : t("sharepoint.couldntRemove"),
       ),
   });
 
@@ -194,7 +214,7 @@ export function SharePointSection() {
     return (
       <section className="flex items-center gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <Loader2 className="h-4 w-4 animate-spin text-text-3" />
-        <span className="text-[13px] text-text-3">Checking SharePoint…</span>
+        <span className="text-[13px] text-text-3">{t("sharepoint.checking")}</span>
       </section>
     );
   }
@@ -209,10 +229,10 @@ export function SharePointSection() {
             </span>
             <div className="flex flex-col">
               <p className="text-[14px] font-medium text-text-1">
-                Connect SharePoint
+                {t("sharepoint.connectTitle")}
               </p>
               <p className="text-[12px] text-text-3">
-                Import documents from any SharePoint site you have access to.
+                {t("sharepoint.connectDesc")}
               </p>
             </div>
           </div>
@@ -222,7 +242,7 @@ export function SharePointSection() {
             className="cursor-pointer gap-2 text-[13px]"
           >
             <FolderOpen className="h-3.5 w-3.5" />
-            Connect
+            {t("sharepoint.connect")}
           </Button>
         </section>
         <MicrosoftConnectConfirmDialog
@@ -257,15 +277,15 @@ export function SharePointSection() {
             <div className="flex min-w-0 flex-col">
               <p className="truncate text-[14px] font-medium text-text-1">
                 {reauthRequired
-                  ? "SharePoint needs reconnecting"
-                  : "SharePoint"}
+                  ? t("sharepoint.needsReconnect")
+                  : t("sharepoint.title")}
               </p>
               <p className="truncate text-[12px] text-text-3">
                 {reauthRequired
-                  ? "We can't reach your SharePoint — reconnect to keep importing."
+                  ? t("sharepoint.cantReach")
                   : status?.accountEmail
-                    ? `Connected as ${status.accountEmail}`
-                    : "Connected"}
+                    ? `${t("sharepoint.connectedAs")} ${status.accountEmail}`
+                    : t("sharepoint.connectedSimple")}
               </p>
             </div>
           </div>
@@ -276,7 +296,7 @@ export function SharePointSection() {
                 variant="outline"
                 className="cursor-pointer gap-2 text-[13px]"
               >
-                Reconnect
+                {t("sharepoint.reconnect")}
               </Button>
             ) : (
               <Button
@@ -285,7 +305,7 @@ export function SharePointSection() {
                 className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
               >
                 <FolderOpen className="h-3.5 w-3.5" />
-                Import from SharePoint
+                {t("sharepoint.importFromSharePoint")}
               </Button>
             )}
             <DropdownMenu>
@@ -293,7 +313,7 @@ export function SharePointSection() {
                 <button
                   type="button"
                   className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label="SharePoint options"
+                  aria-label={t("sharepoint.options")}
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
@@ -304,7 +324,7 @@ export function SharePointSection() {
                   className="text-danger-6 focus:text-danger-6"
                 >
                   <Unplug className="mr-2 h-3.5 w-3.5" />
-                  Disconnect
+                  {t("sharepoint.disconnect")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -314,7 +334,7 @@ export function SharePointSection() {
         {sources.length > 0 && (
           <div className="flex flex-col gap-2 border-t border-border-2 pt-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-3">
-              Imported sources
+              {t("sharepoint.importedSources")}
             </p>
             <ul className="flex flex-col gap-1">
               {sources.map((s) => (
@@ -327,11 +347,15 @@ export function SharePointSection() {
                       {s.displayName}
                     </span>
                     <span className="text-[11px] text-text-3">
-                      {s.scope === "site" ? "Entire site" : `Folder in ${s.siteName}`}
+                      {s.scope === "site"
+                        ? t("sharepoint.entireSite")
+                        : `${t("sharepoint.folderIn")} ${s.siteName}`}
                       {" · "}
-                      {s.fileCountAtLastSync} file
-                      {s.fileCountAtLastSync === 1 ? "" : "s"} · synced{" "}
-                      {relativeTime(s.lastSyncedAt)}
+                      {s.fileCountAtLastSync}{" "}
+                      {s.fileCountAtLastSync === 1
+                        ? t("sharepoint.fileSing")
+                        : t("sharepoint.filePlural")}{" "}
+                      · {t("sharepoint.synced")} {relativeTime(s.lastSyncedAt)}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
@@ -350,14 +374,14 @@ export function SharePointSection() {
                       ) : (
                         <RefreshCw className="h-3 w-3" />
                       )}
-                      Re-sync
+                      {t("sharepoint.resync")}
                     </button>
                     <button
                       type="button"
                       onClick={() => deleteMutation.mutate(s.id)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-white hover:text-danger-6"
-                      title="Remove source (keeps imported files)"
-                      aria-label="Remove source"
+                      title={t("sharepoint.removeSourceTitle")}
+                      aria-label={t("sharepoint.removeSource")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
