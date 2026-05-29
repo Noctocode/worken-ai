@@ -22,6 +22,8 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import {
   GoogleDriveClientService,
   type DriveFileMeta,
+  type DriveFolderNode,
+  type DriveListing,
 } from '../google-drive/google-drive-client.service.js';
 import { GoogleDriveOAuthService } from '../google-drive/google-drive-oauth.service.js';
 import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
@@ -159,9 +161,11 @@ export class DriveImportService {
    * by the Drive client; unsupported MIMEs (videos, etc.) are skipped
    * up-front with a count returned to the FE.
    *
-   * Imported rows go into a single auto-folder ("Google Drive") inside
-   * KC. The Drive folder structure isn't mirrored — too much friction
-   * vs. value for the MVP; users can reorganise via existing KC.
+   * Imported rows go under a "Google Drive" parent folder inside KC,
+   * with the source Drive folder hierarchy mirrored beneath it. Only
+   * folders that actually contain imported files (and their ancestors)
+   * are recreated — empty branches are pruned so the tree reflects what
+   * was imported rather than the whole Drive.
    */
   async importFromDrive(
     userId: string,
@@ -233,17 +237,21 @@ export class DriveImportService {
     };
 
     if (scope.kind === 'all') {
-      const files = await this.drive.listFiles(
+      const { files, folders } = await this.drive.listFiles(
         userId,
         { kind: 'all' },
         MAX_ALL_IMPORT_FILES + 1,
       );
       this.enforceImportCountCap(files.length, 'all');
-      // Entire-Drive import lands DIRECTLY in the "Google Drive"
-      // parent — no child folder, since there's no single Drive
-      // folder to name the child after.
+      // Entire-Drive import mirrors the Drive tree under the "Google
+      // Drive" parent. Files at the Drive root land directly in it;
+      // nested files get their folder path recreated. Seed the Drive
+      // root id → KC parent so top-level folders resolve correctly.
+      const driveRootId = await this.drive.getRootFolderId(userId);
       const inserted = await this.upsertFilesAndSource(userId, {
         files,
+        driveFolders: folders,
+        rootSeed: new Map([[driveRootId, driveParentFolderId]]),
         sourceScope: 'all',
         driveFolderId: null,
         driveFolderName: 'My Drive',
@@ -271,16 +279,17 @@ export class DriveImportService {
         folderId: string;
         folderName: string;
         files: DriveFileMeta[];
+        subFolders: DriveFolderNode[];
       }[] = [];
       let totalFiles = 0;
       for (const folderId of scope.folderIds) {
         const folderName = await this.resolveDriveFolderName(userId, folderId);
-        const files = await this.drive.listFiles(
+        const { files, folders: subFolders } = await this.drive.listFiles(
           userId,
           { kind: 'folders', folderIds: [folderId] },
           MAX_FOLDER_IMPORT_FILES + 1,
         );
-        perFolder.push({ folderId, folderName, files });
+        perFolder.push({ folderId, folderName, files, subFolders });
         totalFiles += files.length;
       }
       this.enforceImportCountCap(totalFiles, 'folders');
@@ -297,6 +306,11 @@ export class DriveImportService {
         );
         const inserted = await this.upsertFilesAndSource(userId, {
           files: entry.files,
+          // Seed the picked folder → its KC child so nested subfolders
+          // rebuild beneath it. Files at the top level of the picked
+          // folder resolve straight to the child.
+          driveFolders: entry.subFolders,
+          rootSeed: new Map([[entry.folderId, kcChildFolderId]]),
           sourceScope: 'folder',
           driveFolderId: entry.folderId,
           driveFolderName: entry.folderName,
@@ -612,9 +626,9 @@ export class DriveImportService {
       // ── Phase 1: Scan ─────────────────────────────────────────────
       job.progress.phase = 'scanning';
 
-      let files: import('../google-drive/google-drive-client.service.js').DriveFileMeta[];
+      let listing: DriveListing;
       try {
-        files = await this.drive.listFiles(
+        listing = await this.drive.listFiles(
           userId,
           { kind: 'all' },
           MAX_ALL_IMPORT_FILES + 1,
@@ -629,6 +643,9 @@ export class DriveImportService {
       }
 
       if (job.cancelled) return;
+
+      const files = listing.files;
+      const driveFolders = listing.folders;
 
       // Clamp rather than reject — partial imports are better than errors.
       const cappedFiles = files.slice(0, MAX_ALL_IMPORT_FILES);
@@ -701,6 +718,17 @@ export class DriveImportService {
         job.createdSourceId = sourceId;
       }
 
+      // Mirror the Drive folder tree under the "Google Drive" parent.
+      // Seed the Drive root → KC parent so top-level files land in it
+      // and nested files get their folder path recreated.
+      const driveRootId = await this.drive.getRootFolderId(userId);
+      const kcFolderMap = await this.buildFolderMapForFiles(
+        userId,
+        newFiles,
+        driveFolders,
+        new Map([[driveRootId, driveParentFolderId]]),
+      );
+
       // ── Phase 3: Insert in batches of 100 ─────────────────────────
       const BATCH_SIZE = 100;
       let totalInserted = 0;
@@ -713,7 +741,7 @@ export class DriveImportService {
           .insert(knowledgeFiles)
           .values(
             batch.map((f) => ({
-              folderId: driveParentFolderId,
+              folderId: this.fileFolderId(f, kcFolderMap, driveParentFolderId),
               name: f.name,
               fileType: this.extFromName(f.name),
               sizeBytes: f.sizeBytes ?? 0,
@@ -868,6 +896,81 @@ export class DriveImportService {
   }
 
   /**
+   * Recreate the Drive folder hierarchy in KC for a set of imported
+   * files and return a `Map<driveFolderId, kcFolderId>` covering every
+   * folder a file might land in. Seeded with the import root(s)
+   * (`rootSeed`); only folders that actually hold an imported file —
+   * plus their ancestors up to a root — are created, so empty Drive
+   * branches don't litter KC.
+   *
+   * Idempotent via `ensureChildFolder` (match by owner+parent+name), so
+   * Re-sync reuses folders created on a previous import instead of
+   * duplicating them.
+   */
+  private async buildFolderMapForFiles(
+    userId: string,
+    files: DriveFileMeta[],
+    driveFolders: DriveFolderNode[],
+    rootSeed: Map<string, string>,
+  ): Promise<Map<string, string>> {
+    const byId = new Map(driveFolders.map((f) => [f.id, f]));
+    const kcMap = new Map(rootSeed);
+
+    // The only folders worth creating: those directly holding a file,
+    // and every ancestor on the path up to a seeded root.
+    const needed = new Set<string>();
+    for (const f of files) {
+      let cur = f.parentFolderId;
+      while (cur && !needed.has(cur) && !rootSeed.has(cur)) {
+        needed.add(cur);
+        cur = byId.get(cur)?.parentId ?? null;
+      }
+    }
+
+    // When there's a single import root (always true today — entire
+    // Drive seeds the Drive root, folder picks seed one folder each),
+    // orphans whose parent fell outside the walked set attach to it.
+    const fallbackRoot = rootSeed.size === 1 ? [...rootSeed.values()][0] : null;
+
+    // Resolve a Drive folder to its KC id, creating ancestors top-down.
+    // Memoised through kcMap; recursion depth = folder nesting depth.
+    const resolve = async (driveId: string): Promise<string | null> => {
+      const cached = kcMap.get(driveId);
+      if (cached) return cached;
+      const node = byId.get(driveId);
+      if (!node) return fallbackRoot; // parent outside the walked set
+      const parentKc = node.parentId
+        ? await resolve(node.parentId)
+        : fallbackRoot;
+      const target = parentKc ?? fallbackRoot;
+      if (!target) return null;
+      const kcId = await this.ensureChildFolder(userId, target, node.name);
+      kcMap.set(driveId, kcId);
+      return kcId;
+    };
+
+    for (const id of needed) {
+      await resolve(id);
+    }
+    return kcMap;
+  }
+
+  /**
+   * Pick the KC folder for a Drive file: its mirrored parent folder if
+   * we rebuilt one, else the import root fallback.
+   */
+  private fileFolderId(
+    f: DriveFileMeta,
+    kcFolderMap: Map<string, string>,
+    fallbackFolderId: string,
+  ): string {
+    return (
+      (f.parentFolderId && kcFolderMap.get(f.parentFolderId)) ||
+      fallbackFolderId
+    );
+  }
+
+  /**
    * Resolve a Drive folder's display name via a direct `files.get`
    * call. Works for any folder depth — not just root-level children —
    * and falls back to a synthetic slug on error (permission denied,
@@ -915,10 +1018,15 @@ export class DriveImportService {
     userId: string,
     args: {
       files: DriveFileMeta[];
+      /** Folders discovered in this scope walk, used to mirror the tree. */
+      driveFolders: DriveFolderNode[];
+      /** Drive folder id → KC folder id for the import root(s). */
+      rootSeed: Map<string, string>;
       sourceScope: 'all' | 'folder';
       driveFolderId: string | null;
       driveFolderName: string;
       connectionId: string;
+      /** Fallback KC folder for files whose Drive parent can't be resolved. */
       kcFolderId: string;
       kcFileScope: string;
       visibility?: DriveVisibility;
@@ -1053,6 +1161,17 @@ export class DriveImportService {
       };
     }
 
+    // Rebuild the Drive folder hierarchy in KC (pruned to folders that
+    // hold a new file, plus their ancestors), then resolve each file to
+    // its mirrored folder. Files whose Drive parent can't be resolved
+    // fall back to the import root (args.kcFolderId).
+    const kcFolderMap = await this.buildFolderMapForFiles(
+      userId,
+      newFiles,
+      args.driveFolders,
+      args.rootSeed,
+    );
+
     // Insert knowledge_files rows in a single batched insert. fileType
     // mirrors Drive's MIME (after Google-native export) — the
     // ingestion path reads `name`'s extension for parser dispatch, so
@@ -1061,7 +1180,7 @@ export class DriveImportService {
       .insert(knowledgeFiles)
       .values(
         newFiles.map((f) => ({
-          folderId: args.kcFolderId,
+          folderId: this.fileFolderId(f, kcFolderMap, args.kcFolderId),
           name: f.name,
           fileType: this.extFromName(f.name),
           sizeBytes: f.sizeBytes ?? 0,
