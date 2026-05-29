@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
@@ -67,6 +68,8 @@ export type NameConflictAction = 'overwrite' | 'keep_both' | 'skip';
 
 @Injectable()
 export class KnowledgeCoreService {
+  private readonly logger = new Logger(KnowledgeCoreService.name);
+
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
@@ -95,6 +98,24 @@ export class KnowledgeCoreService {
     >();
     if (rootFolderIds.length === 0) return result;
 
+    // Defensive — if the recursive query ever throws (driver
+    // incompatibility, syntax regression, etc.), the caller still
+    // gets folders back with 0 counts. Don't break the entire
+    // KC root view over a count chip.
+    const fillZeros = () => {
+      for (const id of rootFolderIds) {
+        if (!result.has(id)) {
+          result.set(id, { fileCount: 0, totalBytes: 0 });
+        }
+      }
+      return result;
+    };
+
+    try {
+
+    // Use drizzle's `inArray` inside the SQL template so the uuid[]
+    // parameter is properly cast (raw `ANY(${rootFolderIds})` ships
+    // the array as text[] which fails the UUID column comparison).
     const queryResult = await this.db.execute<{
       root_id: string;
       file_count: number;
@@ -105,7 +126,7 @@ export class KnowledgeCoreService {
           ${knowledgeFolders.id} AS folder_id,
           ${knowledgeFolders.id} AS root_id
         FROM ${knowledgeFolders}
-        WHERE ${knowledgeFolders.id} = ANY(${rootFolderIds})
+        WHERE ${inArray(knowledgeFolders.id, rootFolderIds)}
         UNION ALL
         SELECT child.id, d.root_id
         FROM ${knowledgeFolders} AS child
@@ -138,15 +159,16 @@ export class KnowledgeCoreService {
         });
       }
     }
-    // Roots with no files / no descendants don't appear in the CTE
-    // result — fill them in as zeros so the FE map lookup never
-    // returns undefined.
-    for (const id of rootFolderIds) {
-      if (!result.has(id)) {
-        result.set(id, { fileCount: 0, totalBytes: 0 });
-      }
+      // Roots with no files / no descendants don't appear in the CTE
+      // result — fill them in as zeros so the FE map lookup never
+      // returns undefined.
+      return fillZeros();
+    } catch (err) {
+      this.logger.warn(
+        `getRecursiveFolderTotals failed (${err instanceof Error ? err.message : String(err)}); returning zero counts.`,
+      );
+      return fillZeros();
     }
-    return result;
   }
 
   /**
