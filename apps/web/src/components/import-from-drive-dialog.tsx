@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { Button } from "@/components/ui/button";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -84,9 +85,15 @@ function FolderNode({
           type="button"
           onClick={() => folder.hasChildren && onToggleExpand(folder.id)}
           className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 ${
-            folder.hasChildren ? "hover:bg-bg-white hover:text-text-1" : "invisible"
+            folder.hasChildren
+              ? "hover:bg-bg-white hover:text-text-1"
+              : "invisible"
           }`}
-          aria-label={isExpanded ? t("driveDlg.collapseFolder") : t("driveDlg.expandFolder")}
+          aria-label={
+            isExpanded
+              ? t("driveDlg.collapseFolder")
+              : t("driveDlg.expandFolder")
+          }
         >
           {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -103,8 +110,13 @@ function FolderNode({
             onChange={() => onToggleSelect(folder.id)}
             className="h-4 w-4 shrink-0 cursor-pointer accent-primary-6"
           />
-          <Folder className="h-4 w-4 shrink-0 text-primary-6" strokeWidth={1.5} />
-          <span className="truncate text-[13px] text-text-1">{folder.name}</span>
+          <Folder
+            className="h-4 w-4 shrink-0 text-primary-6"
+            strokeWidth={1.5}
+          />
+          <span className="truncate text-[13px] text-text-1">
+            {folder.name}
+          </span>
         </label>
       </div>
       {isExpanded && kids && kids.length > 0 && (
@@ -210,10 +222,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   // Restore asyncJobActive flag when dialog opens and a job is already running.
   useEffect(() => {
     if (!open) return;
-    if (
-      progress?.phase === "scanning" ||
-      progress?.phase === "importing"
-    ) {
+    if (progress?.phase === "scanning" || progress?.phase === "importing") {
       setAsyncJobActive(true);
     }
   }, [open, progress?.phase]);
@@ -316,7 +325,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         })
         .catch((err) => {
           toast.error(
-            err instanceof Error ? err.message : t("driveDlg.couldntSubfolders"),
+            err instanceof Error
+              ? err.message
+              : t("driveDlg.couldntSubfolders"),
           );
         })
         .finally(() =>
@@ -378,7 +389,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       onOpenChange(false);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : t("driveDlg.importFailed"));
+      toast.error(
+        err instanceof Error ? err.message : t("driveDlg.importFailed"),
+      );
     },
   });
 
@@ -396,7 +409,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       setAsyncJobActive(true);
     },
     onError: (err) => {
-      toast.error(err instanceof Error ? err.message : t("driveDlg.importFailed"));
+      toast.error(
+        err instanceof Error ? err.message : t("driveDlg.importFailed"),
+      );
     },
   });
 
@@ -409,7 +424,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : t("driveDlg.cancelFailed")),
+      toast.error(
+        err instanceof Error ? err.message : t("driveDlg.cancelFailed"),
+      ),
   });
 
   const visibilityValid =
@@ -423,6 +440,19 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     (scopeChoice === "folders" ? selected.size > 0 : entireDriveConfirmed) &&
     visibilityValid;
 
+  // Why the submit button is disabled — surfaced as a hover tooltip so
+  // the user isn't left guessing when the action is blocked.
+  const submitDisabledReason =
+    folderImportMutation.isPending || startAsyncMutation.isPending
+      ? t("driveDlg.importInProgress")
+      : scopeChoice === "folders" && selected.size === 0
+        ? t("driveDlg.pickFolder")
+        : scopeChoice === "all" && !entireDriveConfirmed
+          ? t("driveDlg.confirmEntireFirst")
+          : !visibilityValid
+            ? t("driveDlg.selectTeamOrProject")
+            : "";
+
   // ── Progress view (shown while async job is active) ───────────────
   const isRunning =
     asyncJobActive &&
@@ -434,16 +464,19 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     const pct = total > 0 ? Math.round((imported / total) * 100) : 0;
 
     return (
-      <Dialog open={open} onOpenChange={() => {/* block close while running */}}>
+      <Dialog
+        open={open}
+        onOpenChange={() => {
+          /* block close while running */
+        }}
+      >
         <DialogContent className="max-w-[480px]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
               {t("driveDlg.importingTitle")}
             </DialogTitle>
-            <DialogDescription>
-              {t("driveDlg.importingDesc")}
-            </DialogDescription>
+            <DialogDescription>{t("driveDlg.importingDesc")}</DialogDescription>
           </DialogHeader>
 
           <div className="flex flex-col gap-4 py-2">
@@ -464,7 +497,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             ) : (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center justify-between text-[13px]">
-                  <span className="text-text-3">{t("driveDlg.importingFiles")}</span>
+                  <span className="text-text-3">
+                    {t("driveDlg.importingFiles")}
+                  </span>
                   <span className="font-medium text-text-1 tabular-nums">
                     {imported.toLocaleString()} / {total.toLocaleString()}
                   </span>
@@ -507,6 +542,40 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     );
   }
 
+  // ── Folder-scoped import working view (synchronous) ───────────────
+  // The folder import is a single blocking request with no progress
+  // stream, so we show an indeterminate "working" state the instant the
+  // user clicks — otherwise a fast import just flashes and a slow one
+  // looks frozen. Closing is blocked until the request resolves.
+  if (folderImportMutation.isPending) {
+    return (
+      <Dialog
+        open={open}
+        onOpenChange={() => {
+          /* block close while running */
+        }}
+      >
+        <DialogContent className="max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="h-4 w-4 animate-spin text-primary-6" />
+              {t("driveDlg.importingFolders")}
+            </DialogTitle>
+            <DialogDescription>
+              {t("driveDlg.importingFoldersDesc")}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-col gap-4 py-2">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-bg-2">
+              <div className="h-full w-1/3 animate-[scan-slide_1.4s_ease-in-out_infinite] rounded-full bg-primary-6" />
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   // ── Normal (config) view ──────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -516,9 +585,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             <Cloud className="h-4 w-4 text-primary-6" />
             {t("driveDlg.title")}
           </DialogTitle>
-          <DialogDescription>
-            {t("driveDlg.desc")}
-          </DialogDescription>
+          <DialogDescription>{t("driveDlg.desc")}</DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-3">
@@ -667,9 +734,17 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">{t("driveDlg.everyone")}</SelectItem>
-              {isAdmin && <SelectItem value="admins">{t("driveDlg.adminsOnly")}</SelectItem>}
-              <SelectItem value="teams">{t("driveDlg.specificTeams")}</SelectItem>
-              <SelectItem value="project">{t("driveDlg.specificProject")}</SelectItem>
+              {isAdmin && (
+                <SelectItem value="admins">
+                  {t("driveDlg.adminsOnly")}
+                </SelectItem>
+              )}
+              <SelectItem value="teams">
+                {t("driveDlg.specificTeams")}
+              </SelectItem>
+              <SelectItem value="project">
+                {t("driveDlg.specificProject")}
+              </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
@@ -757,7 +832,9 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                       <span className="truncate">
                         {p.name}
                         {p.teamName && (
-                          <span className="ml-1 text-text-3">· {p.teamName}</span>
+                          <span className="ml-1 text-text-3">
+                            · {p.teamName}
+                          </span>
                         )}
                       </span>
                     </label>
@@ -776,25 +853,33 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
           >
             {t("driveDlg.cancel")}
           </Button>
-          <Button
-            onClick={() =>
-              scopeChoice === "all"
-                ? startAsyncMutation.mutate()
-                : folderImportMutation.mutate()
-            }
+          <DisabledReasonTooltip
             disabled={!canSubmit}
-            className="cursor-pointer gap-2"
+            reason={submitDisabledReason}
           >
-            {(folderImportMutation.isPending ||
-              startAsyncMutation.isPending) && (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            )}
-            {scopeChoice === "all"
-              ? t("driveDlg.importEntire")
-              : selected.size === 0
-                ? t("driveDlg.pickFolder")
-                : `${t("driveDlg.importNFolders1")} ${selected.size} ${selected.size === 1 ? t("driveDlg.importNFolders2") : t("driveDlg.importNFolders2Plural")}`}
-          </Button>
+            <Button
+              onClick={() =>
+                scopeChoice === "all"
+                  ? startAsyncMutation.mutate()
+                  : folderImportMutation.mutate()
+              }
+              disabled={!canSubmit}
+              className="cursor-pointer gap-2"
+            >
+              {startAsyncMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  {t("driveDlg.importing")}
+                </>
+              ) : scopeChoice === "all" ? (
+                t("driveDlg.importEntire")
+              ) : selected.size === 0 ? (
+                t("driveDlg.pickFolder")
+              ) : (
+                `${t("driveDlg.importNFolders1")} ${selected.size} ${selected.size === 1 ? t("driveDlg.importNFolders2") : t("driveDlg.importNFolders2Plural")}`
+              )}
+            </Button>
+          </DisabledReasonTooltip>
         </DialogFooter>
       </DialogContent>
     </Dialog>

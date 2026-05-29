@@ -18,11 +18,14 @@ import {
   connectDrive,
   deleteDriveSource,
   disconnectDrive,
+  fetchDriveImportProgress,
   fetchDriveSources,
   fetchDriveStatus,
   resyncDriveSource,
+  type DriveImportProgress,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,6 +89,22 @@ export function DriveSection() {
     enabled: connected,
   });
 
+  // Background Entire-Drive import status. Shared cache key with the
+  // import dialog, so a job started there reflects here too. Keeps
+  // polling on its own while a job is scanning/importing even after the
+  // dialog is closed, so the trigger buttons stay locked until it ends.
+  const { data: importProgress } = useQuery<DriveImportProgress | null>({
+    queryKey: ["drive", "import-progress"],
+    queryFn: fetchDriveImportProgress,
+    enabled: connected,
+    refetchInterval: (query) => {
+      const p = query.state.data;
+      if (p && (p.phase === "scanning" || p.phase === "importing")) return 2000;
+      return false;
+    },
+    staleTime: 0,
+  });
+
   // OAuth callback toast. The API redirects back to
   // /knowledge-core?drive=connected | ?drive=error=... once the
   // consent round-trip finishes. We toast based on the flag and
@@ -116,7 +135,9 @@ export function DriveSection() {
       void queryClient.invalidateQueries({ queryKey: ["drive"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : t("drive.failedDisconnect")),
+      toast.error(
+        err instanceof Error ? err.message : t("drive.failedDisconnect"),
+      ),
   });
 
   const resyncMutation = useMutation({
@@ -155,8 +176,18 @@ export function DriveSection() {
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : t("drive.couldntRemove")),
+      toast.error(
+        err instanceof Error ? err.message : t("drive.couldntRemove"),
+      ),
   });
+
+  // True while any import is mid-flight — a background Entire-Drive job
+  // or a per-source Re-sync. Used to lock the trigger buttons (with a
+  // hover tooltip) so the user can't kick off overlapping imports.
+  const importInProgress =
+    importProgress?.phase === "scanning" ||
+    importProgress?.phase === "importing" ||
+    resyncMutation.isPending;
 
   if (statusLoading) {
     return (
@@ -178,9 +209,7 @@ export function DriveSection() {
             <p className="text-[14px] font-medium text-text-1">
               {t("drive.connectTitle")}
             </p>
-            <p className="text-[12px] text-text-3">
-              {t("drive.connectDesc")}
-            </p>
+            <p className="text-[12px] text-text-3">{t("drive.connectDesc")}</p>
           </div>
         </div>
         <Button
@@ -215,9 +244,7 @@ export function DriveSection() {
             </span>
             <div className="flex min-w-0 flex-col">
               <p className="truncate text-[14px] font-medium text-text-1">
-                {reauthRequired
-                  ? t("drive.needsReconnect")
-                  : t("drive.title")}
+                {reauthRequired ? t("drive.needsReconnect") : t("drive.title")}
               </p>
               <p className="truncate text-[12px] text-text-3">
                 {reauthRequired
@@ -238,14 +265,20 @@ export function DriveSection() {
                 {t("drive.reconnect")}
               </Button>
             ) : (
-              <Button
-                onClick={() => setImportOpen(true)}
-                variant="outline"
-                className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
+              <DisabledReasonTooltip
+                disabled={importInProgress}
+                reason={t("drive.importInProgress")}
               >
-                <Cloud className="h-3.5 w-3.5" />
-                {t("drive.importFromDrive")}
-              </Button>
+                <Button
+                  onClick={() => setImportOpen(true)}
+                  disabled={importInProgress}
+                  variant="outline"
+                  className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
+                >
+                  <Cloud className="h-3.5 w-3.5" />
+                  {t("drive.importFromDrive")}
+                </Button>
+              </DisabledReasonTooltip>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -283,32 +316,38 @@ export function DriveSection() {
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-[13px] font-medium text-text-1">
-                      {s.scope === "all" ? t("drive.entireDrive") : s.driveFolderName}
+                      {s.scope === "all"
+                        ? t("drive.entireDrive")
+                        : s.driveFolderName}
                     </span>
                     <span className="text-[11px] text-text-3">
                       {s.fileCountAtLastSync}{" "}
-                      {s.fileCountAtLastSync === 1 ? t("drive.fileSing") : t("drive.filePlural")} · {t("drive.synced")}{" "}
-                      {relativeTime(s.lastSyncedAt)}
+                      {s.fileCountAtLastSync === 1
+                        ? t("drive.fileSing")
+                        : t("drive.filePlural")}{" "}
+                      · {t("drive.synced")} {relativeTime(s.lastSyncedAt)}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => resyncMutation.mutate(s.id)}
-                      disabled={
-                        resyncMutation.isPending &&
-                        resyncMutation.variables === s.id
-                      }
-                      className="flex h-7 cursor-pointer items-center gap-1.5 rounded border border-border-2 px-2 text-[12px] text-text-1 hover:bg-bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    <DisabledReasonTooltip
+                      disabled={importInProgress}
+                      reason={t("drive.importInProgress")}
                     >
-                      {resyncMutation.isPending &&
-                      resyncMutation.variables === s.id ? (
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-3 w-3" />
-                      )}
-                      {t("drive.resync")}
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => resyncMutation.mutate(s.id)}
+                        disabled={importInProgress}
+                        className="flex h-7 cursor-pointer items-center gap-1.5 rounded border border-border-2 px-2 text-[12px] text-text-1 hover:bg-bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {resyncMutation.isPending &&
+                        resyncMutation.variables === s.id ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3 w-3" />
+                        )}
+                        {t("drive.resync")}
+                      </button>
+                    </DisabledReasonTooltip>
                     <button
                       type="button"
                       onClick={() => deleteMutation.mutate(s.id)}
@@ -326,10 +365,7 @@ export function DriveSection() {
         )}
       </section>
 
-      <ImportFromDriveDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
+      <ImportFromDriveDialog open={importOpen} onOpenChange={setImportOpen} />
     </>
   );
 }
