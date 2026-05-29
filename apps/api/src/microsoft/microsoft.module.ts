@@ -17,11 +17,7 @@ import { MicrosoftOAuthService } from './microsoft-oauth.service.js';
  * product-specific facade.
  */
 @Module({
-  imports: [
-    ConfigModule,
-    JwtModule.register({}),
-    OpenRouterModule,
-  ],
+  imports: [ConfigModule, JwtModule.register({}), OpenRouterModule],
   providers: [MicrosoftOAuthService],
   exports: [MicrosoftOAuthService],
 })

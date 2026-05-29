@@ -176,9 +176,7 @@ export class OneDriveGraphService {
     userId: string,
     parentItemId?: string,
   ): Promise<OneDriveFolderMeta[]> {
-    const anchor = parentItemId
-      ? `items/${parentItemId}`
-      : 'root';
+    const anchor = parentItemId ? `items/${parentItemId}` : 'root';
     const { items } = await this.paginate<GraphDriveItem>(
       userId,
       `/me/drive/${anchor}/children?$select=id,name,folder&$top=200`,
@@ -207,8 +205,10 @@ export class OneDriveGraphService {
     fileLimit?: number,
     onProgress?: (count: number) => void,
   ): Promise<OneDriveFileMeta[]> {
-    const startFolders: string[] = scope.kind === 'all' ? ['root'] : scope.folderIds;
-    return this.walkSubtree(userId, startFolders, fileLimit, () => onProgress?.(0));
+    const startFolders: string[] =
+      scope.kind === 'all' ? ['root'] : scope.folderIds;
+    onProgress?.(0);
+    return this.walkSubtree(userId, startFolders, fileLimit);
   }
 
   /**
@@ -219,7 +219,6 @@ export class OneDriveGraphService {
     userId: string,
     startFolderIds: string[],
     fileLimit: number | undefined,
-    _onProgressLegacy: () => void,
   ): Promise<OneDriveFileMeta[]> {
     const out: OneDriveFileMeta[] = [];
     const visited = new Set<string>();
@@ -230,9 +229,9 @@ export class OneDriveGraphService {
       if (visited.has(folderId)) continue;
       visited.add(folderId);
 
-      const anchor =
-        folderId === 'root' ? 'root' : `items/${folderId}`;
-      let next: string | undefined = `/me/drive/${anchor}/children?$select=id,name,size,file,folder,webUrl,lastModifiedDateTime&$top=200`;
+      const anchor = folderId === 'root' ? 'root' : `items/${folderId}`;
+      let next: string | undefined =
+        `/me/drive/${anchor}/children?$select=id,name,size,file,folder,webUrl,lastModifiedDateTime&$top=200`;
       let pages = 0;
 
       while (next && pages < MAX_PAGES) {
@@ -249,15 +248,13 @@ export class OneDriveGraphService {
           out.push({
             id: item.id,
             name: item.name ?? 'Untitled',
-            mimeType:
-              item.file.mimeType ?? 'application/octet-stream',
+            mimeType: item.file.mimeType ?? 'application/octet-stream',
             modifiedTime: item.lastModifiedDateTime,
             webViewLink: item.webUrl,
             sizeBytes: typeof item.size === 'number' ? item.size : null,
           });
         }
-        if (fileLimit !== undefined && out.length > fileLimit)
-          break outer;
+        if (fileLimit !== undefined && out.length > fileLimit) break outer;
         next = page['@odata.nextLink'];
         pages++;
       }
@@ -325,7 +322,8 @@ export class OneDriveGraphService {
       visited.add(folderId);
 
       const anchor = folderId === 'root' ? 'root' : `items/${folderId}`;
-      let next: string | undefined = `/me/drive/${anchor}/children?$select=id,name,size,file,folder&$top=200`;
+      let next: string | undefined =
+        `/me/drive/${anchor}/children?$select=id,name,size,file,folder&$top=200`;
       while (next && pages < MAX_PAGES) {
         const page = await this.graphGet<GraphPage<GraphDriveItem>>(
           userId,

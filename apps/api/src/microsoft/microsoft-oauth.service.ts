@@ -58,9 +58,7 @@ const STATE_TOKEN_TTL_SECONDS = 600;
 const GRAPH_ME_URL = 'https://graph.microsoft.com/v1.0/me';
 
 export type MicrosoftProduct = 'sharepoint' | 'onedrive';
-export type MicrosoftConnectPurpose =
-  | 'sharepoint-connect'
-  | 'onedrive-connect';
+export type MicrosoftConnectPurpose = 'sharepoint-connect' | 'onedrive-connect';
 
 /**
  * Status the FE shows on a per-product section. Each product
@@ -418,10 +416,13 @@ export class MicrosoftOAuthService {
       // No row + disable request → no-op.
       return;
     }
-    const features: FeaturesShape = { ...((row.features as FeaturesShape) ?? {}) };
+    const features: FeaturesShape = {
+      ...((row.features as FeaturesShape) ?? {}),
+    };
     features[product] = enabled;
 
-    const anyEnabled = features.sharepoint === true || features.onedrive === true;
+    const anyEnabled =
+      features.sharepoint === true || features.onedrive === true;
 
     if (!anyEnabled) {
       // No products left enabled — delete the row, no orphan token.
@@ -598,9 +599,7 @@ export class MicrosoftOAuthService {
     const lcRequired = REQUIRED_SCOPES.map((s) => s.toLowerCase());
     const lcOptional = OPTIONAL_SCOPES.map((s) => s.toLowerCase());
 
-    this.logger.log(
-      `Microsoft returned scopes: [${grantedScopes.join(', ')}]`,
-    );
+    this.logger.log(`Microsoft returned scopes: [${grantedScopes.join(', ')}]`);
 
     const missingRequired = lcRequired.filter((s) => !granted.has(s));
     if (missingRequired.length > 0) {

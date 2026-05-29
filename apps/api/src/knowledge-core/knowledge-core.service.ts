@@ -92,10 +92,7 @@ export class KnowledgeCoreService {
   private async getRecursiveFolderTotals(
     rootFolderIds: string[],
   ): Promise<Map<string, { fileCount: number; totalBytes: number }>> {
-    const result = new Map<
-      string,
-      { fileCount: number; totalBytes: number }
-    >();
+    const result = new Map<string, { fileCount: number; totalBytes: number }>();
     if (rootFolderIds.length === 0) return result;
 
     // Defensive — if the recursive query ever throws (driver
@@ -112,15 +109,14 @@ export class KnowledgeCoreService {
     };
 
     try {
-
-    // Use drizzle's `inArray` inside the SQL template so the uuid[]
-    // parameter is properly cast (raw `ANY(${rootFolderIds})` ships
-    // the array as text[] which fails the UUID column comparison).
-    const queryResult = await this.db.execute<{
-      root_id: string;
-      file_count: number;
-      total_bytes: number;
-    }>(sql`
+      // Use drizzle's `inArray` inside the SQL template so the uuid[]
+      // parameter is properly cast (raw `ANY(${rootFolderIds})` ships
+      // the array as text[] which fails the UUID column comparison).
+      const queryResult = await this.db.execute<{
+        root_id: string;
+        file_count: number;
+        total_bytes: number;
+      }>(sql`
       WITH RECURSIVE descendants AS (
         SELECT
           ${knowledgeFolders.id} AS folder_id,
@@ -143,22 +139,21 @@ export class KnowledgeCoreService {
       GROUP BY d.root_id
     `);
 
-    // drizzle's pg adapter returns QueryResult with rows on `.rows`,
-    // but other adapters return the array directly. Handle both.
-    const rows =
-      (queryResult as { rows?: unknown[] }).rows ?? queryResult;
-    if (Array.isArray(rows)) {
-      for (const r of rows as {
-        root_id: string;
-        file_count: number | string;
-        total_bytes: number | string;
-      }[]) {
-        result.set(r.root_id, {
-          fileCount: Number(r.file_count),
-          totalBytes: Number(r.total_bytes),
-        });
+      // drizzle's pg adapter returns QueryResult with rows on `.rows`,
+      // but other adapters return the array directly. Handle both.
+      const rows = (queryResult as { rows?: unknown[] }).rows ?? queryResult;
+      if (Array.isArray(rows)) {
+        for (const r of rows as {
+          root_id: string;
+          file_count: number | string;
+          total_bytes: number | string;
+        }[]) {
+          result.set(r.root_id, {
+            fileCount: Number(r.file_count),
+            totalBytes: Number(r.total_bytes),
+          });
+        }
       }
-    }
       // Roots with no files / no descendants don't appear in the CTE
       // result — fill them in as zeros so the FE map lookup never
       // returns undefined.

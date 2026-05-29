@@ -1,11 +1,4 @@
-import {
-  Controller,
-  Delete,
-  Get,
-  Post,
-  Query,
-  Res,
-} from '@nestjs/common';
+import { Controller, Delete, Get, Post, Query, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Response } from 'express';
 

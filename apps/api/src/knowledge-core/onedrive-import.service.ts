@@ -152,7 +152,8 @@ export class OneDriveImportService {
     }
 
     const connection = await this.oauth.requireConnection(userId);
-    const onedriveParentFolderId = await this.ensureOneDriveParentFolder(userId);
+    const onedriveParentFolderId =
+      await this.ensureOneDriveParentFolder(userId);
 
     const [uploader] = await this.db
       .select({ profileType: users.profileType })
@@ -204,7 +205,10 @@ export class OneDriveImportService {
       }[] = [];
       let totalFiles = 0;
       for (const folderId of scope.folderIds) {
-        const folderName = await this.resolveOneDriveFolderName(userId, folderId);
+        const folderName = await this.resolveOneDriveFolderName(
+          userId,
+          folderId,
+        );
         const files = await this.drive.listFiles(
           userId,
           { kind: 'folders', folderIds: [folderId] },
@@ -270,8 +274,8 @@ export class OneDriveImportService {
 
     const visibilityExtras = {
       visibility: (source.visibility as OneDriveVisibility) ?? undefined,
-      teamIds: (source.teamIds as string[] | null) ?? undefined,
-      projectIds: (source.projectIds as string[] | null) ?? undefined,
+      teamIds: source.teamIds ?? undefined,
+      projectIds: source.projectIds ?? undefined,
     };
 
     if (source.scope === 'all') {
@@ -433,8 +437,7 @@ export class OneDriveImportService {
     if (!job) return;
 
     const isRunning =
-      job.progress.phase === 'scanning' ||
-      job.progress.phase === 'importing';
+      job.progress.phase === 'scanning' || job.progress.phase === 'importing';
 
     if (isRunning) {
       job.cancelled = true;
@@ -482,7 +485,7 @@ export class OneDriveImportService {
         .where(eq(users.id, userId));
       const fileScope =
         uploader?.profileType === 'company' ? 'company' : 'personal';
-      const visibility = (scope.visibility ?? 'all') as OneDriveVisibility;
+      const visibility = scope.visibility ?? 'all';
 
       // ── Phase 1: Scan ─────────────────────────────────────────────
       job.progress.phase = 'scanning';
@@ -655,11 +658,14 @@ export class OneDriveImportService {
 
       job.progress.phase = 'done';
     } finally {
-      setTimeout(() => {
-        if (this.activeJobs.get(userId) === job) {
-          this.activeJobs.delete(userId);
-        }
-      }, 5 * 60 * 1000);
+      setTimeout(
+        () => {
+          if (this.activeJobs.get(userId) === job) {
+            this.activeJobs.delete(userId);
+          }
+        },
+        5 * 60 * 1000,
+      );
     }
   }
 
@@ -728,8 +734,7 @@ export class OneDriveImportService {
     totalFiles: number,
     kind: 'all' | 'folders',
   ): void {
-    const cap =
-      kind === 'all' ? MAX_ALL_IMPORT_FILES : MAX_FOLDER_IMPORT_FILES;
+    const cap = kind === 'all' ? MAX_ALL_IMPORT_FILES : MAX_FOLDER_IMPORT_FILES;
     if (totalFiles > cap) {
       throw new BadRequestException(
         kind === 'all'
@@ -812,7 +817,10 @@ export class OneDriveImportService {
           eq(onedriveImportSources.ownerId, userId),
           args.sourceScope === 'all'
             ? eq(onedriveImportSources.scope, 'all')
-            : eq(onedriveImportSources.onedriveFolderId, args.onedriveFolderId ?? ''),
+            : eq(
+                onedriveImportSources.onedriveFolderId,
+                args.onedriveFolderId ?? '',
+              ),
         ),
       );
     if (existingSource) {
@@ -854,29 +862,34 @@ export class OneDriveImportService {
       };
     }
 
-    const insertedFiles = await this.db.insert(knowledgeFiles).values(
-      newFiles.map((f) => ({
-        folderId: args.kcFolderId,
-        name: f.name,
-        fileType: this.extFromName(f.name),
-        sizeBytes: f.sizeBytes ?? 0,
-        storagePath: null,
-        uploadedById: userId,
-        scope: args.kcFileScope,
-        visibility: (args.visibility ?? 'all') as OneDriveVisibility,
-        source: 'onedrive' as const,
-        externalId: f.id,
-        externalUrl: f.webViewLink ?? null,
-      })),
-    ).returning({ id: knowledgeFiles.id });
+    const insertedFiles = await this.db
+      .insert(knowledgeFiles)
+      .values(
+        newFiles.map((f) => ({
+          folderId: args.kcFolderId,
+          name: f.name,
+          fileType: this.extFromName(f.name),
+          sizeBytes: f.sizeBytes ?? 0,
+          storagePath: null,
+          uploadedById: userId,
+          scope: args.kcFileScope,
+          visibility: args.visibility ?? 'all',
+          source: 'onedrive' as const,
+          externalId: f.id,
+          externalUrl: f.webViewLink ?? null,
+        })),
+      )
+      .returning({ id: knowledgeFiles.id });
 
     const visibility = args.visibility ?? 'all';
     if (visibility === 'teams' && (args.teamIds ?? []).length > 0) {
-      await this.db.insert(knowledgeFileTeams).values(
-        insertedFiles.flatMap((row) =>
-          (args.teamIds ?? []).map((teamId) => ({ fileId: row.id, teamId })),
-        ),
-      );
+      await this.db
+        .insert(knowledgeFileTeams)
+        .values(
+          insertedFiles.flatMap((row) =>
+            (args.teamIds ?? []).map((teamId) => ({ fileId: row.id, teamId })),
+          ),
+        );
     }
     if (visibility === 'project' && (args.projectIds ?? []).length > 0) {
       await this.db.insert(projectKnowledgeFiles).values(
