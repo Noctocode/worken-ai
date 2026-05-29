@@ -678,10 +678,22 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   ),
   // De-dupe import of the same Drive file by the same user. Partial
   // so upload-source rows (external_id NULL) don't collide. Probed
-  // on every Drive import to decide insert-vs-skip.
+  // on every Drive import to decide insert-vs-skip. Drive's fileId
+  // is globally unique, so external_id alone is the right key.
   uniqueIndex("knowledge_files_owner_external_unique")
     .on(table.uploadedById, table.externalId)
     .where(sql`${table.externalId} IS NOT NULL`),
+  // De-dupe import of the same SharePoint file by the same user.
+  // Unlike Drive, SharePoint item ids are drive-scoped (the same
+  // itemId can appear in two different document libraries), so the
+  // dedup key is the (driveId, itemId) PAIR. The two unique indexes
+  // are non-overlapping — this one only fires for source='sharepoint'
+  // rows, where external_drive_id is always set; the one above only
+  // matters for Drive rows, where external_drive_id is always NULL.
+  // Probed on every SharePoint import to decide insert-vs-skip.
+  uniqueIndex("knowledge_files_owner_sp_external_unique")
+    .on(table.uploadedById, table.externalDriveId, table.externalId)
+    .where(sql`${table.source} = 'sharepoint'`),
 ]);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets
@@ -1192,26 +1204,15 @@ export const driveImportSources = pgTable(
  *     inside a site. One row per (owner, siteId, driveId, folderId).
  *
  * Re-sync semantics match Drive: only NEW files are added (dedup by
- * `knowledge_files.external_id` = SharePoint item id), existing rows
- * stay put even if the SharePoint copy changed.
+ * the `(uploaded_by_id, external_drive_id, external_id)` triple on
+ * `knowledge_files` — see the `knowledge_files_owner_sp_external_unique`
+ * partial unique index added in migration 0006), existing rows stay
+ * put even if the SharePoint copy changed.
  *
- * TODO(follow-up): two improvements flagged by code review that are
- * intentionally deferred so this PR stays scoped to the integration
- * itself:
- *   1. Add a CHECK constraint enforcing the scope/column invariant
- *      at the DB level
- *      (`scope='site' → drive_id/folder_id NULL`,
- *       `scope='folder' → drive_id/folder_id NOT NULL`).
- *      The import code already enforces this; the constraint is
- *      defence-in-depth against future hand-written SQL.
- *   2. Add a partial unique index on
- *      `(uploaded_by_id, external_drive_id, external_id) WHERE source='sharepoint'`
- *      to dedupe by the (driveId, itemId) PAIR rather than itemId
- *      alone. SharePoint itemIds ARE drive-scoped GUIDs in practice
- *      so collision risk is near-zero, but the explicit pair is the
- *      semantically correct dedup key. Requires updating the dedup
- *      query in sharepoint-import.service.ts:upsertFilesAndSource
- *      to match.
+ * Defer (low value): a CHECK constraint enforcing the scope/column
+ * invariant (`scope='site' → drive_id/folder_id NULL`, inverse for
+ * folder). The import code already enforces this — a CHECK only
+ * guards against future hand-written SQL.
  */
 export const sharepointImportSources = pgTable(
   "sharepoint_import_sources",

@@ -43,6 +43,13 @@
       "when": 1779900000000,
       "tag": "0005_sharepoint",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779980000000,
+      "tag": "0006_sharepoint_hardening",
+      "breakpoints": true
     }
   ]
 }

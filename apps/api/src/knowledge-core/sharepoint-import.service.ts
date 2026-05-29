@@ -7,7 +7,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import {
   sharepointImportSources,
   knowledgeFileTeams,
@@ -513,24 +513,14 @@ export class SharePointImportService {
         UPLOAD_ALLOWED_EXTENSIONS.test(f.name),
       );
 
-      const candidateIds = extFiltered.map((f) => f.id);
-      const existingExternal = candidateIds.length
-        ? await this.db
-            .select({ externalId: knowledgeFiles.externalId })
-            .from(knowledgeFiles)
-            .where(
-              and(
-                eq(knowledgeFiles.uploadedById, userId),
-                inArray(knowledgeFiles.externalId, candidateIds),
-              ),
-            )
-        : [];
-      const existingSet = new Set(
-        existingExternal
-          .map((r) => r.externalId)
-          .filter((id): id is string => id !== null),
+      // Dedup by (driveId, itemId) pair — see findExistingSharePointKeys.
+      const existingKeys = await this.findExistingSharePointKeys(
+        userId,
+        extFiltered.map((f) => ({ id: f.id, driveId: f.driveId })),
       );
-      const newFiles = extFiltered.filter((f) => !existingSet.has(f.id));
+      const newFiles = extFiltered.filter(
+        (f) => !existingKeys.has(this.spKey(f.driveId, f.id)),
+      );
       if (job.cancelled) return;
 
       job.progress.total = newFiles.length;
@@ -704,6 +694,62 @@ export class SharePointImportService {
     result.sources.push({ id: inserted.sourceId, displayName });
   }
 
+  /** `${driveId}:${itemId}` — the dedup key used in JS-side filtering. */
+  private spKey(driveId: string, itemId: string): string {
+    return `${driveId}:${itemId}`;
+  }
+
+  /**
+   * Look up which `(driveId, itemId)` pairs the user already has
+   * imported, so the import path can skip them. Probes the new
+   * `knowledge_files_owner_sp_external_unique` partial index added in
+   * migration 0006 — the SharePoint-specific dedup key is the
+   * (driveId, itemId) PAIR because SharePoint item ids are
+   * drive-scoped (the same itemId can appear in two libraries).
+   *
+   * Batches candidate pairs in groups of 500 to stay well under the
+   * Postgres parameter limit (~32 760 default `max_locks_per_transaction`
+   * × ~32 767 bind parameters per query). 500 pairs × 2 params each =
+   * 1 000 params/batch — comfortably safe and one query per ~500
+   * incoming files is fine perf-wise.
+   */
+  private async findExistingSharePointKeys(
+    userId: string,
+    candidates: ReadonlyArray<{ id: string; driveId: string }>,
+  ): Promise<Set<string>> {
+    if (candidates.length === 0) return new Set();
+    const found = new Set<string>();
+    const CHUNK = 500;
+    for (let i = 0; i < candidates.length; i += CHUNK) {
+      const batch = candidates.slice(i, i + CHUNK);
+      const pairs = batch.map((c) =>
+        and(
+          eq(knowledgeFiles.externalDriveId, c.driveId),
+          eq(knowledgeFiles.externalId, c.id),
+        ),
+      );
+      const rows = await this.db
+        .select({
+          externalDriveId: knowledgeFiles.externalDriveId,
+          externalId: knowledgeFiles.externalId,
+        })
+        .from(knowledgeFiles)
+        .where(
+          and(
+            eq(knowledgeFiles.uploadedById, userId),
+            eq(knowledgeFiles.source, 'sharepoint'),
+            or(...pairs),
+          ),
+        );
+      for (const r of rows) {
+        if (r.externalDriveId && r.externalId) {
+          found.add(this.spKey(r.externalDriveId, r.externalId));
+        }
+      }
+    }
+    return found;
+  }
+
   private async ensureSharePointParentFolder(userId: string): Promise<string> {
     const [existing] = await this.db
       .select({ id: knowledgeFolders.id })
@@ -809,24 +855,14 @@ export class SharePointImportService {
       ingestionReadyFiles.push(f);
     }
 
-    const candidateIds = ingestionReadyFiles.map((f) => f.id);
-    const existingExternal = candidateIds.length
-      ? await this.db
-          .select({ externalId: knowledgeFiles.externalId })
-          .from(knowledgeFiles)
-          .where(
-            and(
-              eq(knowledgeFiles.uploadedById, userId),
-              inArray(knowledgeFiles.externalId, candidateIds),
-            ),
-          )
-      : [];
-    const existingSet = new Set(
-      existingExternal
-        .map((r) => r.externalId)
-        .filter((id): id is string => id !== null),
+    // Dedup by (driveId, itemId) pair — see findExistingSharePointKeys.
+    const existingKeys = await this.findExistingSharePointKeys(
+      userId,
+      ingestionReadyFiles.map((f) => ({ id: f.id, driveId: f.driveId })),
     );
-    const newFiles = ingestionReadyFiles.filter((f) => !existingSet.has(f.id));
+    const newFiles = ingestionReadyFiles.filter(
+      (f) => !existingKeys.has(this.spKey(f.driveId, f.id)),
+    );
 
     // Upsert source row. Dispatch by scope — the partial unique
     // indexes target different column tuples for site vs folder.
@@ -903,7 +939,7 @@ export class SharePointImportService {
       return {
         sourceId,
         added: 0,
-        skippedDuplicates: existingSet.size,
+        skippedDuplicates: existingKeys.size,
         skippedTooLarge,
         skippedUnsupported,
       };
@@ -960,7 +996,7 @@ export class SharePointImportService {
     return {
       sourceId,
       added: newFiles.length,
-      skippedDuplicates: existingSet.size,
+      skippedDuplicates: existingKeys.size,
       skippedTooLarge,
       skippedUnsupported,
     };
