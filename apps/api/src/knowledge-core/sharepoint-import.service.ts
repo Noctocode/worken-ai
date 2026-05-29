@@ -496,10 +496,17 @@ export class SharePointImportService {
       }
       if (job.cancelled) return;
 
-      const cappedFiles = files.slice(0, MAX_SITE_IMPORT_FILES);
+      // Fail fast on cap overflow — matches the sync importFromSharePoint
+      // path. `listFiles` was called with `MAX_SITE_IMPORT_FILES + 1` as
+      // the soft limit so this comparison is reliable: if we got more
+      // than the cap back, the site has more files than we can handle
+      // in one go. Silent slice() truncation would have left the user
+      // wondering why their "Imported N files" count differed from
+      // the file-count estimate they saw in the dialog.
+      this.enforceImportCountCap(files.length, 'site');
 
       // ── Phase 2: Filter + dedupe ────────────────────────────────
-      const sizeFiltered = cappedFiles.filter(
+      const sizeFiltered = files.filter(
         (f) => f.sizeBytes == null || f.sizeBytes <= MAX_SP_FILE_BYTES,
       );
       const extFiltered = sizeFiltered.filter((f) =>
@@ -720,6 +727,15 @@ export class SharePointImportService {
     return created.id;
   }
 
+  /**
+   * TODO(follow-up): nest folder-scope imports one level deeper
+   * (`SharePoint > {siteName} > {folderName}`) so two SharePoint
+   * folders with the same display name in different sites don't
+   * collapse into a single KC folder. Same limitation exists on
+   * the Google Drive integration today (it has been in production
+   * without complaints), so fixing only SharePoint would be
+   * inconsistent — wait for a unified fix across both providers.
+   */
   private async ensureChildFolder(
     userId: string,
     parentId: string,
@@ -814,6 +830,19 @@ export class SharePointImportService {
 
     // Upsert source row. Dispatch by scope — the partial unique
     // indexes target different column tuples for site vs folder.
+    // Folder-scope callers MUST provide driveId AND folderId — assert
+    // up-front rather than coercing NULLs to '' (which would silently
+    // miss an existing row and force a duplicate INSERT that the
+    // partial unique index would then reject with 23505).
+    if (args.sourceScope === 'folder') {
+      if (!args.driveId || !args.folderId) {
+        throw new Error(
+          `upsertFilesAndSource: folder-scope source for site ${args.siteId} ` +
+            `is missing driveId (${args.driveId ?? 'null'}) or folderId ` +
+            `(${args.folderId ?? 'null'}). This is a programming error.`,
+        );
+      }
+    }
     let sourceId: string;
     const [existingSource] = await this.db
       .select({
@@ -828,8 +857,8 @@ export class SharePointImportService {
           eq(sharepointImportSources.siteId, args.siteId),
           args.sourceScope === 'folder'
             ? and(
-                eq(sharepointImportSources.driveId, args.driveId ?? ''),
-                eq(sharepointImportSources.folderId, args.folderId ?? ''),
+                eq(sharepointImportSources.driveId, args.driveId as string),
+                eq(sharepointImportSources.folderId, args.folderId as string),
               )
             : sql`true`,
         ),

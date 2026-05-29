@@ -83,9 +83,16 @@ function FolderNode({
       >
         <button
           type="button"
-          onClick={() => folder.hasChildren && onToggleExpand(folder.id)}
-          className={`flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 ${
-            folder.hasChildren ? "hover:bg-bg-white hover:text-text-1" : "invisible"
+          onClick={() => onToggleExpand(folder.id)}
+          disabled={!folder.hasChildren}
+          // For leaf folders we hide the chevron visually but keep
+          // layout, AND drop the button from the tab order — the
+          // previous `invisible` class still let keyboard focus
+          // land on a not-actionable control.
+          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded text-text-3 ${
+            folder.hasChildren
+              ? "cursor-pointer hover:bg-bg-white hover:text-text-1"
+              : "invisible pointer-events-none"
           }`}
           aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
         >
@@ -538,7 +545,8 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
             </DialogTitle>
             <DialogDescription>
               You can close this dialog — the import will continue in the
-              background. Use Cancel to stop and undo all changes.
+              background. Use Cancel to stop and remove any files imported
+              so far.
             </DialogDescription>
           </DialogHeader>
 

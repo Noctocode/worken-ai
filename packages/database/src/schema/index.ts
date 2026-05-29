@@ -1194,6 +1194,24 @@ export const driveImportSources = pgTable(
  * Re-sync semantics match Drive: only NEW files are added (dedup by
  * `knowledge_files.external_id` = SharePoint item id), existing rows
  * stay put even if the SharePoint copy changed.
+ *
+ * TODO(follow-up): two improvements flagged by code review that are
+ * intentionally deferred so this PR stays scoped to the integration
+ * itself:
+ *   1. Add a CHECK constraint enforcing the scope/column invariant
+ *      at the DB level
+ *      (`scope='site' → drive_id/folder_id NULL`,
+ *       `scope='folder' → drive_id/folder_id NOT NULL`).
+ *      The import code already enforces this; the constraint is
+ *      defence-in-depth against future hand-written SQL.
+ *   2. Add a partial unique index on
+ *      `(uploaded_by_id, external_drive_id, external_id) WHERE source='sharepoint'`
+ *      to dedupe by the (driveId, itemId) PAIR rather than itemId
+ *      alone. SharePoint itemIds ARE drive-scoped GUIDs in practice
+ *      so collision risk is near-zero, but the explicit pair is the
+ *      semantically correct dedup key. Requires updating the dedup
+ *      query in sharepoint-import.service.ts:upsertFilesAndSource
+ *      to match.
  */
 export const sharepointImportSources = pgTable(
   "sharepoint_import_sources",
