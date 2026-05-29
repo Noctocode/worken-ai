@@ -59,26 +59,36 @@ const sqlFiles = readdirSync(migrationsDir)
   .filter((f) => f.endsWith(".sql"))
   .sort();
 
-const created = new Set();
-const dropped = new Set();
+// Per-table last-write-wins so a CREATE → DROP → CREATE sequence
+// (or DROP → CREATE for a table reinstated by a later migration)
+// resolves to the correct final state. We can't just diff two sets
+// because that loses ordering and multiplicity. Map<name, present>:
+// `true` after a CREATE, `false` after a DROP. Final present-state
+// table set = entries still holding `true` at the end of the replay.
+// drizzle-kit always emits double-quoted identifiers, so only
+// `"name"` is matched here — bare identifiers would need a separate
+// regex if we ever start mixing styles.
+const tableState = new Map();
+
+// Single combined regex so CREATE and DROP statements are visited in
+// source order; alternation captures put the matched op into group 1
+// (CREATE) or group 3 (DROP) with the table name in group 2 or 4.
+const stmtRe =
+  /(?:(CREATE)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"([^"]+)"|(DROP)\s+TABLE\s+(?:IF\s+EXISTS\s+)?"([^"]+)")/gi;
 
 for (const file of sqlFiles) {
   const sql = readFileSync(join(migrationsDir, file), "utf8");
-  // CREATE TABLE ["foo"|foo] / CREATE TABLE IF NOT EXISTS …
-  for (const m of sql.matchAll(
-    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"([^"]+)"/gi,
-  )) {
-    created.add(m[1]);
-  }
-  // DROP TABLE ["foo"|foo] / DROP TABLE IF EXISTS …
-  for (const m of sql.matchAll(
-    /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?"([^"]+)"/gi,
-  )) {
-    dropped.add(m[1]);
+  for (const m of sql.matchAll(stmtRe)) {
+    if (m[1]) tableState.set(m[2], true);
+    else if (m[3]) tableState.set(m[4], false);
   }
 }
 
-const finalMigratedTables = new Set([...created].filter((t) => !dropped.has(t)));
+const finalMigratedTables = new Set(
+  [...tableState.entries()]
+    .filter(([, present]) => present)
+    .map(([name]) => name),
+);
 
 // ──────────────────────────────────────────────────────────────────
 // Parse the journal
