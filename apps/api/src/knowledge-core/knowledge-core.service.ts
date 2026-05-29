@@ -8,6 +8,7 @@ import {
 import { and, eq, desc, inArray, isNull, sql } from 'drizzle-orm';
 import {
   driveImportSources,
+  onedriveImportSources,
   sharepointImportSources,
   knowledgeFolders,
   knowledgeFiles,
@@ -493,6 +494,43 @@ export class KnowledgeCoreService {
               ),
             );
         }
+      }
+    }
+
+    // OneDrive cleanup — direct parallel of Drive's single-level
+    // structure (OneDrive has no site dimension):
+    //   1. Top-level "OneDrive" folder: drop ALL onedrive sources.
+    //   2. Direct child of "OneDrive" (folder-scope source): drop
+    //      the matching scope='folder' row by onedriveFolderName.
+    const isOneDriveParent =
+      folder.name === 'OneDrive' && folder.parentFolderId === null;
+
+    if (isOneDriveParent) {
+      await this.db
+        .delete(onedriveImportSources)
+        .where(eq(onedriveImportSources.ownerId, userId));
+    } else if (folder.parentFolderId) {
+      const [parent] = await this.db
+        .select({
+          name: knowledgeFolders.name,
+          parentFolderId: knowledgeFolders.parentFolderId,
+        })
+        .from(knowledgeFolders)
+        .where(eq(knowledgeFolders.id, folder.parentFolderId));
+
+      const parentIsOneDrive =
+        parent?.name === 'OneDrive' && parent.parentFolderId === null;
+
+      if (parentIsOneDrive) {
+        await this.db
+          .delete(onedriveImportSources)
+          .where(
+            and(
+              eq(onedriveImportSources.ownerId, userId),
+              eq(onedriveImportSources.scope, 'folder'),
+              eq(onedriveImportSources.onedriveFolderName, folder.name),
+            ),
+          );
       }
     }
 

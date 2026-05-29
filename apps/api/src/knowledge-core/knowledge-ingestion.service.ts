@@ -14,6 +14,7 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 import { GoogleDriveClientService } from '../google-drive/google-drive-client.service.js';
+import { OneDriveGraphService } from '../onedrive/onedrive-graph.service.js';
 import { SharePointGraphService } from '../sharepoint/sharepoint-graph.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
@@ -75,6 +76,9 @@ export class KnowledgeIngestionService {
     // Same role for source='sharepoint' rows — injected from
     // SharePointModule via KnowledgeCoreModule.
     private readonly sharepointGraph: SharePointGraphService,
+    // Same role for source='onedrive' rows — injected from
+    // OneDriveModule via KnowledgeCoreModule.
+    private readonly onedriveGraph: OneDriveGraphService,
   ) {}
 
   /**
@@ -194,6 +198,26 @@ export class KnowledgeIngestionService {
           );
         }
         const storagePath = await this.fetchSharePointBytes(userId, file);
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath, sizeBytes: actualBytes })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
+      // Same pattern for OneDrive-source rows. OneDrive is single-drive
+      // per user (/me/drive), so itemId alone is enough — no
+      // externalDriveId needed (it stays NULL for OneDrive rows).
+      if (file.source === 'onedrive' && !file.storagePath) {
+        if (!file.externalId) {
+          throw new Error(
+            'OneDrive-source file is missing externalId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchOneDriveBytes(userId, file);
         const { size: actualBytes } = await fs.promises.stat(
           resolve(process.cwd(), storagePath),
         );
@@ -666,6 +690,38 @@ export class KnowledgeIngestionService {
     }
     const ext = this.extFromName(file.name);
     const storagePath = `uploads/knowledge-core/sharepoint/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  /**
+   * Same role as fetchDriveBytes for OneDrive-source rows.
+   * `/me/drive/items/{itemId}` exposes a short-lived
+   * @microsoft.graph.downloadUrl that we hit without auth header
+   * (URL is pre-authenticated). Single-drive structure means no
+   * external_drive_id is needed (kept NULL on OneDrive rows).
+   */
+  private async fetchOneDriveBytes(
+    userId: string,
+    file: { id: string; name: string; externalId: string | null },
+  ): Promise<string> {
+    if (!file.externalId) {
+      throw new Error('OneDrive-source file is missing externalId');
+    }
+    const download = await this.onedriveGraph.downloadFile(
+      userId,
+      file.externalId,
+    );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `File is ${mb}MB — OneDrive imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per file. Skipped.`,
+      );
+    }
+    const ext = this.extFromName(file.name);
+    const storagePath = `uploads/knowledge-core/onedrive/${file.id}${ext}`;
     const absolutePath = resolve(process.cwd(), storagePath);
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, download.buffer);

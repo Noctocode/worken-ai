@@ -28,6 +28,10 @@ import {
   type ImportScope,
 } from './drive-import.service.js';
 import {
+  OneDriveImportService,
+  type OneDriveImportScope,
+} from './onedrive-import.service.js';
+import {
   SharePointImportService,
   type SharePointImportScope,
 } from './sharepoint-import.service.js';
@@ -50,6 +54,7 @@ export class KnowledgeCoreController {
     private readonly service: KnowledgeCoreService,
     private readonly driveImport: DriveImportService,
     private readonly sharepointImport: SharePointImportService,
+    private readonly onedriveImport: OneDriveImportService,
   ) {}
 
   @Get('folders')
@@ -453,6 +458,68 @@ export class KnowledgeCoreController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.sharepointImport.deleteSource(user.id, id);
+    return { success: true };
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // OneDrive import + Re-sync
+  //
+  // OAuth lifecycle + raw folder browsing live under /onedrive/*
+  // (OneDriveController). These endpoints handle only the
+  // OneDrive→KC orchestration — direct parallel of /drive/*.
+  // ────────────────────────────────────────────────────────────────
+
+  @Get('onedrive/file-count')
+  getOneDriveFileCount(@CurrentUser() user: AuthenticatedUser) {
+    return this.onedriveImport.getFileCountEstimate(user.id);
+  }
+
+  @Post('onedrive/import')
+  importFromOneDrive(
+    @Body() body: OneDriveImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.onedriveImport.importFromOneDrive(user.id, body);
+  }
+
+  @Post('onedrive/import/async')
+  startOneDriveImportAsync(
+    @Body() body: OneDriveImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.onedriveImport.startImportAllAsync(user.id, body);
+  }
+
+  @Get('onedrive/import/progress')
+  getOneDriveImportProgress(@CurrentUser() user: AuthenticatedUser) {
+    return { progress: this.onedriveImport.getImportProgress(user.id) };
+  }
+
+  @Delete('onedrive/import/active')
+  async cancelOneDriveImport(@CurrentUser() user: AuthenticatedUser) {
+    await this.onedriveImport.cancelImport(user.id);
+    return { cancelled: true };
+  }
+
+  @Get('onedrive/sources')
+  listOneDriveSources(@CurrentUser() user: AuthenticatedUser) {
+    return this.onedriveImport.listSources(user.id);
+  }
+
+  @Post('onedrive/sources/:id/resync')
+  resyncOneDriveSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.onedriveImport.resyncSource(user.id, id);
+  }
+
+  @Delete('onedrive/sources/:id')
+  async deleteOneDriveSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.onedriveImport.deleteSource(user.id, id);
     return { success: true };
   }
 }
