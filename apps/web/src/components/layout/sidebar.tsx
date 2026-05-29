@@ -35,8 +35,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { LanguageSelector } from "@/components/language-selector";
 import { NotificationsPopover } from "@/components/notifications-popover";
 import { useSidebar } from "@/hooks/use-sidebar";
+import { useLanguage } from "@/lib/i18n";
 import { logout } from "@/lib/api";
 
 function getInitials(name: string | null | undefined): string {
@@ -57,6 +59,7 @@ export const SidebarContent = ({
   forceCollapsed?: boolean;
 }) => {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const pathname = usePathname();
   const { collapsed: providerCollapsed, toggle } = useSidebar();
   const collapsed = forceCollapsed || providerCollapsed;
@@ -71,17 +74,14 @@ export const SidebarContent = ({
   const ThemeIcon = isDark ? Sun : Moon;
   const themeLabel = mounted
     ? isDark
-      ? "Switch to light mode"
-      : "Switch to dark mode"
-    : "Toggle theme";
-  // Visible button text mirrors the action: in dark mode the click goes to
-  // light, so the label reads "Light Mode". Falls back to a neutral label
-  // until mounted so SSR/CSR don't disagree.
+      ? t("sidebar.switchToLight")
+      : t("sidebar.switchToDark")
+    : t("sidebar.toggleTheme");
   const themeButtonText = mounted
     ? isDark
-      ? "Light Mode"
-      : "Dark Mode"
-    : "Light / Dark";
+      ? t("sidebar.lightMode")
+      : t("sidebar.darkMode")
+    : t("sidebar.toggleTheme");
   const toggleTheme = () => setTheme(isDark ? "light" : "dark");
 
   const activeClass = "text-text-1 hover:text-text-1";
@@ -94,18 +94,18 @@ export const SidebarContent = ({
 
   const navGroups: NavGroup[] = [
     [
-      { href: "/", label: "Ongoing Projects", icon: FolderOpen, match: "exact" },
-      { href: "/compare-models", label: "Model Arena", icon: Layers, match: "exact" },
-      { href: "/guardrails", label: "Guardrails", icon: Shield, match: "exact" },
-      { href: "/observability", label: "Observability", icon: Activity, match: "exact" },
-      { href: "/teams", label: "Team Management", icon: Users, match: "prefix" },
+      { href: "/", label: t("sidebar.nav.ongoingProjects"), icon: FolderOpen, match: "exact" },
+      { href: "/compare-models", label: t("sidebar.nav.modelArena"), icon: Layers, match: "exact" },
+      { href: "/guardrails", label: t("sidebar.nav.guardrails"), icon: Shield, match: "exact" },
+      { href: "/observability", label: t("sidebar.nav.observability"), icon: Activity, match: "exact" },
+      { href: "/teams", label: t("sidebar.nav.teamManagement"), icon: Users, match: "prefix" },
     ],
     [
-      { href: "/tender-ai", label: "Tender AI", icon: MessageSquare, match: "prefix" },
-      { href: "/knowledge-core", label: "Knowledge Core", icon: Database, match: "prefix" },
+      { href: "/tender-ai", label: t("sidebar.nav.tenderAI"), icon: MessageSquare, match: "prefix" },
+      { href: "/knowledge-core", label: t("sidebar.nav.knowledgeCore"), icon: Database, match: "prefix" },
     ],
     [
-      { href: "/resources", label: "Resources & Learning", icon: BookOpen, match: "prefix" },
+      { href: "/resources", label: t("sidebar.nav.resources"), icon: BookOpen, match: "prefix" },
     ],
   ];
 
@@ -116,7 +116,7 @@ export const SidebarContent = ({
     <Button
       asChild
       className="h-[48px] w-[40px] bg-primary-6 p-0 hover:bg-primary-7 text-white"
-      title="New Project"
+      title={t("sidebar.newProject")}
     >
       <Link href="/projects/create">
         <Plus className="h-4 w-4 shrink-0" />
@@ -126,11 +126,11 @@ export const SidebarContent = ({
     <Button
       asChild
       className="h-[48px] w-full gap-2 bg-primary-6 hover:bg-primary-7 text-[16px] font-normal"
-      title="New Project"
+      title={t("sidebar.newProject")}
     >
       <Link href="/projects/create">
         <Plus className="h-4 w-4 shrink-0" />
-        <span>New Project</span>
+        <span>{t("sidebar.newProject")}</span>
       </Link>
     </Button>
   );
@@ -141,7 +141,7 @@ export const SidebarContent = ({
       {showToggle && (
         <button
           onClick={toggle}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? t("sidebar.expand") : t("sidebar.collapse")}
           className="absolute top-[50px] -right-3 -translate-y-1/2 z-30 flex h-6 w-6 items-center justify-center rounded-lg border border-border-2 bg-white text-text-3 cursor-pointer transition-colors hover:bg-bg-1 hover:text-text-2"
         >
           {collapsed ? (
@@ -188,7 +188,7 @@ export const SidebarContent = ({
         ) : (
           <DisabledReasonTooltip
             disabled
-            reason="Not available for basic users"
+            reason={t("sidebar.noCreateTooltip")}
             className={collapsed ? undefined : "block w-full"}
           >
             {collapsed ? (
@@ -204,7 +204,7 @@ export const SidebarContent = ({
                 disabled
               >
                 <Plus className="h-4 w-4 shrink-0" />
-                <span>New Project</span>
+                <span>{t("sidebar.newProject")}</span>
               </Button>
             )}
           </DisabledReasonTooltip>
@@ -268,13 +268,14 @@ export const SidebarContent = ({
             collapsed ? "" : "w-full"
           }`}
         >
+          <LanguageSelector collapsed={collapsed} />
           <NotificationsPopover>
           {({ unreadCount }) =>
             collapsed ? (
               <Button
                 variant="ghost"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label={t("sidebar.notifications")}
+                title={t("sidebar.notifications")}
                 className="h-[40px] w-[40px] p-0 justify-center text-text-2 hover:text-text-1"
               >
                 <span className="relative">
@@ -290,8 +291,8 @@ export const SidebarContent = ({
               <Button
                 variant="ghost"
                 size="nav"
-                aria-label="Notifications"
-                title="Notifications"
+                aria-label={t("sidebar.notifications")}
+                title={t("sidebar.notifications")}
                 className="w-full cursor-pointer justify-start gap-3 font-normal text-text-2 hover:text-text-1"
               >
                 <span className="relative">
@@ -302,7 +303,7 @@ export const SidebarContent = ({
                     </span>
                   )}
                 </span>
-                <span>Notifications</span>
+                <span>{t("sidebar.notifications")}</span>
               </Button>
             )
           }
@@ -339,7 +340,7 @@ export const SidebarContent = ({
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                title="Open user menu"
+                title={t("sidebar.openUserMenu")}
                 className={`flex items-center gap-3 overflow-hidden rounded-md transition-colors hover:bg-accent cursor-pointer ${collapsed ? "" : "flex-1"}`}
               >
                 <Avatar
@@ -388,7 +389,7 @@ export const SidebarContent = ({
               <DropdownMenuItem asChild>
                 <Link href="/teams?tab=my-account" className="cursor-pointer">
                   <UserIcon className="mr-2 h-4 w-4" />
-                  My account
+                  {t("sidebar.myAccount")}
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -397,7 +398,7 @@ export const SidebarContent = ({
             <button
               onClick={() => logout()}
               className="cursor-pointer rounded-md p-1.5 text-text-3 transition-colors hover:bg-accent hover:text-text-2"
-              title="Sign out"
+              title={t("sidebar.signOut")}
             >
               <LogOut className="h-4 w-4" />
             </button>

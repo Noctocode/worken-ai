@@ -10,6 +10,8 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { MODULES, type Difficulty, type Module } from "@/lib/learn-academy-data";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 const DIFFICULTY_STYLES: Record<Difficulty, string> = {
   Beginner: "bg-primary-1 text-primary-7",
@@ -17,52 +19,59 @@ const DIFFICULTY_STYLES: Record<Difficulty, string> = {
   Advanced: "bg-danger-1 text-danger-6",
 };
 
+const DIFFICULTY_KEYS: Record<Difficulty, TranslationKey> = {
+  Beginner: "learnAcademy.difBeginner",
+  Intermediate: "learnAcademy.difIntermediate",
+  Advanced: "learnAcademy.difAdvanced",
+};
+
 interface Stat {
   icon: typeof TrendingUp;
-  label: string;
+  labelKey: TranslationKey;
   value: string;
-  caption: string;
+  captionKey: TranslationKey;
 }
 
 const STATS: Stat[] = [
   {
     icon: TrendingUp,
-    label: "Progress",
+    labelKey: "learnAcademy.progress",
     value: "48%",
-    caption: "Overall completion",
+    captionKey: "learnAcademy.overallCompletion",
   },
   {
     icon: BookOpen,
-    label: "Modules",
+    labelKey: "learnAcademy.modules",
     value: "5",
-    caption: "Available courses",
+    captionKey: "learnAcademy.availableCourses",
   },
   {
     icon: Clock,
-    label: "Time Spent",
+    labelKey: "learnAcademy.timeSpent",
     value: "12.5h",
-    caption: "This month",
+    captionKey: "learnAcademy.thisMonth",
   },
   {
     icon: CheckCircle2,
-    label: "Completed",
+    labelKey: "learnAcademy.completed",
     value: "1",
-    caption: "Modules finished",
+    captionKey: "learnAcademy.modulesFinished",
   },
 ];
 
 function StatCard({ stat }: { stat: Stat }) {
+  const { t } = useLanguage();
   const Icon = stat.icon;
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-border-2 bg-bg-white p-5">
       <div className="flex items-center justify-between">
         <Icon className="h-5 w-5 text-text-3" strokeWidth={2} />
         <span className="text-[11px] font-medium uppercase tracking-wide text-text-2">
-          {stat.label}
+          {t(stat.labelKey)}
         </span>
       </div>
       <span className="text-2xl font-bold text-text-1">{stat.value}</span>
-      <span className="text-xs text-text-2">{stat.caption}</span>
+      <span className="text-xs text-text-2">{t(stat.captionKey)}</span>
     </div>
   );
 }
@@ -79,6 +88,7 @@ function ProgressBar({ value }: { value: number }) {
 }
 
 function ModuleCard({ module: m }: { module: Module }) {
+  const { t } = useLanguage();
   const Icon = m.icon;
   return (
     <Link
@@ -92,7 +102,7 @@ function ModuleCard({ module: m }: { module: Module }) {
         <span
           className={`inline-flex items-center rounded px-2.5 py-1 text-[11px] font-semibold ${DIFFICULTY_STYLES[m.difficulty]}`}
         >
-          {m.difficulty}
+          {t(DIFFICULTY_KEYS[m.difficulty])}
         </span>
       </div>
 
@@ -101,7 +111,7 @@ function ModuleCard({ module: m }: { module: Module }) {
 
       <div className="flex flex-col gap-1.5">
         <div className="flex items-center justify-between">
-          <span className="text-xs text-text-2">Progress</span>
+          <span className="text-xs text-text-2">{t("learnAcademy.progress")}</span>
           <span className="text-xs font-semibold text-text-1">{m.progress}%</span>
         </div>
         <ProgressBar value={m.progress} />
@@ -115,16 +125,17 @@ function ModuleCard({ module: m }: { module: Module }) {
           </span>
           <span className="inline-flex items-center gap-1.5">
             <ListOrdered className="h-3.5 w-3.5" strokeWidth={2} />
-            {m.lessons} lessons
+            {m.lessons} {t("learnAcademy.lessons")}
           </span>
         </div>
-        <span className="text-[11px] text-text-2">Last: {m.lastAt}</span>
+        <span className="text-[11px] text-text-2">{t("learnAcademy.last")} {m.lastAt}</span>
       </div>
     </Link>
   );
 }
 
 export default function LearnAcademyPage() {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
@@ -132,24 +143,23 @@ export default function LearnAcademyPage() {
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Resources
+        {t("learnAcademy.backToResources")}
       </Link>
 
       {/* Intro card */}
       <section className="flex flex-col gap-2 rounded-lg border border-border-2 bg-bg-white p-6">
         <h2 className="text-xl font-bold text-text-1">
-          Professional Development
+          {t("learnAcademy.proDev")}
         </h2>
         <p className="text-sm text-text-2">
-          Master enterprise prompt engineering through structured learning
-          modules and hands-on exercises
+          {t("learnAcademy.proDevDesc")}
         </p>
       </section>
 
       {/* Stats */}
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {STATS.map((s) => (
-          <StatCard key={s.label} stat={s} />
+          <StatCard key={s.labelKey} stat={s} />
         ))}
       </section>
 

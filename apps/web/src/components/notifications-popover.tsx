@@ -31,6 +31,7 @@ import {
   type Notification,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Type-keyed icon picker. Kept inline because the union is small and
@@ -90,13 +91,14 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
  * caller is the list row below.
  */
 function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
+  const { t } = useLanguage();
   if (!state || state === "pending") return null;
   const label =
     state === "accepted"
-      ? "Accepted"
+      ? t("notifPop.accepted")
       : state === "declined"
-        ? "Declined"
-        : "Expired";
+        ? t("notifPop.declined")
+        : t("notifPop.expired");
   const tone =
     state === "accepted"
       ? "bg-success-1 text-success-7"
@@ -115,17 +117,20 @@ function InviteStateBadge({ state }: { state: Notification["inviteState"] }) {
   );
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const sec = Math.floor(diff / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min}m ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  const day = Math.floor(hr / 24);
-  if (day < 7) return `${day}d ago`;
-  return new Date(iso).toLocaleDateString();
+function useRelativeTime() {
+  const { t } = useLanguage();
+  return (iso: string): string => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return t("notifPop.justNow");
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}${t("notifPop.mAgo")}`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}${t("notifPop.hAgo")}`;
+    const day = Math.floor(hr / 24);
+    if (day < 7) return `${day}${t("notifPop.dAgo")}`;
+    return new Date(iso).toLocaleDateString();
+  };
 }
 
 interface NotificationsPopoverProps {
@@ -147,6 +152,8 @@ interface NotificationsPopoverProps {
  * mounted so the badge stays fresh without a websocket.
  */
 export function NotificationsPopover({ children }: NotificationsPopoverProps) {
+  const { t } = useLanguage();
+  const relativeTime = useRelativeTime();
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
 
@@ -198,26 +205,26 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
         // when nothing was actually accepted on this click.
         const label =
           result.terminalState === "expired"
-            ? "This invitation has expired."
+            ? t("notifPop.invExpired")
             : result.terminalState === "declined"
-              ? "This invitation has been declined."
-              : "This invitation was already accepted.";
+              ? t("notifPop.invAlreadyDecl")
+              : t("notifPop.invAlreadyAcc");
         toast.message(label);
       } else {
-        toast.success("Invitation accepted.");
+        toast.success(t("notifPop.invAccepted"));
       }
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to accept."),
+      toast.error(err.message || t("notifPop.failedAccept")),
   });
   const declineMutation = useMutation({
     mutationFn: (id: string) => declineNotification(id),
     onSuccess: () => {
       invalidate();
-      toast.success("Invitation declined.");
+      toast.success(t("notifPop.invDeclined"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to decline."),
+      toast.error(err.message || t("notifPop.failedDecline")),
   });
   const dismissMutation = useMutation({
     mutationFn: (id: string) => dismissNotification(id),
@@ -258,14 +265,14 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
       >
         <header className="flex items-center justify-between border-b border-border-2 px-3 py-2">
           <span className="text-[13px] font-semibold text-text-1">
-            Notifications
+            {t("notifPop.title")}
           </span>
           <Link
             href="/notifications"
             className="text-[12px] text-primary-6 hover:text-primary-7"
             onClick={() => setOpen(false)}
           >
-            View all
+            {t("notifPop.viewAll")}
           </Link>
         </header>
 
@@ -273,11 +280,11 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
           {isLoading ? (
             <div className="flex items-center justify-center px-3 py-8 text-[12px] text-text-3">
               <Loader2 className="mr-2 h-3 w-3 animate-spin" />
-              Loading…
+              {t("notifPop.loading")}
             </div>
           ) : items.length === 0 ? (
             <div className="px-3 py-8 text-center text-[12px] text-text-3">
-              You&rsquo;re all caught up.
+              {t("notifPop.allCaughtUp")}
             </div>
           ) : (
             <ul className="divide-y divide-border-2">
@@ -322,7 +329,7 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                             onClick={() => acceptMutation.mutate(n.id)}
                             className="cursor-pointer rounded bg-primary-6 px-2 py-1 text-[12px] font-medium text-white hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Accept
+                            {t("notifPop.accept")}
                           </button>
                           <button
                             type="button"
@@ -330,7 +337,7 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                             onClick={() => declineMutation.mutate(n.id)}
                             className="cursor-pointer rounded border border-border-3 px-2 py-1 text-[12px] font-medium text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
                           >
-                            Decline
+                            {t("notifPop.decline")}
                           </button>
                         </div>
                       )}
@@ -342,8 +349,8 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                     {n.readAt == null && (
                       <button
                         type="button"
-                        title="Mark read"
-                        aria-label="Mark read"
+                        title={t("notifPop.markRead")}
+                        aria-label={t("notifPop.markRead")}
                         onClick={() => markReadMutation.mutate(n.id)}
                         className="flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
                       >
@@ -352,8 +359,8 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                     )}
                     <button
                       type="button"
-                      title="Dismiss"
-                      aria-label="Dismiss"
+                      title={t("notifPop.dismiss")}
+                      aria-label={t("notifPop.dismiss")}
                       onClick={() => dismissMutation.mutate(n.id)}
                       className="flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
                     >

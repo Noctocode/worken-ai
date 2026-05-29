@@ -15,6 +15,7 @@ import { ThemeProvider } from "next-themes";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { fetchCurrentUser, type User } from "@/lib/api";
+import { LanguageProvider } from "@/lib/i18n";
 
 interface AuthContextValue {
   user: User | null | undefined;
@@ -50,6 +51,7 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <LanguageProvider>
       <ThemeProvider
         attribute="class"
         defaultTheme="system"
@@ -59,6 +61,7 @@ export function Providers({ children }: { children: ReactNode }) {
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster position="top-right" richColors closeButton />
       </ThemeProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 }

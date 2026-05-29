@@ -72,6 +72,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
+import { useLanguage } from "@/lib/i18n";
 
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
@@ -114,11 +115,12 @@ function IngestionStatusBadge({
   status: "pending" | "processing" | "done" | "failed" | "untrained";
   error?: string | null;
 }) {
+  const { t } = useLanguage();
   if (status === "done") {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success-7">
         <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
-        In context
+        {t("knowledgeCore.inContext")}
       </span>
     );
   }
@@ -129,7 +131,7 @@ function IngestionStatusBadge({
         title={error ?? "Could not extract searchable text from this file."}
       >
         <AlertTriangle className="h-3 w-3" strokeWidth={2} />
-        Skipped
+        {t("knowledgeCore.skipped")}
       </span>
     );
   }
@@ -137,17 +139,17 @@ function IngestionStatusBadge({
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title="Excluded from context — Include in context to make this file searchable again."
+        title={t("knowledgeMain.titleExcluded")}
       >
         <Unplug className="h-3 w-3" strokeWidth={2} />
-        Excluded
+        {t("knowledgeCore.excluded")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
       <Loader2 className="h-3 w-3 animate-spin" strokeWidth={2} />
-      {status === "processing" ? "Adding" : "Queued"}
+      {status === "processing" ? t("knowledgeCore.adding") : t("knowledgeCore.queued")}
     </span>
   );
 }
@@ -168,30 +170,33 @@ function VisibilityBadge({
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
 }) {
+  const { t } = useLanguage();
   if (visibility === "admins") {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7"
-        title="Only admins can see this file in chat / arena."
+        title={t("knowledgeMain.titleAdminsOnly")}
       >
         <Shield className="h-3 w-3" strokeWidth={2} />
-        Admins only
+        {t("knowledgeCore.adminsOnly")}
       </span>
     );
   }
   if (visibility === "teams") {
-    const names = teams.map((t) => t.name).join(", ");
+    const names = teams.map((tm) => tm.name).join(", ");
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Only members of these teams can see this file in chat / arena: ${names}.`
-            : "Visibility is set to specific teams, but no team is linked yet — no one can see this file."
+            ? t("knowledgeMain.titleTeamsList").replace("{names}", names)
+            : t("knowledgeMain.titleNoTeams")
         }
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0 ? `Teams (${teams.length})` : "Teams"}
+        {teams.length > 0
+          ? t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))
+          : t("knowledgeMain.labelTeams")}
       </span>
     );
   }
@@ -202,27 +207,30 @@ function VisibilityBadge({
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
         title={
           names.length > 0
-            ? `Surfaced only in the chat of these projects: ${names}.`
-            : "Visibility is set to specific projects, but none is linked yet — no one can see this file."
+            ? t("knowledgeMain.titleProjectsList").replace("{names}", names)
+            : t("knowledgeMain.titleNoProjects")
         }
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0 ? `Projects (${projects.length})` : "Project"}
+        {projects.length > 0
+          ? t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))
+          : t("knowledgeMain.labelProject")}
       </span>
     );
   }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title="Every company user can see this file in chat / arena."
+      title={t("knowledgeMain.titleCompanyWide")}
     >
       <Users className="h-3 w-3" strokeWidth={2} />
-      Everyone
+      {t("knowledgeCore.everyone")}
     </span>
   );
 }
 
 export default function KnowledgeCorePage() {
+  const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
   const [query, setQuery] = useState("");
@@ -280,9 +288,9 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       setNewFolderOpen(false);
       setNewFolderName("");
-      toast.success("Folder created.");
+      toast.success(t("knowledgeMain.toastFolderCreated"));
     },
-    onError: () => toast.error("Failed to create folder."),
+    onError: () => toast.error(t("knowledgeMain.toastFolderCreateFailed")),
   });
 
   const deleteMutation = useMutation({
@@ -290,9 +298,9 @@ export default function KnowledgeCorePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("Folder deleted.");
+      toast.success(t("knowledgeMain.toastFolderDeleted"));
     },
-    onError: () => toast.error("Failed to delete folder."),
+    onError: () => toast.error(t("knowledgeMain.toastFolderDeleteFailed")),
   });
 
   const [moveFileId, setMoveFileId] = useState<string | null>(null);
@@ -307,9 +315,9 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       setMoveFileId(null);
       setMoveTargetId("");
-      toast.success("File moved.");
+      toast.success(t("knowledgeMain.toastFileMoved"));
     },
-    onError: () => toast.error("Failed to move file."),
+    onError: () => toast.error(t("knowledgeMain.toastFileMoveFailed")),
   });
 
   const deleteFileMutation = useMutation({
@@ -317,9 +325,9 @@ export default function KnowledgeCorePage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
-      toast.success("File deleted.");
+      toast.success(t("knowledgeMain.toastFileDeleted"));
     },
-    onError: () => toast.error("Failed to delete file."),
+    onError: () => toast.error(t("knowledgeMain.toastFileDeleteFailed")),
   });
 
   // Re-run chunk + embed on a single file so it's available to chat /
@@ -333,10 +341,10 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("Adding to context.");
+      toast.success(t("knowledgeMain.toastAddingContext"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to include this file in context."),
+      toast.error(err.message || t("knowledgeMain.toastIncludeFailed")),
   });
 
   // Inverse of "Include in context": drop the file's embeddings so
@@ -350,10 +358,10 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
-      toast.success("Excluded from context.");
+      toast.success(t("knowledgeMain.toastExcludedContext"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to exclude this file from context."),
+      toast.error(err.message || t("knowledgeMain.toastExcludeFailed")),
   });
 
   // Admin-only PATCH to flip a file's visibility between 'all' and
@@ -375,12 +383,12 @@ export default function KnowledgeCorePage() {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folder"] });
       toast.success(
         visibility === "admins"
-          ? "File is now visible only to admins."
-          : "File is now visible to everyone.",
+          ? t("knowledgeMain.toastAdminsOnlyDone")
+          : t("knowledgeMain.toastEveryoneDone"),
       );
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to update visibility."),
+      toast.error(err.message || t("knowledgeMain.toastVisibilityFailed")),
   });
 
   const [deleteFileId, setDeleteFileId] = useState<string | null>(null);
@@ -462,11 +470,11 @@ export default function KnowledgeCorePage() {
     // but a client guard keeps the dialog from collapsing on a 400
     // with stale staged files.
     if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error("Pick at least one team for Teams visibility.");
+      toast.error(t("knowledgeMain.toastNeedTeams"));
       return;
     }
     if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error("Pick at least one project for Project visibility.");
+      toast.error(t("knowledgeMain.toastNeedProjects"));
       return;
     }
     setUploading(true);
@@ -494,7 +502,7 @@ export default function KnowledgeCorePage() {
       setStagedTeamIds([]);
       setStagedProjectIds([]);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to upload files.");
+      toast.error(err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"));
     } finally {
       setUploading(false);
     }
@@ -532,7 +540,7 @@ export default function KnowledgeCorePage() {
     ]);
     if (result.uploaded.length > 0) {
       toast.success(
-        `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+        t("knowledgeMain.toastUploaded").replace("{n}", String(result.uploaded.length)),
       );
     }
     if (result.duplicates.length > 0) {
@@ -541,12 +549,14 @@ export default function KnowledgeCorePage() {
       // "X is already in KC" but X isn't in the list — confusing.
       const titleForOne = (d: (typeof result.duplicates)[number]) =>
         d.existing.name && d.existing.name !== d.name
-          ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
-          : `"${d.name}" is already in your Knowledge Core.`;
+          ? t("knowledgeMain.toastDupMatchesOne")
+              .replace("{name}", d.name)
+              .replace("{existing}", d.existing.name)
+          : t("knowledgeMain.toastDupExistsOne").replace("{name}", d.name);
       toast.info(
         result.duplicates.length === 1
           ? titleForOne(result.duplicates[0])
-          : `${result.duplicates.length} file(s) were already in your Knowledge Core.`,
+          : t("knowledgeMain.toastDupExistsMany").replace("{n}", String(result.duplicates.length)),
         {
           description: result.duplicates
             .map((d) =>
@@ -577,7 +587,7 @@ export default function KnowledgeCorePage() {
     const ctx = pendingConflicts;
     setPendingConflicts(null);
     if (filesToResend.length === 0) {
-      if (skippedCount > 0) toast.info(`Skipped ${skippedCount} file(s).`);
+      if (skippedCount > 0) toast.info(t("knowledgeMain.toastSkipped").replace("{n}", String(skippedCount)));
       return;
     }
     setUploading(true);
@@ -599,18 +609,18 @@ export default function KnowledgeCorePage() {
       ]);
       if (result.uploaded.length > 0) {
         toast.success(
-          `Uploaded ${result.uploaded.length} file(s) to All Files.`,
+          t("knowledgeMain.toastUploaded").replace("{n}", String(result.uploaded.length)),
         );
       }
       if (skippedCount > 0) {
-        toast.info(`Skipped ${skippedCount} file(s).`);
+        toast.info(t("knowledgeMain.toastSkipped").replace("{n}", String(skippedCount)));
       }
       // If the BE still reports conflicts here, the user kept some
       // as 'skip' — silent on this branch because the toast above
       // already covers the skip count.
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to upload files.",
+        err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"),
       );
     } finally {
       setUploading(false);
@@ -689,7 +699,7 @@ export default function KnowledgeCorePage() {
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search folders and files..."
+          placeholder={t("knowledgeCore.search")}
           className="h-10 pl-9 placeholder:text-text-3"
         />
       </div>
@@ -705,10 +715,10 @@ export default function KnowledgeCorePage() {
         </span>
         <div className="flex flex-col items-center gap-1 text-center">
           <p className="text-[16px] font-medium text-text-1">
-            Drag and drop files here, or click to browse
+            {t("knowledgeCore.dragDrop")}
           </p>
           <p className="text-[13px] text-text-3">
-            Supports PDF, DOCX, XLS, XLSX up to 50MB per file
+            {t("knowledgeCore.supports")}
           </p>
         </div>
         <label>
@@ -720,7 +730,7 @@ export default function KnowledgeCorePage() {
             onChange={handleBrowse}
           />
           <span className="inline-flex cursor-pointer items-center rounded border border-border-2 px-4 py-2 text-[13px] font-medium text-text-1 transition-colors hover:bg-bg-1">
-            Browse Files
+            {t("knowledgeCore.browseFiles")}
           </span>
         </label>
       </div>
@@ -737,14 +747,14 @@ export default function KnowledgeCorePage() {
       {/* Folders */}
       <section>
         <div className="flex items-center justify-between">
-          <h2 className="text-[18px] font-bold text-text-1">Folders</h2>
+          <h2 className="text-[18px] font-bold text-text-1">{t("knowledgeCore.folders")}</h2>
           <Button
             onClick={() => setNewFolderOpen(true)}
             variant="outline"
             className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
           >
             <Plus className="h-3.5 w-3.5" />
-            New Folder
+            {t("knowledgeCore.newFolder")}
           </Button>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -780,7 +790,7 @@ export default function KnowledgeCorePage() {
                         className="text-danger-6 focus:text-danger-6"
                       >
                         <Trash2 className="mr-2 h-3.5 w-3.5" />
-                        Delete
+                        {t("common.delete")}
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -799,7 +809,7 @@ export default function KnowledgeCorePage() {
           ))}
           {filteredFolders.length === 0 && !foldersLoading && (
             <p className="col-span-full py-8 text-center text-[13px] text-text-3">
-              {query ? "No folders match your search." : "No folders yet. Create one to get started."}
+              {query ? t("knowledgeCore.noFoldersMatch") : t("knowledgeCore.noFolders")}
             </p>
           )}
         </div>
@@ -807,7 +817,7 @@ export default function KnowledgeCorePage() {
 
       {/* Recent Files */}
       <section className="flex flex-col gap-6">
-        <h2 className="text-[18px] font-bold text-text-1">Recent Files</h2>
+        <h2 className="text-[18px] font-bold text-text-1">{t("knowledgeCore.recentFiles")}</h2>
         <div className="flex flex-col gap-3">
           {pagedFiles.map((file) => (
             <div
@@ -858,7 +868,7 @@ export default function KnowledgeCorePage() {
                       rel="noopener noreferrer"
                     >
                       <Download className="mr-2 h-3.5 w-3.5" />
-                      Download
+                      {t("knowledgeCore.download")}
                     </a>
                   </DropdownMenuItem>
                   <DropdownMenuItem
@@ -868,7 +878,7 @@ export default function KnowledgeCorePage() {
                     }}
                   >
                     <FolderInput className="mr-2 h-3.5 w-3.5" />
-                    Move to...
+                    {t("knowledgeCore.moveTo")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => reingestMutation.mutate(file.id)}
@@ -878,7 +888,7 @@ export default function KnowledgeCorePage() {
                     }
                   >
                     <RotateCw className="mr-2 h-3.5 w-3.5" />
-                    Include in context
+                    {t("knowledgeCore.includeContext")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => untrainMutation.mutate(file.id)}
@@ -889,7 +899,7 @@ export default function KnowledgeCorePage() {
                     }
                   >
                     <Unplug className="mr-2 h-3.5 w-3.5" />
-                    Exclude from context
+                    {t("knowledgeCore.excludeContext")}
                   </DropdownMenuItem>
                   {isAdmin && (
                     <DropdownMenuItem
@@ -904,12 +914,12 @@ export default function KnowledgeCorePage() {
                       {file.visibility === "admins" ? (
                         <>
                           <Users className="mr-2 h-3.5 w-3.5" />
-                          Make visible to everyone
+                          {t("knowledgeCore.makeVisibleAll")}
                         </>
                       ) : (
                         <>
                           <Shield className="mr-2 h-3.5 w-3.5" />
-                          Make admin-only
+                          {t("knowledgeCore.makeAdminOnly")}
                         </>
                       )}
                     </DropdownMenuItem>
@@ -923,7 +933,7 @@ export default function KnowledgeCorePage() {
                     disabled={file.ingestionStatus === "processing"}
                   >
                     <Settings2 className="mr-2 h-3.5 w-3.5" />
-                    Change visibility…
+                    {t("knowledgeCore.changeVisibility")}
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -931,7 +941,7 @@ export default function KnowledgeCorePage() {
                     className="text-danger-6 focus:text-danger-6"
                   >
                     <Trash2 className="mr-2 h-3.5 w-3.5" />
-                    Delete
+                    {t("common.delete")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -939,7 +949,7 @@ export default function KnowledgeCorePage() {
           ))}
           {filteredFiles.length === 0 && !filesLoading && (
             <p className="py-8 text-center text-[13px] text-text-3">
-              {query ? "No files match your search." : "No files uploaded yet."}
+              {query ? t("knowledgeCore.search") : t("knowledgeCore.noFiles")}
             </p>
           )}
         </div>
@@ -954,12 +964,12 @@ export default function KnowledgeCorePage() {
       <Dialog open={newFolderOpen} onOpenChange={setNewFolderOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>New Folder</DialogTitle>
+            <DialogTitle>{t("knowledgeCore.newFolder")}</DialogTitle>
           </DialogHeader>
           <Input
             value={newFolderName}
             onChange={(e) => setNewFolderName(e.target.value)}
-            placeholder="Folder name"
+            placeholder={t("knowledgeCore.folderName")}
             className="h-10"
             onKeyDown={(e) => {
               if (e.key === "Enter" && newFolderName.trim()) {
@@ -973,14 +983,14 @@ export default function KnowledgeCorePage() {
               onClick={() => setNewFolderOpen(false)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => createMutation.mutate(newFolderName)}
               disabled={!newFolderName.trim() || createMutation.isPending}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {createMutation.isPending ? "Creating..." : "Create"}
+              {createMutation.isPending ? t("knowledgeCore.creating") : t("knowledgeCore.create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -993,9 +1003,9 @@ export default function KnowledgeCorePage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Folder</DialogTitle>
+            <DialogTitle>{t("knowledgeCore.deleteFolder")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
+              {t("knowledgeCore.deleteFolderConfirm")}{" "}
               <strong>{deleteFolderName}</strong> and all its files? This
               action cannot be undone.
             </DialogDescription>
@@ -1006,7 +1016,7 @@ export default function KnowledgeCorePage() {
               onClick={() => setDeleteFolderId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1014,7 +1024,7 @@ export default function KnowledgeCorePage() {
               disabled={deleteMutation.isPending}
               className="cursor-pointer"
             >
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1027,14 +1037,14 @@ export default function KnowledgeCorePage() {
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Move File</DialogTitle>
+            <DialogTitle>{t("knowledgeCore.moveFile")}</DialogTitle>
           </DialogHeader>
           <p className="text-[13px] text-text-2">
             Move <strong>{moveFileName}</strong> to:
           </p>
           <Select value={moveTargetId} onValueChange={setMoveTargetId}>
             <SelectTrigger className="w-full cursor-pointer data-[size=default]:h-10">
-              <SelectValue placeholder="Select folder" />
+              <SelectValue placeholder={t("knowledgeCore.selectFolder")} />
             </SelectTrigger>
             <SelectContent>
               {folders.map((f) => (
@@ -1050,14 +1060,14 @@ export default function KnowledgeCorePage() {
               onClick={() => setMoveFileId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => moveMutation.mutate()}
               disabled={!moveTargetId || moveMutation.isPending}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {moveMutation.isPending ? "Moving..." : "Move"}
+              {moveMutation.isPending ? t("knowledgeCore.moving") : t("knowledgeCore.move")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1071,10 +1081,15 @@ export default function KnowledgeCorePage() {
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>
-              Upload {stagedFiles.length} file{stagedFiles.length !== 1 ? "s" : ""}
+              {(stagedFiles.length === 1
+                ? t("knowledgeMain.uploadTitleOne")
+                : t("knowledgeMain.uploadTitleMany")
+              ).replace("{n}", String(stagedFiles.length))}
             </DialogTitle>
             <DialogDescription>
-              These files will be uploaded to the <strong>All Files</strong> folder.
+              {stagedFiles.length === 1
+                ? t("knowledgeMain.uploadDescOne")
+                : t("knowledgeMain.uploadDescMany").replace("{n}", String(stagedFiles.length))}
             </DialogDescription>
           </DialogHeader>
           <div className="flex max-h-[300px] flex-col gap-2 overflow-y-auto">
@@ -1110,7 +1125,7 @@ export default function KnowledgeCorePage() {
               the active choice; nothing else changes the layout. */}
           <div className="flex flex-col gap-1.5 pt-1">
             <label className="text-[12px] font-medium text-text-1">
-              Visibility
+              {t("knowledgeCore.visibility")}
             </label>
             <Select
               value={stagedVisibility}
@@ -1123,12 +1138,12 @@ export default function KnowledgeCorePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Everyone in the company</SelectItem>
+                <SelectItem value="all">{t("onboarding.step6.visibilityAll")}</SelectItem>
                 {isAdmin && (
-                  <SelectItem value="admins">Admins only</SelectItem>
+                  <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
-                <SelectItem value="teams">Specific teams…</SelectItem>
-                <SelectItem value="project">Specific project…</SelectItem>
+                <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
+                <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1150,7 +1165,7 @@ export default function KnowledgeCorePage() {
           {stagedVisibility === "teams" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
-                Teams with access
+                {t("knowledgeCore.teamsWithAccess")}
               </label>
               {userTeams.length === 0 ? (
                 <p className="text-[11px] text-text-3">
@@ -1159,11 +1174,11 @@ export default function KnowledgeCorePage() {
                 </p>
               ) : (
                 <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
-                  {userTeams.map((t) => {
-                    const checked = stagedTeamIds.includes(t.id);
+                  {userTeams.map((tm) => {
+                    const checked = stagedTeamIds.includes(tm.id);
                     return (
                       <label
-                        key={t.id}
+                        key={tm.id}
                         className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
                       >
                         <input
@@ -1173,13 +1188,13 @@ export default function KnowledgeCorePage() {
                           onChange={() => {
                             setStagedTeamIds((prev) =>
                               checked
-                                ? prev.filter((id) => id !== t.id)
-                                : [...prev, t.id],
+                                ? prev.filter((id) => id !== tm.id)
+                                : [...prev, tm.id],
                             );
                           }}
                           className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
                         />
-                        <span className="truncate">{t.name}</span>
+                        <span className="truncate">{tm.name}</span>
                       </label>
                     );
                   })}
@@ -1196,7 +1211,7 @@ export default function KnowledgeCorePage() {
           {stagedVisibility === "project" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
-                Projects with access
+                {t("knowledgeCore.projectsWithAccess")}
               </label>
               {userProjects.length === 0 ? (
                 <p className="text-[11px] text-text-3">
@@ -1252,14 +1267,14 @@ export default function KnowledgeCorePage() {
               disabled={uploading}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={confirmUpload}
               disabled={uploading || stagedFiles.length === 0}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {uploading ? "Uploading..." : "Upload"}
+              {uploading ? t("knowledgeCore.uploading") : t("knowledgeCore.upload")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1272,7 +1287,7 @@ export default function KnowledgeCorePage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete File</DialogTitle>
+            <DialogTitle>{t("knowledgeCore.deleteFile")}</DialogTitle>
             <DialogDescription>
               Are you sure you want to delete{" "}
               <strong>{deleteFileName}</strong>? This action cannot be undone.
@@ -1284,7 +1299,7 @@ export default function KnowledgeCorePage() {
               onClick={() => setDeleteFileId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1297,7 +1312,7 @@ export default function KnowledgeCorePage() {
               disabled={deleteFileMutation.isPending}
               className="cursor-pointer"
             >
-              {deleteFileMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteFileMutation.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

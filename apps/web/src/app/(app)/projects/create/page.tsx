@@ -36,6 +36,7 @@ import {
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { AGENTS } from "@/lib/agents";
 import { AgentGrid } from "@/components/agent-grid";
+import { useLanguage } from "@/lib/i18n";
 
 /* ─── Member picker (DISABLED) ────────────────────────────────────────────
  * Replaced by the Team selector below: instead of inviting individual members
@@ -138,6 +139,7 @@ import { AgentGrid } from "@/components/agent-grid";
 export default function CreateProjectPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useLanguage();
 
   const [projectName, setProjectName] = useState("");
   const [nameError, setNameError] = useState(false);
@@ -158,7 +160,7 @@ export default function CreateProjectPage() {
 
   // Only teams the user can actually create a project in. Mirrors the BE
   // gate in projects.service.create() (owner|editor required).
-  const manageableTeams = teams?.filter((t) => t.canManage) ?? [];
+  const manageableTeams = teams?.filter((team) => team.canManage) ?? [];
 
   // Auto-select the first manageable team once they load.
   useEffect(() => {
@@ -217,7 +219,7 @@ export default function CreateProjectPage() {
           that breakpoint. md+ keeps the appbar createProject variant
           unchanged. */}
       <div className="md:hidden flex items-center bg-bg-white px-4 py-4 border-b border-bg-1">
-        <h1 className="text-[20px] font-bold text-text-1">Create Project</h1>
+        <h1 className="text-[20px] font-bold text-text-1">{t("projectCreate.title")}</h1>
       </div>
 
       {/* Content */}
@@ -228,11 +230,11 @@ export default function CreateProjectPage() {
             type="text"
             value={projectName}
             onChange={(e) => { setProjectName(e.target.value); setNameError(false); }}
-            placeholder="Project Name"
+            placeholder={t("projectCreate.projectNamePlaceholder")}
             className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError ? "border-danger-5" : "border-border-3"}`}
           />
           {nameError && (
-            <span className="mt-1 text-[13px] text-danger-5">Project name is required</span>
+            <span className="mt-1 text-[13px] text-danger-5">{t("projectCreate.nameRequired")}</span>
           )}
         </div>
 
@@ -240,7 +242,7 @@ export default function CreateProjectPage() {
             Figma 4659:69759; transparent on desktop so the section
             sits flush with the page bg. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full md:max-w-[600px] rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
-          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">Select Project Type</h2>
+          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectType")}</h2>
 
           <div className="flex w-full md:w-auto rounded-lg border border-border-3 overflow-hidden">
             <button
@@ -251,7 +253,7 @@ export default function CreateProjectPage() {
                   : "bg-bg-white text-text-1 hover:bg-bg-1"
               }`}
             >
-              Personal
+              {t("common.personal")}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center">
@@ -259,8 +261,7 @@ export default function CreateProjectPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  A private workspace only you can access. Spend
-                  counts against your personal monthly budget.
+                  {t("projectCreate.personalTooltip")}
                 </TooltipContent>
               </Tooltip>
             </button>
@@ -272,7 +273,7 @@ export default function CreateProjectPage() {
                   : "bg-bg-white text-text-1 hover:bg-bg-1"
               }`}
             >
-              Team
+              {t("common.team")}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span className="inline-flex items-center">
@@ -280,28 +281,16 @@ export default function CreateProjectPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  A shared workspace for a team. Spend counts against
-                  the chosen team&rsquo;s monthly budget and members
-                  can collaborate on prompts and chatbots.
+                  {t("projectCreate.teamTooltip")}
                 </TooltipContent>
               </Tooltip>
             </button>
           </div>
 
           <p className="text-[14px] text-text-2 md:text-center leading-normal">
-            {projectType === "personal" ? (
-              <>
-                A dedicated space to create and test your own AI chatbots.{" "}
-                Design conversations, craft prompts, and iterate privately at
-                your own pace.
-              </>
-            ) : (
-              <>
-                A shared workspace for building AI chat experiences together.{" "}
-                Collaborate on chatbot design, manage shared prompts, and
-                coordinate updates in one place.
-              </>
-            )}
+            {projectType === "personal"
+              ? t("projectCreate.personalDesc")
+              : t("projectCreate.teamDesc")}
           </p>
 
           {/* Team picker — choose which existing team the project belongs to.
@@ -311,11 +300,11 @@ export default function CreateProjectPage() {
             <div className="flex flex-col w-full">
               {manageableTeams.length === 0 ? (
                 <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-3 text-[14px] text-text-2">
-                  You don&apos;t own or co-manage any teams yet.{" "}
+                  {t("projectCreate.noTeams")}{" "}
                   <Link href="/teams" className="text-primary-6 hover:underline">
-                    Create a team first
+                    {t("projectCreate.createTeamFirst")}
                   </Link>{" "}
-                  to add a team project.
+                  {t("projectCreate.noTeamsSuffix")}
                 </div>
               ) : (
                 <Select
@@ -327,23 +316,23 @@ export default function CreateProjectPage() {
                       teamError ? "border-danger-5" : "border-border-2"
                     }`}
                   >
-                    <SelectValue placeholder="Select a team..." />
+                    <SelectValue placeholder={t("projectCreate.selectTeamPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {manageableTeams.map((t) => (
+                    {manageableTeams.map((team) => (
                       <SelectItem
-                        key={t.id}
-                        value={t.id}
+                        key={team.id}
+                        value={team.id}
                         className="cursor-pointer text-[16px]"
                       >
-                        {t.name}
+                        {team.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
               {teamError && (
-                <span className="mt-1 text-[13px] text-danger-5">Please select a team</span>
+                <span className="mt-1 text-[13px] text-danger-5">{t("projectCreate.teamRequired")}</span>
               )}
             </div>
           )}
@@ -351,7 +340,7 @@ export default function CreateProjectPage() {
 
         {/* Select Agent — same card pattern as Select Project Type. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
-          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">Select Agent</h2>
+          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectAgent")}</h2>
           <AgentGrid
             selectedAgentId={selectedAgent}
             onSelect={(agent) => setSelectedAgent(agent.id)}
@@ -368,14 +357,14 @@ export default function CreateProjectPage() {
           className="h-[43px] flex-1 md:flex-none md:w-[97px] rounded-lg border-border-2 text-[16px] text-text-1 cursor-pointer"
           onClick={() => router.back()}
         >
-          Cancel
+          {t("common.cancel")}
         </Button>
         <Button
           className="h-[43px] md:h-10 flex-1 md:flex-none md:w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
           disabled={mutation.isPending || !selectedAgent}
         >
-          {mutation.isPending ? "Creating..." : "Create Project"}
+          {mutation.isPending ? t("projectCreate.creating") : t("projectCreate.title")}
         </Button>
       </div>
     </div>

@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 interface ChatHistorySidebarProps {
   projectId: string;
@@ -16,17 +18,19 @@ interface ChatHistorySidebarProps {
   onNewChat: () => void;
 }
 
-function getRelativeTime(dateStr: string) {
-  const now = Date.now();
-  const date = new Date(dateStr).getTime();
-  const diff = now - date;
-  const minutes = Math.floor(diff / 60000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+function makeGetRelativeTime(t: (k: TranslationKey) => string) {
+  return (dateStr: string) => {
+    const now = Date.now();
+    const date = new Date(dateStr).getTime();
+    const diff = now - date;
+    const minutes = Math.floor(diff / 60000);
+    if (minutes < 1) return t("chatHist.justNow");
+    if (minutes < 60) return `${minutes}${t("chatHist.mAgo")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}${t("chatHist.hAgo")}`;
+    const days = Math.floor(hours / 24);
+    return `${days}${t("chatHist.dAgo")}`;
+  };
 }
 
 function getInitials(name: string | null) {
@@ -45,6 +49,8 @@ export function ChatHistorySidebar({
   onSelectConversation,
   onNewChat,
 }: ChatHistorySidebarProps) {
+  const { t } = useLanguage();
+  const getRelativeTime = makeGetRelativeTime(t);
   const queryClient = useQueryClient();
 
   const { data: conversations, isLoading } = useQuery({
@@ -68,7 +74,7 @@ export function ChatHistorySidebar({
   return (
     <div className="hidden w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/60 lg:flex">
       <div className="flex h-14 shrink-0 items-center justify-between px-4">
-        <h2 className="text-sm font-semibold text-slate-900">Chat History</h2>
+        <h2 className="text-sm font-semibold text-slate-900">{t("chatHist.title")}</h2>
         <Button
           variant="ghost"
           size="icon"
@@ -89,7 +95,7 @@ export function ChatHistorySidebar({
             <div className="px-3 py-8 text-center">
               <MessageSquare className="mx-auto h-8 w-8 text-slate-300" />
               <p className="mt-2 text-xs text-slate-400">
-                No conversations yet
+                {t("chatHist.noConvos")}
               </p>
             </div>
           )}
@@ -112,9 +118,9 @@ export function ChatHistorySidebar({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-medium text-slate-900">
-                    {(convo.title || "New conversation").length > 28
-                      ? (convo.title || "New conversation").slice(0, 28) + "..."
-                      : convo.title || "New conversation"}
+                    {(convo.title || t("chatHist.newConvo")).length > 28
+                      ? (convo.title || t("chatHist.newConvo")).slice(0, 28) + "..."
+                      : convo.title || t("chatHist.newConvo")}
                   </span>
                   <span className="shrink-0 text-[11px] text-slate-400">
                     {getRelativeTime(convo.updatedAt)}

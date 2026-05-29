@@ -11,6 +11,8 @@ import {
   Check,
   ExternalLink,
 } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
@@ -22,6 +24,7 @@ function CodeBlock({
   code: string;
   language?: string;
 }) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const handleCopy = async () => {
     try {
@@ -47,7 +50,7 @@ function CodeBlock({
         type="button"
         onClick={handleCopy}
         className="absolute top-2 right-2 inline-flex h-7 w-7 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-700 hover:text-slate-100"
-        title="Copy"
+        title={t("apiDocs.copy")}
       >
         {copied ? (
           <Check className="h-3.5 w-3.5 text-success-7" />
@@ -124,16 +127,17 @@ function Section({
   );
 }
 
-const TOC = [
-  { id: "introduction", label: "Introduction" },
-  { id: "authentication", label: "Authentication" },
-  { id: "quickstart", label: "Quick start" },
-  { id: "endpoints", label: "Endpoints" },
-  { id: "errors", label: "Errors" },
-  { id: "revoking", label: "Revoking keys" },
+const TOC: { id: string; labelKey: TranslationKey }[] = [
+  { id: "introduction", labelKey: "apiDocs.introduction" },
+  { id: "authentication", labelKey: "apiDocs.authentication" },
+  { id: "quickstart", labelKey: "apiDocs.quickstart" },
+  { id: "endpoints", labelKey: "apiDocs.endpoints" },
+  { id: "errors", labelKey: "apiDocs.errors" },
+  { id: "revoking", labelKey: "apiDocs.revoking" },
 ];
 
 export default function ApiDocsPage() {
+  const { t } = useLanguage();
   const exampleCurl = `curl ${BASE_URL}/auth/me \\
   -H "Authorization: Bearer sk-wai-XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"`;
 
@@ -155,15 +159,15 @@ export default function ApiDocsPage() {
       <aside className="hidden lg:block w-56 shrink-0">
         <div className="sticky top-6 flex flex-col gap-1">
           <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-text-3">
-            On this page
+            {t("apiDocs.onThisPage")}
           </p>
-          {TOC.map((t) => (
+          {TOC.map((entry) => (
             <a
-              key={t.id}
-              href={`#${t.id}`}
+              key={entry.id}
+              href={`#${entry.id}`}
               className="rounded px-2 py-1.5 text-[13px] text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
             >
-              {t.label}
+              {t(entry.labelKey)}
             </a>
           ))}
           <div className="mt-3 border-t border-bg-1 pt-3">
@@ -172,7 +176,7 @@ export default function ApiDocsPage() {
               className="inline-flex items-center gap-1.5 rounded px-2 py-1.5 text-[13px] text-primary-6 hover:underline"
             >
               <KeyRound className="h-3.5 w-3.5" />
-              Manage your keys
+              {t("apiDocs.manageKeys")}
             </Link>
           </div>
         </div>
@@ -180,98 +184,80 @@ export default function ApiDocsPage() {
 
       {/* Main content */}
       <div className="flex min-w-0 flex-1 flex-col gap-10 max-w-3xl">
-        <Section id="introduction" title="Introduction" icon={Terminal}>
+        <Section id="introduction" title={t("apiDocs.introduction")} icon={Terminal}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            The WorkenAI REST API lets external systems — CI/CD pipelines,
-            internal bots, mobile clients, automation scripts — call the same
-            endpoints the WorkenAI app uses, without going through the browser
-            login flow. You authenticate with a long-lived API token instead
-            of a session cookie.
+            {t("apiDocs.introPara1")}
           </p>
           <p className="text-[14px] leading-relaxed text-text-1">
-            All endpoints respect the same per-user budget, BYOK provider
-            routing, and team-scoped permissions as the UI. A request made
-            with an API token is indistinguishable on the backend from a
-            request the token&apos;s owner makes from the app.
+            {t("apiDocs.introPara2")}
           </p>
           <div className="rounded-md border border-warning-7/30 bg-warning-1 p-4">
             <p className="text-[12px] leading-relaxed text-text-1">
-              <strong>Heads up:</strong> API tokens currently inherit the
-              owner&apos;s full set of permissions — there is no
-              per-token scope or rate limit. Treat them as primary credentials
-              and rotate them when an integration retires.
+              <strong>{t("apiDocs.headsUpBold")}</strong> {t("apiDocs.headsUp")}
             </p>
           </div>
         </Section>
 
-        <Section id="authentication" title="Authentication" icon={KeyRound}>
+        <Section id="authentication" title={t("apiDocs.authentication")} icon={KeyRound}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            Tokens have the form <code className="rounded bg-bg-1 px-1 py-0.5 text-[12px] font-mono">sk-wai-&lt;32 chars&gt;</code>{" "}
-            and are minted from{" "}
+            {t("apiDocs.authPara1Pre")} <code className="rounded bg-bg-1 px-1 py-0.5 text-[12px] font-mono">sk-wai-&lt;32 chars&gt;</code>{" "}
+            {t("apiDocs.authPara1Mid")}{" "}
             <Link
               href="/teams?tab=api"
               className="text-primary-6 hover:underline"
             >
-              Management → API
+              {t("apiDocs.authMgmtApi")}
             </Link>
-            . The plaintext is shown once at creation; only the SHA-256 hash
-            is stored. Send the token in the standard{" "}
+            {t("apiDocs.authPara1Post")}{" "}
             <code className="rounded bg-bg-1 px-1 py-0.5 text-[12px] font-mono">Authorization</code>{" "}
-            header:
+            {t("apiDocs.authPara1End")}
           </p>
           <CodeBlock code={exampleCurl} language="bash" />
           <p className="text-[12px] text-text-3">
-            A successful response returns the token owner&apos;s profile —
-            useful as a smoke test that your token is wired up correctly.
-            Every authenticated call updates the token&apos;s{" "}
+            {t("apiDocs.authPara2Pre")}{" "}
             <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">last_used_at</code>{" "}
-            timestamp visible in the My Keys table.
+            {t("apiDocs.authPara2End")}
           </p>
         </Section>
 
-        <Section id="quickstart" title="Quick start: send a chat message" icon={Terminal}>
+        <Section id="quickstart" title={t("apiDocs.quickstartTitle")} icon={Terminal}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            The chat endpoint is the most common reason to use the API. It
-            requires an existing conversation, so the typical flow is:
-            create a conversation under a project, then post messages to it.
+            {t("apiDocs.quickstartPara")}
           </p>
           <ol className="flex flex-col gap-2 pl-5 text-[13px] text-text-1 list-decimal">
             <li>
-              Find a project you have access to with{" "}
+              {t("apiDocs.step1Pre")}{" "}
               <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">GET /projects</code>.
             </li>
             <li>
-              Create a conversation under it with{" "}
+              {t("apiDocs.step2Pre")}{" "}
               <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">
                 POST /projects/&lt;projectId&gt;/conversations
               </code>
               .
             </li>
             <li>
-              Post a message to the conversation with{" "}
+              {t("apiDocs.step3Pre")}{" "}
               <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">POST /chat</code>.
             </li>
           </ol>
           <CodeBlock code={exampleNewConvo} language="bash" />
           <CodeBlock code={exampleChat} language="bash" />
           <p className="text-[12px] text-text-3 leading-relaxed">
-            The response body contains the assistant message plus token usage
-            and cost metadata. Subsequent messages on the same{" "}
+            {t("apiDocs.quickResp1")}{" "}
             <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">conversationId</code>{" "}
-            preserve history, so the model sees the full thread.
+            {t("apiDocs.quickResp2")}
           </p>
         </Section>
 
-        <Section id="endpoints" title="Endpoints" icon={ListOrdered}>
+        <Section id="endpoints" title={t("apiDocs.endpoints")} icon={ListOrdered}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            The endpoints below are the subset designed for programmatic use.
-            Other routes the UI calls are technically reachable with an API
-            token but their shape may change without notice.
+            {t("apiDocs.endpointsPara")}
           </p>
 
           <div className="flex flex-col gap-3">
             <h3 className="mt-2 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              Profile
+              {t("apiDocs.profile")}
             </h3>
             <Endpoint
               method="GET"
@@ -281,7 +267,7 @@ export default function ApiDocsPage() {
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              Models
+              {t("apiDocs.models")}
             </h3>
             <Endpoint
               method="GET"
@@ -291,7 +277,7 @@ export default function ApiDocsPage() {
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              Projects & conversations
+              {t("apiDocs.projectsConvos")}
             </h3>
             <Endpoint
               method="GET"
@@ -321,7 +307,7 @@ export default function ApiDocsPage() {
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              Chat
+              {t("apiDocs.chat")}
             </h3>
             <Endpoint
               method="POST"
@@ -331,7 +317,7 @@ export default function ApiDocsPage() {
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              Integrations (BYOK)
+              {t("apiDocs.integrations")}
             </h3>
             <Endpoint
               method="GET"
@@ -346,7 +332,7 @@ export default function ApiDocsPage() {
             />
 
             <h3 className="mt-4 text-[13px] font-semibold uppercase tracking-wide text-text-3">
-              API key management
+              {t("apiDocs.apiKeyMgmt")}
             </h3>
             <Endpoint
               method="GET"
@@ -367,10 +353,9 @@ export default function ApiDocsPage() {
           </div>
         </Section>
 
-        <Section id="errors" title="Errors" icon={ShieldAlert}>
+        <Section id="errors" title={t("apiDocs.errors")} icon={ShieldAlert}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            The API uses standard HTTP status codes and returns JSON error
-            bodies of the form{" "}
+            {t("apiDocs.errorsPara")}{" "}
             <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">
               {`{ "statusCode": …, "message": "…" }`}
             </code>
@@ -379,60 +364,45 @@ export default function ApiDocsPage() {
           <ul className="flex flex-col gap-2.5 text-[13px] text-text-1">
             <li>
               <strong className="font-mono text-[12px] text-danger-6">401</strong>{" "}
-              <span className="text-text-2">
-                — Token is missing, malformed, or revoked. Mint a new one.
-              </span>
+              <span className="text-text-2">{t("apiDocs.err401")}</span>
             </li>
             <li>
               <strong className="font-mono text-[12px] text-warning-7">402</strong>{" "}
-              <span className="text-text-2">
-                — Monthly budget exceeded for the user or team backing this
-                token. Increase the budget or wait for the next cycle.
-              </span>
+              <span className="text-text-2">{t("apiDocs.err402")}</span>
             </li>
             <li>
               <strong className="font-mono text-[12px] text-danger-6">404</strong>{" "}
-              <span className="text-text-2">
-                — Resource (conversation, project, model) doesn&apos;t exist
-                or you don&apos;t have access to it.
-              </span>
+              <span className="text-text-2">{t("apiDocs.err404")}</span>
             </li>
             <li>
               <strong className="font-mono text-[12px] text-warning-7">422</strong>{" "}
               <span className="text-text-2">
-                — Validation error in the request body. The{" "}
+                {t("apiDocs.err422Pre")}{" "}
                 <code className="rounded bg-bg-1 px-1 py-0.5 text-[11px] font-mono">message</code>{" "}
-                field describes which field is wrong.
+                {t("apiDocs.err422Post")}
               </span>
             </li>
             <li>
               <strong className="font-mono text-[12px] text-danger-6">5xx</strong>{" "}
-              <span className="text-text-2">
-                — Upstream provider (Anthropic, OpenAI, etc.) error or
-                internal failure. Safe to retry with backoff.
-              </span>
+              <span className="text-text-2">{t("apiDocs.err5xx")}</span>
             </li>
           </ul>
         </Section>
 
-        <Section id="revoking" title="Revoking keys" icon={ShieldAlert}>
+        <Section id="revoking" title={t("apiDocs.revoking")} icon={ShieldAlert}>
           <p className="text-[14px] leading-relaxed text-text-1">
-            If a token leaks, revoke it immediately from{" "}
+            {t("apiDocs.revokingPara1Pre")}{" "}
             <Link
               href="/teams?tab=api"
               className="inline-flex items-center gap-1 text-primary-6 hover:underline"
             >
-              Management → API
+              {t("apiDocs.authMgmtApi")}
               <ExternalLink className="h-3 w-3" />
             </Link>
-            . Revocation is instantaneous: the very next request using that
-            token returns 401. Revoked keys keep their row in the database so
-            audit lookups by id remain valid; they simply no longer
-            authenticate.
+            {t("apiDocs.revokingPara1Post")}
           </p>
           <p className="text-[14px] leading-relaxed text-text-1">
-            There is no server-side recovery for the plaintext — if you lose
-            it, revoke and mint a new one.
+            {t("apiDocs.revokingPara2")}
           </p>
         </Section>
       </div>

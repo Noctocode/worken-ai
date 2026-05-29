@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLanguage } from "@/lib/i18n";
 
 type TeamRole = "admin" | "manager" | "editor" | "viewer";
 
@@ -34,6 +35,7 @@ function TeamInviteDialog({
   children: React.ReactNode;
   teamId: string;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<TeamRole>("viewer");
@@ -62,8 +64,8 @@ function TeamInviteDialog({
     onSuccess: (data) => {
       toast.success(
         data.resent
-          ? `Invitation resent to ${data.email}.`
-          : `Invited ${data.email} as ${data.role}.`,
+          ? `${t("dlg.invite.resent")} ${data.email}.`
+          : `${t("dlg.invite.invitedAs1")} ${data.email} ${t("dlg.invite.invitedAs2")} ${data.role}.`,
       );
       qc.invalidateQueries({ queryKey: ["teams", teamId] });
       setEmail("");
@@ -73,7 +75,7 @@ function TeamInviteDialog({
       setOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to invite member.");
+      toast.error(err.message || t("dlg.invite.failedMember"));
     },
   });
 
@@ -82,8 +84,8 @@ function TeamInviteDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite Member</DialogTitle>
-          <DialogDescription>Add a member to this team.</DialogDescription>
+          <DialogTitle>{t("dlg.invite.memberTitle")}</DialogTitle>
+          <DialogDescription>{t("dlg.invite.memberDesc")}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -91,9 +93,7 @@ function TeamInviteDialog({
             if (!email.trim()) return;
             const parsed = parseCapToCents();
             if (parsed === "invalid") {
-              setCapError(
-                "Enter a non-negative number, or leave blank for no cap.",
-              );
+              setCapError(t("dlg.invite.capError"));
               return;
             }
             setCapError(null);
@@ -102,40 +102,40 @@ function TeamInviteDialog({
           className="space-y-4"
         >
           <div className="space-y-2">
-            <Label htmlFor="invite-email">Email</Label>
+            <Label htmlFor="invite-email">{t("dlg.invite.email")}</Label>
             <Input
               id="invite-email"
               type="email"
-              placeholder="user@example.com"
+              placeholder={t("dlg.invite.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="invite-role">Role</Label>
+            <Label htmlFor="invite-role">{t("dlg.invite.role")}</Label>
             <Select value={role} onValueChange={(v) => setRole(v as TeamRole)}>
               <SelectTrigger id="invite-role" className="w-full cursor-pointer">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">
-                  Admin — Full team management rights
+                  {t("dlg.invite.role.admin")}
                 </SelectItem>
                 <SelectItem value="manager">
-                  Manager — Manage members, budgets and integrations
+                  {t("dlg.invite.role.manager")}
                 </SelectItem>
                 <SelectItem value="editor">
-                  Editor — Can edit projects and content
+                  {t("dlg.invite.role.editor")}
                 </SelectItem>
                 <SelectItem value="viewer">
-                  Viewer — Read-only access
+                  {t("dlg.invite.role.viewer")}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="invite-cap">Monthly cap (optional)</Label>
+            <Label htmlFor="invite-cap">{t("dlg.invite.cap")}</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[14px] text-text-3">
                 $
@@ -145,7 +145,7 @@ function TeamInviteDialog({
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="Leave blank for no cap"
+                placeholder={t("dlg.invite.capPlaceholder")}
                 value={capUsd}
                 onChange={(e) => {
                   setCapUsd(e.target.value);
@@ -158,9 +158,7 @@ function TeamInviteDialog({
               <p className="text-[12px] text-danger-6">{capError}</p>
             ) : (
               <p className="text-[12px] text-text-3">
-                Caps this member&rsquo;s monthly spend inside the team.
-                Leave blank to share the team&rsquo;s overall budget.
-                Enter <strong>0</strong> to invite as suspended.
+                {t("dlg.invite.capDesc1")}<strong>0</strong>{t("dlg.invite.capDesc2")}
               </p>
             )}
           </div>
@@ -170,7 +168,7 @@ function TeamInviteDialog({
               disabled={mutation.isPending || !email.trim()}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {mutation.isPending ? "Inviting..." : "Invite Member"}
+              {mutation.isPending ? t("dlg.invite.inviting") : t("dlg.invite.inviteMember")}
             </Button>
           </DialogFooter>
         </form>
@@ -184,6 +182,7 @@ function OrgInviteDialog({
 }: {
   children: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   const { user } = useAuth();
   // Admin-only invite-as-admin matches the BE gate in
   // users.controller.ts#inviteUser. Hiding the option for advanced
@@ -199,8 +198,8 @@ function OrgInviteDialog({
     onSuccess: (data) => {
       toast.success(
         data.status === "updated"
-          ? `Updated ${data.email} to ${data.role}.`
-          : `Invited ${data.email} as ${data.role}.`,
+          ? `${t("dlg.invite.updated")} ${data.email} ${t("dlg.invite.invitedAs2")} ${data.role}.`
+          : `${t("dlg.invite.invitedAs1")} ${data.email} ${t("dlg.invite.invitedAs2")} ${data.role}.`,
       );
       qc.invalidateQueries({ queryKey: ["org-users"] });
       setEmail("");
@@ -208,7 +207,7 @@ function OrgInviteDialog({
       setOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to invite user.");
+      toast.error(err.message || t("dlg.invite.failedUser"));
     },
   });
 
@@ -217,8 +216,8 @@ function OrgInviteDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Invite User</DialogTitle>
-          <DialogDescription>Add a user to the organization.</DialogDescription>
+          <DialogTitle>{t("dlg.invite.userTitle")}</DialogTitle>
+          <DialogDescription>{t("dlg.invite.userDesc")}</DialogDescription>
         </DialogHeader>
         <form
           onSubmit={(e) => {
@@ -228,32 +227,32 @@ function OrgInviteDialog({
           className="space-y-4"
         >
           <div className="space-y-2">
-            <Label htmlFor="invite-email">Email</Label>
+            <Label htmlFor="invite-email">{t("dlg.invite.email")}</Label>
             <Input
               id="invite-email"
               type="email"
-              placeholder="user@example.com"
+              placeholder={t("dlg.invite.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="invite-role">Role</Label>
+            <Label htmlFor="invite-role">{t("dlg.invite.role")}</Label>
             <Select value={role} onValueChange={(v) => setRole(v as OrgRole)}>
               <SelectTrigger id="invite-role" className="w-full cursor-pointer">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="basic">
-                  Basic — View projects and teams
+                  {t("dlg.invite.org.basic")}
                 </SelectItem>
                 <SelectItem value="advanced">
-                  Advanced — Full access to management
+                  {t("dlg.invite.org.advanced")}
                 </SelectItem>
                 {canInviteAdmin && (
                   <SelectItem value="admin">
-                    Admin — Full organization control
+                    {t("dlg.invite.org.admin")}
                   </SelectItem>
                 )}
               </SelectContent>
@@ -265,7 +264,7 @@ function OrgInviteDialog({
               disabled={mutation.isPending || !email.trim()}
               className="cursor-pointer bg-primary-6 hover:bg-primary-7"
             >
-              {mutation.isPending ? "Inviting..." : "Invite User"}
+              {mutation.isPending ? t("dlg.invite.inviting") : t("dlg.invite.inviteUser")}
             </Button>
           </DialogFooter>
         </form>

@@ -1,16 +1,18 @@
+import type { TranslationKey } from "@/lib/translations/en";
+
 interface AppbarAction {
-  label: string;
+  labelKey: TranslationKey;
   event: string;
 }
 
 interface AppbarSearch {
-  placeholder: string;
+  placeholderKey: TranslationKey;
   event: string;
 }
 
 interface RouteConfig {
   bg: "bg-bg-1" | "bg-bg-white";
-  title?: string;
+  titleKey?: TranslationKey;
   hideSearch?: boolean;
   hideNotifications?: boolean;
   appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
@@ -28,94 +30,94 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
   },
   "/teams": {
     bg: "bg-bg-1",
-    title: "Management",
+    titleKey: "appbar.title.management",
     hideSearch: true,
     hideNotifications: true,
   },
   "/docs/api": {
     bg: "bg-bg-1",
-    title: "API Documentation",
+    titleKey: "appbar.title.apiDocs",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources": {
     bg: "bg-bg-1",
-    title: "Resources & Learning",
+    titleKey: "appbar.title.resources",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources/prompt-library": {
     bg: "bg-bg-1",
-    title: "Prompt Library",
+    titleKey: "appbar.title.promptLibrary",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources/learn-academy": {
     bg: "bg-bg-1",
-    title: "Learn Academy",
+    titleKey: "appbar.title.learnAcademy",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources/prompt-builder": {
     bg: "bg-bg-1",
-    title: "Prompt Builder",
+    titleKey: "appbar.title.promptBuilder",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources/prompt-improver": {
     bg: "bg-bg-1",
-    title: "Prompt Improver",
+    titleKey: "appbar.title.promptImprover",
     hideSearch: true,
     hideNotifications: true,
   },
   "/resources/shortcuts": {
     bg: "bg-bg-1",
-    title: "Shortcuts",
+    titleKey: "appbar.title.shortcuts",
     hideSearch: true,
     hideNotifications: true,
   },
   "/guardrails": {
     bg: "bg-bg-white",
-    title: "Guardrails",
+    titleKey: "appbar.title.guardrails",
     hideSearch: true,
     hideNotifications: true,
-    appbarAction: { label: "Add Guardrail", event: "guardrails:add" },
+    appbarAction: { labelKey: "appbar.action.addGuardrail", event: "guardrails:add" },
   },
   "/observability": {
     bg: "bg-bg-1",
-    title: "Observability",
+    titleKey: "appbar.title.observability",
     hideSearch: true,
     hideNotifications: true,
     appbarType: "observability",
   },
   "/notifications": {
     bg: "bg-bg-1",
-    title: "Notifications",
+    titleKey: "appbar.title.notifications",
     hideSearch: true,
     hideNotifications: true,
   },
   "/compare-models": {
     bg: "bg-bg-1",
-    title: "Model Arena",
+    titleKey: "appbar.title.modelArena",
     hideSearch: true,
     hideNotifications: true,
-    appbarAction: { label: "New Comparison", event: "compare-models:new" },
+    appbarAction: { labelKey: "appbar.action.newComparison", event: "compare-models:new" },
   },
   "/knowledge-core": {
     bg: "bg-bg-1",
-    title: "Knowledge Core",
+    titleKey: "appbar.title.knowledgeCore",
     hideSearch: true,
     hideNotifications: true,
-    appbarSearch: { placeholder: "Search", event: "knowledge-core:search" },
+    appbarSearch: { placeholderKey: "appbar.search.placeholder", event: "knowledge-core:search" },
     appbarExpandControls: true,
   },
   "/tender-ai": {
     bg: "bg-bg-1",
-    title: "Tender AI",
+    titleKey: "appbar.title.tenderAI",
     hideSearch: true,
     hideNotifications: true,
-    appbarSearch: { placeholder: "Search", event: "tender-ai:search" },
-    appbarAction: { label: "Create Tender", event: "tender-ai:create" },
+    appbarSearch: { placeholderKey: "appbar.search.placeholder", event: "tender-ai:search" },
+    appbarAction: { labelKey: "appbar.action.createTender", event: "tender-ai:create" },
     appbarExpandControls: true,
   },
 };
@@ -125,10 +127,8 @@ const DEFAULT_CONFIG: RouteConfig = {
 };
 
 export function getRouteConfig(pathname: string): RouteConfig {
-  // Check exact match first
   if (ROUTE_CONFIGS[pathname]) return ROUTE_CONFIGS[pathname];
 
-  // Check /projects/create
   if (pathname === "/projects/create") {
     return {
       bg: "bg-bg-white",
@@ -138,7 +138,6 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
-  // Check /projects/[id] pattern (but not /projects/create)
   if (/^\/projects\/[^/]+$/.test(pathname) && pathname !== "/projects/create") {
     return {
       bg: "bg-bg-1",
@@ -148,7 +147,6 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
-  // Check /teams/[id] pattern
   if (/^\/teams\/[^/]+$/.test(pathname)) {
     return {
       bg: "bg-bg-1",
@@ -158,7 +156,6 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
-  // Check /users/[id] pattern
   if (/^\/users\/[^/]+$/.test(pathname)) {
     return {
       bg: "bg-bg-1",
@@ -168,27 +165,24 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
-  // Check /resources/learn-academy/[slug] pattern
   if (/^\/resources\/learn-academy\/[^/]+$/.test(pathname)) {
     return {
       bg: "bg-bg-1",
-      title: "Learn Academy",
+      titleKey: "appbar.title.learnAcademy",
       hideSearch: true,
       hideNotifications: true,
     };
   }
 
-  // Check /knowledge-core/[folderId] pattern
   if (/^\/knowledge-core\/[^/]+$/.test(pathname)) {
     return {
       bg: "bg-bg-1",
-      title: "Knowledge Core",
+      titleKey: "appbar.title.knowledgeCore",
       hideSearch: true,
       hideNotifications: true,
     };
   }
 
-  // Check /tender-ai/create
   if (pathname === "/tender-ai/create") {
     return {
       bg: "bg-bg-1",
@@ -198,7 +192,6 @@ export function getRouteConfig(pathname: string): RouteConfig {
     };
   }
 
-  // Check /tender-ai/[id] pattern
   if (/^\/tender-ai\/[^/]+$/.test(pathname)) {
     return {
       bg: "bg-bg-white",

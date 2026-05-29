@@ -56,6 +56,7 @@ import {
   FolderOpen,
   Inbox,
 } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 interface AddDocumentDialogProps {
   projectId: string;
@@ -74,6 +75,7 @@ function formatBytes(bytes: number): string {
 }
 
 function VisibilityBadge({ visibility }: { visibility: string }) {
+  const { t } = useLanguage();
   const tone =
     visibility === "admins"
       ? "bg-warning-1 text-warning-7"
@@ -82,12 +84,12 @@ function VisibilityBadge({ visibility }: { visibility: string }) {
         : "bg-bg-1 text-text-3";
   const label =
     visibility === "admins"
-      ? "Admins"
+      ? t("addDoc.admins")
       : visibility === "teams"
-        ? "Teams"
+        ? t("addDoc.teams")
         : visibility === "project"
-          ? "Project"
-          : "Everyone";
+          ? t("addDoc.project")
+          : t("addDoc.everyone");
   return (
     <Badge className={`shrink-0 text-[10px] uppercase tracking-wide ${tone}`}>
       {label}
@@ -96,39 +98,40 @@ function VisibilityBadge({ visibility }: { visibility: string }) {
 }
 
 function IngestionBadge({ status }: { status: string }) {
+  const { t } = useLanguage();
   if (status === "done") {
     return (
       <span
-        title="Included in this project's context"
+        title={t("addDoc.includedTitle")}
         className="inline-flex items-center gap-1 text-[11px] text-success-7"
       >
-        <CheckCircle2 className="h-3 w-3" /> In context
+        <CheckCircle2 className="h-3 w-3" /> {t("addDoc.inContext")}
       </span>
     );
   }
   if (status === "failed") {
     return (
       <span
-        title="Couldn't be added to context"
+        title={t("addDoc.skippedTitle")}
         className="inline-flex items-center gap-1 text-[11px] text-warning-7"
       >
-        <AlertTriangle className="h-3 w-3" /> Skipped
+        <AlertTriangle className="h-3 w-3" /> {t("addDoc.skipped")}
       </span>
     );
   }
   if (status === "untrained") {
     return (
       <span
-        title="Excluded from context — chat ignores this file until the owner includes it again from Knowledge Core."
+        title={t("addDoc.excludedTitle")}
         className="inline-flex items-center gap-1 text-[11px] text-text-3"
       >
-        <Unplug className="h-3 w-3" /> Excluded
+        <Unplug className="h-3 w-3" /> {t("addDoc.excluded")}
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1 text-[11px] text-text-3">
-      <Loader2 className="h-3 w-3 animate-spin" /> Adding…
+      <Loader2 className="h-3 w-3 animate-spin" /> {t("addDoc.adding")}
     </span>
   );
 }
@@ -140,6 +143,7 @@ export function AddDocumentDialog({
   open,
   onOpenChange,
 }: AddDocumentDialogProps) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
 
   /* Paste-text state (legacy `documents` table) */
@@ -266,10 +270,10 @@ export function AddDocumentDialog({
     onSuccess: () => {
       invalidate();
       setContent("");
-      toast.success("Text added to project context.");
+      toast.success(t("addDoc.textAdded"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to add text."),
+      toast.error(err.message || t("addDoc.failedAddText")),
   });
 
   // Combined "Add Files" pipeline: upload pending files first
@@ -320,7 +324,9 @@ export function AddDocumentDialog({
       const totalAdded = uploadedCount + attachedCount;
       if (totalAdded > 0) {
         toast.success(
-          `Added ${totalAdded} file${totalAdded !== 1 ? "s" : ""} to project context.`,
+          t("addDoc.addedNFiles")
+            .replace("{n}", String(totalAdded))
+            .replace("{s}", totalAdded !== 1 ? "s" : ""),
         );
       }
       if (duplicates.length > 0) {
@@ -329,12 +335,12 @@ export function AddDocumentDialog({
         // user sees "X is already in KC" but X isn't in the list.
         const titleForOne = (d: (typeof duplicates)[number]) =>
           d.existing.name && d.existing.name !== d.name
-            ? `"${d.name}" matches existing "${d.existing.name}" in your Knowledge Core.`
-            : `"${d.name}" is already in your Knowledge Core.`;
+            ? `"${d.name}" ${t("addDoc.alreadyInKC1")} "${d.existing.name}" ${t("addDoc.alreadyInKC2")}`
+            : `"${d.name}" ${t("addDoc.alreadyInKCSimple")}`;
         toast.info(
           duplicates.length === 1
             ? titleForOne(duplicates[0])
-            : `${duplicates.length} file(s) already in your Knowledge Core.`,
+            : `${duplicates.length} ${t("addDoc.multipleInKC")}`,
           {
             description: duplicates
               .map((d) =>
@@ -355,7 +361,7 @@ export function AddDocumentDialog({
       }
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to add files."),
+      toast.error(err.message || t("addDoc.failedAddFiles")),
   });
 
   /**
@@ -379,7 +385,7 @@ export function AddDocumentDialog({
       (c) => (actions[c.name] ?? "skip") === "skip",
     ).length;
     if (filesToResend.length === 0) {
-      if (skippedCount > 0) toast.info(`Skipped ${skippedCount} file(s).`);
+      if (skippedCount > 0) toast.info(t("addDoc.skippedNFiles").replace("{n}", String(skippedCount)));
       return;
     }
     try {
@@ -402,15 +408,17 @@ export function AddDocumentDialog({
       const addedAfterResolve = result.uploaded.length;
       if (addedAfterResolve > 0) {
         toast.success(
-          `Added ${addedAfterResolve} file${addedAfterResolve !== 1 ? "s" : ""} to project context.`,
+          t("addDoc.addedNFiles")
+            .replace("{n}", String(addedAfterResolve))
+            .replace("{s}", addedAfterResolve !== 1 ? "s" : ""),
         );
       }
       if (skippedCount > 0) {
-        toast.info(`Skipped ${skippedCount} file(s).`);
+        toast.info(t("addDoc.skippedNFiles").replace("{n}", String(skippedCount)));
       }
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Failed to add files.",
+        err instanceof Error ? err.message : t("addDoc.failedAddFiles"),
       );
     }
   };
@@ -420,10 +428,10 @@ export function AddDocumentDialog({
     onSuccess: () => {
       invalidate();
       setConfirmDeleteId(null);
-      toast.success("Detached from project.");
+      toast.success(t("addDoc.detached"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to detach."),
+      toast.error(err.message || t("addDoc.failedDetach")),
   });
 
   const deleteMutation = useMutation({
@@ -431,10 +439,10 @@ export function AddDocumentDialog({
     onSuccess: () => {
       invalidate();
       setConfirmDeleteId(null);
-      toast.success("Removed from project.");
+      toast.success(t("addDoc.removed"));
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to remove."),
+      toast.error(err.message || t("addDoc.failedRemove")),
   });
 
   /* ── Handlers ─────────────────────────────────────────────────── */
@@ -478,12 +486,10 @@ export function AddDocumentDialog({
       <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="border-b border-border-2 px-5 py-4 sm:px-6">
           <DialogTitle className="text-base sm:text-lg">
-            Manage Context
+            {t("addDoc.manageContext")}
           </DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
-            Project context for chat. Uploaded files live in your
-            Knowledge Core so visibility, indexing, and team sharing
-            stay in one place.
+            {t("addDoc.manageDesc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -495,16 +501,16 @@ export function AddDocumentDialog({
                 className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
               >
                 <ClipboardPaste className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Paste Text</span>
-                <span className="sm:hidden">Paste</span>
+                <span className="hidden sm:inline">{t("addDoc.pasteText")}</span>
+                <span className="sm:hidden">{t("addDoc.paste")}</span>
               </TabsTrigger>
               <TabsTrigger
                 value="files"
                 className="flex-1 cursor-pointer gap-1.5 text-xs sm:text-sm"
               >
                 <Upload className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Add Files</span>
-                <span className="sm:hidden">Files</span>
+                <span className="hidden sm:inline">{t("addDoc.addFiles")}</span>
+                <span className="sm:hidden">{t("addDoc.files")}</span>
               </TabsTrigger>
             </TabsList>
 
@@ -514,10 +520,10 @@ export function AddDocumentDialog({
             <TabsContent value="paste" className="mt-0">
               <form onSubmit={handleAddText} className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="document-content">Add new context</Label>
+                  <Label htmlFor="document-content">{t("addDoc.addNewContext")}</Label>
                   <Textarea
                     id="document-content"
-                    placeholder="Paste your document text here…"
+                    placeholder={t("addDoc.pastePlaceholder")}
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     rows={6}
@@ -534,10 +540,10 @@ export function AddDocumentDialog({
                     {addMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding…
+                        {t("addDoc.adding")}
                       </>
                     ) : (
-                      "Add Context"
+                      t("addDoc.addContext")
                     )}
                   </Button>
                 </DialogFooter>
@@ -554,10 +560,10 @@ export function AddDocumentDialog({
                 {/* ── Upload new ───────────────────────────────── */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-text-1">Upload new</Label>
+                    <Label className="text-text-1">{t("addDoc.uploadNew")}</Label>
                     {selectedFiles.length > 0 && (
                       <span className="text-[11px] text-text-3">
-                        {selectedFiles.length} ready
+                        {selectedFiles.length} {t("addDoc.ready")}
                       </span>
                     )}
                   </div>
@@ -591,8 +597,8 @@ export function AddDocumentDialog({
                     <div className="space-y-1">
                       <p className="text-sm font-medium text-text-1">
                         {isDragOver
-                          ? "Drop to add files"
-                          : "Click to browse or drag files here"}
+                          ? t("addDoc.dropFiles")
+                          : t("addDoc.clickBrowse")}
                       </p>
                       <p className="text-[11px] text-text-3">
                         PDF, DOCX, XLS, XLSX
@@ -644,14 +650,14 @@ export function AddDocumentDialog({
                   {selectedFiles.length > 0 && (
                     <div className="grid gap-2 pt-1 sm:grid-cols-[auto_1fr] sm:items-center">
                       <Label className="text-[12px] font-normal text-text-3">
-                        Save to folder
+                        {t("addDoc.saveToFolder")}
                       </Label>
                       <Select
                         value={uploadFolderId}
                         onValueChange={setUploadFolderId}
                       >
                         <SelectTrigger className="h-9 w-full cursor-pointer text-sm">
-                          <SelectValue placeholder="Select a folder" />
+                          <SelectValue placeholder={t("addDoc.selectFolder")} />
                         </SelectTrigger>
                         <SelectContent>
                           {kcFolders.map((f) => (
@@ -669,7 +675,7 @@ export function AddDocumentDialog({
                 <div className="flex items-center gap-3">
                   <div className="h-px flex-1 bg-border-2" />
                   <span className="text-[11px] font-medium uppercase tracking-wider text-text-3">
-                    or
+                    {t("addDoc.or")}
                   </span>
                   <div className="h-px flex-1 bg-border-2" />
                 </div>
@@ -678,11 +684,11 @@ export function AddDocumentDialog({
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label className="text-text-1">
-                      Pick from Knowledge Core
+                      {t("addDoc.pickFromKC")}
                     </Label>
                     {attachSelectedIds.size > 0 && (
                       <span className="text-[11px] text-text-3">
-                        {attachSelectedIds.size} selected
+                        {attachSelectedIds.size} {t("addDoc.selected")}
                       </span>
                     )}
                   </div>
@@ -692,7 +698,7 @@ export function AddDocumentDialog({
                       onValueChange={setAttachFolderId}
                     >
                       <SelectTrigger className="h-9 w-full cursor-pointer text-sm">
-                        <SelectValue placeholder="Pick a folder" />
+                        <SelectValue placeholder={t("addDoc.pickFolder")} />
                       </SelectTrigger>
                       <SelectContent>
                         {kcFolders.map((f) => (
@@ -705,7 +711,7 @@ export function AddDocumentDialog({
                     <input
                       id="attach-search"
                       type="text"
-                      placeholder="Filter files…"
+                      placeholder={t("addDoc.filterFiles")}
                       value={attachQuery}
                       onChange={(e) => setAttachQuery(e.target.value)}
                       className="h-9 w-full rounded-md border border-border-3 bg-transparent px-3 text-sm outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
@@ -718,14 +724,14 @@ export function AddDocumentDialog({
                         <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
                           <FolderOpen className="h-6 w-6 text-text-3" />
                           <p className="text-sm text-text-3">
-                            Pick a folder to see its files.
+                            {t("addDoc.pickFolderHint")}
                           </p>
                         </div>
                       ) : filteredAttachCandidates.length === 0 ? (
                         <div className="flex flex-col items-center justify-center gap-2 py-8 text-center">
                           <Inbox className="h-6 w-6 text-text-3" />
                           <p className="text-sm text-text-3">
-                            No files available to attach.
+                            {t("addDoc.noFilesAttach")}
                           </p>
                         </div>
                       ) : (
@@ -765,9 +771,7 @@ export function AddDocumentDialog({
                 </div>
 
                 <p className="text-[11px] text-text-3">
-                  Uploads land in Knowledge Core scoped to this project.
-                  Picking an existing file just attaches it — its
-                  original visibility stays as-is.
+                  {t("addDoc.uploadsLand")}
                 </p>
 
                 <DialogFooter>
@@ -784,15 +788,17 @@ export function AddDocumentDialog({
                     {addFilesMutation.isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding…
+                        {t("addDoc.adding")}
                       </>
                     ) : (
                       (() => {
                         const total =
                           selectedFiles.length + attachSelectedIds.size;
                         return total > 0
-                          ? `Add ${total} file${total !== 1 ? "s" : ""} to project`
-                          : "Add to project";
+                          ? t("addDoc.addNToProject")
+                              .replace("{n}", String(total))
+                              .replace("{s}", total !== 1 ? "s" : "")
+                          : t("addDoc.addToProject");
                       })()
                     )}
                   </Button>
@@ -809,11 +815,11 @@ export function AddDocumentDialog({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-medium text-text-1">
-                In this project
+                {t("addDoc.inThisProject")}
               </Label>
               <span className="text-[11px] text-text-3">
-                {attachedFiles.length + (groups?.length ?? 0)} item
-                {attachedFiles.length + (groups?.length ?? 0) !== 1 ? "s" : ""}
+                {attachedFiles.length + (groups?.length ?? 0)}{" "}
+                {attachedFiles.length + (groups?.length ?? 0) !== 1 ? t("addDoc.items") : t("addDoc.item")}
               </span>
             </div>
             <div className="overflow-hidden rounded-md border border-border-2">
@@ -827,8 +833,7 @@ export function AddDocumentDialog({
                   <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
                     <Inbox className="h-6 w-6 text-text-3" />
                     <p className="text-sm text-text-3">
-                      No context yet. Paste text, upload a file, or attach
-                      one from Knowledge Core.
+                      {t("addDoc.noContextYet")}
                     </p>
                   </div>
                 ) : (
@@ -849,9 +854,9 @@ export function AddDocumentDialog({
                             <Badge
                               variant="secondary"
                               className="shrink-0 text-[10px]"
-                              title={`In folder "${f.folderName}"`}
+                              title={`${t("addDoc.inFolder")} "${f.folderName}"`}
                             >
-                              <Link2 className="mr-1 h-2.5 w-2.5" /> KC
+                              <Link2 className="mr-1 h-2.5 w-2.5" /> {t("addDoc.kc")}
                             </Badge>
                             <VisibilityBadge visibility={f.visibility} />
                             <IngestionBadge status={f.ingestionStatus} />
@@ -867,9 +872,9 @@ export function AddDocumentDialog({
                               onClick={() =>
                                 detachMutation.mutate(f.fileId)
                               }
-                              title="Removes from project — the file stays in Knowledge Core"
+                              title={t("addDoc.detachTitle")}
                             >
-                              {detachMutation.isPending ? "…" : "Detach"}
+                              {detachMutation.isPending ? "…" : t("addDoc.detach")}
                             </Button>
                             <Button
                               variant="ghost"
@@ -877,7 +882,7 @@ export function AddDocumentDialog({
                               className="h-7 cursor-pointer text-xs"
                               onClick={() => setConfirmDeleteId(null)}
                             >
-                              Cancel
+                              {t("addDoc.cancel")}
                             </Button>
                           </div>
                         ) : (
@@ -909,14 +914,14 @@ export function AddDocumentDialog({
                               variant="secondary"
                               className="shrink-0 text-[10px]"
                             >
-                              Text
+                              {t("addDoc.text")}
                             </Badge>
                             <Badge
                               variant="secondary"
                               className="shrink-0 text-[10px]"
                             >
                               {group.chunkCount}{" "}
-                              {group.chunkCount === 1 ? "chunk" : "chunks"}
+                              {group.chunkCount === 1 ? t("addDoc.chunk") : t("addDoc.chunks")}
                             </Badge>
                           </div>
                         </div>
@@ -931,7 +936,7 @@ export function AddDocumentDialog({
                                 deleteMutation.mutate(group.groupId)
                               }
                             >
-                              {deleteMutation.isPending ? "…" : "Confirm"}
+                              {deleteMutation.isPending ? "…" : t("addDoc.confirm")}
                             </Button>
                             <Button
                               variant="ghost"
@@ -939,7 +944,7 @@ export function AddDocumentDialog({
                               className="h-7 cursor-pointer text-xs"
                               onClick={() => setConfirmDeleteId(null)}
                             >
-                              Cancel
+                              {t("addDoc.cancel")}
                             </Button>
                           </div>
                         ) : (

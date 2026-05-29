@@ -16,6 +16,7 @@ import {
   signupWithPassword,
   type InviteDetails,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -37,6 +38,7 @@ function classifyLoadError(message: string): LoadErrorKind {
 }
 
 function SetPasswordContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
 
@@ -72,8 +74,8 @@ function SetPasswordContent() {
       if (result.verified) {
         toast.success(
           inviteQuery.data
-            ? `Welcome to ${inviteQuery.data.teamName}!`
-            : "Account created",
+            ? `${t("invite.welcomeTo")} ${inviteQuery.data.teamName}!`
+            : t("auth.accountCreated"),
         );
         window.location.href = "/setup-profile";
       } else {
@@ -100,13 +102,11 @@ function SetPasswordContent() {
     setValidationError(null);
     setAccountExists(false);
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setValidationError(
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      );
+      setValidationError(t("auth.passwordMinError"));
       return;
     }
     if (password !== confirmPassword) {
-      setValidationError("Passwords don't match");
+      setValidationError(t("auth.passwordsDontMatch"));
       return;
     }
     mutation.mutate();
@@ -128,7 +128,7 @@ function SetPasswordContent() {
         {token && inviteQuery.isLoading && (
           <div className="flex flex-col items-center gap-3 py-4 self-stretch">
             <Loader2 className="h-8 w-8 animate-spin text-text-3" />
-            <p className="text-base text-text-2">Loading invitation…</p>
+            <p className="text-base text-text-2">{t("invite.loading")}</p>
           </div>
         )}
 
@@ -139,13 +139,13 @@ function SetPasswordContent() {
         {token && inviteQuery.data && (
           <>
             <div className="flex flex-col gap-2 self-stretch">
-              <h4 className="text-text-1">Set your password</h4>
+              <h4 className="text-text-1">{t("invite.setPassword")}</h4>
               <p className="text-[18px] leading-snug font-normal text-text-2">
-                You&apos;re joining{" "}
+                {t("invite.joiningPrefix")}{" "}
                 <span className="font-semibold text-text-1">
                   &ldquo;{inviteQuery.data.teamName}&rdquo;
                 </span>
-                . Choose a password to create your account.
+                {t("invite.choosePassword")}
               </p>
             </div>
 
@@ -160,7 +160,7 @@ function SetPasswordContent() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
                 <Input
                   type="password"
-                  placeholder="Password (min 8 characters)"
+                  placeholder={t("auth.passwordMinChars")}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
@@ -172,7 +172,7 @@ function SetPasswordContent() {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
                 <Input
                   type="password"
-                  placeholder="Confirm password"
+                  placeholder={t("auth.confirmPassword")}
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
@@ -190,13 +190,13 @@ function SetPasswordContent() {
               {accountExists && (
                 <div className="rounded-md border border-warning-5 bg-warning-1 p-3 text-left text-sm">
                   <p className="text-text-1 font-medium mb-1">
-                    An account with this email already exists.
+                    {t("invite.accountExists")}
                   </p>
                   <Link
                     href={`/login?token=${encodeURIComponent(token)}&email=${encodeURIComponent(inviteQuery.data.email)}`}
                     className="text-primary-6 hover:text-primary-7 font-medium"
                   >
-                    Log in instead
+                    {t("invite.loginInstead")}
                   </Link>
                 </div>
               )}
@@ -206,16 +206,16 @@ function SetPasswordContent() {
                 disabled={mutation.isPending}
                 className="w-full h-[52px] px-6 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-lg"
               >
-                {mutation.isPending ? "Creating account…" : "Create account & join"}
+                {mutation.isPending ? t("invite.creatingAccount") : t("invite.createAndJoin")}
               </Button>
 
               <p className="text-sm text-text-2">
-                {"Already have an account? "}
+                {t("invite.alreadyHaveAccount")}
                 <Link
                   href={`/login?token=${encodeURIComponent(token)}&email=${encodeURIComponent(inviteQuery.data.email)}`}
                   className="text-primary-6 hover:text-primary-7 font-medium"
                 >
-                  Log in
+                  {t("invite.logIn")}
                 </Link>
               </p>
             </form>
@@ -227,32 +227,33 @@ function SetPasswordContent() {
 }
 
 function ErrorPanel({ kind }: { kind: LoadErrorKind }) {
+  const { t } = useLanguage();
   let title: string;
   let subtitle: string;
   switch (kind) {
     case "missing_token":
-      title = "Invitation not found";
-      subtitle = "The link is missing a token. Please use the link from your invitation email.";
+      title = t("invite.notFound");
+      subtitle = t("invite.missingTokenDesc");
       break;
     case "not_found":
-      title = "Invitation not found";
-      subtitle = "The link may be incorrect or incomplete.";
+      title = t("invite.notFound");
+      subtitle = t("invite.notFoundDesc");
       break;
     case "expired":
-      title = "This invitation has expired";
-      subtitle = "Please ask the person who invited you to send a new invitation.";
+      title = t("invite.expired");
+      subtitle = t("invite.expiredDesc");
       break;
     case "revoked":
-      title = "This invitation is no longer valid";
-      subtitle = "The invitation was revoked by the company admin.";
+      title = t("invite.noLongerValid");
+      subtitle = t("invite.revokedDesc");
       break;
     case "already_accepted":
-      title = "This invitation has already been accepted";
-      subtitle = "You can sign in to your account.";
+      title = t("invite.alreadyAccepted");
+      subtitle = t("invite.alreadyAcceptedDesc");
       break;
     default:
-      title = "Invalid invitation";
-      subtitle = "Something went wrong loading this invitation.";
+      title = t("invite.invalid");
+      subtitle = t("invite.unknownDesc");
   }
 
   return (
@@ -268,7 +269,7 @@ function ErrorPanel({ kind }: { kind: LoadErrorKind }) {
         variant="outline"
         className="w-full h-[52px] px-6 border-border-3 text-text-1 text-base font-normal rounded-lg"
       >
-        <Link href="/login">Back to login</Link>
+        <Link href="/login">{t("invite.backToLogin")}</Link>
       </Button>
     </>
   );

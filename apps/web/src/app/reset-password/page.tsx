@@ -17,10 +17,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { resetPassword } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 const MIN_PASSWORD_LENGTH = 8;
 
 function ResetPasswordContent() {
+  const { t } = useLanguage();
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
@@ -34,7 +36,7 @@ function ResetPasswordContent() {
       return resetPassword(token, password);
     },
     onSuccess: () => {
-      toast.success("Password updated. Please sign in.");
+      toast.success(t("auth.passwordUpdated"));
       router.push("/login");
     },
     onError: (err: Error) => {
@@ -46,13 +48,11 @@ function ResetPasswordContent() {
     e.preventDefault();
     setValidationError(null);
     if (password.length < MIN_PASSWORD_LENGTH) {
-      setValidationError(
-        `Password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      );
+      setValidationError(t("auth.passwordMinError"));
       return;
     }
     if (password !== confirmPassword) {
-      setValidationError("Passwords don't match");
+      setValidationError(t("auth.passwordsDontMatch"));
       return;
     }
     mutation.mutate();
@@ -73,15 +73,15 @@ function ResetPasswordContent() {
               />
             </div>
             <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-              Missing reset token
+              {t("auth.missingResetToken")}
             </CardTitle>
             <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-              The link you followed is incomplete. Request a new reset email.
+              {t("auth.missingResetTokenDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button asChild className="w-full h-14 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md" size="lg">
-              <Link href="/forgot-password">Request a new link</Link>
+              <Link href="/forgot-password">{t("auth.requestNewLink")}</Link>
             </Button>
           </CardContent>
         </Card>
@@ -103,10 +103,10 @@ function ResetPasswordContent() {
             />
           </div>
           <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-            Set a new password
+            {t("auth.setNewPassword")}
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Choose a new password for your WorkenAI account.
+            {t("auth.setNewPasswordDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -115,7 +115,7 @@ function ResetPasswordContent() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="password"
-                placeholder="New password (min 8 characters)"
+                placeholder={t("auth.newPasswordMinChars")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -127,7 +127,7 @@ function ResetPasswordContent() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="password"
-                placeholder="Confirm password"
+                placeholder={t("auth.confirmPassword")}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -147,15 +147,15 @@ function ResetPasswordContent() {
               size="lg"
             >
               <LogIn className="h-4 w-4" />
-              {mutation.isPending ? "Updating..." : "Update password"}
+              {mutation.isPending ? t("auth.updating") : t("auth.updatePassword")}
             </Button>
             <p className="text-sm text-text-2 mt-6">
-              {"Remembered it? "}
+              {t("auth.rememberedIt")}
               <Link
                 href="/login"
                 className="text-primary-6 hover:text-primary-7 font-medium"
               >
-                Back to login
+                {t("auth.backToLogin")}
               </Link>
             </p>
           </form>

@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useLanguage } from "@/lib/i18n";
 
 const MODEL_ICONS: Record<string, { color: string; letter: string }> = {
   "stepfun/step-3.5-flash:free": { color: "#10a37f", letter: "S" },
@@ -155,6 +156,7 @@ export function AddModelDialog({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
+  const { t } = useLanguage();
   const isEdit = !!existingModel;
   const [internalOpen, setInternalOpen] = useState(false);
   // Controlled when both props are provided; otherwise fall back to
@@ -329,31 +331,31 @@ export function AddModelDialog({
           onClose={handleClose}
           onApply={handleApply}
           applyLabel={
-            mutation.isPending ? "Saving…" : isEdit ? "Save" : "Apply"
+            mutation.isPending ? t("addModel.saving") : isEdit ? t("addModel.save") : t("addModel.apply")
           }
           applyPending={mutation.isPending}
-          title={isEdit ? "Edit model" : "Add model"}
+          title={isEdit ? t("addModel.editTitle") : t("addModel.addTitle")}
           description={
             isEdit
-              ? "Update this model's configuration."
-              : "Configure a model to make it available across your workspace."
+              ? t("addModel.editDesc")
+              : t("addModel.addDesc")
           }
         >
           <div className="space-y-4">
             {/* Selected model */}
             <div>
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
-                Selected model
+                {t("addModel.selectedModel")}
               </p>
               <Select value={modelId} onValueChange={setModelId}>
                 <SelectTrigger className={modelSelectClass}>
                   <SelectValue
                     placeholder={
                       modelsLoading
-                        ? "Loading models…"
+                        ? t("addModel.loadingModels")
                         : models.length === 0
-                          ? "No models enabled — ask an admin"
-                          : "Select a model"
+                          ? t("addModel.noModels")
+                          : t("addModel.selectModel")
                     }
                   />
                 </SelectTrigger>
@@ -371,7 +373,7 @@ export function AddModelDialog({
             {/* Custom name */}
             <div>
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
-                Custom name
+                {t("addModel.customName")}
               </p>
               <input
                 type="text"
@@ -380,7 +382,7 @@ export function AddModelDialog({
                   setCustomName(e.target.value);
                   setCustomNameTouched(true);
                 }}
-                placeholder="Pick a model to autofill"
+                placeholder={t("addModel.pickAutofill")}
                 className={`${inputClass} outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
               />
             </div>
@@ -392,8 +394,8 @@ export function AddModelDialog({
             {customIntegrations.length > 0 && (
               <div>
                 <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
-                  Custom LLM endpoint{" "}
-                  <span className="text-text-3">(optional)</span>
+                  {t("addModel.customLLMEndpoint")}{" "}
+                  <span className="text-text-3">{t("addModel.optional")}</span>
                 </p>
                 <Select
                   value={integrationId || "__none__"}
@@ -402,11 +404,11 @@ export function AddModelDialog({
                   }
                 >
                   <SelectTrigger className={modelSelectClass}>
-                    <SelectValue placeholder="WorkenAI default" />
+                    <SelectValue placeholder={t("addModel.workenaiDefault")} />
                   </SelectTrigger>
                   <SelectContent className="p-0">
                     <SelectItem value="__none__" className={selectItemClass}>
-                      WorkenAI default
+                      {t("addModel.workenaiDefault")}
                     </SelectItem>
                     {customIntegrations.map((i) => (
                       <SelectItem
@@ -420,8 +422,7 @@ export function AddModelDialog({
                   </SelectContent>
                 </Select>
                 <p className="mt-1 text-[12px] text-text-3">
-                  When set, chat calls for this alias route to the selected
-                  Custom LLM endpoint instead of the WorkenAI default.
+                  {t("addModel.endpointHint")}
                 </p>
               </div>
             )}
@@ -429,17 +430,15 @@ export function AddModelDialog({
             {/* Fallback models */}
             <div>
               <p className="text-[16px] font-semibold leading-[24px] text-text-1 mb-2">
-                Fallback models
+                {t("addModel.fallbackModels")}
               </p>
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mt-0.5 mb-4">
-                Choose fallback models to use if previous model timeouts (3s) or
-                returns error. The fallbacks will be applied in the order you
-                specify.
+                {t("addModel.fallbackHint")}
               </p>
 
               {/* Select fallback model */}
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
-                Select fallback model
+                {t("addModel.selectFallback")}
               </p>
               <Select
                 value={fallbackToAdd}
@@ -447,7 +446,7 @@ export function AddModelDialog({
                 disabled={availableFallbacks.length === 0}
               >
                 <SelectTrigger className={fallbackSelectClass}>
-                  <SelectValue placeholder="Search with model custom name" />
+                  <SelectValue placeholder={t("addModel.searchByName")} />
                 </SelectTrigger>
                 <SelectContent className="p-0">
                   {availableFallbacks.map((m) => (
@@ -517,7 +516,7 @@ export function AddModelDialog({
                               onClick={() => removeFallback(id)}
                             >
                               <Trash2 className="h-4 w-4" />
-                              Remove
+                              {t("addModel.remove")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="gap-2"
@@ -525,7 +524,7 @@ export function AddModelDialog({
                               onClick={() => moveUp(realIdx)}
                             >
                               <ArrowUp className="h-4 w-4" />
-                              Move up
+                              {t("addModel.moveUp")}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="gap-2"
@@ -533,7 +532,7 @@ export function AddModelDialog({
                               onClick={() => moveDown(realIdx)}
                             >
                               <ArrowDown className="h-4 w-4" />
-                              Move down
+                              {t("addModel.moveDown")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>

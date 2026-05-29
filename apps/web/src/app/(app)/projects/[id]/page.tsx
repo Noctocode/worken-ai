@@ -35,6 +35,7 @@ import { MessageActions } from "@/components/project-chat/message-actions";
 import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
 import { useAuth } from "@/components/providers";
 import { humanizeChatError } from "@/lib/chat-errors";
+import { useLanguage } from "@/lib/i18n";
 
 interface LocalMessage {
   id: string;
@@ -86,6 +87,7 @@ function getInitials(name: string | null | undefined) {
 }
 
 export default function ProjectChatPage() {
+  const { t } = useLanguage();
   const params = useParams();
   const projectId = params.id as string;
   const { user } = useAuth();
@@ -137,7 +139,7 @@ export default function ProjectChatPage() {
     },
     onError: (err) => {
       toast.error(
-        err instanceof Error ? err.message : "Failed to change model",
+        err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
       );
     },
   });
@@ -275,7 +277,7 @@ export default function ProjectChatPage() {
     updateModelMutation.mutate(next.id, {
       onSuccess: () => {
         toast.success(
-          `Switched to ${next.label} — your next message will use it.`,
+          `${t("projDetail.switchedTo1")} ${next.label} ${t("projDetail.switchedTo2")}`,
         );
       },
     });
@@ -473,8 +475,7 @@ export default function ProjectChatPage() {
             m.id === assistantId
               ? {
                   ...m,
-                  content:
-                    "No response from the AI gateway. The streaming endpoint may not be available — try refreshing the page, and if the problem persists, restart the API server.",
+                  content: t("projDetail.noResponse"),
                   isError: true,
                 }
               : m,
@@ -564,10 +565,10 @@ export default function ProjectChatPage() {
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <div className="text-center">
-            <p className="text-sm text-text-2">Failed to load project</p>
+            <p className="text-sm text-text-2">{t("projDetail.failedLoad")}</p>
             <Link href="/">
               <Button variant="link" className="mt-2">
-                Go back
+                {t("projDetail.goBack")}
               </Button>
             </Link>
           </div>
@@ -598,19 +599,17 @@ export default function ProjectChatPage() {
                 />
                 <div className="flex-1 text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    Your {pausedByokIntegration.displayName} key is paused.
+                    {t("projDetail.keyPausedPrefix")} {pausedByokIntegration.displayName} {t("projDetail.keyPausedSuffix")}
                   </p>
                   <p className="text-text-3">
-                    Chat for this project is routing through the WorkenAI
-                    default instead of your own provider key. Re-enable it
-                    on the{" "}
+                    {t("projDetail.routingViaDefault")}{" "}
                     <Link
                       href="/teams?tab=integration"
                       className="font-medium text-primary-6 hover:text-primary-7 underline"
                     >
-                      Integration tab
+                      {t("projDetail.integrationTab")}
                     </Link>{" "}
-                    to bill against your account again.
+                    {t("projDetail.toBill")}
                   </p>
                 </div>
               </div>
@@ -691,7 +690,7 @@ export default function ProjectChatPage() {
                       isSending ? (
                         <span className="flex items-center gap-2 text-text-3">
                           <Loader2 className="h-4 w-4 animate-spin" />
-                          Thinking...
+                          {t("projDetail.thinking")}
                         </span>
                       ) : (
                         // Markdown rendering for both user + assistant
@@ -855,7 +854,7 @@ export default function ProjectChatPage() {
                       <details className="mt-2 rounded-md border border-border-2 bg-bg-1/40 text-[12px]">
                         <summary className="flex cursor-pointer items-center gap-1.5 px-3 py-2 font-medium text-text-2 hover:text-text-1">
                           <Sparkles className="h-3.5 w-3.5 text-primary-6" />
-                          Show thinking
+                          {t("projDetail.showThinking")}
                         </summary>
                         <div className="border-t border-border-2 px-3 py-2 text-text-3 whitespace-pre-wrap italic">
                           {msg.reasoning}
@@ -889,7 +888,7 @@ export default function ProjectChatPage() {
                                     (err: Error) => {
                                       toast.error(
                                         err.message ||
-                                          "Couldn't save feedback.",
+                                          t("projDetail.couldntSaveFeedback"),
                                       );
                                     },
                                   );
@@ -939,7 +938,7 @@ export default function ProjectChatPage() {
                             fill="currentColor"
                             strokeWidth={0}
                           />
-                          Stopped
+                          {t("projDetail.stopped")}
                         </span>
                       )}
                     </span>

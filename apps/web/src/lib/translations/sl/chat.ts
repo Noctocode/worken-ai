@@ -1,0 +1,28 @@
+import type { chat as chatEn } from "../en/chat";
+
+export const chat: Record<keyof typeof chatEn, string> = {
+  'chatHist.title': 'Zgodovina klepetov',
+  'chatHist.noConvos': 'Ni pogovorov',
+  'chatHist.newConvo': 'Nov pogovor',
+  'chatHist.justNow': 'zdaj',
+  'chatHist.mAgo': 'min nazaj',
+  'chatHist.hAgo': 'h nazaj',
+  'chatHist.dAgo': 'd nazaj',
+  'chatComp.askAnything': 'Vprašaj me karkoli',
+  'chatComp.attachFile': 'Priloži datoteko',
+  'chatComp.promptLibrary': 'Knjižnica promptov',
+  'chatComp.stopGenerating': 'Ustavi generiranje',
+  'chatComp.send': 'Pošlji',
+  'chatComp.generating': 'Generiranje — pritisnite Ustavi za preklic.',
+  'chatComp.shiftEnter': 'Shift + Enter za novo vrstico',
+  'chatEmpty.sendMessage': 'Pošljite sporočilo za začetek pogovora z AI asistentom.',
+  'msgActions.copyFailed': 'Kopiranje v odložišče ni uspelo.',
+  'msgActions.feedbackRemoved': 'Povratna informacija odstranjena.',
+  'msgActions.thanks': 'Hvala za povratno informacijo.',
+  'msgActions.gotIt': 'V redu — potrudili se bomo bolje.',
+  'msgActions.copied': 'Kopirano',
+  'msgActions.copy': 'Kopiraj',
+  'msgActions.regenerate': 'Ponovno generiraj',
+  'msgActions.goodResponse': 'Dober odgovor',
+  'msgActions.badResponse': 'Slab odgovor',
+};

@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useLanguage } from "@/lib/i18n";
 
 export function CreateTeamDialog({
   children,
@@ -24,6 +25,7 @@ export function CreateTeamDialog({
   children: React.ReactNode;
   team?: Team;
 }) {
+  const { t } = useLanguage();
   const isEdit = !!team;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -90,29 +92,29 @@ export function CreateTeamDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Edit Team" : "Create Team"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("dlg.team.editTitle") : t("dlg.team.createTitle")}</DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Update the team name and description."
-              : "Create a new team to collaborate with others."}
+              ? t("dlg.team.editDesc")
+              : t("dlg.team.createDesc")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="team-name">Team Name</Label>
+            <Label htmlFor="team-name">{t("dlg.team.name")}</Label>
             <Input
               id="team-name"
-              placeholder="My Team"
+              placeholder={t("dlg.team.namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="team-description">Description</Label>
+            <Label htmlFor="team-description">{t("dlg.team.desc")}</Label>
             <Textarea
               id="team-description"
-              placeholder="What is this team for?"
+              placeholder={t("dlg.team.descPlaceholder")}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
@@ -120,13 +122,13 @@ export function CreateTeamDialog({
           </div>
           {!isEdit && (
             <div className="space-y-2">
-              <Label htmlFor="team-budget">Monthly Budget ($)</Label>
+              <Label htmlFor="team-budget">{t("dlg.team.budget")}</Label>
               <Input
                 id="team-budget"
                 type="number"
                 min="0"
                 step="0.01"
-                placeholder="e.g. 300"
+                placeholder={t("dlg.team.budgetPlaceholder")}
                 value={monthlyBudget}
                 onChange={(e) => setMonthlyBudget(e.target.value)}
               />
@@ -136,11 +138,11 @@ export function CreateTeamDialog({
             <Button type="submit" disabled={isPending || !name.trim()}>
               {isPending
                 ? isEdit
-                  ? "Saving..."
-                  : "Creating..."
+                  ? t("dlg.team.saving")
+                  : t("dlg.team.creating")
                 : isEdit
-                  ? "Save Changes"
-                  : "Create Team"}
+                  ? t("dlg.team.saveChanges")
+                  : t("dlg.team.create")}
             </Button>
           </DialogFooter>
         </form>

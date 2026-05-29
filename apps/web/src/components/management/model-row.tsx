@@ -37,6 +37,7 @@ import {
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
 import { useAuth } from "@/components/providers";
+import { useLanguage } from "@/lib/i18n";
 
 function providerOf(modelId: string): string | null {
   const idx = modelId.indexOf("/");
@@ -44,6 +45,7 @@ function providerOf(modelId: string): string | null {
 }
 
 export function ModelRow({ model }: { model: ModelConfig }) {
+  const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -64,10 +66,10 @@ export function ModelRow({ model }: { model: ModelConfig }) {
     onSuccess: () => {
       invalidateModelMutations(queryClient);
       setDeleteConfirmOpen(false);
-      toast.success(`Deleted "${model.customName}".`);
+      toast.success(`${t("mgmt.rows.deletedToast")} "${model.customName}".`);
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to delete model."),
+      toast.error(err.message || t("mgmt.rows.deleteFailed")),
   });
 
   const fallbacks = (model.fallbackModels ?? []) as string[];
@@ -108,11 +110,11 @@ export function ModelRow({ model }: { model: ModelConfig }) {
             checked={model.isActive}
             onCheckedChange={() => toggleMutation.mutate()}
             disabled={toggleMutation.isPending || !isAdmin}
-            title={isAdmin ? undefined : "Only admins can change models"}
+            title={isAdmin ? undefined : t("mgmt.rows.changeModelsAdmin")}
             className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
           />
           <span className="text-sm text-black-700 whitespace-nowrap">
-            {model.isActive ? "Active" : "Inactive"}
+            {model.isActive ? t("mgmt.rows.active") : t("mgmt.rows.inactive")}
           </span>
         </div>
       </td>
@@ -126,19 +128,19 @@ export function ModelRow({ model }: { model: ModelConfig }) {
           {customIntegration && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-7"
-              title={`Routes to Custom LLM at ${customIntegration.apiUrl ?? "—"}`}
+              title={`${t("mgmt.rows.routesCustom")} ${customIntegration.apiUrl ?? "—"}`}
             >
               <Globe className="h-3 w-3" />
-              Custom
+              {t("mgmt.rows.custom")}
             </span>
           )}
           {byokIntegration && (
             <span
               className="inline-flex items-center gap-1 rounded-full bg-success-1 px-2 py-0.5 text-[11px] font-medium text-success-7"
-              title={`Routes through your ${byokIntegration.displayName} key (BYOK)`}
+              title={`${t("mgmt.rows.routesBYOK")} ${byokIntegration.displayName} ${t("mgmt.rows.routesBYOKSuffix")}`}
             >
               <KeySquare className="h-3 w-3" />
-              BYOK
+              {t("mgmt.rows.byok")}
             </span>
           )}
         </div>
@@ -178,19 +180,19 @@ export function ModelRow({ model }: { model: ModelConfig }) {
               className="gap-2"
               onClick={() => setEditOpen(true)}
               disabled={!isAdmin}
-              title={isAdmin ? undefined : "Only admins can edit models"}
+              title={isAdmin ? undefined : t("mgmt.rows.editModelsAdmin")}
             >
               <Pencil className="h-4 w-4" />
-              Edit model
+              {t("mgmt.rows.editModel")}
             </DropdownMenuItem>
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
               onClick={() => setDeleteConfirmOpen(true)}
               disabled={!isAdmin}
-              title={isAdmin ? undefined : "Only admins can delete models"}
+              title={isAdmin ? undefined : t("mgmt.rows.deleteModelsAdmin")}
             >
               <Trash2 className="h-4 w-4" />
-              Delete model
+              {t("mgmt.rows.removeModel")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -216,12 +218,10 @@ export function ModelRow({ model }: { model: ModelConfig }) {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Delete model</DialogTitle>
+              <DialogTitle>{t("mgmt.rows.deleteModelTitle")}</DialogTitle>
               <DialogDescription>
-                Are you sure you want to delete{" "}
-                <strong>{model.customName}</strong>? This action cannot be
-                undone. Projects routed to this alias will fall back to the
-                WorkenAI default.
+                {t("mgmt.rows.deleteModelDesc1")}{" "}
+                <strong>{model.customName}</strong>{t("mgmt.rows.deleteModelDesc2")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -231,7 +231,7 @@ export function ModelRow({ model }: { model: ModelConfig }) {
                 disabled={deleteMutation.isPending}
                 className="cursor-pointer"
               >
-                Cancel
+                {t("mgmt.rows.cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -242,10 +242,10 @@ export function ModelRow({ model }: { model: ModelConfig }) {
                 {deleteMutation.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Deleting…
+                    {t("mgmt.rows.deleting")}
                   </>
                 ) : (
-                  "Delete"
+                  t("mgmt.rows.deleteBtn")
                 )}
               </Button>
             </DialogFooter>

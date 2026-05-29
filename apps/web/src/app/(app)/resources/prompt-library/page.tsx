@@ -46,9 +46,11 @@ import {
   fetchPrompts,
   type PromptSummary,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 export default function PromptLibraryPage() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("all");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -65,7 +67,7 @@ export default function PromptLibraryPage() {
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load prompts.";
+          err instanceof Error ? err.message : t("promptLibrary.loadFailed");
         toast.error(message);
       })
       .finally(() => {
@@ -74,7 +76,7 @@ export default function PromptLibraryPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -101,7 +103,7 @@ export default function PromptLibraryPage() {
       return (
         p.title.toLowerCase().includes(q) ||
         (p.description?.toLowerCase().includes(q) ?? false) ||
-        p.tags.some((t) => t.toLowerCase().includes(q))
+        p.tags.some((tag) => tag.toLowerCase().includes(q))
       );
     });
   }, [prompts, query, category]);
@@ -109,9 +111,9 @@ export default function PromptLibraryPage() {
   const handleCopy = async (prompt: PromptSummary) => {
     try {
       await navigator.clipboard.writeText(prompt.body);
-      toast.success(`Copied "${prompt.title}" to clipboard.`);
+      toast.success(t("promptLibrary.copiedToast").replace("{title}", prompt.title));
     } catch {
-      toast.error("Couldn't copy to clipboard.");
+      toast.error(t("promptLibrary.copyFailed"));
     }
   };
 
@@ -127,11 +129,11 @@ export default function PromptLibraryPage() {
     setDeleteTarget(null);
     try {
       await deletePrompt(target.id);
-      toast.success(`Deleted "${target.title}".`);
+      toast.success(t("promptLibrary.deletedToast").replace("{title}", target.title));
     } catch (err) {
       setPrompts(previous);
       const message =
-        err instanceof Error ? err.message : "Couldn't delete prompt.";
+        err instanceof Error ? err.message : t("promptLibrary.deleteFailed");
       toast.error(message);
     }
   };
@@ -143,7 +145,7 @@ export default function PromptLibraryPage() {
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Resources
+        {t("promptLibrary.backToResources")}
       </Link>
 
       {/* Toolbar */}
@@ -153,16 +155,16 @@ export default function PromptLibraryPage() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search"
+            placeholder={t("promptLibrary.search")}
             className="h-11 pl-9 pr-3 text-base rounded-md border-border-2 placeholder:text-text-3"
           />
         </div>
         <Select value={category} onValueChange={setCategory}>
           <SelectTrigger className="h-11 w-full sm:w-[198px] rounded-md border-border-2 text-base">
-            <SelectValue placeholder="All" />
+            <SelectValue placeholder={t("promptLibrary.all")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="all">{t("promptLibrary.all")}</SelectItem>
             {categories.map((c) => (
               <SelectItem key={c} value={c}>
                 {c}
@@ -175,31 +177,30 @@ export default function PromptLibraryPage() {
           className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
         >
           <Plus className="h-4 w-4" />
-          New Prompt
+          {t("promptLibrary.newPrompt")}
         </Link>
       </div>
 
       {/* Empty / loading states */}
       {loading ? (
         <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
-          Loading prompts…
+          {t("promptLibrary.loading")}
         </div>
       ) : prompts.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-lg border border-border-2 bg-bg-white p-10 text-center">
           <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
           <h3 className="text-[16px] font-semibold text-text-1">
-            No prompts yet
+            {t("promptLibrary.noPromptsYet")}
           </h3>
           <p className="max-w-[420px] text-[13px] text-text-2">
-            Save reusable prompt templates here so you can drop them into Model
-            Arena or other chats in one click.
+            {t("promptLibrary.noPromptsDesc")}
           </p>
           <Link
             href="/resources/prompt-builder"
             className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
           >
             <Plus className="h-4 w-4" />
-            Create your first prompt
+            {t("promptLibrary.createFirst")}
           </Link>
         </div>
       ) : (
@@ -234,15 +235,15 @@ export default function PromptLibraryPage() {
                       className="inline-flex h-9 cursor-pointer items-center gap-2 rounded bg-primary-6 px-4 text-[13px] font-medium text-text-white transition-colors hover:bg-primary-7"
                     >
                       <Copy className="h-4 w-4" />
-                      Copy Prompt
+                      {t("promptLibrary.copyPrompt")}
                     </button>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
                           className="flex h-9 w-9 cursor-pointer items-center justify-center rounded border border-border-2 bg-bg-white text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-                          aria-label="More actions"
-                          title="More actions"
+                          aria-label={t("promptLibrary.moreActions")}
+                          title={t("promptLibrary.moreActions")}
                         >
                           <MoreVertical className="h-4 w-4" />
                         </button>
@@ -255,7 +256,7 @@ export default function PromptLibraryPage() {
                           }}
                         >
                           <Pencil className="mr-2 h-3.5 w-3.5" />
-                          Edit
+                          {t("promptLibrary.edit")}
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem
@@ -266,7 +267,7 @@ export default function PromptLibraryPage() {
                           className="text-danger-6 focus:text-danger-6"
                         >
                           <Trash2 className="mr-2 h-3.5 w-3.5" />
-                          Delete
+                          {t("promptLibrary.delete")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -280,12 +281,12 @@ export default function PromptLibraryPage() {
                         {p.category}
                       </span>
                     )}
-                    {p.tags.map((t) => (
+                    {p.tags.map((tag) => (
                       <span
-                        key={t}
+                        key={tag}
                         className="rounded border border-border-2 bg-bg-white px-2.5 py-1 text-[11px] font-normal text-text-2"
                       >
-                        {t}
+                        {tag}
                       </span>
                     ))}
                   </div>
@@ -296,7 +297,7 @@ export default function PromptLibraryPage() {
                   onClick={() => toggleExpanded(p.id)}
                   className="inline-flex cursor-pointer self-start items-center gap-1 text-[13px] font-medium text-primary-6 hover:text-primary-7 hover:underline"
                 >
-                  {expanded.has(p.id) ? "Hide Full Prompt" : "View Full Prompt"}
+                  {expanded.has(p.id) ? t("promptLibrary.hideFull") : t("promptLibrary.viewFull")}
                   {expanded.has(p.id) ? (
                     <ChevronUp className="h-3.5 w-3.5" />
                   ) : (
@@ -308,7 +309,7 @@ export default function PromptLibraryPage() {
                   <div className="mt-1 flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-4">
                     <div className="flex items-center justify-between gap-3">
                       <h4 className="text-[13px] font-semibold text-text-1">
-                        Full Prompt Template
+                        {t("promptLibrary.fullTemplate")}
                       </h4>
                       <button
                         type="button"
@@ -316,7 +317,7 @@ export default function PromptLibraryPage() {
                         className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
                       >
                         <Copy className="h-3.5 w-3.5" />
-                        Copy
+                        {t("promptLibrary.copy")}
                       </button>
                     </div>
                     <pre className="max-h-[400px] overflow-auto rounded bg-bg-1 p-3 font-mono text-[12px] leading-[1.625] text-text-1 whitespace-pre-wrap">
@@ -330,7 +331,7 @@ export default function PromptLibraryPage() {
 
           {filtered.length === 0 && (
             <div className="rounded-lg border border-border-2 bg-bg-white p-10 text-center text-sm text-text-3">
-              No prompts match your search.
+              {t("promptLibrary.noMatch")}
             </div>
           )}
         </div>
@@ -342,11 +343,9 @@ export default function PromptLibraryPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete prompt</DialogTitle>
+            <DialogTitle>{t("promptLibrary.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>&ldquo;{deleteTarget?.title}&rdquo;</strong>? This action
-              cannot be undone.
+              {t("promptLibrary.deleteConfirm").replace("{title}", deleteTarget?.title ?? "")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -355,14 +354,14 @@ export default function PromptLibraryPage() {
               onClick={() => setDeleteTarget(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("promptLibrary.cancel")}
             </Button>
             <Button
               variant="destructive"
               onClick={confirmDelete}
               className="cursor-pointer"
             >
-              Delete
+              {t("promptLibrary.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>

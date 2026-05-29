@@ -7,49 +7,51 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
+import { useLanguage } from "@/lib/i18n";
 
 type Infra = "managed" | "on-premise";
-
-const INFRA_OPTIONS: Array<{
-  type: Infra;
-  title: string;
-  subtitle: string;
-  icon: typeof Cloud;
-  features: string[];
-  bestFor: string;
-}> = [
-  {
-    type: "managed",
-    title: "Managed Cloud",
-    subtitle: "Hosted by WorkenAI",
-    icon: Cloud,
-    features: [
-      "5-minute setup",
-      "Automatic scaling",
-      "Managed updates",
-      "SOC 2 Type II certified",
-    ],
-    bestFor: "Rapid deployment, minimal DevOps overhead",
-  },
-  {
-    type: "on-premise",
-    title: "On-Premise / Private Cloud",
-    subtitle: "Your infrastructure",
-    icon: Server,
-    features: [
-      "Full data sovereignty",
-      "Air-gapped deployment",
-      "Custom compliance",
-      "Network isolation",
-    ],
-    bestFor: "Government, defense, regulated industries",
-  },
-];
 
 export default function SetupProfileStep4Page() {
   const router = useRouter();
   const { state, update, saveDraft } = useOnboarding();
+  const { t } = useLanguage();
   const selected: Infra = state.infraChoice ?? "managed";
+
+  const INFRA_OPTIONS: Array<{
+    type: Infra;
+    title: string;
+    subtitle: string;
+    icon: typeof Cloud;
+    features: string[];
+    bestFor: string;
+  }> = [
+    {
+      type: "managed",
+      title: t("onboarding.step4.managed.title"),
+      subtitle: t("onboarding.step4.managed.subtitle"),
+      icon: Cloud,
+      features: [
+        t("onboarding.step4.managed.f1"),
+        t("onboarding.step4.managed.f2"),
+        t("onboarding.step4.managed.f3"),
+        t("onboarding.step4.managed.f4"),
+      ],
+      bestFor: t("onboarding.step4.managed.bestFor"),
+    },
+    {
+      type: "on-premise",
+      title: t("onboarding.step4.onPremise.title"),
+      subtitle: t("onboarding.step4.onPremise.subtitle"),
+      icon: Server,
+      features: [
+        t("onboarding.step4.onPremise.f1"),
+        t("onboarding.step4.onPremise.f2"),
+        t("onboarding.step4.onPremise.f3"),
+        t("onboarding.step4.onPremise.f4"),
+      ],
+      bestFor: t("onboarding.step4.onPremise.bestFor"),
+    },
+  ];
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -65,11 +67,10 @@ export default function SetupProfileStep4Page() {
         <div className="w-full flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Configure your AI Infrastructure
+              {t("onboarding.step4.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Select your preferred vector database hosting model for secure
-              AI operations.
+              {t("onboarding.step4.subtitle")}
             </p>
           </div>
 
@@ -111,7 +112,7 @@ export default function SetupProfileStep4Page() {
                   </ul>
 
                   <div className="flex flex-col gap-1 border-t border-border-2 pt-4">
-                    <span className="text-base font-medium text-text-3">Best For</span>
+                    <span className="text-base font-medium text-text-3">{t("onboarding.step4.bestFor")}</span>
                     <span className="text-sm text-text-1">{bestFor}</span>
                   </div>
                 </button>
@@ -125,7 +126,7 @@ export default function SetupProfileStep4Page() {
               className="h-12 w-[75px] rounded-lg text-text-1"
               onClick={() => router.back()}
             >
-              Back
+              {t("common.back")}
             </Button>
             <Button
               className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
@@ -138,7 +139,7 @@ export default function SetupProfileStep4Page() {
                 router.push("/setup-profile/step-5");
               }}
             >
-              Continue
+              {t("common.continue")}
             </Button>
           </div>
         </div>
