@@ -35,6 +35,12 @@ export interface DriveFileMeta {
    * (Drive doesn't surface a meaningful size for those until export).
    */
   sizeBytes: number | null;
+  /**
+   * Drive folder id this file lives directly under (its first parent).
+   * Used by the import path to mirror the Drive folder tree into KC.
+   * NULL when Drive reports no parent (rare — orphaned / shared items).
+   */
+  parentFolderId: string | null;
 }
 
 export interface DriveFolderMeta {
@@ -43,6 +49,30 @@ export interface DriveFolderMeta {
   /** True when this folder has at least one subfolder. Cheap signal so the
    *  FE can render an expand caret without a second round-trip. */
   hasChildren: boolean;
+}
+
+/**
+ * A folder discovered while walking a Drive import scope. `parentId`
+ * is the Drive id of the folder it nests under, as reported by Drive
+ * (first parent). For the picked top-level folders of a folder-scoped
+ * import, Drive's parent is outside the import — the import service
+ * seeds those to their KC child folder, so `parentId` there points at
+ * a folder that simply isn't in the returned set; resolution falls
+ * back to the import root.
+ */
+export interface DriveFolderNode {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+/**
+ * Full result of a scope walk: every importable file plus every folder
+ * encountered, with enough parent links to rebuild the tree in KC.
+ */
+export interface DriveListing {
+  files: DriveFileMeta[];
+  folders: DriveFolderNode[];
 }
 
 /**
@@ -250,7 +280,7 @@ export class GoogleDriveClientService {
     scope: { kind: 'all' } | { kind: 'folders'; folderIds: string[] },
     fileLimit?: number,
     onProgress?: (count: number) => void,
-  ): Promise<DriveFileMeta[]> {
+  ): Promise<DriveListing> {
     if (scope.kind === 'all') {
       return this.runWithRetry(userId, (drive) =>
         this.listFilesGlobal(drive, fileLimit, onProgress),
@@ -265,7 +295,33 @@ export class GoogleDriveClientService {
     drive: drive_v3.Drive,
     fileLimit?: number,
     onProgress?: (count: number) => void,
-  ): Promise<DriveFileMeta[]> {
+  ): Promise<DriveListing> {
+    // Pass 1: pull every folder in the user's Drive so the import path
+    // can rebuild the hierarchy. Folders are far fewer than files, so
+    // this is cheap relative to the file scan that follows.
+    const folders: DriveFolderNode[] = [];
+    let folderPageToken: string | undefined;
+    do {
+      const res = await drive.files.list({
+        q: `mimeType = '${FOLDER_MIME}' and trashed = false`,
+        corpora: 'user',
+        fields: 'nextPageToken, files(id, name, parents)',
+        pageSize: 1000,
+        pageToken: folderPageToken,
+      });
+      for (const f of res.data.files ?? []) {
+        if (!f.id || !f.name) continue;
+        folders.push({
+          id: f.id,
+          name: f.name,
+          parentId: f.parents?.[0] ?? null,
+        });
+      }
+      folderPageToken = res.data.nextPageToken ?? undefined;
+    } while (folderPageToken);
+
+    // Pass 2: the file scan. `parents` now in the field mask so each
+    // file knows which folder to land in.
     const out: DriveFileMeta[] = [];
     let pageToken: string | undefined;
     do {
@@ -273,7 +329,7 @@ export class GoogleDriveClientService {
         q: `mimeType != '${FOLDER_MIME}' and trashed = false`,
         corpora: 'user',
         fields:
-          'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, size)',
+          'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, size, parents)',
         pageSize: 1000,
         pageToken,
       });
@@ -290,15 +346,16 @@ export class GoogleDriveClientService {
       // all pages before the BadRequestException fires.
       if (fileLimit !== undefined && out.length > fileLimit) break;
     } while (pageToken);
-    return out;
+    return { files: out, folders };
   }
 
   private async listFilesUnderFolders(
     drive: drive_v3.Drive,
     folderIds: string[],
     fileLimit?: number,
-  ): Promise<DriveFileMeta[]> {
+  ): Promise<DriveListing> {
     const out: DriveFileMeta[] = [];
+    const folders: DriveFolderNode[] = [];
     const visited = new Set<string>();
     const queue = [...folderIds];
 
@@ -312,13 +369,19 @@ export class GoogleDriveClientService {
         const res = await drive.files.list({
           q: `'${folderId}' in parents and trashed = false`,
           fields:
-            'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, size)',
+            'nextPageToken, files(id, name, mimeType, modifiedTime, webViewLink, size, parents)',
           pageSize: 1000,
           pageToken,
         });
         for (const f of res.data.files ?? []) {
           if (!f.id) continue;
           if (f.mimeType === FOLDER_MIME) {
+            // Record the subfolder (parent = the folder we're walking)
+            // and queue it for its own descendants. The picked roots
+            // themselves never enter `folders` — the import service
+            // seeds them to their KC child folder.
+            if (f.name)
+              folders.push({ id: f.id, name: f.name, parentId: folderId });
             queue.push(f.id);
             continue;
           }
@@ -330,7 +393,7 @@ export class GoogleDriveClientService {
         if (fileLimit !== undefined && out.length > fileLimit) break outer;
       } while (pageToken);
     }
-    return out;
+    return { files: out, folders };
   }
 
   /**
@@ -342,6 +405,8 @@ export class GoogleDriveClientService {
     if (!f.id || !f.name || !f.mimeType) return null;
     if (SKIP_NATIVE_MIMES.has(f.mimeType)) return null;
 
+    const parentFolderId = f.parents?.[0] ?? null;
+
     const native = NATIVE_EXPORTS[f.mimeType];
     if (native) {
       return {
@@ -352,6 +417,7 @@ export class GoogleDriveClientService {
         modifiedTime: f.modifiedTime ?? undefined,
         webViewLink: f.webViewLink ?? undefined,
         sizeBytes: null, // Drive doesn't size native formats reliably
+        parentFolderId,
       };
     }
 
@@ -365,6 +431,7 @@ export class GoogleDriveClientService {
       modifiedTime: f.modifiedTime ?? undefined,
       webViewLink: f.webViewLink ?? undefined,
       sizeBytes: f.size ? Number(f.size) : null,
+      parentFolderId,
     };
   }
 
