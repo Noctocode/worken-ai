@@ -21,6 +21,7 @@ import { ModelsModule } from './models/models.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { ObservabilityModule } from './observability/observability.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
+import { OneDriveModule } from './onedrive/onedrive.module';
 import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { SharePointModule } from './sharepoint/sharepoint.module';
@@ -48,6 +49,7 @@ import { UsersModule } from './users/users.module';
     NotificationsModule,
     ObservabilityModule,
     OnboardingModule,
+    OneDriveModule,
     OrgSettingsModule,
     ProjectsModule,
     PromptsModule,
