@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLanguage } from "@/lib/i18n";
 
 interface FileForVisibility {
   id: string;
@@ -61,6 +62,7 @@ export function ChangeFileVisibilityDialog({
   onSuccess,
   isAdmin,
 }: ChangeFileVisibilityDialogProps) {
+  const { t } = useLanguage();
   const [visibility, setVisibility] =
     useState<KnowledgeFileVisibility>("all");
   const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -101,22 +103,22 @@ export function ChangeFileVisibilityDialog({
       );
     },
     onSuccess: () => {
-      toast.success("Visibility updated.");
+      toast.success(t("visDlg.updated"));
       onSuccess?.();
       onOpenChange(false);
     },
     onError: (err: Error) =>
-      toast.error(err.message || "Failed to update visibility."),
+      toast.error(err.message || t("visDlg.failedUpdate")),
   });
 
   const handleSave = () => {
     if (!file) return;
     if (visibility === "teams" && teamIds.length === 0) {
-      toast.error("Pick at least one team for Teams visibility.");
+      toast.error(t("visDlg.pickAtLeastTeam"));
       return;
     }
     if (visibility === "project" && projectIds.length === 0) {
-      toast.error("Pick at least one project for Project visibility.");
+      toast.error(t("visDlg.pickAtLeastProject"));
       return;
     }
     mutation.mutate();
@@ -126,7 +128,7 @@ export function ChangeFileVisibilityDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Change visibility</DialogTitle>
+          <DialogTitle>{t("visDlg.title")}</DialogTitle>
           <DialogDescription className="truncate" title={file?.name}>
             {file?.name}
           </DialogDescription>
@@ -134,7 +136,7 @@ export function ChangeFileVisibilityDialog({
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Visibility</Label>
+            <Label>{t("visDlg.visibility")}</Label>
             <Select
               value={visibility}
               onValueChange={(v) =>
@@ -146,37 +148,36 @@ export function ChangeFileVisibilityDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Everyone in the company</SelectItem>
+                <SelectItem value="all">{t("visDlg.everyone")}</SelectItem>
                 {/* Always rendered so the trigger label still resolves
                     for files an admin previously set to 'admins'.
                     Disabled for non-admin so they can switch AWAY
                     but never INTO that tier — privilege escalation
                     block matches the BE gate. */}
                 <SelectItem value="admins" disabled={!isAdmin}>
-                  Admins only{!isAdmin ? " (admins only)" : ""}
+                  {t("visDlg.adminsOnly")}{!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
                 </SelectItem>
-                <SelectItem value="teams">Specific teams…</SelectItem>
-                <SelectItem value="project">Specific project…</SelectItem>
+                <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
+                <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {visibility === "admins"
-                ? "Only admins will see this file in chat / arena."
+                ? t("visDlg.hintAdmins")
                 : visibility === "teams"
-                  ? "Only members of the teams you pick below will see this file."
+                  ? t("visDlg.hintTeams")
                   : visibility === "project"
-                    ? "This file will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
-                    : "Every user in the company can see this file in chat / arena."}
+                    ? t("visDlg.hintProject")
+                    : t("visDlg.hintEveryone")}
             </p>
           </div>
 
           {visibility === "teams" && (
             <div className="space-y-2">
-              <Label>Teams with access</Label>
+              <Label>{t("visDlg.teamsWithAccess")}</Label>
               {userTeams.length === 0 ? (
                 <p className="text-[11px] text-text-3">
-                  You aren&rsquo;t a member of any team yet — create or
-                  join a team first to use this visibility option.
+                  {t("visDlg.noTeams")}
                 </p>
               ) : (
                 <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
@@ -211,11 +212,10 @@ export function ChangeFileVisibilityDialog({
 
           {visibility === "project" && (
             <div className="space-y-2">
-              <Label>Projects with access</Label>
+              <Label>{t("visDlg.projectsWithAccess")}</Label>
               {userProjects.length === 0 ? (
                 <p className="text-[11px] text-text-3">
-                  You don&rsquo;t have access to any projects yet — create
-                  one first to use this visibility option.
+                  {t("visDlg.noProjects")}
                 </p>
               ) : (
                 <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
@@ -264,7 +264,7 @@ export function ChangeFileVisibilityDialog({
             disabled={mutation.isPending}
             className="cursor-pointer"
           >
-            Cancel
+            {t("visDlg.cancel")}
           </Button>
           <Button
             type="button"
@@ -275,10 +275,10 @@ export function ChangeFileVisibilityDialog({
             {mutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving…
+                {t("visDlg.saving")}
               </>
             ) : (
-              "Save"
+              t("visDlg.save")
             )}
           </Button>
         </DialogFooter>

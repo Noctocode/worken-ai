@@ -39,6 +39,8 @@ import {
 } from "@/lib/api";
 
 import { EmailTagInput, type EmailTag } from "./email-tag-input";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 /** Project-level roles for the invite row. The invite path now
  *  writes to `project_members` (NOT team_members), so the role
@@ -52,16 +54,16 @@ type InviteRole = "admin" | "editor" | "viewer";
  *  per-row dropdown to keep that control compact. */
 type DialogRole = "admin" | "editor";
 
-function roleLabel(role: string): string {
+function roleLabel(role: string, t: (k: TranslationKey) => string): string {
   switch (role) {
     case "admin":
-      return "Admin";
+      return t("invMem.roleAdmin");
     case "manager":
-      return "Manager";
+      return t("invMem.roleManager");
     case "editor":
-      return "Editor";
+      return t("invMem.roleEditor");
     case "viewer":
-      return "Viewer";
+      return t("invMem.roleViewer");
     default:
       return role;
   }
@@ -108,6 +110,7 @@ export function InviteMembersDialog({
   project: Project;
   children: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [tags, setTags] = useState<EmailTag[]>([]);
   const [inviteRole, setInviteRole] = useState<InviteRole>("editor");
@@ -141,9 +144,9 @@ export function InviteMembersDialog({
   }, [members]);
 
   const handleSend = async () => {
-    const valid = tags.filter((t) => !t.error);
+    const valid = tags.filter((tag) => !tag.error);
     if (valid.length === 0) {
-      toast.error("Add at least one valid email.");
+      toast.error(t("invMem.addValid"));
       return;
     }
     setSending(true);
@@ -154,11 +157,11 @@ export function InviteMembersDialog({
     // touched, so the invitee shows under Other immediately, and
     // they also land in /teams?tab=users.
     const results = await Promise.allSettled(
-      valid.map((t) =>
-        inviteProjectMemberByEmail(project.id, t.value, inviteRole).then(
-          () => ({ email: t.value, ok: true as const }),
+      valid.map((tag) =>
+        inviteProjectMemberByEmail(project.id, tag.value, inviteRole).then(
+          () => ({ email: tag.value, ok: true as const }),
           (err: Error) => ({
-            email: t.value,
+            email: tag.value,
             ok: false as const,
             message: err.message,
           }),
@@ -178,14 +181,14 @@ export function InviteMembersDialog({
     }
     // Keep failed tags + any tags the user had typed but didn't
     // commit (those wouldn't have been in `valid`).
-    const stillInvalid = tags.filter((t) => t.error);
+    const stillInvalid = tags.filter((tag) => tag.error);
     setTags([...failed, ...stillInvalid]);
     setSending(false);
     if (okCount > 0) {
       toast.success(
         okCount === valid.length
-          ? `Invited ${okCount} ${okCount === 1 ? "member" : "members"}.`
-          : `Invited ${okCount} of ${valid.length}. Fix the highlighted addresses and retry.`,
+          ? `${t("invMem.invitedN1")} ${okCount} ${okCount === 1 ? t("invMem.member") : t("invMem.members")}.`
+          : t("invMem.invitedPartial").replace("{ok}", String(okCount)).replace("{total}", String(valid.length)),
       );
       // Surface new accepted members. We don't touch team queries
       // anymore (no team-invite happens), but we still invalidate
@@ -197,7 +200,7 @@ export function InviteMembersDialog({
       // newly-created pending row shows up there too.
       qc.invalidateQueries({ queryKey: ["org-users"] });
     } else {
-      toast.error(`None of the invites went through. Check the addresses.`);
+      toast.error(t("invMem.noneWent"));
     }
   };
 
@@ -213,7 +216,7 @@ export function InviteMembersDialog({
       qc.invalidateQueries({ queryKey: ["project-members", project.id] });
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't update role.");
+      toast.error(err.message || t("invMem.couldntUpdateRole"));
     },
   });
 
@@ -221,10 +224,10 @@ export function InviteMembersDialog({
     mutationFn: (userId: string) => removeProjectMember(project.id, userId),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project-members", project.id] });
-      toast.success("Removed from project.");
+      toast.success(t("invMem.removedFromProject"));
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove member.");
+      toast.error(err.message || t("invMem.couldntRemove"));
     },
   });
 
@@ -233,18 +236,18 @@ export function InviteMembersDialog({
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Invite Team Members</DialogTitle>
+          <DialogTitle>{t("invMem.title")}</DialogTitle>
           <DialogDescription>
-            Add people to{" "}
+            {t("invMem.descPrefix")}{" "}
             <strong className="font-medium text-text-1">{project.name}</strong>{" "}
-            so they can chat alongside you in this project.
+            {t("invMem.descSuffix")}
           </DialogDescription>
         </DialogHeader>
 
         {project.teamId && (
           <div className="flex flex-col gap-2">
             <label className="text-[12px] font-medium text-text-2">
-              Invite by email
+              {t("invMem.inviteByEmail")}
             </label>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
               <div className="flex-1">
@@ -273,15 +276,15 @@ export function InviteMembersDialog({
                     role and the new invite path writes to
                     project_members, not team_members. */}
                 <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="editor">Editor</SelectItem>
-                  <SelectItem value="viewer">Viewer</SelectItem>
+                  <SelectItem value="admin">{t("invMem.roleAdmin")}</SelectItem>
+                  <SelectItem value="editor">{t("invMem.roleEditor")}</SelectItem>
+                  <SelectItem value="viewer">{t("invMem.roleViewer")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <Button
               type="button"
-              disabled={sending || tags.filter((t) => !t.error).length === 0}
+              disabled={sending || tags.filter((tag) => !tag.error).length === 0}
               onClick={handleSend}
               // Full-width + h-[44px] so the three stacked controls
               // (input, role dropdown, send) all share the same height
@@ -291,10 +294,10 @@ export function InviteMembersDialog({
               {sending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending…
+                  {t("invMem.sending")}
                 </>
               ) : (
-                "Send Invite"
+                t("invMem.sendInvite")
               )}
             </Button>
           </div>
@@ -309,8 +312,8 @@ export function InviteMembersDialog({
             <>
               {project.teamId && (
                 <MemberGroup
-                  title="Members"
-                  subtitle={project.teamName ?? "Team"}
+                  title={t("invMem.membersTitle")}
+                  subtitle={project.teamName ?? t("invMem.team")}
                   rows={teamRows}
                   manageHref={`/teams/${project.teamId}?tab=users`}
                   // Team rows are read-only — the team is the source
@@ -318,10 +321,10 @@ export function InviteMembersDialog({
                 />
               )}
               <MemberGroup
-                title={project.teamId ? "Other" : "Members"}
+                title={project.teamId ? t("invMem.other") : t("invMem.membersTitle")}
                 subtitle={
                   project.teamId
-                    ? "People invited to this project directly."
+                    ? t("invMem.directDesc")
                     : null
                 }
                 rows={directRows}
@@ -331,8 +334,8 @@ export function InviteMembersDialog({
                 onRemove={(userId) => removeMutation.mutate(userId)}
                 emptyMessage={
                   project.teamId
-                    ? "No direct invites yet. Add someone with the form above and pick their role."
-                    : "No members yet. Direct invites for personal projects are coming soon."
+                    ? t("invMem.noDirect")
+                    : t("invMem.directComingSoon")
                 }
               />
             </>
@@ -366,6 +369,7 @@ function MemberGroup({
   manageHref,
   emptyMessage,
 }: MemberGroupProps) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-2">
@@ -380,13 +384,13 @@ function MemberGroup({
             href={manageHref}
             className="text-[12px] font-medium text-primary-6 hover:text-primary-7"
           >
-            Manage in team
+            {t("invMem.manageInTeam")}
           </Link>
         )}
       </div>
       {rows.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border-2 px-3 py-4 text-center text-[12px] text-text-3">
-          {emptyMessage ?? "No members."}
+          {emptyMessage ?? t("invMem.noMembers")}
         </p>
       ) : (
         <ul className="flex flex-col gap-1.5">
@@ -411,7 +415,7 @@ function MemberGroup({
                   <span className="truncate">{m.userEmail}</span>
                   {m.status === "pending" && (
                     <span className="shrink-0 rounded-sm bg-warning-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7">
-                      Pending
+                      {t("invMem.pending")}
                     </span>
                   )}
                 </p>
@@ -437,13 +441,13 @@ function MemberGroup({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
-                    <SelectItem value="editor">Editor</SelectItem>
+                    <SelectItem value="admin">{t("invMem.roleAdmin")}</SelectItem>
+                    <SelectItem value="editor">{t("invMem.roleEditor")}</SelectItem>
                   </SelectContent>
                 </Select>
               ) : (
                 <span className="rounded-md bg-bg-1 px-2 py-1 text-[11px] font-medium text-text-2">
-                  {roleLabel(m.role)}
+                  {roleLabel(m.role, t)}
                 </span>
               )}
               {/* Remove fires DELETE /projects/:id/members/:userId.
@@ -459,7 +463,7 @@ function MemberGroup({
                     <button
                       type="button"
                       className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
-                      aria-label="More"
+                      aria-label={t("invMem.more")}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </button>
@@ -469,7 +473,7 @@ function MemberGroup({
                       onClick={() => onRemove(m.userId)}
                       className="text-danger-6 focus:text-danger-6"
                     >
-                      Remove from project
+                      {t("invMem.removeFromProject")}
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -484,7 +488,7 @@ function MemberGroup({
           className="inline-flex items-center gap-1 text-[12px] font-medium text-primary-6 hover:text-primary-7"
         >
           <Users className="h-3 w-3" />
-          Open team
+          {t("invMem.openTeam")}
         </Link>
       )}
     </div>

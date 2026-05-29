@@ -15,11 +15,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 type ScoreTone = "primary" | "success" | "warning" | "neutral";
 
 interface QualityScore {
-  label: string;
+  labelKey: TranslationKey;
   value: number;
   tone: ScoreTone;
 }
@@ -32,22 +34,31 @@ const SCORE_COLORS: Record<ScoreTone, { bar: string; text: string }> = {
 };
 
 const QUALITY_SCORES: QualityScore[] = [
-  { label: "Overall Score", value: 91, tone: "primary" },
-  { label: "Clarity", value: 92, tone: "success" },
-  { label: "Specificity", value: 88, tone: "warning" },
-  { label: "Safety", value: 95, tone: "neutral" },
+  { labelKey: "promptImprover.scoreOverall", value: 91, tone: "primary" },
+  { labelKey: "promptImprover.scoreClarity", value: 92, tone: "success" },
+  { labelKey: "promptImprover.scoreSpecificity", value: 88, tone: "warning" },
+  { labelKey: "promptImprover.scoreSafety", value: 95, tone: "neutral" },
 ];
 
 type ImprovementId = "persona" | "format" | "safety" | "examples";
 
+type ImprovementCategory = "Context" | "Structure" | "Safety" | "Clarity";
+
 interface Improvement {
   id: ImprovementId;
-  title: string;
-  description: string;
-  category: "Context" | "Structure" | "Safety" | "Clarity";
+  titleKey: TranslationKey;
+  descriptionKey: TranslationKey;
+  category: ImprovementCategory;
   applied: boolean;
   segment: string;
 }
+
+const CATEGORY_LABEL_KEYS: Record<ImprovementCategory, TranslationKey> = {
+  Context: "promptImprover.catContext",
+  Structure: "promptImprover.catStructure",
+  Safety: "promptImprover.catSafety",
+  Clarity: "promptImprover.catClarity",
+};
 
 const PERSONA_SEGMENT = `You are an expert procurement analyst with 15 years of experience in government contracting and RFP evaluation.
 
@@ -87,36 +98,32 @@ const EXAMPLES_SEGMENT = `## Examples:
 const INITIAL_IMPROVEMENTS: Improvement[] = [
   {
     id: "persona",
-    title: "Added Persona Context",
-    description:
-      "Establishing expertise as a senior procurement analyst improves relevance and authoritative tone.",
+    titleKey: "promptImprover.impPersonaTitle",
+    descriptionKey: "promptImprover.impPersonaDesc",
     category: "Context",
     applied: true,
     segment: PERSONA_SEGMENT,
   },
   {
     id: "format",
-    title: "Defined Output Format",
-    description:
-      "Structured JSON output ensures predictable, machine-readable results for downstream automation.",
+    titleKey: "promptImprover.impFormatTitle",
+    descriptionKey: "promptImprover.impFormatDesc",
     category: "Structure",
     applied: true,
     segment: FORMAT_SEGMENT,
   },
   {
     id: "safety",
-    title: "Added Safety Constraints",
-    description:
-      "Explicit safety guidelines prevent hallucinations and ensure responsible AI behavior.",
+    titleKey: "promptImprover.impSafetyTitle",
+    descriptionKey: "promptImprover.impSafetyDesc",
     category: "Safety",
     applied: true,
     segment: SAFETY_SEGMENT,
   },
   {
     id: "examples",
-    title: "Include Examples",
-    description:
-      "Adding 2-3 few-shot examples can significantly improve response consistency and accuracy.",
+    titleKey: "promptImprover.impExamplesTitle",
+    descriptionKey: "promptImprover.impExamplesDesc",
     category: "Clarity",
     applied: false,
     segment: EXAMPLES_SEGMENT,
@@ -132,12 +139,12 @@ const CATEGORY_STYLES: Record<Improvement["category"], string> = {
   Clarity: "bg-bg-1 text-text-2",
 };
 
-const BEST_PRACTICES: string[] = [
-  "Always specify the AI's role and expertise level",
-  "Define clear output format requirements upfront",
-  "Include safety and compliance constraints",
-  "Provide context about your use case",
-  "Add examples for complex tasks",
+const BEST_PRACTICE_KEYS: TranslationKey[] = [
+  "promptImprover.bp1",
+  "promptImprover.bp2",
+  "promptImprover.bp3",
+  "promptImprover.bp4",
+  "promptImprover.bp5",
 ];
 
 const ORIGINAL_PROMPT = `Analyze this RFP and tell me if we should bid on it.`;
@@ -160,12 +167,13 @@ function composeImprovedPrompt(improvements: Improvement[]): string {
 }
 
 function ScoreRow({ score }: { score: QualityScore }) {
+  const { t } = useLanguage();
   const colors = SCORE_COLORS[score.tone];
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <span className="text-[13px] font-medium text-text-1">
-          {score.label}
+          {t(score.labelKey)}
         </span>
         <span className={`text-[14px] font-bold ${colors.text}`}>
           {score.value}
@@ -182,6 +190,7 @@ function ScoreRow({ score }: { score: QualityScore }) {
 }
 
 export default function PromptImproverPage() {
+  const { t } = useLanguage();
   const [improvements, setImprovements] = useState<Improvement[]>(
     INITIAL_IMPROVEMENTS,
   );
@@ -203,20 +212,20 @@ export default function PromptImproverPage() {
 
   const applyAll = () => {
     setImprovements((prev) => prev.map((i) => ({ ...i, applied: true })));
-    toast.success("All improvements applied");
+    toast.success(t("promptImprover.toastAllApplied"));
   };
 
   const reset = () => {
     setImprovements(INITIAL_IMPROVEMENTS);
-    toast.success("Improvements reset to defaults");
+    toast.success(t("promptImprover.toastReset"));
   };
 
   const save = async () => {
     try {
       await navigator.clipboard.writeText(improvedPrompt);
-      toast.success("Improved prompt copied to clipboard");
+      toast.success(t("promptImprover.toastCopied"));
     } catch {
-      toast.error("Couldn't copy to clipboard");
+      toast.error(t("promptImprover.toastCopyFailed"));
     }
   };
 
@@ -235,7 +244,7 @@ export default function PromptImproverPage() {
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Resources
+        {t("promptImprover.backToResources")}
       </Link>
 
       {/* Intro action row */}
@@ -246,11 +255,10 @@ export default function PromptImproverPage() {
           </div>
           <div className="flex flex-col gap-1">
             <h2 className="text-[20px] font-bold leading-[1.5] text-text-1">
-              AI-Powered Optimization
+              {t("promptImprover.aiTitle")}
             </h2>
             <p className="text-[13px] leading-[1.5] text-text-2">
-              Enhance your prompts with enterprise-grade improvements for
-              clarity, safety, and effectiveness
+              {t("promptImprover.aiDesc")}
             </p>
           </div>
         </div>
@@ -259,7 +267,7 @@ export default function PromptImproverPage() {
           className="shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
         >
           <Sparkles className="h-4 w-4" />
-          Apply Improvements
+          {t("promptImprover.applyImprovements")}
         </Button>
       </section>
 
@@ -274,12 +282,12 @@ export default function PromptImproverPage() {
                 strokeWidth={2}
               />
               <h3 className="text-[16px] font-bold leading-[1.5] text-text-1">
-                Quality Assessment
+                {t("promptImprover.qualityAssessment")}
               </h3>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               {QUALITY_SCORES.map((s) => (
-                <ScoreRow key={s.label} score={s} />
+                <ScoreRow key={s.labelKey} score={s} />
               ))}
             </div>
           </section>
@@ -288,10 +296,10 @@ export default function PromptImproverPage() {
           <section className="overflow-hidden rounded-lg border border-border-2 bg-bg-white">
             <header className="flex items-center justify-between gap-3 border-b border-border-2 bg-bg-1 px-5 py-3">
               <h3 className="text-[14px] font-semibold text-text-1">
-                Original Prompt
+                {t("promptImprover.originalPrompt")}
               </h3>
               <span className="text-[11px] text-text-3">
-                {originalChars} characters
+                {originalChars} {t("promptImprover.charactersSuffix")}
               </span>
             </header>
             <div className="p-5">
@@ -310,11 +318,11 @@ export default function PromptImproverPage() {
                   strokeWidth={2}
                 />
                 <h3 className="text-[14px] font-semibold text-text-1">
-                  AI-Improved Version
+                  {t("promptImprover.aiImprovedVersion")}
                 </h3>
               </div>
               <span className="text-[11px] text-text-3">
-                {improvedChars} characters
+                {improvedChars} {t("promptImprover.charactersSuffix")}
               </span>
             </header>
             <div className="p-5">
@@ -329,7 +337,7 @@ export default function PromptImproverPage() {
             <div className="flex items-center gap-2">
               <Check className="h-4 w-4 text-primary-8" strokeWidth={2.5} />
               <span className="text-[13px] font-medium text-primary-8">
-                {appliedCount} of {improvements.length} improvements applied
+                {t("promptImprover.appliedCount").replace("{n}", String(appliedCount)).replace("{total}", String(improvements.length))}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -339,14 +347,14 @@ export default function PromptImproverPage() {
                 className="cursor-pointer gap-2"
               >
                 <RotateCcw className="h-4 w-4" />
-                Reset
+                {t("promptImprover.reset")}
               </Button>
               <Button
                 onClick={save}
                 className="cursor-pointer gap-2 bg-primary-7 hover:bg-primary-7/90"
               >
                 <Save className="h-4 w-4" />
-                Save Improved Prompt
+                {t("promptImprover.save")}
               </Button>
             </div>
           </section>
@@ -362,7 +370,7 @@ export default function PromptImproverPage() {
                 strokeWidth={2}
               />
               <h3 className="text-[16px] font-bold leading-[1.5] text-text-1">
-                Suggested Improvements
+                {t("promptImprover.suggested")}
               </h3>
             </div>
             <ul className="flex flex-col gap-3">
@@ -394,17 +402,17 @@ export default function PromptImproverPage() {
                           )}
                         </div>
                         <span className="text-[13px] font-semibold text-text-1">
-                          {imp.title}
+                          {t(imp.titleKey)}
                         </span>
                       </div>
                       <span
                         className={`shrink-0 rounded px-2 py-0.5 text-[10px] font-medium ${CATEGORY_STYLES[imp.category]}`}
                       >
-                        {imp.category}
+                        {t(CATEGORY_LABEL_KEYS[imp.category])}
                       </span>
                     </div>
                     <p className="pl-6 text-[12px] leading-[1.5] text-text-2">
-                      {imp.description}
+                      {t(imp.descriptionKey)}
                     </p>
                   </button>
                 </li>
@@ -417,17 +425,17 @@ export default function PromptImproverPage() {
             <div className="flex items-center gap-2">
               <Info className="h-5 w-5 text-primary-6" strokeWidth={2} />
               <h3 className="text-[14px] font-bold leading-[1.5] text-text-1">
-                Enterprise Best Practices
+                {t("promptImprover.bestPractices")}
               </h3>
             </div>
             <ul className="flex flex-col gap-2">
-              {BEST_PRACTICES.map((p) => (
+              {BEST_PRACTICE_KEYS.map((k) => (
                 <li
-                  key={p}
+                  key={k}
                   className="flex items-start gap-2 text-[12px] leading-[1.5] text-text-1"
                 >
                   <span className="mt-1.5 inline-block h-1 w-1 shrink-0 rounded-full bg-primary-6" />
-                  {p}
+                  {t(k)}
                 </li>
               ))}
             </ul>
@@ -436,29 +444,29 @@ export default function PromptImproverPage() {
           {/* Prompt Statistics */}
           <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-6">
             <h3 className="text-[14px] font-bold leading-[1.5] text-text-1">
-              Prompt Statistics
+              {t("promptImprover.stats")}
             </h3>
             <dl className="flex flex-col gap-2.5 text-[12px]">
               <div className="flex items-center justify-between">
-                <dt className="text-text-2">Original Length</dt>
+                <dt className="text-text-2">{t("promptImprover.originalLength")}</dt>
                 <dd className="font-semibold text-text-1">
-                  {originalChars} chars
+                  {originalChars} {t("promptImprover.charsAbbr")}
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-text-2">Improved Length</dt>
+                <dt className="text-text-2">{t("promptImprover.improvedLength")}</dt>
                 <dd className="font-semibold text-text-1">
-                  {improvedChars} chars
+                  {improvedChars} {t("promptImprover.charsAbbr")}
                 </dd>
               </div>
               <div className="flex items-center justify-between">
-                <dt className="text-text-2">Estimated Tokens</dt>
+                <dt className="text-text-2">{t("promptImprover.estimatedTokens")}</dt>
                 <dd className="font-semibold text-text-1">
                   ~{estimatedTokens}
                 </dd>
               </div>
               <div className="flex items-center justify-between border-t border-border-2 pt-2.5">
-                <dt className="text-text-2">Improvement in Success</dt>
+                <dt className="text-text-2">{t("promptImprover.improvementSuccess")}</dt>
                 <dd className="inline-flex items-center gap-1 font-bold text-success-7">
                   <ArrowUp className="h-3.5 w-3.5" strokeWidth={2.5} />+
                   {improvementPct}%

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check, Copy, RotateCcw, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
+import { useLanguage } from "@/lib/i18n";
 
 interface Props {
   /** Plain-text body of the assistant message (Markdown source). */
@@ -37,6 +38,7 @@ export function MessageActions({
   onRegenerate,
   onFeedback,
 }: Props) {
+  const { t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [score, setScore] = useState<1 | -1 | null>(null);
 
@@ -48,7 +50,7 @@ export function MessageActions({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      toast.error("Couldn't copy to clipboard.");
+      toast.error(t("msgActions.copyFailed"));
     }
   };
 
@@ -61,17 +63,17 @@ export function MessageActions({
     // caller can delete the persisted row, not just a no-op.
     onFeedback?.(final);
     if (final === null) {
-      toast.success("Feedback removed.");
+      toast.success(t("msgActions.feedbackRemoved"));
     } else {
       toast.success(
-        final === 1 ? "Thanks for the feedback." : "Got it — we'll do better.",
+        final === 1 ? t("msgActions.thanks") : t("msgActions.gotIt"),
       );
     }
   };
 
   return (
     <div className="mt-2 flex items-center gap-1 text-text-3">
-      <ActionButton onClick={handleCopy} label={copied ? "Copied" : "Copy"}>
+      <ActionButton onClick={handleCopy} label={copied ? t("msgActions.copied") : t("msgActions.copy")}>
         {copied ? (
           <Check className="h-3.5 w-3.5 text-success-7" />
         ) : (
@@ -79,13 +81,13 @@ export function MessageActions({
         )}
       </ActionButton>
       {onRegenerate && (
-        <ActionButton onClick={onRegenerate} label="Regenerate">
+        <ActionButton onClick={onRegenerate} label={t("msgActions.regenerate")}>
           <RotateCcw className="h-3.5 w-3.5" />
         </ActionButton>
       )}
       <ActionButton
         onClick={() => handleVote(1)}
-        label="Good response"
+        label={t("msgActions.goodResponse")}
         active={score === 1}
       >
         <ThumbsUp
@@ -94,7 +96,7 @@ export function MessageActions({
       </ActionButton>
       <ActionButton
         onClick={() => handleVote(-1)}
-        label="Bad response"
+        label={t("msgActions.badResponse")}
         active={score === -1}
       >
         <ThumbsDown

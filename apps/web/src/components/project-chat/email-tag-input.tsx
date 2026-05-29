@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
 
 const EMAIL_PATTERN = /^\S+@\S+\.\S+$/;
 
@@ -37,6 +38,7 @@ export function EmailTagInput({
   placeholder,
   disabled,
 }: Props) {
+  const { t } = useLanguage();
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -50,7 +52,7 @@ export function EmailTagInput({
     }
     const error = EMAIL_PATTERN.test(value)
       ? undefined
-      : "Doesn't look like a valid email.";
+      : t("emailTag.invalid");
     onChange([...tags, { value, error }]);
     setDraft("");
   };
@@ -74,17 +76,17 @@ export function EmailTagInput({
         disabled ? "cursor-not-allowed opacity-60" : "cursor-text"
       }`}
     >
-      {tags.map((t, i) => (
+      {tags.map((tag, i) => (
         <span
-          key={`${t.value}-${i}`}
-          title={t.error ?? undefined}
+          key={`${tag.value}-${i}`}
+          title={tag.error ?? undefined}
           className={`inline-flex h-7 items-center gap-1 rounded-md px-2 text-[12px] font-medium ${
-            t.error
+            tag.error
               ? "bg-danger-1 text-danger-6 ring-1 ring-danger-5"
               : "bg-bg-1 text-text-1"
           }`}
         >
-          {t.value}
+          {tag.value}
           <button
             type="button"
             disabled={disabled}
@@ -92,7 +94,7 @@ export function EmailTagInput({
               e.stopPropagation();
               onChange(tags.filter((_, idx) => idx !== i));
             }}
-            aria-label={`Remove ${t.value}`}
+            aria-label={`${t("emailTag.remove")} ${tag.value}`}
             className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-sm text-current/70 hover:bg-bg-white hover:text-current"
           >
             <X className="h-3 w-3" />
@@ -112,7 +114,7 @@ export function EmailTagInput({
           if (draft.trim()) commit(draft);
         }}
         disabled={disabled}
-        placeholder={tags.length === 0 ? (placeholder ?? "name@company.com") : ""}
+        placeholder={tags.length === 0 ? (placeholder ?? t("emailTag.placeholder")) : ""}
         className="min-w-[140px] flex-1 border-none bg-transparent text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
       />
     </div>

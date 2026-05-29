@@ -30,18 +30,22 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ImportFromDriveDialog } from "@/components/import-from-drive-dialog";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "just now";
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString();
+function makeRelativeTime(t: (k: TranslationKey) => string) {
+  return (iso: string): string => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const seconds = Math.floor(diff / 1000);
+    if (seconds < 60) return t("drive.justNow");
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}${t("drive.mAgo")}`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}${t("drive.hAgo")}`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}${t("drive.dAgo")}`;
+    return new Date(iso).toLocaleDateString();
+  };
 }
 
 /**
@@ -59,6 +63,8 @@ function relativeTime(iso: string): string {
  * param so a refresh doesn't re-toast.
  */
 export function DriveSection() {
+  const { t } = useLanguage();
+  const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
   const router = useRouter();
   const pathname = usePathname();
@@ -88,13 +94,13 @@ export function DriveSection() {
     const flag = searchParams.get("drive");
     if (!flag) return;
     if (flag === "connected") {
-      toast.success("Google Drive connected.");
+      toast.success(t("drive.connected"));
       void queryClient.invalidateQueries({ queryKey: ["drive"] });
     } else if (flag.startsWith("error=")) {
       // searchParams.get() already decodes percent-sequences; a second
       // decodeURIComponent would throw on a literal '%' in the message.
       const reason = flag.slice("error=".length);
-      toast.error(`Couldn't connect Google Drive: ${reason}`);
+      toast.error(`${t("drive.connectErr")} ${reason}`);
     }
     const next = new URLSearchParams(searchParams.toString());
     next.delete("drive");
@@ -106,21 +112,21 @@ export function DriveSection() {
   const disconnectMutation = useMutation({
     mutationFn: disconnectDrive,
     onSuccess: () => {
-      toast.success("Google Drive disconnected.");
+      toast.success(t("drive.disconnected"));
       void queryClient.invalidateQueries({ queryKey: ["drive"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Failed to disconnect"),
+      toast.error(err instanceof Error ? err.message : t("drive.failedDisconnect")),
   });
 
   const resyncMutation = useMutation({
     mutationFn: (id: string) => resyncDriveSource(id),
     onSuccess: (result) => {
       if (result.added === 0) {
-        toast.info("Up to date — no new files.");
+        toast.info(t("drive.upToDate"));
       } else {
         toast.success(
-          `Imported ${result.added} new file${result.added === 1 ? "" : "s"}.`,
+          `${t("drive.importedN1")} ${result.added} ${result.added === 1 ? t("drive.importedN2") : t("drive.importedN2Plural")}.`,
         );
       }
       // Surface the size-cap skip count separately — fires whenever
@@ -129,7 +135,7 @@ export function DriveSection() {
       // of them?", so a silent skip would be misleading.
       if (result.skippedTooLarge > 0) {
         toast.warning(
-          `Skipped ${result.skippedTooLarge} file${result.skippedTooLarge === 1 ? "" : "s"} larger than 50MB.`,
+          `${t("drive.skipped1")} ${result.skippedTooLarge} ${result.skippedTooLarge === 1 ? t("drive.skipped2") : t("drive.skipped2Plural")} ${t("drive.skipped3")}`,
         );
       }
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
@@ -139,24 +145,24 @@ export function DriveSection() {
       void queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Re-sync failed"),
+      toast.error(err instanceof Error ? err.message : t("drive.resyncFailed")),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteDriveSource(id),
     onSuccess: () => {
-      toast.success("Drive source removed.");
+      toast.success(t("drive.sourceRemoved"));
       void queryClient.invalidateQueries({ queryKey: ["drive", "sources"] });
     },
     onError: (err) =>
-      toast.error(err instanceof Error ? err.message : "Couldn't remove source"),
+      toast.error(err instanceof Error ? err.message : t("drive.couldntRemove")),
   });
 
   if (statusLoading) {
     return (
       <section className="flex items-center gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <Loader2 className="h-4 w-4 animate-spin text-text-3" />
-        <span className="text-[13px] text-text-3">Checking Google Drive…</span>
+        <span className="text-[13px] text-text-3">{t("drive.checking")}</span>
       </section>
     );
   }
@@ -170,11 +176,10 @@ export function DriveSection() {
           </span>
           <div className="flex flex-col">
             <p className="text-[14px] font-medium text-text-1">
-              Connect Google Drive
+              {t("drive.connectTitle")}
             </p>
             <p className="text-[12px] text-text-3">
-              Import documents from your Drive — whole account or specific
-              folders.
+              {t("drive.connectDesc")}
             </p>
           </div>
         </div>
@@ -184,7 +189,7 @@ export function DriveSection() {
           className="cursor-pointer gap-2 text-[13px]"
         >
           <Cloud className="h-3.5 w-3.5" />
-          Connect
+          {t("drive.connect")}
         </Button>
       </section>
     );
@@ -211,15 +216,15 @@ export function DriveSection() {
             <div className="flex min-w-0 flex-col">
               <p className="truncate text-[14px] font-medium text-text-1">
                 {reauthRequired
-                  ? "Google Drive needs reconnecting"
-                  : "Google Drive"}
+                  ? t("drive.needsReconnect")
+                  : t("drive.title")}
               </p>
               <p className="truncate text-[12px] text-text-3">
                 {reauthRequired
-                  ? "We can't reach your Drive — reconnect to keep importing."
+                  ? t("drive.cantReach")
                   : status?.accountEmail
-                    ? `Connected as ${status.accountEmail}`
-                    : "Connected"}
+                    ? `${t("drive.connectedAs")} ${status.accountEmail}`
+                    : t("drive.connectedSimple")}
               </p>
             </div>
           </div>
@@ -230,7 +235,7 @@ export function DriveSection() {
                 variant="outline"
                 className="cursor-pointer gap-2 text-[13px]"
               >
-                Reconnect
+                {t("drive.reconnect")}
               </Button>
             ) : (
               <Button
@@ -239,7 +244,7 @@ export function DriveSection() {
                 className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
               >
                 <Cloud className="h-3.5 w-3.5" />
-                Import from Drive
+                {t("drive.importFromDrive")}
               </Button>
             )}
             <DropdownMenu>
@@ -247,7 +252,7 @@ export function DriveSection() {
                 <button
                   type="button"
                   className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label="Drive options"
+                  aria-label={t("drive.options")}
                 >
                   <MoreVertical className="h-4 w-4" />
                 </button>
@@ -258,7 +263,7 @@ export function DriveSection() {
                   className="text-danger-6 focus:text-danger-6"
                 >
                   <Unplug className="mr-2 h-3.5 w-3.5" />
-                  Disconnect
+                  {t("drive.disconnect")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -268,7 +273,7 @@ export function DriveSection() {
         {sources.length > 0 && (
           <div className="flex flex-col gap-2 border-t border-border-2 pt-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-3">
-              Imported sources
+              {t("drive.importedSources")}
             </p>
             <ul className="flex flex-col gap-1">
               {sources.map((s) => (
@@ -278,11 +283,11 @@ export function DriveSection() {
                 >
                   <div className="flex min-w-0 flex-col">
                     <span className="truncate text-[13px] font-medium text-text-1">
-                      {s.scope === "all" ? "Entire Drive" : s.driveFolderName}
+                      {s.scope === "all" ? t("drive.entireDrive") : s.driveFolderName}
                     </span>
                     <span className="text-[11px] text-text-3">
-                      {s.fileCountAtLastSync} file
-                      {s.fileCountAtLastSync === 1 ? "" : "s"} · synced{" "}
+                      {s.fileCountAtLastSync}{" "}
+                      {s.fileCountAtLastSync === 1 ? t("drive.fileSing") : t("drive.filePlural")} · {t("drive.synced")}{" "}
                       {relativeTime(s.lastSyncedAt)}
                     </span>
                   </div>
@@ -302,14 +307,14 @@ export function DriveSection() {
                       ) : (
                         <RefreshCw className="h-3 w-3" />
                       )}
-                      Re-sync
+                      {t("drive.resync")}
                     </button>
                     <button
                       type="button"
                       onClick={() => deleteMutation.mutate(s.id)}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-white hover:text-danger-6"
-                      title="Remove source (keeps imported files)"
-                      aria-label="Remove source"
+                      title={t("drive.removeSourceTitle")}
+                      aria-label={t("drive.removeSource")}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

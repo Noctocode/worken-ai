@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { requestPasswordReset } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 export default function ForgotPasswordPage() {
+  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
@@ -35,7 +37,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setValidationError(null);
     if (!email.trim()) {
-      setValidationError("Please enter your email");
+      setValidationError(t("auth.enterEmail"));
       return;
     }
     mutation.mutate();
@@ -55,11 +57,10 @@ export default function ForgotPasswordPage() {
             />
           </div>
           <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-            Forgot your password?
+            {t("auth.forgotTitle")}
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Enter the email on your account and we&apos;ll send you a link to
-            reset your password.
+            {t("auth.forgotDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -67,16 +68,16 @@ export default function ForgotPasswordPage() {
             <div className="flex flex-col gap-4">
               <div className="rounded-md border border-border-3 bg-bg-1 p-4 text-left text-sm">
                 <p className="text-text-1 font-medium mb-1">
-                  Check your inbox
+                  {t("auth.checkInbox")}
                 </p>
                 <p className="text-text-2">
-                  If an account exists for{" "}
-                  <span className="font-medium">{submittedEmail}</span>, we
-                  just sent a reset link. The link expires in 1 hour.
+                  {t("auth.resetLinkSentPrefix")}{" "}
+                  <span className="font-medium">{submittedEmail}</span>
+                  {t("auth.resetLinkSentSuffix")}
                 </p>
               </div>
               <Button asChild className="w-full h-14 bg-primary-6 hover:bg-primary-7 text-text-white text-base font-normal rounded-md" size="lg">
-                <Link href="/login">Back to login</Link>
+                <Link href="/login">{t("auth.backToLogin")}</Link>
               </Button>
             </div>
           ) : (
@@ -85,7 +86,7 @@ export default function ForgotPasswordPage() {
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
                 <Input
                   type="email"
-                  placeholder="Email Address"
+                  placeholder={t("auth.email")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -104,15 +105,15 @@ export default function ForgotPasswordPage() {
                 size="lg"
               >
                 <Send className="h-4 w-4" />
-                {mutation.isPending ? "Sending..." : "Send reset link"}
+                {mutation.isPending ? t("auth.sending") : t("auth.sendResetLink")}
               </Button>
               <p className="text-sm text-text-2 mt-6">
-                {"Remembered it? "}
+                {t("auth.rememberedIt")}
                 <Link
                   href="/login"
                   className="text-primary-6 hover:text-primary-7 font-medium"
                 >
-                  Back to login
+                  {t("auth.backToLogin")}
                 </Link>
               </p>
             </form>

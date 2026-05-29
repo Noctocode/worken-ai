@@ -21,10 +21,12 @@ import {
   loginWithPassword,
   resendVerificationEmail,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
 function LoginContent() {
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const inviteToken = searchParams.get("token");
   const emailParam = searchParams.get("email");
@@ -41,13 +43,11 @@ function LoginContent() {
   useEffect(() => {
     const verifyError = searchParams.get("verify_error");
     if (verifyError === "expired") {
-      toast.error("That verification link has expired. Request a new one below.");
+      toast.error(t("auth.verifyExpired"));
     } else if (verifyError === "invalid") {
-      toast.error(
-        "That verification link is invalid or has already been used.",
-      );
+      toast.error(t("auth.verifyInvalid"));
     }
-  }, [searchParams]);
+  }, [searchParams, t]);
 
   const mutation = useMutation({
     mutationFn: () => loginWithPassword(email.trim(), password),
@@ -71,10 +71,10 @@ function LoginContent() {
       await resendVerificationEmail(unverifiedEmail);
     },
     onSuccess: () => {
-      toast.success("Verification email sent. Please check your inbox.");
+      toast.success(t("auth.verificationSent"));
     },
     onError: () => {
-      toast.error("Couldn't resend right now. Please try again.");
+      toast.error(t("auth.resendFailed"));
     },
   });
 
@@ -83,11 +83,11 @@ function LoginContent() {
     setValidationError(null);
     setUnverifiedEmail(null);
     if (!email.trim()) {
-      setValidationError("Please enter your email");
+      setValidationError(t("auth.enterEmail"));
       return;
     }
     if (!password) {
-      setValidationError("Please enter your password");
+      setValidationError(t("auth.enterPassword"));
       return;
     }
     mutation.mutate();
@@ -107,11 +107,10 @@ function LoginContent() {
             />
           </div>
           <CardTitle className="text-[32px] font-bold leading-none text-text-1 py-1 mt-3">
-            Welcome to WorkenAI
+            {t("auth.welcome")}
           </CardTitle>
           <CardDescription className="text-lg leading-tight font-normal text-text-2 py-1">
-            Please enter your email and password to sign in or choose another
-            option
+            {t("auth.welcomeDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -120,7 +119,7 @@ function LoginContent() {
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="email"
-                placeholder="Email Address"
+                placeholder={t("auth.email")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -131,7 +130,7 @@ function LoginContent() {
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-3" />
               <Input
                 type="password"
-                placeholder="Password"
+                placeholder={t("auth.password")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -143,7 +142,7 @@ function LoginContent() {
                 href="/forgot-password"
                 className="text-sm text-primary-6 hover:text-primary-7 font-medium"
               >
-                Forgot password?
+                {t("auth.forgotPassword")}
               </Link>
             </div>
             {validationError && (
@@ -154,10 +153,10 @@ function LoginContent() {
             {unverifiedEmail && (
               <div className="mt-4 rounded-md border border-warning-5 bg-warning-1 p-3 text-left text-sm">
                 <p className="text-text-1 font-medium mb-1">
-                  Please verify your email before signing in.
+                  {t("auth.pleaseVerifyEmail")}
                 </p>
                 <p className="text-text-2 mb-2">
-                  We sent a confirmation link to{" "}
+                  {t("auth.weSentConfirmation")}{" "}
                   <span className="font-medium">{unverifiedEmail}</span>.
                 </p>
                 <button
@@ -167,8 +166,8 @@ function LoginContent() {
                   className="text-primary-6 hover:text-primary-7 font-medium disabled:opacity-60"
                 >
                   {resendMutation.isPending
-                    ? "Resending…"
-                    : "Resend verification email"}
+                    ? t("auth.resending")
+                    : t("auth.resendVerification")}
                 </button>
               </div>
             )}
@@ -179,12 +178,12 @@ function LoginContent() {
               size="lg"
             >
               <LogIn className="h-4 w-4" />
-              {mutation.isPending ? "Signing in..." : "Continue"}
+              {mutation.isPending ? t("auth.signingIn") : t("auth.continue")}
             </Button>
           </form>
           <div className="flex items-center gap-2 my-6">
             <div className="flex-1 h-0 border-t border-divider" />
-            <span className="text-sm text-text-2">or continue with</span>
+            <span className="text-sm text-text-2">{t("auth.orContinueWith")}</span>
             <div className="flex-1 h-0 border-t border-divider" />
           </div>
           <Button
@@ -204,9 +203,9 @@ function LoginContent() {
             Google
           </Button>
           <p className="text-sm text-text-2 mt-6">
-            {"Don't have an account? "}
-            <Link href={signupHref} className="text-primary-6 hover:text-primary-7 font-medium">Sign up</Link>
-            {" to create a workspace"}
+            {t("auth.noAccount")}
+            <Link href={signupHref} className="text-primary-6 hover:text-primary-7 font-medium">{t("auth.signUp")}</Link>
+            {t("auth.toCreateWorkspace")}
           </p>
         </CardContent>
       </Card>

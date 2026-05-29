@@ -5,6 +5,7 @@ import { Popover } from "radix-ui";
 import { CheckCircle, Loader2, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTeam } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Click-to-open popover listing every accepted + pending member of a
@@ -32,6 +33,7 @@ export function TeamMembersPopover({
   teamId: string;
   children: React.ReactNode;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const { data: team, isLoading } = useQuery({
     queryKey: ["teams", teamId],
@@ -55,12 +57,12 @@ export function TeamMembersPopover({
         >
           <div className="mb-3 flex items-center justify-between">
             <span className="text-[14px] font-bold text-text-1">
-              Team Members ({members.length})
+              {t("teamPop.title")} ({members.length})
             </span>
             <Popover.Close asChild>
               <button
                 type="button"
-                aria-label="Close"
+                aria-label={t("teamPop.close")}
                 className="cursor-pointer text-text-3 hover:text-text-1"
               >
                 <X className="h-4 w-4" />
@@ -74,7 +76,7 @@ export function TeamMembersPopover({
           )}
           {!isLoading && members.length === 0 && (
             <p className="py-4 text-center text-[12px] text-text-3">
-              No members yet.
+              {t("teamPop.noMembers")}
             </p>
           )}
           <div className="flex max-h-[300px] flex-col gap-3 overflow-auto">
@@ -104,7 +106,7 @@ export function TeamMembersPopover({
                       <CheckCircle className="h-3 w-3 shrink-0 text-success-7" />
                     ) : (
                       <span className="shrink-0 rounded bg-warning-2 px-1 py-0.5 text-[10px] font-medium text-warning-5">
-                        Pending
+                        {t("teamPop.pending")}
                       </span>
                     )}
                   </div>

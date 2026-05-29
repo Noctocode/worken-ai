@@ -2,6 +2,7 @@
 
 import { Sparkles, X } from "lucide-react";
 import type { AlternativeModelSuggestion } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 interface Props {
   suggestion: AlternativeModelSuggestion;
@@ -22,6 +23,7 @@ interface Props {
  * focus to the action — the suggestion is purely opt-in.
  */
 export function ModelSuggestionBubble({ suggestion, onTryIt, onDismiss }: Props) {
+  const { t } = useLanguage();
   return (
     <div className="mt-3 ml-11 flex max-w-[calc(100%-2.75rem)] flex-wrap items-center justify-between gap-3 rounded-2xl border border-border-2 bg-bg-1/70 px-4 py-3">
       <div className="flex min-w-0 flex-1 items-start gap-3 text-[13px] text-text-2">
@@ -29,12 +31,11 @@ export function ModelSuggestionBubble({ suggestion, onTryIt, onDismiss }: Props)
           <Sparkles className="h-3.5 w-3.5" />
         </span>
         <p className="leading-relaxed">
-          We think{" "}
+          {t("modelSugg.weThink")}{" "}
           <strong className="font-semibold text-text-1">
             {suggestion.label}
           </strong>{" "}
-          would work better for your use case — {suggestion.reason} Want to try
-          it on this prompt?
+          {t("modelSugg.wouldWork")} {suggestion.reason} {t("modelSugg.wantTry")}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -43,12 +44,12 @@ export function ModelSuggestionBubble({ suggestion, onTryIt, onDismiss }: Props)
           onClick={onTryIt}
           className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary-6 bg-primary-6 px-3 text-[12px] font-medium text-white transition-colors hover:bg-primary-7"
         >
-          Try It
+          {t("modelSugg.tryIt")}
         </button>
         <button
           type="button"
           onClick={onDismiss}
-          aria-label="Dismiss suggestion"
+          aria-label={t("modelSugg.dismiss")}
           className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
         >
           <X className="h-3.5 w-3.5" />

@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
+import { useLanguage } from "@/lib/i18n";
 
 type ProviderId = "openai" | "azure" | "anthropic" | "private-vpc";
 
@@ -60,6 +61,7 @@ const PROVIDERS: Array<{
 export default function SetupProfileStep5Page() {
   const router = useRouter();
   const { state, setApiKey } = useOnboarding();
+  const { t } = useLanguage();
   const [expanded, setExpanded] = useState<ProviderId | null>("openai");
   const apiKeys = state.apiKeys;
 
@@ -77,11 +79,10 @@ export default function SetupProfileStep5Page() {
         <div className="w-full flex flex-col gap-8">
           <div className="flex flex-col gap-2">
             <h1 className="text-[32px] font-bold leading-tight text-text-1 text-center">
-              Connect your Language Models
+              {t("onboarding.step5.title")}
             </h1>
             <p className="text-[18px] font-normal leading-snug text-text-2 text-center">
-              Configure API access to your preferred LLM providers for AI-powered
-              operations.
+              {t("onboarding.step5.subtitle")}
             </p>
           </div>
 
@@ -109,7 +110,7 @@ export default function SetupProfileStep5Page() {
                         </h3>
                         {!available && (
                           <span className="rounded-full bg-warning-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning-7">
-                            Coming soon
+                            {t("onboarding.step5.comingSoon")}
                           </span>
                         )}
                       </div>
@@ -127,7 +128,7 @@ export default function SetupProfileStep5Page() {
                   {isExpanded && (
                     <div className="mt-4 flex flex-col gap-2 border-t border-border-2 pt-4">
                       <label className="text-sm font-medium text-text-1">
-                        API Key
+                        {t("onboarding.step5.apiKey")}
                       </label>
                       <Input
                         type="password"
@@ -145,10 +146,7 @@ export default function SetupProfileStep5Page() {
                       />
                       {!available && (
                         <p className="text-[12px] text-text-3 leading-snug">
-                          {name} support is on the roadmap — we&apos;ll
-                          enable it here once the rest of the integration
-                          ships. In the meantime, finish setup in
-                          Management → Integration after onboarding.
+                          {t("onboarding.step5.comingSoonDesc").replace("{name}", name)}
                         </p>
                       )}
                     </div>
@@ -164,13 +162,13 @@ export default function SetupProfileStep5Page() {
               className="h-12 w-[75px] rounded-lg text-text-1"
               onClick={() => router.back()}
             >
-              Back
+              {t("common.back")}
             </Button>
             <Button
               className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
               onClick={() => router.push("/setup-profile/step-6")}
             >
-              Continue
+              {t("common.continue")}
             </Button>
           </div>
         </div>

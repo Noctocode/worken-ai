@@ -53,6 +53,8 @@ import {
   type ArenaRunSummary,
 } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useLanguage } from "@/lib/i18n";
+import { type TranslationKey } from "@/lib/translations/en";
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -66,16 +68,16 @@ function formatDate(dateStr: string) {
  * Relative time string for arena history cards. Falls back to a
  * formatted date once the row is older than a week.
  */
-function relativeShort(iso: string): string {
+function relativeShort(iso: string, t: (key: TranslationKey) => string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const min = Math.floor(diff / 60_000);
-  if (min < 1) return "Just now";
-  if (min < 60) return `${min}m ago`;
+  if (min < 1) return t("dashboard.justNow");
+  if (min < 60) return `${min}${t("dashboard.minuteAbbr")} ${t("dashboard.ago")}`;
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return `${hr}${t("dashboard.hourAbbr")} ${t("dashboard.ago")}`;
   const day = Math.floor(hr / 24);
-  if (day === 1) return "Yesterday";
-  if (day < 7) return `${day}d ago`;
+  if (day === 1) return t("dashboard.yesterday");
+  if (day < 7) return `${day}${t("dashboard.dayAbbr")} ${t("dashboard.ago")}`;
   return formatDate(iso);
 }
 
@@ -102,6 +104,7 @@ function modelAvatar(modelId: string): string {
 
 function ProjectCard({ project }: { project: Project }) {
   const router = useRouter();
+  const { t } = useLanguage();
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
@@ -183,7 +186,7 @@ function ProjectCard({ project }: { project: Project }) {
                 >
                   <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
                     <FileText className="mr-2 h-4 w-4" />
-                    Manage Context
+                    {t("dashboard.manageContext")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onSelect={() => {
@@ -197,14 +200,14 @@ function ProjectCard({ project }: { project: Project }) {
                     }}
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
-                    Change model
+                    {t("dashboard.changeModel")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     className="text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteDialogOpen(true)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
+                    {t("common.delete")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -255,7 +258,7 @@ function ProjectCard({ project }: { project: Project }) {
                 <TeamMembersPopover teamId={project.teamId}>
                   <button
                     type="button"
-                    aria-label="View team members"
+                    aria-label={t("dashboard.viewTeamMembers")}
                     onClick={(e) => {
                       // Outer card wrapper navigates to the project on
                       // click — stopPropagation keeps the route swap
@@ -324,15 +327,15 @@ function ProjectCard({ project }: { project: Project }) {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Project</DialogTitle>
+            <DialogTitle>{t("dashboard.deleteProject")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete <strong>{project.name}</strong>? This action cannot be undone.
+              {t("dashboard.deleteProjectConfirm")} <strong>{project.name}</strong>? {t("dashboard.cannotUndo")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)}>{t("common.cancel")}</Button>
             <Button variant="destructive" onClick={() => deleteMutation.mutate()} disabled={deleteMutation.isPending}>
-              {deleteMutation.isPending ? "Deleting..." : "Delete"}
+              {deleteMutation.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -345,11 +348,9 @@ function ProjectCard({ project }: { project: Project }) {
             preset model, which we save as the new project default. */}
         <DialogContent className="max-w-[960px] sm:max-w-[960px]">
           <DialogHeader>
-            <DialogTitle>Change model</DialogTitle>
+            <DialogTitle>{t("dashboard.changeModel")}</DialogTitle>
             <DialogDescription>
-              Pick an agent preset for <strong>{project.name}</strong>. The
-              next message you send in this project will use the selected
-              agent&apos;s default model.
+              {t("dashboard.changeModelPickAgent")} <strong>{project.name}</strong>. {t("dashboard.changeModelNextMessage")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-center py-2">
@@ -359,9 +360,8 @@ function ProjectCard({ project }: { project: Project }) {
             />
           </div>
           <p className="mx-auto max-w-[700px] text-center text-[12px] text-text-3">
-            <strong>(BYOK)</strong> uses your own provider key.{" "}
-            <strong>(Custom)</strong> uses a Custom LLM endpoint. Agents
-            without a marker route through the WorkenAI default key.
+            <strong>(BYOK)</strong> {t("dashboard.byokNote")}{" "}
+            <strong>(Custom)</strong> {t("dashboard.customNote")}
           </p>
           <DialogFooter className="gap-2">
             <Button
@@ -369,7 +369,7 @@ function ProjectCard({ project }: { project: Project }) {
               onClick={() => setModelDialogOpen(false)}
               disabled={updateModelMutation.isPending}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => {
@@ -391,7 +391,7 @@ function ProjectCard({ project }: { project: Project }) {
               // to claude-opus-4.7, for example).
               disabled={updateModelMutation.isPending || !pendingAgentId}
             >
-              {updateModelMutation.isPending ? "Saving..." : "Save"}
+              {updateModelMutation.isPending ? t("dashboard.saving") : t("common.save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -400,14 +400,9 @@ function ProjectCard({ project }: { project: Project }) {
   );
 }
 
-const DASHBOARD_TABS = [
-  { value: "all", label: "All" },
-  { value: "personal", label: "Personal" },
-  { value: "team", label: "Team" },
-] as const;
-
 export default function WorkenDashboard() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_FILTERS = ["all", "personal", "team"] as const;
@@ -415,6 +410,12 @@ export default function WorkenDashboard() {
   const activeTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
     ? (filterParam as typeof VALID_FILTERS[number])
     : "all";
+
+  const DASHBOARD_TABS = [
+    { value: "all", label: t("common.all") },
+    { value: "personal", label: t("common.personal") },
+    { value: "team", label: t("common.team") },
+  ] as const;
 
   // URL-driven tab switch — mirrors the appbar's setTab logic, but
   // owned here so the mobile in-page segmented control can drive it
@@ -469,11 +470,11 @@ export default function WorkenDashboard() {
           Matches Figma node 4659:69128 (title row + segmented tabs). */}
       <div className="md:hidden flex flex-col gap-4 pb-2">
         <div className="flex items-center gap-3">
-          <h4 className="text-[23px] font-bold text-text-1 shrink-0">AI Chat</h4>
+          <h4 className="text-[23px] font-bold text-text-1 shrink-0">{t("dashboard.aiChat")}</h4>
           <div className="flex flex-1 items-center gap-2 rounded-md border border-border-3 bg-bg-white px-3 py-2">
             <Search className="h-4 w-4 shrink-0 text-text-3" />
             <input
-              placeholder="Search"
+              placeholder={t("dashboard.search")}
               className="flex-1 min-w-0 bg-transparent text-[14px] text-text-1 outline-none placeholder:text-text-3"
             />
           </div>
@@ -504,24 +505,24 @@ export default function WorkenDashboard() {
           ) : (
             <div className="flex flex-col gap-6 md:flex-row md:gap-4">
               <div className="flex-1 min-w-0 space-y-4 md:space-y-4">
-                <p className="text-[18px] md:text-[26px] font-bold text-text-1">Team Projects</p>
+                <p className="text-[18px] md:text-[26px] font-bold text-text-1">{t("dashboard.teamProjects")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {teamProjects?.map((project) => (
                     <ProjectCard key={project.id} project={project} />
                   ))}
                   {teamProjects?.length === 0 && (
-                    <p className="col-span-full py-8 text-center text-sm text-text-3">No team projects yet.</p>
+                    <p className="col-span-full py-8 text-center text-sm text-text-3">{t("dashboard.noTeamProjects")}</p>
                   )}
                 </div>
               </div>
               <div className="flex-1 min-w-0 space-y-4">
-                <p className="text-[18px] md:text-[26px] font-bold text-text-1">Personal Projects</p>
+                <p className="text-[18px] md:text-[26px] font-bold text-text-1">{t("dashboard.personalProjects")}</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {personalProjects?.map((project) => (
                     <ProjectCard key={project.id} project={project} />
                   ))}
                   {personalProjects?.length === 0 && (
-                    <p className="col-span-full py-8 text-center text-sm text-text-3">No personal projects yet.</p>
+                    <p className="col-span-full py-8 text-center text-sm text-text-3">{t("dashboard.noPersonalProjects")}</p>
                   )}
                 </div>
               </div>
@@ -534,7 +535,7 @@ export default function WorkenDashboard() {
       {activeTab !== "all" && (
         <>
           <p className="text-[18px] md:text-[26px] font-bold text-text-1">
-            {activeTab === "team" ? "Team Projects" : "Personal Projects"}
+            {activeTab === "team" ? t("dashboard.teamProjects") : t("dashboard.personalProjects")}
           </p>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -546,7 +547,7 @@ export default function WorkenDashboard() {
 
         {error && (
           <div className="col-span-full text-center py-12 text-sm text-danger-6">
-            Failed to load projects. Is the API running?
+            {t("dashboard.failedToLoadProjects")}
           </div>
         )}
 
@@ -563,11 +564,10 @@ export default function WorkenDashboard() {
                 <FolderOpen className="h-6 w-6 text-text-3" />
               </div>
               <h3 className="mt-4 text-sm font-semibold text-text-1">
-                No projects yet
+                {t("dashboard.noProjectsYet")}
               </h3>
               <p className="mt-1 max-w-[260px] text-center text-xs text-text-3">
-                You don&apos;t have any projects to show. Ask your team owner to
-                create one or upgrade to a paid plan.
+                {t("dashboard.noProjectsDesc")}
               </p>
             </div>
           )}
@@ -581,10 +581,10 @@ export default function WorkenDashboard() {
                   <PlusCircle className="h-5 w-5 text-text-3 group-hover:text-primary-6" />
                 </div>
                 <h3 className="text-sm font-semibold text-text-1">
-                  Create New Project
+                  {t("dashboard.createNewProject")}
                 </h3>
                 <p className="mt-1 max-w-[180px] text-xs text-text-3">
-                  Start a new thread, compare models, or analyze documents.
+                  {t("dashboard.createNewProjectDesc")}
                 </p>
               </div>
             </Card>
@@ -592,7 +592,7 @@ export default function WorkenDashboard() {
         ) : (
           <DisabledReasonTooltip
             disabled
-            reason="Not available for basic users"
+            reason={t("sidebar.noCreateTooltip")}
           >
             <Card className="flex flex-col items-center justify-center border-dashed border-border-3 bg-bg-1 text-center opacity-50 cursor-not-allowed">
               <div className="flex flex-1 flex-col items-center justify-center p-4">
@@ -600,10 +600,10 @@ export default function WorkenDashboard() {
                   <PlusCircle className="h-5 w-5 text-text-3" />
                 </div>
                 <h3 className="text-sm font-semibold text-text-1">
-                  Create New Project
+                  {t("dashboard.createNewProject")}
                 </h3>
                 <p className="mt-1 max-w-[180px] text-xs text-text-3">
-                  Start a new thread, compare models, or analyze documents.
+                  {t("dashboard.createNewProjectDesc")}
                 </p>
               </div>
             </Card>
@@ -636,17 +636,19 @@ function RecentComparisons({
   runs: ArenaRunSummary[];
   loading: boolean;
 }) {
+  const { t } = useLanguage();
+
   return (
     <div className="border-t border-border-2 pt-8">
       <div className="mb-4 flex items-center justify-between">
         <h2 className="text-lg font-semibold tracking-tight text-text-1">
-          Recent Model Comparisons
+          {t("dashboard.recentComparisons")}
         </h2>
         <Link
           href="/compare-models"
           className="flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
         >
-          View all
+          {t("common.viewAll")}
           <ArrowRight className="h-3.5 w-3.5" />
         </Link>
       </div>
@@ -658,14 +660,13 @@ function RecentComparisons({
       ) : runs.length === 0 ? (
         <div className="flex flex-col items-center gap-3 rounded-xl border border-border-2 bg-bg-white py-10 text-center shadow-sm">
           <p className="text-sm text-text-3">
-            No comparisons yet. Run one in the Arena to compare
-            models side-by-side.
+            {t("dashboard.noComparisons")}
           </p>
           <Link
             href="/compare-models"
             className="inline-flex items-center gap-1 text-sm font-medium text-primary-6 hover:text-primary-7"
           >
-            Open Arena
+            {t("dashboard.openArena")}
             <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -714,8 +715,8 @@ function RecentComparisons({
                   )}
                   <span className="text-xs font-medium text-text-2">
                     {run.models.length === 1
-                      ? "1 model"
-                      : `${run.models.length} models`}
+                      ? `1 ${t("dashboard.modelSingular")}`
+                      : `${run.models.length} ${t("dashboard.modelPlural")}`}
                   </span>
                 </div>
                 <h4 className="line-clamp-2 text-sm font-medium text-text-1 transition-colors group-hover:text-primary-6">
@@ -724,7 +725,7 @@ function RecentComparisons({
                 <div className="mt-3 flex items-center gap-4 text-xs text-text-2">
                   <span className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
-                    {relativeShort(run.createdAt)}
+                    {relativeShort(run.createdAt, t)}
                   </span>
                 </div>
               </Link>

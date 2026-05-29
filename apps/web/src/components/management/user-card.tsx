@@ -25,6 +25,7 @@ import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import { useAuth } from "@/components/providers";
 import { removeOrgUser, type OrgUser } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Mobile-only card variant of `UserRow`. The 9-column table layout
@@ -36,6 +37,7 @@ import { formatCurrency } from "@/lib/utils";
  * parent page keeps the desktop table at `lg+`.
  */
 export function UserCard({ user }: { user: OrgUser }) {
+  const { t } = useLanguage();
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
@@ -51,7 +53,7 @@ export function UserCard({ user }: { user: OrgUser }) {
       setConfirmOpen(false);
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Couldn't remove user.");
+      toast.error(err.message || t("mgmt.rows.couldntRemoveUser"));
       setConfirmOpen(false);
     },
   });
@@ -70,7 +72,7 @@ export function UserCard({ user }: { user: OrgUser }) {
     <div
       role="link"
       tabIndex={0}
-      aria-label={`Open ${user.name ?? user.email}`}
+      aria-label={`${t("mgmt.rows.openUser")} ${user.name ?? user.email}`}
       onClick={cardClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -109,7 +111,7 @@ export function UserCard({ user }: { user: OrgUser }) {
               <Button
                 variant="ghost"
                 size="icon"
-                aria-label={`Actions for ${user.name ?? user.email}`}
+                aria-label={`${t("mgmt.rows.actionsFor")} ${user.name ?? user.email}`}
                 className="h-8 w-8 shrink-0 rounded-lg border border-border-2 text-text-2 hover:bg-bg-1 hover:text-text-1"
               >
                 <MoreVertical className="h-4 w-4" />
@@ -119,12 +121,12 @@ export function UserCard({ user }: { user: OrgUser }) {
               <DropdownMenuItem asChild className="gap-2">
                 <Link href={detailHref}>
                   <Eye className="h-4 w-4" />
-                  View user
+                  {t("mgmt.rows.viewUser")}
                 </Link>
               </DropdownMenuItem>
               <DisabledReasonTooltip
                 disabled={!canRemove}
-                reason="Only admins can remove users"
+                reason={t("mgmt.rows.onlyAdminsRemove")}
               >
                 <DropdownMenuItem
                   className="gap-2 text-danger-6 focus:text-danger-6"
@@ -136,7 +138,7 @@ export function UserCard({ user }: { user: OrgUser }) {
                   }}
                 >
                   <UserX className="h-4 w-4" />
-                  Remove user
+                  {t("mgmt.rows.removeUser")}
                 </DropdownMenuItem>
               </DisabledReasonTooltip>
             </DropdownMenuContent>
@@ -156,10 +158,10 @@ export function UserCard({ user }: { user: OrgUser }) {
           }`}
         >
           {user.role === "admin"
-            ? "Admin"
+            ? t("mgmt.rows.roleAdmin")
             : user.role === "advanced"
-              ? "Advanced"
-              : "Basic"}
+              ? t("mgmt.rows.roleAdvanced")
+              : t("mgmt.rows.roleBasic")}
         </span>
         <span
           className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${
@@ -168,7 +170,7 @@ export function UserCard({ user }: { user: OrgUser }) {
               : "bg-success-1 text-success-7"
           }`}
         >
-          {user.inviteStatus === "pending" ? "Pending" : "Active"}
+          {user.inviteStatus === "pending" ? t("mgmt.rows.pending") : t("mgmt.rows.active")}
         </span>
       </div>
 
@@ -190,7 +192,7 @@ export function UserCard({ user }: { user: OrgUser }) {
 
       {/* Monthly Budget */}
       <div className="flex items-center justify-between">
-        <span className="text-[12px] text-text-3">Personal Monthly Budget</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.personalMonthlyBudget")}</span>
         <span className="text-[13px] font-semibold text-text-1">
           {budget > 0 ? formatCurrency(budget) : "—"}
         </span>
@@ -200,7 +202,7 @@ export function UserCard({ user }: { user: OrgUser }) {
       {budget > 0 ? (
         <>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[12px] text-text-3">Spent / Remaining:</span>
+            <span className="text-[12px] text-text-3">{t("mgmt.rows.spentRemaining")}</span>
             <span className="text-[13px] font-semibold text-text-1">
               {formatCurrency(spent)}{" "}
               <span className="font-normal text-text-3">/</span>{" "}
@@ -218,25 +220,25 @@ export function UserCard({ user }: { user: OrgUser }) {
         </>
       ) : (
         <div className="flex items-center justify-between">
-          <span className="text-[12px] text-text-3">Spent / Remaining:</span>
+          <span className="text-[12px] text-text-3">{t("mgmt.rows.spentRemaining")}</span>
           <span className="text-[13px] text-text-1">—</span>
         </div>
       )}
 
       {/* Projected */}
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[12px] text-text-3">Projected</span>
+        <span className="text-[12px] text-text-3">{t("mgmt.rows.projected")}</span>
         <div className="flex items-center gap-2">
           <span className="text-[13px] font-semibold text-text-1">
             {formatCurrency(projected)}
           </span>
           {overBudget ? (
             <span className="rounded bg-bg-1 px-1.5 py-0.5 text-[11px] font-medium text-text-3">
-              Over Budget
+              {t("mgmt.rows.overBudget")}
             </span>
           ) : budget > 0 ? (
             <span className="rounded bg-success-1 px-1.5 py-0.5 text-[11px] font-medium text-text-1">
-              On track
+              {t("mgmt.rows.onTrack")}
             </span>
           ) : null}
         </div>
@@ -246,11 +248,11 @@ export function UserCard({ user }: { user: OrgUser }) {
         <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Remove user</DialogTitle>
+              <DialogTitle>{t("mgmt.rows.removeUserTitle")}</DialogTitle>
               <DialogDescription>
-                Are you sure you want to remove{" "}
-                <strong>{user.name ?? user.email}</strong> from the
-                organization? This action cannot be undone.
+                {t("mgmt.rows.removeUserDesc1Full")}{" "}
+                <strong>{user.name ?? user.email}</strong>{" "}
+                {t("mgmt.rows.removeUserDesc2Full")}
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2">
@@ -259,14 +261,14 @@ export function UserCard({ user }: { user: OrgUser }) {
                 onClick={() => setConfirmOpen(false)}
                 disabled={removeMutation.isPending}
               >
-                Cancel
+                {t("mgmt.rows.cancel")}
               </Button>
               <Button
                 variant="destructive"
                 onClick={() => removeMutation.mutate()}
                 disabled={removeMutation.isPending}
               >
-                {removeMutation.isPending ? "Removing..." : "Remove"}
+                {removeMutation.isPending ? t("mgmt.rows.removing") : t("mgmt.rows.remove")}
               </Button>
             </DialogFooter>
           </DialogContent>

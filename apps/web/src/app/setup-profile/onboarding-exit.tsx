@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { abortOnboarding, logout } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 /**
  * Escape-hatch control rendered in the `/setup-profile` layout. The
@@ -40,6 +41,7 @@ export function OnboardingExit({
 }: {
   allowCancel?: boolean;
 } = {}) {
+  const { t } = useLanguage();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmText, setConfirmText] = useState("");
   const [signingOut, setSigningOut] = useState(false);
@@ -89,7 +91,7 @@ export function OnboardingExit({
           disabled={signingOut}
           className="cursor-pointer font-medium no-underline hover:no-underline disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Sign out
+          {t("onboarding.exit.signOut")}
         </button>
         {allowCancel ? (
           <>
@@ -104,7 +106,7 @@ export function OnboardingExit({
               onClick={() => setConfirmOpen(true)}
               className="cursor-pointer font-medium no-underline hover:no-underline"
             >
-              Cancel
+              {t("onboarding.exit.cancel")}
             </button>
           </>
         ) : null}
@@ -120,11 +122,9 @@ export function OnboardingExit({
       >
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogTitle>{t("onboarding.exit.deleteTitle")}</DialogTitle>
             <DialogDescription>
-              This will permanently remove your user, any uploaded files, and —
-              for a company profile that has no other members — the company
-              tenant itself. Your email will be free to register again.
+              {t("onboarding.exit.deleteDesc")}
             </DialogDescription>
           </DialogHeader>
 
@@ -133,8 +133,7 @@ export function OnboardingExit({
               htmlFor="onboarding-exit-confirm"
               className="text-[13px] font-medium text-text-2"
             >
-              Type <span className="font-bold text-danger-6">DELETE</span> to
-              confirm
+              {t("onboarding.exit.deleteConfirmLabel")}
             </label>
             <Input
               id="onboarding-exit-confirm"
@@ -152,7 +151,7 @@ export function OnboardingExit({
               onClick={() => setConfirmOpen(false)}
               disabled={deleting}
             >
-              Cancel
+              {t("onboarding.exit.deleteCancel")}
             </Button>
             <Button
               variant="destructive"
@@ -162,7 +161,7 @@ export function OnboardingExit({
                 confirmText.trim().toUpperCase() !== "DELETE"
               }
             >
-              {deleting ? "Deleting…" : "Delete account"}
+              {deleting ? t("onboarding.exit.deleting") : t("onboarding.exit.deleteConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

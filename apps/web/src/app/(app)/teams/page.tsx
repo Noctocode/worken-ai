@@ -34,9 +34,11 @@ import { CompanyTab } from "@/components/management/company-tab";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
+import { useLanguage } from "@/lib/i18n";
 
 export default function TeamsPage() {
   const { user } = useAuth();
+  const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
   const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
@@ -131,12 +133,12 @@ export default function TeamsPage() {
   return (
     <PageTabs value={activeTab} onValueChange={setActiveTab}>
       <PageTabsList>
-        <PageTabsTrigger value="teams">Teams</PageTabsTrigger>
-        <PageTabsTrigger value="users">Users</PageTabsTrigger>
-        <PageTabsTrigger value="models">Models</PageTabsTrigger>
-        <PageTabsTrigger value="my-account">My Account</PageTabsTrigger>
+        <PageTabsTrigger value="teams">{t("teams.title")}</PageTabsTrigger>
+        <PageTabsTrigger value="users">{t("teams.users")}</PageTabsTrigger>
+        <PageTabsTrigger value="models">{t("teams.models")}</PageTabsTrigger>
+        <PageTabsTrigger value="my-account">{t("teams.myAccount")}</PageTabsTrigger>
         <PageTabsTrigger value="company">
-          Company
+          {t("teams.company")}
           {/* Red dot mirrors the per-row kebab indicator on
               /teams?tab=users — same "budget not set" signal,
               scoped to the org level so admins notice it even
@@ -146,7 +148,7 @@ export default function TeamsPage() {
               {/* sr-only sibling carries the meaning into the tab's
                   accessible name; the dot itself is decoration so it
                   gets aria-hidden to avoid double-announcing. */}
-              <span className="sr-only"> (Company budget not set)</span>
+              <span className="sr-only"> ({t("teams.companyBudgetNotSet")})</span>
               <span
                 aria-hidden="true"
                 className="ml-1.5 inline-block h-2 w-2 rounded-full bg-danger-6 align-middle"
@@ -154,9 +156,9 @@ export default function TeamsPage() {
             </>
           ) : null}
         </PageTabsTrigger>
-        <PageTabsTrigger value="api">API</PageTabsTrigger>
-        <PageTabsTrigger value="billing">Billing</PageTabsTrigger>
-        <PageTabsTrigger value="integration">Integration</PageTabsTrigger>
+        <PageTabsTrigger value="api">{t("teams.api")}</PageTabsTrigger>
+        <PageTabsTrigger value="billing">{t("teams.billing")}</PageTabsTrigger>
+        <PageTabsTrigger value="integration">{t("teams.integration")}</PageTabsTrigger>
       </PageTabsList>
 
       {/* ── Teams ────────────────────────────────────────────────────────────── */}
@@ -167,11 +169,11 @@ export default function TeamsPage() {
         <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-4">
           <div className="flex items-center justify-between gap-3 lg:contents">
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
-              Teams
+              {t("teams.title")}
             </span>
             <DisabledReasonTooltip
               disabled={!user?.canCreateProject}
-              reason="Not available for basic users"
+              reason={t("sidebar.noCreateTooltip")}
               className="lg:order-last lg:w-auto"
             >
               <CreateTeamDialog>
@@ -181,14 +183,14 @@ export default function TeamsPage() {
                   disabled={!user?.canCreateProject}
                 >
                   <Plus className="h-4 w-4 text-white" />
-                  Create Team
+                  {t("teams.createTeam")}
                 </Button>
               </CreateTeamDialog>
             </DisabledReasonTooltip>
           </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search teams..."
+            placeholder={t("teams.searchTeams")}
             value={teamSearch}
             onChange={(e) => setTeamSearch(e.target.value)}
           />
@@ -207,7 +209,7 @@ export default function TeamsPage() {
           )}
           {teamsError && (
             <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
-              Failed to load teams. Is the API running?
+              {t("teams.failedToLoad")}
             </div>
           )}
           {!teamsLoading && !teamsError && filteredTeams.length === 0 && (
@@ -215,10 +217,10 @@ export default function TeamsPage() {
               <Users className="mx-auto h-10 w-10 text-text-3" />
               <p className="mt-3 text-sm text-text-2">
                 {teamSearch
-                  ? "No teams match your search."
+                  ? t("teams.noMatch")
                   : user?.canCreateProject
-                    ? "No teams yet. Create your first team to get started."
-                    : "You are not a member of any team yet."}
+                    ? t("teams.noTeams")
+                    : t("teams.notMember")}
               </p>
             </div>
           )}
@@ -236,25 +238,25 @@ export default function TeamsPage() {
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Team
+                  {t("teams.title")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Description
+                  {t("common.description")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Monthly Budget
+                  {t("teams.monthlyBudget")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Spent / Remaining
+                  {t("teams.spentRemaining")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Projected
+                  {t("teams.projected")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Members
+                  {t("teams.members")}
                 </th>
                 <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
-                  Actions
+                  {t("common.actions")}
                 </th>
               </tr>
             </thead>
@@ -272,7 +274,7 @@ export default function TeamsPage() {
                     colSpan={7}
                     className="py-12 text-center align-middle text-sm text-danger-6"
                   >
-                    Failed to load teams. Is the API running?
+                    {t("teams.failedToLoad")}
                   </td>
                 </tr>
               )}
@@ -289,10 +291,10 @@ export default function TeamsPage() {
                     <Users className="mx-auto h-10 w-10 text-text-3" />
                     <p className="mt-3 text-sm text-text-2">
                       {teamSearch
-                        ? "No teams match your search."
+                        ? t("teams.noMatch")
                         : user?.canCreateProject
-                          ? "No teams yet. Create your first team to get started."
-                          : "You are not a member of any team yet."}
+                          ? t("teams.noTeams")
+                          : t("teams.notMember")}
                     </p>
                   </td>
                 </tr>
@@ -310,11 +312,11 @@ export default function TeamsPage() {
         <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
           <div className="flex items-center justify-between gap-3 lg:contents">
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
-              Users
+              {t("teams.users")}
             </span>
             <DisabledReasonTooltip
               disabled={!user?.canCreateProject}
-              reason="Not available for basic users"
+              reason={t("sidebar.noCreateTooltip")}
               className="lg:order-last lg:w-auto"
             >
               <InviteUserDialog>
@@ -324,14 +326,14 @@ export default function TeamsPage() {
                   disabled={!user?.canCreateProject}
                 >
                   <Plus className="h-4 w-4 text-white" />
-                  Invite User
+                  {t("teams.inviteUser")}
                 </Button>
               </InviteUserDialog>
             </DisabledReasonTooltip>
           </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search users..."
+            placeholder={t("teams.searchUsers")}
             value={userSearch}
             onChange={(e) => setUserSearch(e.target.value)}
           />
@@ -348,18 +350,17 @@ export default function TeamsPage() {
             <p className="text-[13px] text-text-1">
               <strong className="font-semibold">
                 {pendingApprovalCount}{" "}
-                {pendingApprovalCount === 1 ? "user is" : "users are"}
+                {pendingApprovalCount === 1 ? t("teams.userIs") : t("teams.usersAre")}
               </strong>{" "}
-              awaiting budget approval — set a monthly budget for{" "}
-              {pendingApprovalCount === 1 ? "them" : "each"} to enable AI
-              access.
+              {t("teams.awaitingApproval")} — {t("teams.setPlan")}{" "}
+              {pendingApprovalCount === 1 ? "them" : "each"} to {t("teams.enableAccess")}
             </p>
             <button
               type="button"
               onClick={() => setShowPendingOnly((v) => !v)}
               className="shrink-0 rounded-md px-3 py-1 text-[12px] font-medium text-warning-7 transition-colors hover:bg-warning-7/10"
             >
-              {showPendingOnly ? "Show all users" : "Show pending only"}
+              {showPendingOnly ? t("teams.showAllUsers") : t("teams.showPendingOnly")}
             </button>
           </div>
         )}
@@ -375,7 +376,7 @@ export default function TeamsPage() {
           )}
           {usersError && (
             <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
-              Failed to load users. Is the API running?
+              {t("teams.failedToLoadUsers")}
             </div>
           )}
           {!usersLoading && !usersError && filteredUsers.length === 0 && (
@@ -383,8 +384,8 @@ export default function TeamsPage() {
               <Users className="mx-auto h-10 w-10 text-text-3" />
               <p className="mt-3 text-sm text-text-2">
                 {userSearch
-                  ? "No users match your search."
-                  : "No users yet. Invite someone to get started."}
+                  ? t("teams.noMatchUsers")
+                  : t("teams.noUsers")}
               </p>
             </div>
           )}
@@ -398,31 +399,31 @@ export default function TeamsPage() {
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Name
+                  {t("common.name")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Email
+                  {t("common.email")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Role
+                  {t("common.role")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Status
+                  {t("common.status")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Teams
+                  {t("teams.title")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Personal Monthly Budget
+                  {t("teams.personalMonthlyBudget")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Spent/Remaining
+                  {t("teams.spentRemainingShort")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Projected
+                  {t("teams.projected")}
                 </th>
                 <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
-                  Actions
+                  {t("common.actions")}
                 </th>
               </tr>
             </thead>
@@ -440,7 +441,7 @@ export default function TeamsPage() {
                     colSpan={7}
                     className="py-12 text-center align-middle text-sm text-danger-6"
                   >
-                    Failed to load users. Is the API running?
+                    {t("teams.failedToLoadUsers")}
                   </td>
                 </tr>
               )}
@@ -453,8 +454,8 @@ export default function TeamsPage() {
                     <Users className="mx-auto h-10 w-10 text-text-3" />
                     <p className="mt-3 text-sm text-text-2">
                       {userSearch
-                        ? "No users match your search."
-                        : "No users yet. Invite someone to get started."}
+                        ? t("teams.noMatchUsers")
+                        : t("teams.noUsers")}
                     </p>
                   </td>
                 </tr>
@@ -472,19 +473,19 @@ export default function TeamsPage() {
         <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
           <div className="flex items-center justify-between gap-3 lg:contents">
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
-              Models
+              {t("teams.models")}
             </span>
             {isAdmin ? (
               <AddModelDialog>
                 <Button variant="plusAction" className="lg:order-last">
                   <Plus className="h-4 w-4 text-white" />
-                  Add New Model
+                  {t("teams.addNewModel")}
                 </Button>
               </AddModelDialog>
             ) : (
               <DisabledReasonTooltip
                 disabled
-                reason="Only admins can add models"
+                reason={t("teams.onlyAdminsModels")}
                 className="lg:order-last"
               >
                 <Button
@@ -493,14 +494,14 @@ export default function TeamsPage() {
                   disabled
                 >
                   <Plus className="h-4 w-4 text-white" />
-                  Add New Model
+                  {t("teams.addNewModel")}
                 </Button>
               </DisabledReasonTooltip>
             )}
           </div>
           <SearchInput
             className="flex-1"
-            placeholder="Search models..."
+            placeholder={t("teams.searchModels")}
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
           />
@@ -517,7 +518,7 @@ export default function TeamsPage() {
           )}
           {modelsError && (
             <div className="rounded-xl border border-border-2 bg-bg-white py-10 text-center text-sm text-danger-6">
-              Failed to load models. Is the API running?
+              {t("teams.failedToLoadModels")}
             </div>
           )}
           {!modelsLoading && !modelsError && filteredModels.length === 0 && (
@@ -525,8 +526,8 @@ export default function TeamsPage() {
               <Bot className="mx-auto h-10 w-10 text-text-3" />
               <p className="mt-3 text-sm text-text-2">
                 {modelSearch
-                  ? "No models match your search."
-                  : "No models configured yet. Add one to get started."}
+                  ? t("teams.noMatchModels")
+                  : t("teams.noModels")}
               </p>
             </div>
           )}
@@ -540,19 +541,19 @@ export default function TeamsPage() {
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Custom Name
+                  {t("teams.customName")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Status
+                  {t("common.status")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Model
+                  {t("common.model")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Fallback models
+                  {t("teams.fallbackModels")}
                 </th>
                 <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
-                  Actions
+                  {t("common.actions")}
                 </th>
               </tr>
             </thead>
@@ -570,7 +571,7 @@ export default function TeamsPage() {
                     colSpan={5}
                     className="py-12 text-center align-middle text-sm text-danger-6"
                   >
-                    Failed to load models. Is the API running?
+                    {t("teams.failedToLoadModels")}
                   </td>
                 </tr>
               )}
@@ -583,8 +584,8 @@ export default function TeamsPage() {
                     <Bot className="mx-auto h-10 w-10 text-text-3" />
                     <p className="mt-3 text-sm text-text-2">
                       {modelSearch
-                        ? "No models match your search."
-                        : "No models configured yet. Add one to get started."}
+                        ? t("teams.noMatchModels")
+                        : t("teams.noModels")}
                     </p>
                   </td>
                 </tr>

@@ -58,13 +58,7 @@ import {
   type ObservabilityTeamAnalytics,
   type ObservabilityTokenUsage,
 } from "@/lib/api";
-
-const EVENT_TYPE_OPTIONS = [
-  { value: "all", label: "All events" },
-  { value: "arena_call", label: "Model calls" },
-  { value: "evaluator_call", label: "Evaluator calls" },
-  { value: "guardrail_trigger", label: "Guardrail triggers" },
-];
+import { useLanguage } from "@/lib/i18n";
 
 function formatUsd(n: number): string {
   if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
@@ -170,6 +164,15 @@ function downloadCsv(filename: string, body: string) {
 const PAGE_SIZE = 25;
 
 export default function ObservabilityPage() {
+  const { t } = useLanguage();
+
+  const EVENT_TYPE_OPTIONS = [
+    { value: "all", label: t("observability.allEvents") },
+    { value: "arena_call", label: t("observability.modelCalls") },
+    { value: "evaluator_call", label: t("observability.evaluatorCalls") },
+    { value: "guardrail_trigger", label: t("observability.guardrailTriggers") },
+  ];
+
   const [range, setRange] = useState<ObservabilityRange>("7d");
   const [search, setSearch] = useState("");
   const [eventType, setEventType] = useState<string>("all");
@@ -221,10 +224,10 @@ export default function ObservabilityPage() {
       fetchObservabilityTeamAnalytics(range),
       fetchObservabilityGuardrailActivity(range),
     ])
-      .then(([s, t, c, ta, g]) => {
+      .then(([s, tk, c, ta, g]) => {
         if (cancelled) return;
         setSummary(s);
-        setTokenUsage(t);
+        setTokenUsage(tk);
         setCostByProvider(c);
         setTeamAnalytics(ta);
         setGuardrails(g);
@@ -312,7 +315,7 @@ export default function ObservabilityPage() {
   const handleExport = async () => {
     if (exporting) return;
     setExporting(true);
-    const exportToastId = toast.loading("Preparing CSV…");
+    const exportToastId = toast.loading(t("observability.toastPreparingCsv"));
     try {
       const data = await fetchObservabilityEventsExport({
         range,
@@ -320,7 +323,7 @@ export default function ObservabilityPage() {
         eventType: eventType === "all" ? undefined : eventType,
       });
       if (data.events.length === 0) {
-        toast.error("Nothing to export with these filters.", {
+        toast.error(t("observability.toastNothingExport"), {
           id: exportToastId,
         });
         return;
@@ -330,18 +333,23 @@ export default function ObservabilityPage() {
       downloadCsv(`observability-${range}-${ts}.csv`, csv);
       if (data.truncated) {
         toast.warning(
-          `Exported ${data.events.length.toLocaleString()} of ${data.total.toLocaleString()} rows. Narrow the range or filters to get the rest.`,
+          t("observability.toastTruncated")
+            .replace("{n}", data.events.length.toLocaleString())
+            .replace("{total}", data.total.toLocaleString()),
           { id: exportToastId },
         );
       } else {
         toast.success(
-          `Exported ${data.events.length.toLocaleString()} row${data.events.length === 1 ? "" : "s"}.`,
+          (data.events.length === 1
+            ? t("observability.toastExportedOne")
+            : t("observability.toastExportedMany")
+          ).replace("{n}", data.events.length.toLocaleString()),
           { id: exportToastId },
         );
       }
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : "Couldn't export events.",
+        err instanceof Error ? err.message : t("observability.toastExportFailed"),
         { id: exportToastId },
       );
     } finally {
@@ -395,11 +403,9 @@ export default function ObservabilityPage() {
     return (
       <div className="flex flex-col items-center justify-center gap-3 rounded-lg border border-border-2 bg-bg-white px-6 py-16 text-center">
         <ShieldAlert className="h-10 w-10 text-text-3" strokeWidth={1.5} />
-        <h2 className="text-[18px] font-semibold text-text-1">Admin access required</h2>
+        <h2 className="text-[18px] font-semibold text-text-1">{t("observability.adminRequired")}</h2>
         <p className="max-w-[420px] text-[13px] text-text-2">
-          The Observability dashboard surfaces org-wide usage data, so it&apos;s
-          limited to admin accounts. Ask your admin to grant access if you need
-          to monitor model spend or activity.
+          {t("observability.adminDesc")}
         </p>
       </div>
     );
@@ -408,8 +414,8 @@ export default function ObservabilityPage() {
   return (
     <PageTabs defaultValue="metrics" className="py-6 gap-6">
       <PageTabsList>
-        <PageTabsTrigger value="metrics">Metrics</PageTabsTrigger>
-        <PageTabsTrigger value="logs">Logs</PageTabsTrigger>
+        <PageTabsTrigger value="metrics">{t("observability.metrics")}</PageTabsTrigger>
+        <PageTabsTrigger value="logs">{t("observability.logs")}</PageTabsTrigger>
       </PageTabsList>
 
       <PageTabsContent value="metrics" className="flex flex-col gap-6">
@@ -417,21 +423,21 @@ export default function ObservabilityPage() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           icon={DollarSign}
-          label="Total Cost"
+          label={t("observability.totalCost")}
           value={summary ? formatUsd(summary.current.totalCost) : "—"}
           delta={summary ? formatDelta(summary.current.totalCost, summary.previous.totalCost) : null}
           loading={loading}
         />
         <KpiCard
           icon={Activity}
-          label="Total Token Usage"
+          label={t("observability.totalTokens")}
           value={summary ? formatTokens(summary.current.totalTokens) : "—"}
           delta={summary ? formatDelta(summary.current.totalTokens, summary.previous.totalTokens) : null}
           loading={loading}
         />
         <KpiCard
           icon={Clock}
-          label="Avg Response Time"
+          label={t("observability.avgResponseTime")}
           value={summary ? formatLatency(summary.current.avgLatencyMs) : "—"}
           delta={summary ? formatDelta(summary.current.avgLatencyMs, summary.previous.avgLatencyMs) : null}
           loading={loading}
@@ -440,7 +446,7 @@ export default function ObservabilityPage() {
         />
         <KpiCard
           icon={Users}
-          label="Active Users"
+          label={t("observability.activeUsers")}
           value={summary ? String(summary.current.activeUsers) : "—"}
           delta={summary ? formatDelta(summary.current.activeUsers, summary.previous.activeUsers) : null}
           loading={loading}
@@ -450,8 +456,8 @@ export default function ObservabilityPage() {
       {/* Charts row */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ChartCard
-          title="Token Usage Trends"
-          subtitle="Daily token consumption over time"
+          title={t("observability.tokenTrends")}
+          subtitle={t("observability.tokenTrendsDesc")}
         >
           {tokenUsage && tokenUsage.series.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -477,8 +483,8 @@ export default function ObservabilityPage() {
                   }}
                   formatter={(value, key) => {
                     const num = Number(value);
-                    if (key === "tokens") return [formatTokens(num), "Tokens"];
-                    if (key === "cost") return [formatUsd(num), "Cost"];
+                    if (key === "tokens") return [formatTokens(num), t("observability.tokens")];
+                    if (key === "cost") return [formatUsd(num), t("observability.cost")];
                     return [String(value), String(key)];
                   }}
                   labelFormatter={(v) => new Date(v as string).toLocaleString()}
@@ -498,8 +504,8 @@ export default function ObservabilityPage() {
         </ChartCard>
 
         <ChartCard
-          title="Cost by Provider"
-          subtitle="Total spend across LLM providers"
+          title={t("observability.costByProvider")}
+          subtitle={t("observability.costByProviderDesc")}
         >
           {costByProvider && costByProvider.providers.length > 0 ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -520,8 +526,8 @@ export default function ObservabilityPage() {
                   }}
                   formatter={(value, key) => {
                     const num = Number(value);
-                    if (key === "cost") return [formatUsd(num), "Cost"];
-                    if (key === "tokens") return [formatTokens(num), "Tokens"];
+                    if (key === "cost") return [formatUsd(num), t("observability.cost")];
+                    if (key === "tokens") return [formatTokens(num), t("observability.tokens")];
                     return [String(value), String(key)];
                   }}
                 />
@@ -537,10 +543,9 @@ export default function ObservabilityPage() {
       {/* Team Analytics Drilldown */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
         <div className="flex flex-col gap-0.5">
-          <h2 className="text-[16px] font-bold text-text-1">Team Analytics Drilldown</h2>
+          <h2 className="text-[16px] font-bold text-text-1">{t("observability.teamAnalytics")}</h2>
           <p className="text-[12px] text-text-2">
-            Performance and usage comparison across teams. &quot;Personal&quot; collects
-            events from users without an accepted team membership.
+            {t("observability.teamAnalyticsDesc")}
           </p>
         </div>
         {teamAnalytics?.teams?.length ? (
@@ -548,37 +553,37 @@ export default function ObservabilityPage() {
             <table className="w-full min-w-[640px]">
               <thead>
                 <tr className="border-b border-border-2">
-                  <Th>Team</Th>
-                  <Th align="right">Calls</Th>
-                  <Th align="right">Tokens</Th>
-                  <Th align="right">Cost</Th>
-                  <Th align="right">Avg Latency</Th>
-                  <Th align="right">Active Users</Th>
+                  <Th>{t("common.team")}</Th>
+                  <Th align="right">{t("observability.calls")}</Th>
+                  <Th align="right">{t("observability.tokens")}</Th>
+                  <Th align="right">{t("observability.cost")}</Th>
+                  <Th align="right">{t("observability.avgLatency")}</Th>
+                  <Th align="right">{t("observability.activeUsers")}</Th>
                 </tr>
               </thead>
               <tbody>
-                {pagedTeamRows.map((t, i) => (
+                {pagedTeamRows.map((row, i) => (
                   <tr
-                    key={`${t.teamId ?? "personal"}-${i}`}
+                    key={`${row.teamId ?? "personal"}-${i}`}
                     className="border-b border-border-2 last:border-b-0 hover:bg-bg-1/40"
                   >
                     <td className="px-3 py-2 text-[13px] text-text-1">
-                      {t.teamName}
+                      {row.teamName}
                     </td>
                     <td className="px-3 py-2 text-right text-[12px] text-text-1">
-                      {t.calls.toLocaleString()}
+                      {row.calls.toLocaleString()}
                     </td>
                     <td className="px-3 py-2 text-right text-[12px] text-text-1">
-                      {formatTokens(t.tokens)}
+                      {formatTokens(row.tokens)}
                     </td>
                     <td className="px-3 py-2 text-right text-[12px] text-text-1">
-                      {formatUsd(t.cost)}
+                      {formatUsd(row.cost)}
                     </td>
                     <td className="px-3 py-2 text-right text-[12px] text-text-1">
-                      {formatLatency(t.avgLatencyMs)}
+                      {formatLatency(row.avgLatencyMs)}
                     </td>
                     <td className="px-3 py-2 text-right text-[12px] text-text-1">
-                      {t.activeUsers}
+                      {row.activeUsers}
                     </td>
                   </tr>
                 ))}
@@ -592,7 +597,7 @@ export default function ObservabilityPage() {
           </div>
         ) : (
           <div className="rounded-md border border-dashed border-border-2 bg-bg-1/40 px-4 py-6 text-center text-[13px] text-text-3">
-            {loading ? "Loading…" : "No team activity in this range yet."}
+            {loading ? t("common.loading") : t("observability.noTeamActivity")}
           </div>
         )}
       </section>
@@ -602,9 +607,9 @@ export default function ObservabilityPage() {
       {/* Detailed Prompt History */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
         <div className="flex flex-col gap-0.5">
-          <h2 className="text-[16px] font-bold text-text-1">Detailed Prompt History</h2>
+          <h2 className="text-[16px] font-bold text-text-1">{t("observability.promptHistory")}</h2>
           <p className="text-[12px] text-text-2">
-            Real-time audit trail of every AI call and guardrail trigger.
+            {t("observability.promptHistoryDesc")}
           </p>
         </div>
 
@@ -614,7 +619,7 @@ export default function ObservabilityPage() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search prompts, models, users…"
+              placeholder={t("observability.searchPrompts")}
               className="h-10 pl-9 text-sm"
             />
           </div>
@@ -636,14 +641,14 @@ export default function ObservabilityPage() {
           <table className="w-full min-w-[780px]">
             <thead>
               <tr className="border-b border-border-2">
-                <Th>Timestamp</Th>
-                <Th>User</Th>
-                <Th>Type</Th>
-                <Th>Model</Th>
-                <Th align="right">Tokens</Th>
-                <Th align="right">Cost</Th>
-                <Th align="right">Latency</Th>
-                <Th align="center">Status</Th>
+                <Th>{t("observability.timestamp")}</Th>
+                <Th>{t("observability.user")}</Th>
+                <Th>{t("common.type")}</Th>
+                <Th>{t("common.model")}</Th>
+                <Th align="right">{t("observability.tokens")}</Th>
+                <Th align="right">{t("observability.cost")}</Th>
+                <Th align="right">{t("observability.latency")}</Th>
+                <Th align="center">{t("common.status")}</Th>
               </tr>
             </thead>
             <tbody>
@@ -652,7 +657,7 @@ export default function ObservabilityPage() {
               ) : (
                 <tr>
                   <td colSpan={8} className="py-8 text-center text-[13px] text-text-3">
-                    {loading ? "Loading…" : "No events match these filters."}
+                    {loading ? t("common.loading") : t("observability.noEvents")}
                   </td>
                 </tr>
               )}
@@ -672,29 +677,29 @@ export default function ObservabilityPage() {
       {/* Activity Logs (guardrail triggers) */}
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
         <div className="flex flex-col gap-0.5">
-          <h2 className="text-[16px] font-bold text-text-1">Guardrail Activity</h2>
+          <h2 className="text-[16px] font-bold text-text-1">{t("observability.guardrailActivity")}</h2>
           <p className="text-[12px] text-text-2">
-            Triggered guardrails grouped by rule.
-            {guardrails ? ` ${guardrails.totalTriggers} total trigger(s) in this range.` : ""}
+            {t("observability.guardrailActivityDesc")}
+            {guardrails ? ` ${guardrails.totalTriggers} total ${guardrails.totalTriggers === 1 ? t("observability.triggerSingular") : t("observability.triggerPlural")} in this range.` : ""}
           </p>
         </div>
         {guardrails?.triggers?.length ? (
           <ul className="flex flex-col gap-2">
-            {guardrails.triggers.map((t, i) => (
+            {guardrails.triggers.map((trigger, i) => (
               <li
-                key={`${t.guardrailId ?? "anon"}-${i}`}
+                key={`${trigger.guardrailId ?? "anon"}-${i}`}
                 className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border-2 bg-bg-1/50 px-3 py-2 text-[13px]"
               >
                 <div className="flex items-center gap-2">
-                  <SeverityPill severity={t.severity} />
+                  <SeverityPill severity={trigger.severity} />
                   <span className="font-medium text-text-1">
-                    {t.guardrailName ?? "Unknown guardrail"}
+                    {trigger.guardrailName ?? "Unknown guardrail"}
                   </span>
                 </div>
                 <div className="flex items-center gap-4 text-text-2">
-                  <span>{t.count} trigger(s)</span>
+                  <span>{trigger.count} {trigger.count === 1 ? t("observability.triggerSingular") : t("observability.triggerPlural")}</span>
                   <span className="text-text-3">
-                    last {new Date(t.lastTriggeredAt).toLocaleString()}
+                    {t("observability.last")} {new Date(trigger.lastTriggeredAt).toLocaleString()}
                   </span>
                 </div>
               </li>
@@ -702,7 +707,7 @@ export default function ObservabilityPage() {
           </ul>
         ) : (
           <div className="rounded-md border border-dashed border-border-2 bg-bg-1/40 px-4 py-6 text-center text-[13px] text-text-3">
-            {loading ? "Loading…" : "No guardrail triggers in this range."}
+            {loading ? t("common.loading") : t("observability.noGuardrailTriggers")}
           </div>
         )}
       </section>

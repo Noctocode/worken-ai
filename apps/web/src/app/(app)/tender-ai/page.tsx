@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { deleteTender, fetchTenders, type TenderSummary } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 type TenderStatus = "Active" | "Pending" | "Completed";
 
@@ -64,54 +65,8 @@ interface StatCard {
   iconBg: string;
 }
 
-function computeStats(tenders: TenderSummary[]): StatCard[] {
-  const active = tenders.filter((t) => t.status === "Active").length;
-  const rates = tenders
-    .map((t) => t.matchRate ?? 0)
-    .filter((r) => r > 0);
-  const avgRate =
-    rates.length > 0
-      ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
-      : 0;
-  const criticalGaps = tenders.filter((t) => t.gapCount >= 3).length;
-  const now = new Date();
-  const in14d = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
-  const upcoming = tenders.filter((t) => {
-    if (!t.deadline) return false;
-    const d = new Date(t.deadline);
-    return d >= now && d <= in14d;
-  }).length;
-
-  return [
-    {
-      label: "Active Tenders",
-      value: String(active),
-      icon: BarChart3,
-      iconBg: "bg-primary-1 text-primary-6",
-    },
-    {
-      label: "Avg Match Rate",
-      value: `${avgRate}%`,
-      icon: TrendingUp,
-      iconBg: "bg-success-1 text-success-7",
-    },
-    {
-      label: "Critical Gaps",
-      value: String(criticalGaps),
-      icon: AlertTriangle,
-      iconBg: "bg-warning-1 text-warning-6",
-    },
-    {
-      label: "Upcoming Deadlines",
-      value: String(upcoming),
-      sub: "Next 14d",
-      icon: Calendar,
-      iconBg: "bg-bg-1 text-text-2",
-    },
-  ];
-}
-
 export default function TenderAiPage() {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
 
@@ -128,15 +83,15 @@ export default function TenderAiPage() {
     mutationFn: deleteTender,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tenders"] });
-      toast.success("Tender deleted.");
+      toast.success(t("tenderMain.toastDeleted"));
     },
     onError: (err: Error) => {
-      toast.error(err.message || "Failed to delete tender.");
+      toast.error(err.message || t("tenderMain.toastDeleteFailed"));
     },
   });
 
   const handleDelete = (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"? This action cannot be undone.`)) return;
+    if (!confirm(t("tenderMain.confirmDelete").replace("{name}", name))) return;
     removeMutation.mutate(id);
   };
 
@@ -161,7 +116,50 @@ export default function TenderAiPage() {
     };
   }, [handleSearch, router]);
 
-  const stats = useMemo(() => computeStats(tenders), [tenders]);
+  const stats = useMemo<StatCard[]>(() => {
+    const active = tenders.filter((x) => x.status === "Active").length;
+    const rates = tenders.map((x) => x.matchRate ?? 0).filter((r) => r > 0);
+    const avgRate =
+      rates.length > 0
+        ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length)
+        : 0;
+    const criticalGaps = tenders.filter((x) => x.gapCount >= 3).length;
+    const now = new Date();
+    const in14d = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+    const upcoming = tenders.filter((x) => {
+      if (!x.deadline) return false;
+      const d = new Date(x.deadline);
+      return d >= now && d <= in14d;
+    }).length;
+
+    return [
+      {
+        label: t("tender.activeTenders"),
+        value: String(active),
+        icon: BarChart3,
+        iconBg: "bg-primary-1 text-primary-6",
+      },
+      {
+        label: t("tender.avgMatchRate"),
+        value: `${avgRate}%`,
+        icon: TrendingUp,
+        iconBg: "bg-success-1 text-success-7",
+      },
+      {
+        label: t("tender.criticalGaps"),
+        value: String(criticalGaps),
+        icon: AlertTriangle,
+        iconBg: "bg-warning-1 text-warning-6",
+      },
+      {
+        label: t("tender.upcomingDeadlines"),
+        value: String(upcoming),
+        sub: t("tender.next14d"),
+        icon: Calendar,
+        iconBg: "bg-bg-1 text-text-2",
+      },
+    ];
+  }, [tenders, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -194,7 +192,7 @@ export default function TenderAiPage() {
           <Input
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
-            placeholder="Search tenders..."
+            placeholder={t("tender.search")}
             className="h-10 pl-9 placeholder:text-text-3"
           />
         </div>
@@ -204,7 +202,7 @@ export default function TenderAiPage() {
         >
           <Link href="/tender-ai/create">
             <Plus className="h-4 w-4" />
-            Create Tender
+            {t("tender.create")}
           </Link>
         </Button>
       </div>
@@ -252,7 +250,7 @@ export default function TenderAiPage() {
         {/* Table header */}
         <div className="flex flex-col gap-3 border-b border-border-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-[18px] font-bold text-text-1">
-            Active Tender Projects
+            {t("tender.activeProjects")}
           </h2>
           <div className="flex items-center gap-2">
             <Button
@@ -260,14 +258,14 @@ export default function TenderAiPage() {
               className="cursor-pointer gap-2 text-[13px]"
             >
               <Filter className="h-3.5 w-3.5" />
-              Filter
+              {t("tender.filter")}
             </Button>
             <Button
               variant="outline"
               className="cursor-pointer gap-2 text-[13px]"
             >
               <ArrowUpDown className="h-3.5 w-3.5" />
-              Sort
+              {t("tender.sort")}
             </Button>
           </div>
         </div>
@@ -277,72 +275,72 @@ export default function TenderAiPage() {
           <table className="w-full text-left text-[13px]">
             <thead>
               <tr className="border-b border-border-2 text-[12px] font-semibold uppercase tracking-wide text-text-3">
-                <th className="px-5 py-3">Project Name</th>
-                <th className="px-5 py-3">Lead Manager</th>
-                <th className="px-5 py-3">Match Rate</th>
-                <th className="px-5 py-3">Gap Preview</th>
-                <th className="px-5 py-3">Deadline</th>
-                <th className="px-5 py-3">Value</th>
-                <th className="px-5 py-3">Status</th>
+                <th className="px-5 py-3">{t("tender.projectName")}</th>
+                <th className="px-5 py-3">{t("tender.leadManager")}</th>
+                <th className="px-5 py-3">{t("tender.matchRate")}</th>
+                <th className="px-5 py-3">{t("tender.gapPreview")}</th>
+                <th className="px-5 py-3">{t("tender.deadline")}</th>
+                <th className="px-5 py-3">{t("tender.value")}</th>
+                <th className="px-5 py-3">{t("common.status")}</th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
             <tbody>
-              {paginated.map((t) => (
+              {paginated.map((tender) => (
                 <tr
-                  key={t.id}
+                  key={tender.id}
                   className="border-b border-border-2 last:border-b-0 cursor-pointer transition-colors hover:bg-bg-1"
                   role="link"
                   tabIndex={0}
-                  aria-label={`Open tender ${t.name}`}
-                  onClick={() => (router.push(`/tender-ai/${t.id}`))}
+                  aria-label={`Open tender ${tender.name}`}
+                  onClick={() => (router.push(`/tender-ai/${tender.id}`))}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      router.push(`/tender-ai/${t.id}`);
+                      router.push(`/tender-ai/${tender.id}`);
                     }
                   }}
                 >
                   <td className="px-5 py-4">
                     <div className="flex flex-col">
-                      <span className="font-medium text-text-1">{t.name}</span>
-                      <span className="text-[11px] text-text-3">{t.code}</span>
+                      <span className="font-medium text-text-1">{tender.name}</span>
+                      <span className="text-[11px] text-text-3">{tender.code}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-4 text-text-2">{t.ownerName ?? "—"}</td>
+                  <td className="px-5 py-4 text-text-2">{tender.ownerName ?? "—"}</td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-bg-1">
                         <div
-                          className={`h-full rounded-full ${matchRateBg(t.matchRate ?? 0)}`}
-                          style={{ width: `${t.matchRate ?? 0}%` }}
+                          className={`h-full rounded-full ${matchRateBg(tender.matchRate ?? 0)}`}
+                          style={{ width: `${tender.matchRate ?? 0}%` }}
                         />
                       </div>
                       <span
-                        className={`text-[12px] font-semibold ${matchRateColor(t.matchRate ?? 0)}`}
+                        className={`text-[12px] font-semibold ${matchRateColor(tender.matchRate ?? 0)}`}
                       >
-                        {t.matchRate ?? 0}%
+                        {tender.matchRate ?? 0}%
                       </span>
                     </div>
                   </td>
                   <td className="px-5 py-4 text-text-2">
-                    {t.gapCount === 0 ? (
-                      <span className="text-success-7">0 gaps</span>
+                    {tender.gapCount === 0 ? (
+                      <span className="text-success-7">0 {t("tender.gapPlural")}</span>
                     ) : (
-                      <span className={t.gapCount >= 3 ? "text-danger-6" : "text-warning-6"}>
-                        {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
+                      <span className={tender.gapCount >= 3 ? "text-danger-6" : "text-warning-6"}>
+                        {tender.gapCount} {tender.gapCount !== 1 ? t("tender.gapPlural") : t("tender.gapSingular")}
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-text-2">{formatDeadline(t.deadline)}</td>
+                  <td className="px-5 py-4 text-text-2">{formatDeadline(tender.deadline)}</td>
                   <td className="px-5 py-4 font-medium text-text-1">
-                    {t.value ?? "—"}
+                    {tender.value ?? "—"}
                   </td>
                   <td className="px-5 py-4">
                     <span
-                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
+                      className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[tender.status as TenderStatus] ?? ""}`}
                     >
-                      {t.status}
+                      {tender.status}
                     </span>
                   </td>
                   <td className="px-5 py-4">
@@ -350,11 +348,11 @@ export default function TenderAiPage() {
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDelete(t.id, t.name);
+                        handleDelete(tender.id, tender.name);
                       }}
                       className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                      title="Delete tender"
-                      aria-label={`Delete ${t.name}`}
+                      title={t("tenderMain.titleDelete")}
+                      aria-label={`Delete ${tender.name}`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -367,7 +365,7 @@ export default function TenderAiPage() {
                     colSpan={8}
                     className="px-5 py-10 text-center text-[13px] text-text-3"
                   >
-                    No tenders match your search.
+                    {t("tender.noMatch")}
                   </td>
                 </tr>
               )}
@@ -377,10 +375,10 @@ export default function TenderAiPage() {
 
         {/* Mobile cards */}
         <div className="flex flex-col md:hidden">
-          {paginated.map((t, idx) => (
+          {paginated.map((tender, idx) => (
             <Link
-              key={t.id}
-              href={`/tender-ai/${t.id}`}
+              key={tender.id}
+              href={`/tender-ai/${tender.id}`}
               className={`flex flex-col gap-3 bg-bg-white px-4 py-4 transition-colors hover:bg-bg-1 ${
                 idx > 0 ? "border-t border-border-2" : ""
               }`}
@@ -388,26 +386,26 @@ export default function TenderAiPage() {
               <div className="flex items-start justify-between gap-2">
                 <div className="flex min-w-0 flex-col">
                   <span className="truncate text-[14px] font-medium text-text-1">
-                    {t.name}
+                    {tender.name}
                   </span>
-                  <span className="text-[11px] text-text-3">{t.code}</span>
+                  <span className="text-[11px] text-text-3">{tender.code}</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-1.5">
                   <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[t.status as TenderStatus] ?? ""}`}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${STATUS_STYLES[tender.status as TenderStatus] ?? ""}`}
                   >
-                    {t.status}
+                    {tender.status}
                   </span>
                   <button
                     type="button"
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      handleDelete(t.id, t.name);
+                      handleDelete(tender.id, tender.name);
                     }}
                     className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-danger-1 hover:text-danger-6"
-                    title="Delete tender"
-                    aria-label={`Delete ${t.name}`}
+                    title={t("tenderMain.titleDelete")}
+                    aria-label={`Delete ${tender.name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -415,27 +413,27 @@ export default function TenderAiPage() {
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[12px] text-text-2">
-                  {t.ownerName ?? "—"}
+                  {tender.ownerName ?? "—"}
                 </span>
-                <span className={`text-[13px] font-bold ${matchRateColor(t.matchRate ?? 0)}`}>
-                  {t.matchRate ?? 0}%
+                <span className={`text-[13px] font-bold ${matchRateColor(tender.matchRate ?? 0)}`}>
+                  {tender.matchRate ?? 0}%
                 </span>
               </div>
               <div className="grid grid-cols-3 gap-2 text-[12px]">
                 <div className="flex flex-col">
-                  <span className="text-text-3">Deadline</span>
-                  <span className="font-medium text-text-1">{formatDeadline(t.deadline)}</span>
+                  <span className="text-text-3">{t("tender.deadline")}</span>
+                  <span className="font-medium text-text-1">{formatDeadline(tender.deadline)}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-text-3">Value</span>
-                  <span className="font-medium text-text-1">{t.value ?? "—"}</span>
+                  <span className="text-text-3">{t("tender.value")}</span>
+                  <span className="font-medium text-text-1">{tender.value ?? "—"}</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-text-3">Gaps</span>
+                  <span className="text-text-3">{t("tender.gapPlural")}</span>
                   <span
-                    className={`font-medium ${t.gapCount >= 3 ? "text-danger-6" : t.gapCount === 0 ? "text-success-7" : "text-warning-6"}`}
+                    className={`font-medium ${tender.gapCount >= 3 ? "text-danger-6" : tender.gapCount === 0 ? "text-success-7" : "text-warning-6"}`}
                   >
-                    {t.gapCount} gap{t.gapCount !== 1 ? "s" : ""}
+                    {tender.gapCount} {tender.gapCount !== 1 ? t("tender.gapPlural") : t("tender.gapSingular")}
                   </span>
                 </div>
               </div>
@@ -443,7 +441,7 @@ export default function TenderAiPage() {
           ))}
           {paginated.length === 0 && (
             <p className="py-8 text-center text-[13px] text-text-3">
-              No tenders match your search.
+              {t("tender.noMatch")}
             </p>
           )}
         </div>
@@ -458,7 +456,7 @@ export default function TenderAiPage() {
               onClick={() => setPage((p) => p - 1)}
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              Previous
+              {t("tender.previous")}
             </Button>
             <div className="flex items-center gap-1">
               {Array.from({ length: totalPages }, (_, i) => i + 1).map(
@@ -484,7 +482,7 @@ export default function TenderAiPage() {
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Next
+              {t("tender.next")}
               <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>

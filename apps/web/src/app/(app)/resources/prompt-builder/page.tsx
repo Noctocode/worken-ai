@@ -42,49 +42,48 @@ import {
   updatePrompt,
   type PromptInput,
 } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
+import type { TranslationKey } from "@/lib/translations/en";
 
 type TemplateIcon = typeof FileText;
 
 interface Template {
-  title: string;
-  category: string;
-  description: string;
+  titleKey: TranslationKey;
+  categoryKey: TranslationKey;
+  descriptionKey: TranslationKey;
   icon: TemplateIcon;
   prompt: string;
 }
 
 const TEMPLATES: Template[] = [
   {
-    title: "Legal Summary",
-    category: "Legal",
-    description:
-      "Generate concise summaries of legal documents with key clauses highlighted",
+    titleKey: "promptBuilder.tplLegalTitle",
+    categoryKey: "promptBuilder.tplLegalCategory",
+    descriptionKey: "promptBuilder.tplLegalDesc",
     icon: FileText,
     prompt:
       "Summarize the following legal document and list the {{key_clauses}}. Highlight obligations, deadlines, and termination conditions. Format the output as {{output_format}}.",
   },
   {
-    title: "Proposal Review",
-    category: "Procurement",
-    description:
-      "Comprehensive review of procurement proposals against requirements",
+    titleKey: "promptBuilder.tplProposalTitle",
+    categoryKey: "promptBuilder.tplProposalCategory",
+    descriptionKey: "promptBuilder.tplProposalDesc",
     icon: ClipboardCheck,
     prompt:
       "Review the attached proposal against {{requirements}}. Score each criterion out of 10 and produce a structured comparison. Format the output as {{output_format}}.",
   },
   {
-    title: "Data Extraction",
-    category: "Data Analysis",
-    description: "Extract structured data from unstructured documents",
+    titleKey: "promptBuilder.tplDataTitle",
+    categoryKey: "promptBuilder.tplDataCategory",
+    descriptionKey: "promptBuilder.tplDataDesc",
     icon: Database,
     prompt:
       "Extract and structure the following data from the document: {{data_fields}}. Format the output as {{output_format}}.",
   },
   {
-    title: "Technical Specification",
-    category: "Engineering",
-    description:
-      "Generate technical specifications from high-level requirements",
+    titleKey: "promptBuilder.tplTechTitle",
+    categoryKey: "promptBuilder.tplTechCategory",
+    descriptionKey: "promptBuilder.tplTechDesc",
     icon: Cog,
     prompt:
       "Translate the following high-level requirements into a detailed technical specification for {{audience}}. Include architecture, dependencies, and acceptance criteria. Format the output as {{output_format}}.",
@@ -92,11 +91,11 @@ const TEMPLATES: Template[] = [
 ];
 
 const STEPS = [
-  { title: "Select Template", caption: "Choose a starting point" },
-  { title: "Define Variables", caption: "Add placeholders" },
-  { title: "Configure Parameters", caption: "Set AI behavior" },
-  { title: "Preview & Test", caption: "Verify output" },
-] as const;
+  { titleKey: "promptBuilder.step1Title", captionKey: "promptBuilder.step1Caption" },
+  { titleKey: "promptBuilder.step2Title", captionKey: "promptBuilder.step2Caption" },
+  { titleKey: "promptBuilder.step3Title", captionKey: "promptBuilder.step3Caption" },
+  { titleKey: "promptBuilder.step4Title", captionKey: "promptBuilder.step4Caption" },
+] as const satisfies readonly { titleKey: TranslationKey; captionKey: TranslationKey }[];
 
 interface Variable {
   id: string;
@@ -132,13 +131,14 @@ function Stepper({
   active: number;
   onSelect: (step: number) => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex items-center gap-4 rounded-lg border border-border-2 bg-bg-white p-4">
       {STEPS.map((step, i) => {
         const isActive = i === active;
         const reachable = i <= active;
         return (
-          <div key={step.title} className="flex flex-1 items-center gap-4">
+          <div key={step.titleKey} className="flex flex-1 items-center gap-4">
             <button
               type="button"
               onClick={() => reachable && onSelect(i)}
@@ -158,9 +158,9 @@ function Stepper({
                 <span
                   className={`text-sm font-semibold ${isActive ? "text-text-2" : "text-text-3"}`}
                 >
-                  {step.title}
+                  {t(step.titleKey)}
                 </span>
-                <span className="text-xs text-text-3">{step.caption}</span>
+                <span className="text-xs text-text-3">{t(step.captionKey)}</span>
               </div>
             </button>
             {i < STEPS.length - 1 && (
@@ -180,6 +180,7 @@ function TemplateCard({
   template: Template;
   onSelect: () => void;
 }) {
+  const { t } = useLanguage();
   const Icon = template.icon;
   return (
     <button
@@ -191,11 +192,11 @@ function TemplateCard({
         <Icon className="h-6 w-6 text-primary-6" strokeWidth={2} />
       </div>
       <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-text-1">{template.title}</h3>
+        <h3 className="text-sm font-semibold text-text-1">{t(template.titleKey)}</h3>
         <span className="inline-flex w-fit items-center rounded bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3">
-          {template.category}
+          {t(template.categoryKey)}
         </span>
-        <p className="text-xs font-medium text-text-3">{template.description}</p>
+        <p className="text-xs font-medium text-text-3">{t(template.descriptionKey)}</p>
       </div>
     </button>
   );
@@ -210,20 +211,21 @@ function LivePreview({
   variables: Variable[];
   model: string;
 }) {
+  const { t } = useLanguage();
   return (
     <section className="flex w-full flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 lg:w-[583px]">
       <div className="flex items-center justify-between">
-        <h3 className="text-[15px] font-semibold text-text-1">Live Preview</h3>
+        <h3 className="text-[15px] font-semibold text-text-1">{t("promptBuilder.livePreview")}</h3>
         <div className="flex items-center gap-1">
           <button
             type="button"
-            title="Copy prompt"
+            title={t("promptBuilder.copyPrompt")}
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(promptDraft);
-                toast.success("Prompt copied to clipboard.");
+                toast.success(t("promptBuilder.copiedToast"));
               } catch {
-                toast.error("Couldn't copy to clipboard.");
+                toast.error(t("promptBuilder.copyFailed"));
               }
             }}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
@@ -234,8 +236,8 @@ function LivePreview({
             <DialogTrigger asChild>
               <button
                 type="button"
-                title="Expand preview"
-                aria-label="Expand preview"
+                title={t("promptBuilder.expandPreview")}
+                aria-label={t("promptBuilder.expandPreview")}
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
               >
                 <Maximize2 className="h-4 w-4" />
@@ -243,7 +245,7 @@ function LivePreview({
             </DialogTrigger>
             <DialogContent className="max-w-3xl">
               <DialogHeader>
-                <DialogTitle>Prompt Preview</DialogTitle>
+                <DialogTitle>{t("promptBuilder.promptPreview")}</DialogTitle>
               </DialogHeader>
               <div className="max-h-[70vh] overflow-auto rounded border border-border-2 bg-bg-1 p-4">
                 <pre
@@ -251,7 +253,7 @@ function LivePreview({
                     promptDraft ? "text-text-1" : "text-text-3"
                   }`}
                 >
-                  {promptDraft || "Your prompt will appear here..."}
+                  {promptDraft || t("promptBuilder.promptWillAppear")}
                 </pre>
               </div>
             </DialogContent>
@@ -260,12 +262,12 @@ function LivePreview({
       </div>
 
       <div className="flex flex-col gap-2">
-        <span className="text-xs font-medium text-text-2">Prompt Draft</span>
+        <span className="text-xs font-medium text-text-2">{t("promptBuilder.promptDraft")}</span>
         <div className="min-h-[200px] rounded border border-border-2 bg-bg-1 p-3">
           <span
             className={`font-mono text-xs whitespace-pre-wrap ${promptDraft ? "text-text-1" : "text-text-3"}`}
           >
-            {promptDraft || "Your prompt will appear here..."}
+            {promptDraft || t("promptBuilder.promptWillAppear")}
           </span>
         </div>
       </div>
@@ -273,7 +275,7 @@ function LivePreview({
       {variables.length > 0 && (
         <div className="flex flex-col gap-2">
           <span className="text-xs font-medium text-text-2">
-            Variables ({variables.length})
+            {t("promptBuilder.variablesCount").replace("{n}", String(variables.length))}
           </span>
           <div className="flex flex-wrap gap-2">
             {variables.map((v) => (
@@ -290,9 +292,9 @@ function LivePreview({
 
       <div className="flex flex-col gap-1 border-t border-border-2 pt-4">
         {[
-          { label: "Template:", value: "Custom" },
-          { label: "Variables:", value: String(variables.length) },
-          { label: "Model:", value: model },
+          { label: t("promptBuilder.template"), value: t("promptBuilder.custom") },
+          { label: t("promptBuilder.variablesField"), value: String(variables.length) },
+          { label: t("promptBuilder.modelField"), value: model },
         ].map(({ label, value }) => (
           <div key={label} className="flex justify-between">
             <span className="text-[11px] text-text-2">{label}</span>
@@ -313,23 +315,24 @@ function SelectTemplateStep({
   onPick: (template: Template) => void;
   onScratch: () => void;
 }) {
+  const { t } = useLanguage();
   const [query, setQuery] = useState("");
-  const filtered = TEMPLATES.filter((t) => {
+  const filtered = TEMPLATES.filter((tpl) => {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return (
-      t.title.toLowerCase().includes(q) ||
-      t.category.toLowerCase().includes(q) ||
-      t.description.toLowerCase().includes(q)
+      t(tpl.titleKey).toLowerCase().includes(q) ||
+      t(tpl.categoryKey).toLowerCase().includes(q) ||
+      t(tpl.descriptionKey).toLowerCase().includes(q)
     );
   });
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-bold text-text-1">Choose a Template</h2>
+        <h2 className="text-xl font-bold text-text-1">{t("promptBuilder.chooseTemplate")}</h2>
         <p className="text-sm text-text-3">
-          Start with a pre-built template or create from scratch
+          {t("promptBuilder.chooseTemplateDesc")}
         </p>
       </div>
 
@@ -338,14 +341,14 @@ function SelectTemplateStep({
         <Input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search templates by name, category, or use case..."
+          placeholder={t("promptBuilder.searchTemplatesPh")}
           className="h-11 pl-9 pr-3 text-base rounded-md border-border-2 placeholder:text-text-3"
         />
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        {filtered.map((t) => (
-          <TemplateCard key={t.title} template={t} onSelect={() => onPick(t)} />
+        {filtered.map((tpl) => (
+          <TemplateCard key={tpl.titleKey} template={tpl} onSelect={() => onPick(tpl)} />
         ))}
       </div>
 
@@ -355,7 +358,7 @@ function SelectTemplateStep({
         className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border-2 bg-bg-white py-6 text-sm font-medium text-text-3 transition-colors hover:border-primary-6 hover:text-primary-6"
       >
         <Plus className="h-4 w-4" />
-        Start from Scratch
+        {t("promptBuilder.startFromScratch")}
       </button>
     </div>
   );
@@ -378,6 +381,7 @@ function DefineVariablesStep({
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const { t } = useLanguage();
   const addVariable = () => {
     setVariables([
       ...variables,
@@ -396,26 +400,26 @@ function DefineVariablesStep({
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-bold text-text-1">Define Variables</h2>
+        <h2 className="text-xl font-bold text-text-1">{t("promptBuilder.defineVarsTitle")}</h2>
         <p className="text-sm text-text-2">
-          Add placeholders that will be replaced with actual values
+          {t("promptBuilder.defineVarsDesc")}
         </p>
       </div>
 
       {/* Prompt Template */}
       <section className="flex flex-col gap-2 rounded-lg border border-border-2 bg-bg-white p-5">
         <label className="text-[13px] font-semibold text-text-1">
-          Prompt Template
+          {t("promptBuilder.promptTemplate")}
         </label>
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           rows={7}
-          placeholder="Write your prompt here. Use {{variable_name}} to insert variables..."
+          placeholder={t("promptBuilder.promptPlaceholder")}
           className="font-mono text-[13px] rounded border-border-2"
         />
         <p className="text-xs text-text-2">
-          Variables are shown as{" "}
+          {t("promptBuilder.variablesShownAs")}{" "}
           <span className="rounded bg-border-2 px-1.5 py-0.5 font-mono text-xs text-text-1">
             {"{{variable_name}}"}
           </span>
@@ -425,20 +429,20 @@ function DefineVariablesStep({
       {/* Variables list */}
       <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-5">
         <div className="flex items-center justify-between">
-          <h3 className="text-[15px] font-semibold text-text-1">Variables</h3>
+          <h3 className="text-[15px] font-semibold text-text-1">{t("promptBuilder.variables")}</h3>
           <button
             type="button"
             onClick={addVariable}
             className="inline-flex cursor-pointer items-center gap-1.5 rounded bg-primary-1 px-3 py-1.5 text-xs font-medium text-text-2 transition-colors hover:bg-primary-6/20"
           >
             <Plus className="h-3.5 w-3.5" />
-            Add Variable
+            {t("promptBuilder.addVariable")}
           </button>
         </div>
 
         {variables.length === 0 ? (
           <p className="rounded border border-dashed border-border-2 bg-bg-1 p-6 text-center text-xs text-text-3">
-            No variables yet. Click Add Variable to define a placeholder.
+            {t("promptBuilder.noVarsYet")}
           </p>
         ) : (
           <div className="flex flex-col gap-3">
@@ -450,18 +454,18 @@ function DefineVariablesStep({
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-text-2">
-                      Variable Name
+                      {t("promptBuilder.variableName")}
                     </label>
                     <Input
                       value={v.name}
                       onChange={(e) => updateVariable(v.id, { name: e.target.value })}
                       className="h-10 rounded border-border-2 font-mono text-[13px]"
-                      placeholder="variable_name"
+                      placeholder={t("promptBuilder.varNamePh")}
                     />
                   </div>
                   <div className="flex flex-col gap-1">
                     <label className="text-xs font-medium text-text-2">
-                      Default Value
+                      {t("promptBuilder.defaultValue")}
                     </label>
                     <Input
                       value={v.defaultValue}
@@ -469,14 +473,14 @@ function DefineVariablesStep({
                         updateVariable(v.id, { defaultValue: e.target.value })
                       }
                       className="h-10 rounded border-border-2 text-[13px]"
-                      placeholder="Optional default value"
+                      placeholder={t("promptBuilder.defaultValuePh")}
                     />
                   </div>
                 </div>
                 <div className="flex items-end gap-2">
                   <div className="flex flex-1 flex-col gap-1">
                     <label className="text-xs font-medium text-text-2">
-                      Description
+                      {t("promptBuilder.description")}
                     </label>
                     <Input
                       value={v.description}
@@ -484,13 +488,13 @@ function DefineVariablesStep({
                         updateVariable(v.id, { description: e.target.value })
                       }
                       className="h-10 rounded border-border-2 text-[13px]"
-                      placeholder="What this variable represents..."
+                      placeholder={t("promptBuilder.descriptionPh")}
                     />
                   </div>
                   <button
                     type="button"
                     onClick={() => removeVariable(v.id)}
-                    title="Remove variable"
+                    title={t("promptBuilder.removeVariable")}
                     className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded border border-border-2 text-text-3 transition-colors hover:border-danger-5 hover:text-danger-6"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -527,12 +531,13 @@ function ConfigureParametersStep({
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-bold text-text-1">Configure Parameters</h2>
+        <h2 className="text-xl font-bold text-text-1">{t("promptBuilder.configureTitle")}</h2>
         <p className="text-sm text-text-2">
-          Fine-tune AI behavior for optimal results
+          {t("promptBuilder.configureDesc")}
         </p>
       </div>
 
@@ -540,7 +545,7 @@ function ConfigureParametersStep({
         {/* Model Selection */}
         <div className="flex flex-col gap-2">
           <label className="text-[13px] font-semibold text-text-1">
-            Model Selection
+            {t("promptBuilder.modelSelection")}
           </label>
           <Select
             value={params.model}
@@ -563,7 +568,7 @@ function ConfigureParametersStep({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-[13px] font-semibold text-text-1">
-              Temperature
+              {t("promptBuilder.temperature")}
             </label>
             <span className="font-mono text-[13px] text-text-2">
               {params.temperature.toFixed(1)}
@@ -581,8 +586,8 @@ function ConfigureParametersStep({
             className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <div className="flex justify-between text-[11px] text-text-2">
-            <span>Focused</span>
-            <span>Creative</span>
+            <span>{t("promptBuilder.focused")}</span>
+            <span>{t("promptBuilder.creative")}</span>
           </div>
         </div>
 
@@ -590,7 +595,7 @@ function ConfigureParametersStep({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-[13px] font-semibold text-text-1">
-              Max Tokens
+              {t("promptBuilder.maxTokens")}
             </label>
             <span className="font-mono text-[13px] text-text-2">
               {params.maxTokens}
@@ -608,7 +613,7 @@ function ConfigureParametersStep({
             className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <p className="text-[11px] text-text-2">
-            Maximum length of the AI response
+            {t("promptBuilder.maxTokensDesc")}
           </p>
         </div>
 
@@ -616,7 +621,7 @@ function ConfigureParametersStep({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <label className="text-[13px] font-semibold text-text-1">
-              Top P
+              {t("promptBuilder.topP")}
             </label>
             <span className="font-mono text-[13px] text-text-2">
               {params.topP.toFixed(2)}
@@ -634,7 +639,7 @@ function ConfigureParametersStep({
             className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-bg-1 accent-primary-7"
           />
           <p className="text-[11px] text-text-2">
-            Controls diversity via nucleus sampling
+            {t("promptBuilder.topPDesc")}
           </p>
         </div>
       </section>
@@ -672,73 +677,74 @@ function PreviewTestStep({
   onBack: () => void;
   onSave: () => void;
 }) {
+  const { t } = useLanguage();
   const canSave = details.title.trim().length > 0 && prompt.trim().length > 0 && !saving;
 
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h2 className="text-xl font-bold text-text-1">Preview & Test</h2>
+        <h2 className="text-xl font-bold text-text-1">{t("promptBuilder.previewTestTitle")}</h2>
         <p className="text-sm text-text-2">
-          Review your prompt and test with sample data
+          {t("promptBuilder.previewTestDesc")}
         </p>
       </div>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-        <h3 className="text-sm font-semibold text-text-1">Final Prompt</h3>
+        <h3 className="text-sm font-semibold text-text-1">{t("promptBuilder.finalPrompt")}</h3>
         <pre className="whitespace-pre-wrap rounded border border-border-2 bg-bg-1 p-4 font-mono text-[13px] text-text-1">
           {prompt}
         </pre>
       </section>
 
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-5">
-        <h3 className="text-sm font-semibold text-text-1">Configuration</h3>
+        <h3 className="text-sm font-semibold text-text-1">{t("promptBuilder.configuration")}</h3>
         <div className="grid grid-cols-1 gap-3 text-[13px] text-text-2 sm:grid-cols-2">
-          <span>Model: {params.model}</span>
-          <span>Temperature: {params.temperature.toFixed(2)}</span>
-          <span>Max Tokens: {params.maxTokens}</span>
-          <span>Top P: {params.topP.toFixed(2)}</span>
+          <span>{t("promptBuilder.cfgModel").replace("{model}", params.model)}</span>
+          <span>{t("promptBuilder.cfgTemperature").replace("{value}", params.temperature.toFixed(2))}</span>
+          <span>{t("promptBuilder.cfgMaxTokens").replace("{value}", String(params.maxTokens))}</span>
+          <span>{t("promptBuilder.cfgTopP").replace("{value}", params.topP.toFixed(2))}</span>
         </div>
       </section>
 
       <section className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-5">
-        <h3 className="text-sm font-semibold text-text-1">Save Details</h3>
+        <h3 className="text-sm font-semibold text-text-1">{t("promptBuilder.saveDetails")}</h3>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-medium text-text-2">
-            Title <span className="text-danger-6">*</span>
+            {t("promptBuilder.title")} <span className="text-danger-6">*</span>
           </label>
           <Input
             value={details.title}
             onChange={(e) => setDetails({ ...details, title: e.target.value })}
             className="h-10 rounded border-border-2 text-[13px]"
-            placeholder="e.g. RFP Bid/No-Bid Analysis"
+            placeholder={t("promptBuilder.titlePh")}
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-text-2">Description</label>
+          <label className="text-xs font-medium text-text-2">{t("promptBuilder.descriptionField")}</label>
           <Input
             value={details.description}
             onChange={(e) =>
               setDetails({ ...details, description: e.target.value })
             }
             className="h-10 rounded border-border-2 text-[13px]"
-            placeholder="One-line summary shown on the library card"
+            placeholder={t("promptBuilder.descriptionFieldPh")}
           />
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-text-2">Category</label>
+            <label className="text-xs font-medium text-text-2">{t("promptBuilder.category")}</label>
             <Input
               value={details.category}
               onChange={(e) =>
                 setDetails({ ...details, category: e.target.value })
               }
               className="h-10 rounded border-border-2 text-[13px]"
-              placeholder="e.g. Strategic Analysis"
+              placeholder={t("promptBuilder.categoryPh")}
             />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium text-text-2">
-              Tags (comma-separated)
+              {t("promptBuilder.tagsLabel")}
             </label>
             <Input
               value={details.tagsInput}
@@ -746,7 +752,7 @@ function PreviewTestStep({
                 setDetails({ ...details, tagsInput: e.target.value })
               }
               className="h-10 rounded border-border-2 text-[13px]"
-              placeholder="RFP, Decision Making"
+              placeholder={t("promptBuilder.tagsPh")}
             />
           </div>
         </div>
@@ -759,16 +765,16 @@ function PreviewTestStep({
           disabled={saving}
           className="h-10 rounded border-border-2 text-sm text-text-2"
         >
-          Back
+          {t("promptBuilder.back")}
         </Button>
         <div className="flex items-center gap-3">
           <Button
             variant="outline"
-            onClick={() => toast.info("Test in Chat is coming soon.")}
+            onClick={() => toast.info(t("promptBuilder.testInChatToast"))}
             className="h-10 gap-2 rounded border-border-2 text-sm text-text-2"
           >
             <MessageSquare className="h-4 w-4" />
-            Test in Chat
+            {t("promptBuilder.testInChat")}
           </Button>
           <Button
             onClick={onSave}
@@ -778,11 +784,11 @@ function PreviewTestStep({
             <Save className="h-4 w-4" />
             {saving
               ? editing
-                ? "Updating…"
-                : "Saving…"
+                ? t("promptBuilder.updating")
+                : t("promptBuilder.saving")
               : editing
-                ? "Update Prompt"
-                : "Save Prompt"}
+                ? t("promptBuilder.updatePrompt")
+                : t("promptBuilder.savePrompt")}
           </Button>
         </div>
       </div>
@@ -799,6 +805,7 @@ function StepNav({
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const { t } = useLanguage();
   return (
     <div className="flex items-center justify-between">
       <Button
@@ -806,13 +813,13 @@ function StepNav({
         onClick={onBack}
         className="h-10 rounded border-border-2 text-sm text-text-2"
       >
-        Back
+        {t("promptBuilder.back")}
       </Button>
       <Button
         onClick={onContinue}
         className="h-10 gap-2 rounded bg-primary-7 text-sm text-text-white hover:bg-primary-7/90"
       >
-        Continue
+        {t("promptBuilder.continue")}
         <ArrowRight className="h-4 w-4" />
       </Button>
     </div>
@@ -823,15 +830,21 @@ function StepNav({
 
 export default function PromptBuilderPage() {
   return (
-    <Suspense fallback={<div className="py-6 text-sm text-text-3">Loading…</div>}>
+    <Suspense fallback={<PromptBuilderLoading />}>
       <PromptBuilderInner />
     </Suspense>
   );
 }
 
+function PromptBuilderLoading() {
+  const { t } = useLanguage();
+  return <div className="py-6 text-sm text-text-3">{t("promptBuilder.loading")}</div>;
+}
+
 function PromptBuilderInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { t } = useLanguage();
   const editId = searchParams.get("id");
 
   const [step, setStep] = useState(editId ? 1 : 0);
@@ -887,7 +900,7 @@ function PromptBuilderInner() {
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load prompt.";
+          err instanceof Error ? err.message : t("promptBuilder.errLoad");
         toast.error(message);
         router.push("/resources/prompt-library");
       })
@@ -897,23 +910,23 @@ function PromptBuilderInner() {
     return () => {
       cancelled = true;
     };
-  }, [editId, router]);
+  }, [editId, router, t]);
 
   const handleSave = async () => {
     const title = details.title.trim();
     const body = prompt.trim();
     if (!title) {
-      toast.error("Please give your prompt a title.");
+      toast.error(t("promptBuilder.errTitle"));
       return;
     }
     if (!body) {
-      toast.error("The prompt body can't be empty.");
+      toast.error(t("promptBuilder.errBody"));
       return;
     }
 
     const tags = details.tagsInput
       .split(",")
-      .map((t) => t.trim())
+      .map((tag) => tag.trim())
       .filter(Boolean);
 
     const payload: PromptInput = {
@@ -939,15 +952,15 @@ function PromptBuilderInner() {
     try {
       if (editId) {
         await updatePrompt(editId, payload);
-        toast.success("Prompt updated.");
+        toast.success(t("promptBuilder.updated"));
       } else {
         await createPrompt(payload);
-        toast.success("Prompt saved.");
+        toast.success(t("promptBuilder.saved"));
       }
       router.push("/resources/prompt-library");
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Couldn't save prompt.";
+        err instanceof Error ? err.message : t("promptBuilder.errSave");
       toast.error(message);
       setSaving(false);
     }
@@ -967,9 +980,9 @@ function PromptBuilderInner() {
     );
     setDetails((d) => ({
       ...d,
-      title: d.title || template.title,
-      description: d.description || template.description,
-      category: d.category || template.category,
+      title: d.title || t(template.titleKey),
+      description: d.description || t(template.descriptionKey),
+      category: d.category || t(template.categoryKey),
     }));
     setStep(1);
   };
@@ -982,7 +995,7 @@ function PromptBuilderInner() {
 
   if (loading) {
     return (
-      <div className="py-6 text-sm text-text-3">Loading prompt…</div>
+      <div className="py-6 text-sm text-text-3">{t("promptBuilder.loadingPrompt")}</div>
     );
   }
 
@@ -993,7 +1006,7 @@ function PromptBuilderInner() {
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
-        Back to Prompt Library
+        {t("promptBuilder.backToLibrary")}
       </Link>
 
       <Stepper active={step} onSelect={setStep} />

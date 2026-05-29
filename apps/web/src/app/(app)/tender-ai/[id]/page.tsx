@@ -19,6 +19,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { fetchTender, type TenderDetail as ApiTenderDetail } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 type ReqStatus = "met" | "partial" | "gap";
 
@@ -206,13 +207,10 @@ const TENDER_DETAIL: TenderDetail = {
   ],
 };
 
-const REQ_STATUS_STYLES: Record<
-  ReqStatus,
-  { badge: string; label: string }
-> = {
-  met: { badge: "bg-success-1 text-success-7", label: "Met" },
-  partial: { badge: "bg-warning-1 text-warning-6", label: "Partial" },
-  gap: { badge: "bg-danger-1 text-danger-6", label: "Gap" },
+const REQ_STATUS_BADGES: Record<ReqStatus, string> = {
+  met: "bg-success-1 text-success-7",
+  partial: "bg-warning-1 text-warning-6",
+  gap: "bg-danger-1 text-danger-6",
 };
 
 type ReqFilter = "all" | ReqStatus;
@@ -223,7 +221,14 @@ export default function TenderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const { t } = useLanguage();
   const [reqFilter, setReqFilter] = useState<ReqFilter>("all");
+
+  const reqStatusLabels: Record<ReqStatus, string> = {
+    met: t("tenderDetail.met"),
+    partial: t("tenderDetail.partial"),
+    gap: t("tenderDetail.gap"),
+  };
 
   const { data: apiTender, isLoading } = useQuery<ApiTenderDetail>({
     queryKey: ["tenders", id],
@@ -276,20 +281,20 @@ export default function TenderDetailPage({
       : tender.requirements.filter((r) => r.status === reqFilter);
 
   const filterTabs: { value: ReqFilter; label: string; count: number }[] = [
-    { value: "all", label: "All", count: tender.requirements.length },
+    { value: "all", label: t("tenderDetail.all"), count: tender.requirements.length },
     {
       value: "met",
-      label: "Met",
+      label: t("tenderDetail.met"),
       count: tender.requirements.filter((r) => r.status === "met").length,
     },
     {
       value: "partial",
-      label: "Partial",
+      label: t("tenderDetail.partial"),
       count: tender.requirements.filter((r) => r.status === "partial").length,
     },
     {
       value: "gap",
-      label: "Gaps",
+      label: t("tenderDetail.gaps"),
       count: tender.requirements.filter((r) => r.status === "gap").length,
     },
   ];
@@ -309,7 +314,7 @@ export default function TenderDetailPage({
             href="/tender-ai"
             className="cursor-pointer hover:text-primary-6"
           >
-            Dashboard
+            {t("tenderDetail.dashboard")}
           </Link>
           <ChevronRight className="h-3.5 w-3.5 text-text-3" />
           <span className="font-medium text-text-1">{tender.code}</span>
@@ -320,18 +325,18 @@ export default function TenderDetailPage({
             className="cursor-pointer gap-2 text-[13px]"
           >
             <Download className="h-3.5 w-3.5" />
-            Download PDF
+            {t("tenderDetail.downloadPdf")}
           </Button>
           <Button
             variant="outline"
             className="cursor-pointer gap-2 text-[13px]"
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
-            Export CSV
+            {t("tenderDetail.exportCsv")}
           </Button>
           <Button className="cursor-pointer gap-2 bg-primary-6 text-[13px] hover:bg-primary-7">
             <Share2 className="h-3.5 w-3.5" />
-            Share with Team
+            {t("tenderDetail.shareTeam")}
           </Button>
         </div>
       </div>
@@ -365,7 +370,7 @@ export default function TenderDetailPage({
                   <Sparkles className="h-4 w-4 text-primary-6" />
                 </span>
                 <span className="text-[14px] text-text-2">
-                  AI Match Rate Analysis
+                  {t("tenderDetail.aiMatchRate")}
                 </span>
               </div>
               <span className="text-[42px] font-bold leading-none text-text-1">
@@ -377,15 +382,15 @@ export default function TenderDetailPage({
               <div className="mt-1 flex flex-wrap items-center gap-4 text-[13px]">
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-success-7" />
-                  {tender.met} Met
+                  {tender.met} {t("tenderDetail.met")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-warning-6" />
-                  {tender.partial} Partial
+                  {tender.partial} {t("tenderDetail.partial")}
                 </span>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-2.5 rounded-full bg-danger-6" />
-                  {tender.gaps} Gaps
+                  {tender.gaps} {t("tenderDetail.gaps")}
                 </span>
               </div>
             </div>
@@ -430,7 +435,7 @@ export default function TenderDetailPage({
                   textAnchor="middle"
                   className="fill-text-2 text-[12px]"
                 >
-                  Match
+                  {t("tenderDetail.match")}
                 </text>
               </svg>
             </div>
@@ -438,7 +443,7 @@ export default function TenderDetailPage({
 
           {/* Overview */}
           <section className="flex flex-col gap-3">
-            <h2 className="text-[18px] font-bold text-text-1">Overview</h2>
+            <h2 className="text-[18px] font-bold text-text-1">{t("tenderDetail.overview")}</h2>
             <p className="text-[14px] leading-[1.6] text-text-2">
               {tender.overview}
             </p>
@@ -447,7 +452,7 @@ export default function TenderDetailPage({
           {/* Requirement Match */}
           <section className="flex flex-col gap-4">
             <h2 className="text-[18px] font-bold text-text-1">
-              Requirement Match
+              {t("tenderDetail.requirementMatch")}
             </h2>
             {/* Filter tabs */}
             <div className="flex items-center gap-1 rounded-lg bg-bg-1 p-1">
@@ -469,7 +474,6 @@ export default function TenderDetailPage({
             {/* Requirement cards */}
             <div className="flex flex-col gap-3">
               {filteredReqs.map((req) => {
-                const style = REQ_STATUS_STYLES[req.status];
                 return (
                   <div
                     key={req.code}
@@ -480,9 +484,9 @@ export default function TenderDetailPage({
                         {req.code}
                       </span>
                       <span
-                        className={`rounded px-2 py-0.5 text-[11px] font-semibold ${style.badge}`}
+                        className={`rounded px-2 py-0.5 text-[11px] font-semibold ${REQ_STATUS_BADGES[req.status]}`}
                       >
-                        {style.label}
+                        {reqStatusLabels[req.status]}
                       </span>
                     </div>
                     <p className="text-[14px] font-medium text-text-1">
@@ -496,7 +500,7 @@ export default function TenderDetailPage({
                     </div>
                     <div className="flex items-center gap-1.5 text-[12px] text-text-3">
                       <FileText className="h-3 w-3" />
-                      Source: {req.source}
+                      {t("tenderDetail.source")} {req.source}
                     </div>
                   </div>
                 );
@@ -506,7 +510,7 @@ export default function TenderDetailPage({
 
           {/* Documents */}
           <section className="flex flex-col gap-4">
-            <h2 className="text-[18px] font-bold text-text-1">Documents</h2>
+            <h2 className="text-[18px] font-bold text-text-1">{t("tenderDetail.documents")}</h2>
             <div className="flex flex-col gap-2">
               {tender.documents.map((doc) => (
                 <div
@@ -534,7 +538,7 @@ export default function TenderDetailPage({
           {/* Activity History */}
           <section className="flex flex-col gap-4">
             <h2 className="text-[18px] font-bold text-text-1">
-              Activity History
+              {t("tenderDetail.activityHistory")}
             </h2>
             <div className="flex flex-col">
               {tender.activities.map((a, i) => (
@@ -565,11 +569,11 @@ export default function TenderDetailPage({
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 rounded-full bg-primary-5" />
               <h2 className="text-[18px] font-bold text-text-1">
-                AI-Generated Action Tips
+                {t("tenderDetail.aiTipsTitle")}
               </h2>
             </div>
             <p className="text-[13px] text-text-2">
-              Critical actions to improve tender match rate
+              {t("tenderDetail.aiTipsSubtitle")}
             </p>
             <div className="flex flex-col gap-3">
               {tender.tips.map((tip, i) => {
@@ -591,7 +595,7 @@ export default function TenderDetailPage({
                           isHigh ? "bg-danger-6" : "bg-warning-5"
                         }`}
                       />
-                      {tip.priority} Priority
+                      {isHigh ? t("tenderDetail.priorityHigh") : t("tenderDetail.priorityMedium")}
                     </span>
                     <h3 className="text-[14px] font-semibold text-text-1">
                       {tip.title}

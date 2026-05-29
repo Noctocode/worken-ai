@@ -73,6 +73,7 @@ import {
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import type { AvailableModel } from "@/lib/api";
+import { useLanguage } from "@/lib/i18n";
 
 function getModelProvider(id: string): string {
   const slug = id.split("/")[0] ?? "Unknown";
@@ -159,6 +160,7 @@ function slotLabel(index: number): string {
 }
 
 export default function CompareModelsPage() {
+  const { t } = useLanguage();
   const {
     models: availableModels,
     isLoading: modelsLoading,
@@ -355,13 +357,13 @@ export default function CompareModelsPage() {
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load history.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadHistoryFailed");
         toast.error(message);
       });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   async function compareModels(e: React.FormEvent) {
     e.preventDefault();
@@ -534,7 +536,7 @@ export default function CompareModelsPage() {
             setEvaluatorError(event.error);
             setEvaluatorStatus("error");
             toast.error(
-              `Couldn't score the responses — ${event.error}. The model answers above are still valid; try the comparison again or pick fewer models.`,
+              t("compareModels.toastScoreFailed").replace("{error}", event.error),
             );
           } else {
             setEvaluatorStatus("done");
@@ -565,7 +567,7 @@ export default function CompareModelsPage() {
       const isAbort =
         err instanceof DOMException && err.name === "AbortError";
       if (isAbort) {
-        toast.info("Comparison stopped.");
+        toast.info(t("compareModels.toastStopped"));
         setModelStatuses((prev) => {
           const next = { ...prev };
           for (const id of activeModels) {
@@ -678,11 +680,11 @@ export default function CompareModelsPage() {
         })
         .catch((err) => {
           const message =
-            err instanceof Error ? err.message : "Couldn't load run.";
+            err instanceof Error ? err.message : t("compareModels.toastLoadRunFailed");
           toast.error(message);
         });
     },
-    [],
+    [t],
   );
 
   // Deep-link support: clicking a card on the dashboard opens
@@ -703,12 +705,17 @@ export default function CompareModelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  async function copyText(text: string, label = "response") {
+  async function copyText(text: string, label?: string) {
     try {
       await navigator.clipboard.writeText(text);
-      toast.success(`Copied ${label} to clipboard.`);
+      toast.success(
+        t("compareModels.toastCopied").replace(
+          "{label}",
+          label ?? t("compareModels.copyLabelResponse"),
+        ),
+      );
     } catch {
-      toast.error("Couldn't copy to clipboard.");
+      toast.error(t("compareModels.toastCopyFailed"));
     }
   }
 
@@ -733,18 +740,17 @@ export default function CompareModelsPage() {
           </div>
           <div className="flex flex-col gap-1">
             <h3 className="text-[18px] font-bold text-text-1">
-              Add at least {MIN_MODELS} models to start comparing
+              {t("arena.addModels")}
             </h3>
             <p className="text-[14px] text-text-2">
-              Model Arena uses the active models from your Models list. You
-              currently have {availableModels.length}.
+              {t("teams.models")}
             </p>
           </div>
           <Link
             href="/teams?tab=models"
             className="inline-flex h-10 items-center rounded-lg bg-primary-6 px-5 text-[14px] font-medium text-white transition-colors hover:bg-primary-7"
           >
-            Manage Models
+            {t("arena.manageModels")}
           </Link>
         </div>
       </div>
@@ -753,7 +759,7 @@ export default function CompareModelsPage() {
 
   return (
     // `flex-1 h-0` (not `h-full`) — the app shell wraps pages in a
-    // `min-h-full flex-col` container, which is *min-height*, not
+    // `min-height flex-col` container, which is *min-height*, not
     // height. That means `h-full` here resolves to auto and the row
     // below grows with whatever the right rail contains, dragging
     // the white card with it (so expanding History made the card
@@ -772,13 +778,13 @@ export default function CompareModelsPage() {
         <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/"
-            aria-label="Back"
+            aria-label={t("arena.back")}
             className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
           >
             <ArrowLeft className="h-4 w-4" />
           </Link>
           <h1 className="truncate text-[20px] font-bold text-text-1">
-            Model Arena
+            {t("arena.title")}
           </h1>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -788,12 +794,12 @@ export default function CompareModelsPage() {
             className="flex h-9 cursor-pointer items-center gap-1.5 rounded-lg bg-primary-6 px-3 text-[14px] font-medium text-white hover:bg-primary-7"
           >
             <Plus className="h-4 w-4" />
-            New
+            {t("arena.new")}
           </button>
           <button
             type="button"
             onClick={() => setMobileRailOpen(true)}
-            aria-label="Comparison details"
+            aria-label={t("arena.comparisonDetails")}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-border-2 bg-bg-white text-text-2 hover:text-text-1"
           >
             <MoreVertical className="h-4 w-4" />
@@ -838,11 +844,10 @@ export default function CompareModelsPage() {
               <div className="mx-auto my-auto flex w-full max-w-[480px] flex-col items-center gap-2 py-10 text-center">
                 <Sparkles className="h-8 w-8 text-text-3" strokeWidth={1.5} />
                 <h3 className="text-[16px] font-semibold text-text-1">
-                  Compare models side by side
+                  {t("arena.compareTitle")}
                 </h3>
                 <p className="max-w-[420px] text-[13px] text-text-2">
-                  Pick models in the right rail, write a prompt and the
-                  expected output, then hit Compare.
+                  {t("arena.compareDesc")}
                 </p>
               </div>
             )}
@@ -856,7 +861,7 @@ export default function CompareModelsPage() {
                     className="inline-flex h-8 w-fit cursor-pointer items-center gap-2 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
                   >
                     <ArrowLeft className="h-4 w-4" />
-                    Back to Comparison
+                    {t("arena.backToComparison")}
                   </button>
                 )}
                 <PromptBubble
@@ -878,7 +883,7 @@ export default function CompareModelsPage() {
                 />
                 <div className="text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    Comparison didn&apos;t run.
+                    {t("arena.comparisonDidntRun")}
                   </p>
                   <p className="text-text-3">{arenaError}</p>
                 </div>
@@ -899,11 +904,10 @@ export default function CompareModelsPage() {
                 />
                 <div className="text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    Scoring responses…
+                    {t("arena.scoringResponses")}
                   </p>
                   <p className="text-text-3">
-                    All models have finished. Comparing their answers
-                    against your expected output now.
+                    {t("arena.allFinished")}
                   </p>
                 </div>
               </div>
@@ -921,12 +925,10 @@ export default function CompareModelsPage() {
                 />
                 <div className="text-[13px] leading-relaxed text-text-2">
                   <p className="font-semibold text-text-1">
-                    Couldn&apos;t score the responses.
+                    {t("arena.couldntScore")}
                   </p>
                   <p className="text-text-3">
-                    Evaluator failed: {evaluatorError}. The model
-                    answers above are still valid; rerun the
-                    comparison or pick fewer models.
+                    {t("arena.rerunHint").replace("{error}", evaluatorError)}
                   </p>
                 </div>
               </div>
@@ -987,7 +989,7 @@ export default function CompareModelsPage() {
                       response={responses[id] ?? null}
                       evaluation={evaluations[id] ?? null}
                       status={modelStatuses[id] ?? (loading ? "pending" : "done")}
-                      onCopy={(t) => copyText(t, getModelLabel(id))}
+                      onCopy={(text) => copyText(text, getModelLabel(id))}
                     />
                   ))}
                 </div>
@@ -1007,7 +1009,7 @@ export default function CompareModelsPage() {
                         response={responses[id] ?? null}
                         evaluation={evaluations[id] ?? null}
                         status={modelStatuses[id] ?? (loading ? "pending" : "done")}
-                        onCopy={(t) => copyText(t, getModelLabel(id))}
+                        onCopy={(text) => copyText(text, getModelLabel(id))}
                       />
                     ))}
                 </div>
@@ -1060,8 +1062,8 @@ export default function CompareModelsPage() {
             type="button"
             onClick={() => setRailOpen(true)}
             className="hidden lg:flex self-start cursor-pointer rounded-lg border border-border-2 bg-bg-white p-2 text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Open Comparison Details"
-            aria-label="Open Comparison Details"
+            title={t("arena.comparisonDetails")}
+            aria-label={t("arena.comparisonDetails")}
           >
             <ChevronRight className="h-4 w-4 rotate-180" />
           </button>
@@ -1114,7 +1116,7 @@ export default function CompareModelsPage() {
         selectedModels={selectedModels}
         onAdd={(id) => {
           addModel(id);
-          toast.success(`Added ${getModelLabel(id)} to comparison.`);
+          toast.success(t("compareModels.toastAddedModel").replace("{label}", getModelLabel(id)));
         }}
       />
 
@@ -1126,7 +1128,7 @@ export default function CompareModelsPage() {
             const trimmed = prev.trim();
             return trimmed ? `${prev.replace(/\s+$/, "")}\n\n${p.body}` : p.body;
           });
-          toast.success(`Inserted "${p.title}".`);
+          toast.success(t("compareModels.toastInsertedPrompt").replace("{title}", p.title));
         }}
       />
 
@@ -1136,11 +1138,9 @@ export default function CompareModelsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Comparison</DialogTitle>
+            <DialogTitle>{t("arena.deleteComparison")}</DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
-              <strong>“{deleteRunQuestion}”</strong>? This action cannot be
-              undone.
+              {t("arena.deleteConfirm").replace("{question}", deleteRunQuestion)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
@@ -1149,7 +1149,7 @@ export default function CompareModelsPage() {
               onClick={() => setDeleteRunId(null)}
               className="cursor-pointer"
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               variant="destructive"
@@ -1162,13 +1162,13 @@ export default function CompareModelsPage() {
                 deleteArenaRun(runId).catch((err) => {
                   setHistory(previous);
                   const message =
-                    err instanceof Error ? err.message : "Couldn't delete run.";
+                    err instanceof Error ? err.message : t("compareModels.toastDeleteRunFailed");
                   toast.error(message);
                 });
               }}
               className="cursor-pointer"
             >
-              Delete
+              {t("common.delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1214,6 +1214,7 @@ function ResponseCard({
   status: "pending" | "streaming" | "done" | "error";
   onCopy: (text: string) => void;
 }) {
+  const { t } = useLanguage();
   const { getLabel: getModelLabel } = useUserModels();
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
@@ -1244,8 +1245,8 @@ function ResponseCard({
               <button
                 type="button"
                 className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                title="Model info"
-                aria-label="Model info"
+                title={t("compareModels.titleModelInfo")}
+                aria-label={t("compareModels.titleModelInfo")}
               >
                 <Info className="h-3.5 w-3.5" />
               </button>
@@ -1293,12 +1294,12 @@ function ResponseCard({
         {status === "pending" ? (
           <span className="flex items-center gap-2 text-text-3">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Waiting to start…
+            {t("arena.waitingToStart")}
           </span>
         ) : status === "streaming" && !response ? (
           <span className="flex items-center gap-2 text-text-3">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Generating response…
+            {t("arena.generatingResponse")}
           </span>
         ) : response ? (
           // Streaming-with-content + done both render the markdown.
@@ -1311,7 +1312,7 @@ function ResponseCard({
             )}
           </div>
         ) : (
-          <span className="text-text-3">No response.</span>
+          <span className="text-text-3">{t("arena.noResponse")}</span>
         )}
       </div>
 
@@ -1325,8 +1326,8 @@ function ResponseCard({
           onClick={() => response && onCopy(response)}
           disabled={!response}
           className="flex h-7 w-7 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1 disabled:cursor-not-allowed disabled:opacity-40"
-          title="Copy"
-          aria-label="Copy"
+          title={t("compareModels.titleCopy")}
+          aria-label={t("compareModels.titleCopy")}
         >
           <Clipboard className="h-3.5 w-3.5" />
         </button>
@@ -1369,16 +1370,17 @@ function ResponseSkeleton() {
 }
 
 function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
+  const { t } = useLanguage();
   return (
     <div className="flex flex-col gap-3 rounded border border-border-2 bg-bg-white p-3">
       <div className="flex items-center justify-between">
         <span className="text-[12px] font-semibold uppercase tracking-wide text-text-2">
-          Evaluation
+          {t("arena.evaluation")}
         </span>
         <span
           className={`inline-flex items-center rounded px-2 py-0.5 text-[11px] font-bold ${scoreBadgeTone(evaluation.score)}`}
         >
-          Score: {evaluation.score}
+          {t("arena.score")}: {evaluation.score}
         </span>
       </div>
 
@@ -1411,7 +1413,7 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
 
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
-          Advantages
+          {t("arena.advantages")}
         </p>
         <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-success-7">
           {evaluation.advantages.map((a, i) => (
@@ -1421,7 +1423,7 @@ function EvaluationBlock({ evaluation }: { evaluation: ModelEvaluation }) {
       </div>
       <div>
         <p className="text-[11px] font-medium uppercase tracking-wide text-text-2">
-          Disadvantages
+          {t("arena.disadvantages")}
         </p>
         <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[12px] text-danger-6">
           {evaluation.disadvantages.map((d, i) => (
@@ -1505,6 +1507,7 @@ function Composer({
   setAttachedFile: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
 }) {
+  const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
 
@@ -1558,17 +1561,20 @@ function Composer({
       const limitMb = (ATTACH_FILE_MAX_BYTES / 1024 / 1024).toFixed(0);
       const sizeMb = (file.size / 1024 / 1024).toFixed(1);
       toast.error(
-        `"${file.name}" is too large (${sizeMb} MB). Attachments are capped at ${limitMb} MB.`,
+        t("compareModels.toastFileTooLarge")
+          .replace("{name}", file.name)
+          .replace("{size}", sizeMb)
+          .replace("{limit}", limitMb),
       );
       return;
     }
 
     if (needsServerParse(file)) {
-      const toastId = toast.loading(`Parsing ${file.name}…`);
+      const toastId = toast.loading(t("compareModels.toastParsing").replace("{name}", file.name));
       try {
         const parsed = await parseArenaAttachment(file);
         setAttachedFile(parsed);
-        toast.success(`Attached ${parsed.name}.`, { id: toastId });
+        toast.success(t("compareModels.toastAttached").replace("{name}", parsed.name), { id: toastId });
       } catch (err) {
         toast.error(humanizeChatError(err), { id: toastId });
       }
@@ -1616,7 +1622,7 @@ function Composer({
             ref={questionRef}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Ask me Anything"
+            placeholder={t("arena.askMeAnything")}
             rows={1}
             className={`min-h-[30px] w-full resize-none overflow-hidden border-0 bg-transparent font-normal text-text-1 placeholder:text-text-2 focus:outline-none ${
               question
@@ -1630,7 +1636,7 @@ function Composer({
         <textarea
           value={expectedOutput}
           onChange={(e) => setExpectedOutput(e.target.value)}
-          placeholder="Expected output (used to score the responses)"
+          placeholder={t("arena.expectedOutput")}
           className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
@@ -1649,8 +1655,8 @@ function Composer({
                 type="button"
                 onClick={() => setAttachedFile(null)}
                 className="ml-1 flex h-5 w-5 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-white hover:text-text-1"
-                title="Remove file"
-                aria-label="Remove file"
+                title={t("compareModels.titleRemoveFile")}
+                aria-label={t("compareModels.titleRemoveFile")}
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -1662,13 +1668,13 @@ function Composer({
           <div className="flex flex-wrap items-center gap-2.5">
             <ComposerChip
               icon={Paperclip}
-              label="Attach File"
+              label={t("arena.attachFile")}
               onClick={() => fileInputRef.current?.click()}
               disabled={loading}
             />
             <ComposerChip
               icon={Library}
-              label="Prompt Library"
+              label={t("arena.promptLibrary")}
               onClick={onOpenPromptLibrary}
               disabled={loading}
             />
@@ -1682,8 +1688,8 @@ function Composer({
               type="button"
               disabled
               className="flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-lg bg-bg-white text-primary-6 opacity-50"
-              title="Voice input (coming soon)"
-              aria-label="Voice input"
+              title={t("arena.voiceComingSoon")}
+              aria-label={t("compareModels.ariaVoiceInput")}
             >
               <Mic className="h-4 w-4" />
             </button>
@@ -1696,8 +1702,8 @@ function Composer({
                 type="button"
                 onClick={onStop}
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-danger-6 text-white transition-colors hover:bg-danger-7"
-                title="Stop generating"
-                aria-label="Stop"
+                title={t("arena.stopGenerating")}
+                aria-label={t("compareModels.ariaStop")}
               >
                 <Square
                   className="h-3.5 w-3.5"
@@ -1714,8 +1720,8 @@ function Composer({
                   activeModelCount < MIN_MODELS
                 }
                 className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg bg-primary-6 text-white transition-colors hover:bg-primary-7 disabled:cursor-not-allowed disabled:opacity-50"
-                title="Compare"
-                aria-label="Compare"
+                title={t("arena.compare")}
+                aria-label={t("arena.compare")}
               >
                 <Send className="h-4 w-4" />
               </button>
@@ -1793,6 +1799,7 @@ function RightRail({
   /** Override the default desktop aside layout (fixed 300px wide). */
   className?: string;
 }) {
+  const { t } = useLanguage();
   const { models } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
@@ -1831,15 +1838,15 @@ function RightRail({
     >
       <header className="flex items-center justify-between">
         <h2 className="text-[18px] font-bold leading-[1.3] text-text-2">
-          Comparison Details
+          {t("arena.comparisonDetails")}
         </h2>
         {!hideClose && (
           <button
             type="button"
             onClick={onClose}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Close"
-            aria-label="Close"
+            title={t("compareModels.titleClose")}
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-5 w-5" />
           </button>
@@ -1848,7 +1855,7 @@ function RightRail({
 
       {/* Models section */}
       <RailSection
-        title="Models"
+        title={t("teams.models")}
         expanded={modelsExpanded}
         onToggle={() => setModelsExpanded(!modelsExpanded)}
       >
@@ -1883,7 +1890,7 @@ function RightRail({
           }
         >
           <Plus className="h-4 w-4" />
-          Add Model
+          {t("arena.addModels")}
         </button>
       </RailSection>
 
@@ -1892,13 +1899,13 @@ function RightRail({
           applies to the current page only; users scan one page at
           a time so cross-page grouping wasn't carrying its weight. */}
       <RailSection
-        title="History"
+        title={t("arena.history")}
         expanded={historyExpanded}
         onToggle={() => setHistoryExpanded(!historyExpanded)}
       >
         {history.length === 0 ? (
           <p className="text-[13px] text-text-3">
-            Your recent comparisons will appear here.
+            {t("arena.noHistory")}
           </p>
         ) : (
           <div className="flex flex-col gap-4">
@@ -1920,8 +1927,8 @@ function RightRail({
                         type="button"
                         onClick={() => onDeleteHistory(h.id)}
                         className="mt-0.5 shrink-0 cursor-pointer rounded p-1 text-text-3 transition-colors hover:bg-bg-1 hover:text-danger-6"
-                        title="Delete this comparison"
-                        aria-label="Delete this comparison"
+                        title={t("arena.deleteComparison")}
+                        aria-label={t("arena.deleteComparison")}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
@@ -1994,6 +2001,7 @@ function ModelPill({
   onRemove?: () => void;
   disabledIds: string[];
 }) {
+  const { t } = useLanguage();
   const { models, getLabel: getModelLabel } = useUserModels();
   const tone = getModelTone(value);
   const label = getModelLabel(value);
@@ -2031,7 +2039,7 @@ function ModelPill({
             <span className="inline-flex">{toggleButton}</span>
           </TooltipTrigger>
           <TooltipContent>
-            At least {MIN_MODELS} models must be active
+            {t("sidebar.noCreateTooltip")}
           </TooltipContent>
         </Tooltip>
       )}
@@ -2039,7 +2047,7 @@ function ModelPill({
       {/* Avatar + name */}
       <span
         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${tone}`}
-        title={`Model ${slot}`}
+        title={`${t("common.model")} ${slot}`}
       >
         <Bot className="h-3.5 w-3.5" strokeWidth={2} />
       </span>
@@ -2053,8 +2061,8 @@ function ModelPill({
           <button
             type="button"
             className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 transition-colors hover:bg-bg-1 hover:text-text-1"
-            title="Change model"
-            aria-label="Change model"
+            title={t("compareModels.titleChangeModel")}
+            aria-label={t("compareModels.titleChangeModel")}
           >
             <MoreVertical className="h-4 w-4" />
           </button>
@@ -2094,7 +2102,7 @@ function ModelPill({
                 }}
                 className="text-danger-6 focus:text-danger-6"
               >
-                Remove from comparison
+                {t("compareModels.removeFromComparison")}
               </DropdownMenuItem>
             </>
           )}
@@ -2148,6 +2156,7 @@ function AddModelDialog({
   selectedModels: string[];
   onAdd: (id: string) => void;
 }) {
+  const { t } = useLanguage();
   const { models } = useUserModels();
   const [query, setQuery] = useState("");
   // Default selection points at the first model not already in the comparison.
@@ -2188,13 +2197,13 @@ function AddModelDialog({
       >
         <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
           <DialogTitle className="text-[18px] font-bold text-text-1">
-            Add Model
+            {t("arena.addModels")}
           </DialogTitle>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            aria-label="Close"
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -2208,7 +2217,7 @@ function AddModelDialog({
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search Models"
+                placeholder={t("compareModels.placeholderSearchModels")}
                 className="h-10 pl-9 placeholder:text-text-3"
               />
             </div>
@@ -2245,7 +2254,7 @@ function AddModelDialog({
                               </span>
                               {inUse && (
                                 <span className="rounded bg-primary-6/10 px-1.5 py-0.5 text-[10px] font-medium text-primary-6">
-                                  In use
+                                  {t("compareModels.inUse")}
                                 </span>
                               )}
                             </span>
@@ -2317,7 +2326,7 @@ function AddModelDialog({
             onClick={() => onOpenChange(false)}
             className="cursor-pointer rounded-full px-5"
           >
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={() => {
@@ -2328,7 +2337,7 @@ function AddModelDialog({
             className="cursor-pointer rounded-full bg-primary-6 px-6 hover:bg-primary-7"
             title={alreadyInUse ? "Model is already in the comparison" : undefined}
           >
-            Add Model
+            {t("arena.addModels")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -2360,6 +2369,7 @@ function PromptLibraryDialog({
   onOpenChange: (v: boolean) => void;
   onInsert: (p: PromptSummary) => void;
 }) {
+  const { t } = useLanguage();
   const [prompts, setPrompts] = useState<PromptSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2375,11 +2385,11 @@ function PromptLibraryDialog({
       })
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load prompts.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadPromptsFailed");
         toast.error(message);
       })
       .finally(() => setLoading(false));
-  }, [open, loaded]);
+  }, [open, loaded, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -2388,7 +2398,7 @@ function PromptLibraryDialog({
       (p) =>
         p.title.toLowerCase().includes(q) ||
         (p.description?.toLowerCase().includes(q) ?? false) ||
-        p.tags.some((t) => t.toLowerCase().includes(q)),
+        p.tags.some((tag) => tag.toLowerCase().includes(q)),
     );
   }, [prompts, query]);
 
@@ -2397,13 +2407,13 @@ function PromptLibraryDialog({
       <DialogContent className="max-w-[640px] gap-0 p-0" showCloseButton={false}>
         <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
           <DialogTitle className="text-[18px] font-bold text-text-1">
-            Insert from Prompt Library
+            {t("arena.promptLibrary")}
           </DialogTitle>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-2 transition-colors hover:bg-bg-1 hover:text-text-1"
-            aria-label="Close"
+            aria-label={t("compareModels.titleClose")}
           >
             <X className="h-4 w-4" />
           </button>
@@ -2415,7 +2425,7 @@ function PromptLibraryDialog({
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search your prompts"
+              placeholder={t("compareModels.placeholderSearchPrompts")}
               className="h-10 pl-9 placeholder:text-text-3"
             />
           </div>
@@ -2423,7 +2433,7 @@ function PromptLibraryDialog({
           <div className="flex max-h-[420px] flex-col gap-1.5 overflow-y-auto pr-1">
             {loading && !loaded ? (
               <p className="py-8 text-center text-[13px] text-text-3">
-                Loading prompts…
+                {t("common.loading")}
               </p>
             ) : filtered.length === 0 ? (
               <p className="py-8 text-center text-[13px] text-text-3">
@@ -2457,12 +2467,12 @@ function PromptLibraryDialog({
                           {p.category}
                         </span>
                       )}
-                      {p.tags.slice(0, 3).map((t) => (
+                      {p.tags.slice(0, 3).map((tag) => (
                         <span
-                          key={t}
+                          key={tag}
                           className="rounded border border-border-2 bg-bg-white px-2 py-0.5 text-[10px] text-text-2"
                         >
-                          {t}
+                          {tag}
                         </span>
                       ))}
                     </div>
@@ -2497,6 +2507,7 @@ function ShortcutsPopover({
   disabled?: boolean;
   onInsert: (s: Shortcut) => void;
 }) {
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<Shortcut[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2509,11 +2520,11 @@ function ShortcutsPopover({
       .then((rows) => setItems(rows))
       .catch((err) => {
         const message =
-          err instanceof Error ? err.message : "Couldn't load shortcuts.";
+          err instanceof Error ? err.message : t("compareModels.toastLoadShortcutsFailed");
         toast.error(message);
       })
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, t]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -2533,10 +2544,10 @@ function ShortcutsPopover({
           type="button"
           disabled={disabled}
           className="inline-flex h-8 cursor-pointer items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-3 text-[14px] font-normal text-text-1 transition-colors hover:border-primary-6 disabled:cursor-not-allowed disabled:opacity-50"
-          title="Insert a saved shortcut"
+          title={t("compareModels.titleInsertShortcut")}
         >
           <LayoutGrid className="h-4 w-4" />
-          Shortcuts
+          {t("compareModels.shortcuts")}
         </button>
       </PopoverTrigger>
       <PopoverContent
@@ -2550,14 +2561,14 @@ function ShortcutsPopover({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search shortcuts"
+            placeholder={t("compareModels.placeholderSearchShortcuts")}
             className="h-7 w-full border-0 bg-transparent text-[13px] text-text-1 placeholder:text-text-3 focus:outline-none"
             autoFocus
           />
         </div>
         <div className="flex max-h-[280px] flex-col gap-0.5 overflow-y-auto p-1">
           {loading ? (
-            <p className="py-6 text-center text-[12px] text-text-3">Loading…</p>
+            <p className="py-6 text-center text-[12px] text-text-3">{t("common.loading")}</p>
           ) : filtered.length === 0 ? (
             <p className="py-6 text-center text-[12px] text-text-3">
               {items.length === 0
@@ -2748,26 +2759,26 @@ function aiResponseToHtml(raw: string): string {
     }
 
     if (/^\s*[-*]\s+/.test(line)) {
-      const items = [];
+      const listItems = [];
       while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push(
+        listItems.push(
           `<li>${processBold(escapeHtml(lines[i].replace(/^\s*[-*]\s+/, "")))}</li>`,
         );
         i++;
       }
-      htmlLines.push("<ul>" + items.join("") + "</ul>");
+      htmlLines.push("<ul>" + listItems.join("") + "</ul>");
       continue;
     }
 
     if (/^\s*\d+\.\s+/.test(line)) {
-      const items = [];
+      const listItems = [];
       while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i])) {
-        items.push(
+        listItems.push(
           `<li>${processBold(escapeHtml(lines[i].replace(/^\s*\d+\.\s+/, "")))}</li>`,
         );
         i++;
       }
-      htmlLines.push("<ol>" + items.join("") + "</ol>");
+      htmlLines.push("<ol>" + listItems.join("") + "</ol>");
       continue;
     }
 

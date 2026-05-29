@@ -41,6 +41,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
+import { useLanguage } from "@/lib/i18n";
 
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
@@ -57,6 +58,7 @@ function maskedKey(prefix: string): string {
 }
 
 export function ApiTab() {
+  const { t } = useLanguage();
   const qc = useQueryClient();
   const { user } = useAuth();
   const isAdmin = user?.role === "admin";
@@ -132,28 +134,28 @@ export function ApiTab() {
   return (
     <div className="py-5">
       <div className="flex items-center justify-between mb-5">
-        <span className="text-[18px] font-bold text-black-900">API</span>
+        <span className="text-[18px] font-bold text-black-900">{t("mgmt.api.title")}</span>
         <Link
           href="/docs/api"
           className="text-[13px] text-primary-5 hover:underline"
         >
-          API Documentation
+          {t("mgmt.api.documentation")}
         </Link>
       </div>
 
       <div className="bg-bg-white rounded-lg border border-bg-1 px-4 sm:px-6 py-5 mb-5">
         <p className="text-[14px] font-semibold text-text-1 mb-1">
-          Generate API Link
+          {t("mgmt.api.generateLink")}
         </p>
         <p className="text-[12px] text-text-3 mb-3">
-          Create a token that external systems (CI/CD, scripts, integrations)
-          can use to call the WorkenAI REST API on your behalf. The plaintext is
-          shown <strong>once</strong> — copy it and store it somewhere safe.
+          {t("mgmt.api.generateDescPrefix")}
+          <strong>{t("mgmt.api.generateDescBold")}</strong>
+          {t("mgmt.api.generateDescSuffix")}
         </p>
-        <p className="text-[12px] text-text-2 mb-1">Link Name</p>
+        <p className="text-[12px] text-text-2 mb-1">{t("mgmt.api.linkName")}</p>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
-            placeholder="e.g. GitHub Actions Bot"
+            placeholder={t("mgmt.api.linkNamePlaceholder")}
             value={linkName}
             onChange={(e) => setLinkName(e.target.value)}
             onKeyDown={(e) =>
@@ -162,7 +164,7 @@ export function ApiTab() {
             className="flex-1"
             disabled={mintMutation.isPending || !isAdmin}
             maxLength={80}
-            title={isAdmin ? undefined : "Only admins can mint API keys"}
+            title={isAdmin ? undefined : t("mgmt.api.adminOnly")}
           />
           {isAdmin ? (
             <Button
@@ -175,12 +177,12 @@ export function ApiTab() {
               ) : (
                 <Link2 className="h-4 w-4" />
               )}
-              Generate Link
+              {t("mgmt.api.generateButton")}
             </Button>
           ) : (
             <DisabledReasonTooltip
               disabled
-              reason="Only admins can mint API keys"
+              reason={t("mgmt.api.adminOnly")}
               className="w-full sm:w-auto"
             >
               <Button
@@ -188,7 +190,7 @@ export function ApiTab() {
                 className="shrink-0 gap-2 bg-primary-6 text-white w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Link2 className="h-4 w-4" />
-                Generate Link
+                {t("mgmt.api.generateButton")}
               </Button>
             </DisabledReasonTooltip>
           )}
@@ -197,33 +199,33 @@ export function ApiTab() {
           <p className="mt-2 text-[12px] text-danger-6">
             {mintMutation.error instanceof Error
               ? mintMutation.error.message
-              : "Failed to create API key"}
+              : t("mgmt.api.failedMint")}
           </p>
         )}
       </div>
 
       <div className="bg-bg-white rounded-lg border border-bg-1 overflow-hidden">
         <div className="px-4 sm:px-6 py-4 border-b border-bg-1">
-          <p className="text-[14px] font-semibold text-text-1">My Keys</p>
+          <p className="text-[14px] font-semibold text-text-1">{t("mgmt.api.myKeys")}</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[580px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
                 <th className="px-4 sm:px-6 text-left align-middle text-[13px] font-normal text-black-700">
-                  Name
+                  {t("mgmt.api.colName")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Link
+                  {t("mgmt.api.colLink")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Created
+                  {t("mgmt.api.colCreated")}
                 </th>
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
-                  Last Used
+                  {t("mgmt.api.colLastUsed")}
                 </th>
                 <th className="px-4 text-right align-middle text-[13px] font-normal text-black-700">
-                  Action
+                  {t("mgmt.api.colAction")}
                 </th>
               </tr>
             </thead>
@@ -241,7 +243,7 @@ export function ApiTab() {
                     colSpan={5}
                     className="py-12 text-center text-sm text-danger-6"
                   >
-                    Failed to load API keys.
+                    {t("mgmt.api.failedLoad")}
                   </td>
                 </tr>
               )}
@@ -253,7 +255,7 @@ export function ApiTab() {
                       colSpan={5}
                       className="py-12 text-center text-sm text-text-3"
                     >
-                      No API keys yet. Generate your first key above.
+                      {t("mgmt.api.noKeys")}
                     </td>
                   </tr>
                 )}
@@ -293,13 +295,11 @@ export function ApiTab() {
                           onClick={() => setConfirmRevoke(key)}
                           disabled={!isAdmin}
                           title={
-                            isAdmin
-                              ? undefined
-                              : "Only admins can revoke API keys"
+                            isAdmin ? undefined : t("mgmt.api.revokeAdminOnly")
                           }
                         >
                           <Trash2 className="h-4 w-4" />
-                          Revoke
+                          {t("mgmt.api.revoke")}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -339,13 +339,13 @@ export function ApiTab() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-danger-6" />
-              Revoke API key?
+              {t("mgmt.api.revokeTitle")}
             </DialogTitle>
             <DialogDescription>
               {confirmRevoke?.name
-                ? `“${confirmRevoke.name}” will stop working immediately.`
-                : "This key will stop working immediately."}{" "}
-              Any service still using it will start receiving 401 errors.
+                ? `“${confirmRevoke.name}” ${t("mgmt.api.revokeDescNamed")}`
+                : t("mgmt.api.revokeDescUnnamed")}{" "}
+              {t("mgmt.api.revokeDescSuffix")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -354,7 +354,7 @@ export function ApiTab() {
               onClick={() => setConfirmRevoke(null)}
               disabled={revokeMutation.isPending}
             >
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               className="bg-danger-6 hover:bg-danger-6/90 text-white"
@@ -366,7 +366,7 @@ export function ApiTab() {
               {revokeMutation.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               )}
-              Revoke
+              {t("mgmt.api.revoke")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -386,6 +386,7 @@ function RevealDialog({
   onCopy: (text: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useLanguage();
   const [show, setShow] = useState(false);
   // Reset visibility when the dialog opens so the next key isn't pre-revealed.
   useEffect(() => {
@@ -397,11 +398,9 @@ function RevealDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Save your API key</DialogTitle>
+          <DialogTitle>{t("mgmt.api.saveYourKey")}</DialogTitle>
           <DialogDescription>
-            This is the only time the full key is shown. Copy it now — once you
-            close this dialog you won&apos;t be able to see it again. If you
-            lose it, revoke this key and generate a new one.
+            {t("mgmt.api.saveDesc")}
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-md border border-bg-1 bg-bg-1/40 p-3">
@@ -414,7 +413,7 @@ function RevealDialog({
               size="icon"
               className="h-7 w-7 shrink-0"
               onClick={() => setShow((v) => !v)}
-              title={show ? "Hide" : "Reveal"}
+              title={show ? t("mgmt.api.hide") : t("mgmt.api.reveal")}
             >
               {show ? (
                 <EyeOff className="h-4 w-4" />
@@ -427,7 +426,7 @@ function RevealDialog({
               size="icon"
               className="h-7 w-7 shrink-0"
               onClick={() => onCopy(minted.plaintext)}
-              title="Copy"
+              title={t("mgmt.api.copy")}
             >
               {copyToast === "minted" ? (
                 <Check className="h-4 w-4 text-success-7" />
@@ -438,18 +437,18 @@ function RevealDialog({
           </div>
           {copyToast === "minted:err" ? (
             <p className="mt-2 text-[11px] text-danger-6">
-              Couldn&apos;t copy automatically — select the key manually and
-              copy it.
+              {t("mgmt.api.copyFailed")}
             </p>
           ) : (
             <p className="mt-2 text-[11px] text-text-3">
-              Used as <code>Authorization: Bearer &lt;key&gt;</code> in HTTP
-              requests to the WorkenAI API.
+              {t("mgmt.api.usedAsPrefix")}
+              <code>Authorization: Bearer &lt;key&gt;</code>
+              {t("mgmt.api.usedAsSuffix")}
             </p>
           )}
         </div>
         <DialogFooter>
-          <Button onClick={onClose}>I&apos;ve saved it</Button>
+          <Button onClick={onClose}>{t("mgmt.api.savedIt")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
