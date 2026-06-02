@@ -108,12 +108,14 @@ function ProjectCard({ project }: { project: Project }) {
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
-  // Dialog-local agent pick — re-seeded on each open from the project's
-  // current model (first agent matching that slug). Committed only on
-  // Save so cancelling doesn't leave a half-changed selection behind.
-  const [pendingAgentId, setPendingAgentId] = useState<string | null>(null);
+  // Dialog-local agent pool — multi-select, re-seeded on each open from the
+  // project's saved `agents` pool so every previously-picked agent shows
+  // highlighted (not just the active one). Committed only on Save so
+  // cancelling doesn't leave a half-changed selection behind.
+  const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
   const queryClient = useQueryClient();
-  const { getLabel: getModelLabel } = useAvailableModels();
+  const { models: availableModels, getLabel: getModelLabel } =
+    useAvailableModels();
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProject(project.id),
@@ -124,7 +126,8 @@ function ProjectCard({ project }: { project: Project }) {
   });
 
   const updateModelMutation = useMutation({
-    mutationFn: (model: string) => updateProject(project.id, { model }),
+    mutationFn: (patch: { agents: string[]; agent: string; model: string }) =>
+      updateProject(project.id, patch),
     onSuccess: () => {
       // Invalidate both the list (this card lives in it) and the single-
       // project query, so the project detail page picks up the change
@@ -146,6 +149,16 @@ function ProjectCard({ project }: { project: Project }) {
   // (custom slug, deprecated default, ...). */
   const agentIdForModel = (modelId: string): string | null =>
     AGENTS.find((a) => a.model === modelId)?.id ?? null;
+
+  // The project's saved agent pool, with a fallback for legacy projects
+  // created before multi-agent support (empty `agents`): use the active
+  // `agent`, else the single agent matching the stored model.
+  const seedAgentIds = (): string[] => {
+    if (project.agents && project.agents.length > 0) return project.agents;
+    if (project.agent) return [project.agent];
+    const fromModel = agentIdForModel(project.model);
+    return fromModel ? [fromModel] : [];
+  };
 
   return (
     <>
@@ -191,11 +204,10 @@ function ProjectCard({ project }: { project: Project }) {
                   <DropdownMenuItem
                     onSelect={() => {
                       // Re-seed the picker each open so a previous
-                      // cancelled change doesn't linger. We start with
-                      // the agent that maps to the project's current
-                      // model (when one matches), so the user sees
-                      // their existing pick highlighted.
-                      setPendingAgentId(agentIdForModel(project.model));
+                      // cancelled change doesn't linger. Seed from the
+                      // project's full agent pool so every previously
+                      // selected agent shows highlighted.
+                      setPendingAgentIds(seedAgentIds());
                       setModelDialogOpen(true);
                     }}
                   >
@@ -355,8 +367,14 @@ function ProjectCard({ project }: { project: Project }) {
           </DialogHeader>
           <div className="flex justify-center py-2">
             <AgentGrid
-              selectedAgentId={pendingAgentId}
-              onSelect={(agent) => setPendingAgentId(agent.id)}
+              selectedAgentIds={pendingAgentIds}
+              onToggle={(agent) =>
+                setPendingAgentIds((prev) =>
+                  prev.includes(agent.id)
+                    ? prev.filter((a) => a !== agent.id)
+                    : [...prev, agent.id],
+                )
+              }
             />
           </div>
           <p className="mx-auto max-w-[700px] text-center text-[12px] text-text-3">
@@ -373,23 +391,31 @@ function ProjectCard({ project }: { project: Project }) {
             </Button>
             <Button
               onClick={() => {
-                const agent = AGENTS.find((a) => a.id === pendingAgentId);
+                if (pendingAgentIds.length === 0) return;
+                // Keep the current active agent if it's still in the pool,
+                // otherwise fall back to the first picked one. The active
+                // agent drives `model` (its preset model, with a catalog
+                // fallback so we never save an unavailable slug).
+                const activeId = pendingAgentIds.includes(project.agent)
+                  ? project.agent
+                  : pendingAgentIds[0];
+                const agent = AGENTS.find((a) => a.id === activeId);
                 if (!agent) return;
-                if (agent.model === project.model) {
-                  setModelDialogOpen(false);
-                  return;
-                }
-                updateModelMutation.mutate(agent.model);
+                const model =
+                  availableModels.find((m) => m.id === agent.model)?.id ??
+                  availableModels[0]?.id ??
+                  project.model;
+                updateModelMutation.mutate({
+                  agents: pendingAgentIds,
+                  agent: activeId,
+                  model,
+                });
               }}
-              // Disabled only while the mutation is in flight or no
-              // agent is picked. The "agent's model already matches
-              // project.model" case is handled by the click handler
-              // (closes the dialog as a no-op) — disabling Save there
-              // confuses users who pick a different agent that happens
-              // to share the same preset model with the current
-              // setting (Marketing / Code Engineer / Lawyer all map
-              // to claude-opus-4.7, for example).
-              disabled={updateModelMutation.isPending || !pendingAgentId}
+              // Disabled while the mutation is in flight or the pool is
+              // empty (a project must keep at least one agent).
+              disabled={
+                updateModelMutation.isPending || pendingAgentIds.length === 0
+              }
             >
               {updateModelMutation.isPending ? t("dashboard.saving") : t("common.save")}
             </Button>
