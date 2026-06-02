@@ -594,6 +594,9 @@ export default function CompareModelsPage() {
   }
 
   const newComparison = useCallback(() => {
+    // Cancel any in-flight fan-out — the back-arrow doubles as the escape hatch
+    // now that the composer (and its Stop button) is hidden while a run shows.
+    arenaAbortRef.current?.abort();
     setQuestion("");
     setExpectedOutput("");
     setResponses({});
@@ -636,6 +639,25 @@ export default function CompareModelsPage() {
     window.addEventListener("compare-models:new", handler);
     return () => window.removeEventListener("compare-models:new", handler);
   }, [newComparison]);
+
+  // Mirror the "viewing a comparison" state to the appbar so it can render a
+  // back-arrow (left of the title) that returns to the composer — replaces the
+  // in-card "Back to Comparison" button. Same window-event channel the appbar
+  // already uses for its actions. The dispatch only flips post-mount (initial
+  // state has no submitted question), so the appbar's listener is always
+  // attached before the first `true` lands.
+  const arenaViewing =
+    !!submittedQuestion && (!!loadedRunCreatedAt || hasResults);
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("compare-models:viewing", { detail: arenaViewing }),
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("compare-models:viewing", { detail: false }),
+      );
+    };
+  }, [arenaViewing]);
 
   /**
    * Hydrate the composer + panels from a saved arena run. Called
@@ -853,21 +875,9 @@ export default function CompareModelsPage() {
             )}
 
             {submittedQuestion && (
-              <>
-                {(loadedRunCreatedAt || hasResults) && (
-                  <button
-                    type="button"
-                    onClick={newComparison}
-                    className="inline-flex h-8 w-fit cursor-pointer items-center gap-2 self-start rounded-lg border border-border-2 bg-bg-white px-3 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    {t("arena.backToComparison")}
-                  </button>
-                )}
-                <PromptBubble
-                  question={submittedQuestion}
-                />
-              </>
+              <PromptBubble
+                question={submittedQuestion}
+              />
             )}
 
             {/* Pre-flight / run-level error banner — fires when the
@@ -1017,20 +1027,25 @@ export default function CompareModelsPage() {
             )}
           </div>
 
-          {/* Composer (anchored at bottom) */}
-          <Composer
-            question={question}
-            setQuestion={setQuestion}
-            expectedOutput={expectedOutput}
-            setExpectedOutput={setExpectedOutput}
-            loading={loading}
-            activeModelCount={activeModels.length}
-            onSubmit={compareModels}
-            onStop={handleStopArena}
-            attachedFile={attachedFile}
-            setAttachedFile={setAttachedFile}
-            onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
-          />
+          {/* Composer (anchored at bottom). Hidden once a comparison is on
+              screen — the results take over the card and the appbar back-arrow
+              returns here. Still shown during the initial streaming (before any
+              result lands) so its Stop button stays reachable. */}
+          {!arenaViewing && (
+            <Composer
+              question={question}
+              setQuestion={setQuestion}
+              expectedOutput={expectedOutput}
+              setExpectedOutput={setExpectedOutput}
+              loading={loading}
+              activeModelCount={activeModels.length}
+              onSubmit={compareModels}
+              onStop={handleStopArena}
+              attachedFile={attachedFile}
+              setAttachedFile={setAttachedFile}
+              onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
+            />
+          )}
         </section>
 
         {/* Right rail — hidden at <md: the rail's controls (model
