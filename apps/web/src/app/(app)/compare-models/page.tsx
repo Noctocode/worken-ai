@@ -1890,7 +1890,7 @@ function RightRail({
           }
         >
           <Plus className="h-4 w-4" />
-          {t("arena.addModels")}
+          {t("arena.addModel")}
         </button>
       </RailSection>
 
@@ -2192,12 +2192,12 @@ function AddModelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-w-[900px] gap-0 p-0"
+        className="w-[95vw] max-w-[1500px] sm:max-w-[1500px] gap-0 p-0"
         showCloseButton={false}
       >
         <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
           <DialogTitle className="text-[18px] font-bold text-text-1">
-            {t("arena.addModels")}
+            {t("arena.addModel")}
           </DialogTitle>
           <button
             type="button"
@@ -2337,7 +2337,7 @@ function AddModelDialog({
             className="cursor-pointer rounded-full bg-primary-6 px-6 hover:bg-primary-7"
             title={alreadyInUse ? "Model is already in the comparison" : undefined}
           >
-            {t("arena.addModels")}
+            {t("arena.addModel")}
           </Button>
         </DialogFooter>
       </DialogContent>
