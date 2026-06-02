@@ -20,6 +20,9 @@ export interface OrgSettingsView {
    *   - >0   → enforced when tenant spend + estimate >= cap
    */
   monthlyBudgetCents: number | null;
+  /** Org-wide default for the web-search capability. Teams can override
+   *  per-team; projects switch it on within whatever is allowed here. */
+  webSearchEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +58,8 @@ export class OrgSettingsService {
        *  target back to "no enforcement"; integer → save (0 suspends,
        *  >0 enforces). */
       monthlyBudgetCents?: number | null;
+      /** Org-wide web-search capability toggle. undefined → leave as-is. */
+      webSearchEnabled?: boolean;
     },
     /** Caller user id. Resolves the tenant whose budget is being
      *  updated and feeds the threshold / announcement notification
@@ -74,6 +79,12 @@ export class OrgSettingsService {
         }
       }
       updates.monthlyBudgetCents = next;
+    }
+    if (input.webSearchEnabled !== undefined) {
+      if (typeof input.webSearchEnabled !== 'boolean') {
+        throw new BadRequestException('`webSearchEnabled` must be a boolean.');
+      }
+      updates.webSearchEnabled = input.webSearchEnabled;
     }
 
     const current = await this.fetchTenantCompany(callerUserId);
@@ -309,6 +320,7 @@ function toView(row: typeof companies.$inferSelect): OrgSettingsView {
   return {
     id: row.id,
     monthlyBudgetCents: row.monthlyBudgetCents,
+    webSearchEnabled: row.webSearchEnabled,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -323,6 +335,7 @@ function emptyView(): OrgSettingsView {
   return {
     id: '',
     monthlyBudgetCents: null,
+    webSearchEnabled: false,
     createdAt: epoch,
     updatedAt: epoch,
   };

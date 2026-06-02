@@ -15,7 +15,14 @@ import { ChatService, type ChatStreamEvent } from './chat.service.js';
 
 interface OpenAIChunk {
   choices?: Array<{
-    delta?: { content?: string; reasoning?: string };
+    delta?: {
+      content?: string;
+      reasoning?: string;
+      annotations?: Array<{
+        type?: string;
+        url_citation?: { url?: string; title?: string };
+      }>;
+    };
     finish_reason?: string;
   }>;
   usage?: {
@@ -251,6 +258,65 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
   // sanitizer splits those tags out so the FE thinking pane catches
   // the reasoning and the visible bubble only ever sees the post-
   // think answer.
+  // Web-search citations: OpenRouter attaches sources via `delta.annotations`
+  // (type: 'url_citation'). The service dedupes by url across the stream and
+  // emits a single `citations` event after the answer text. This guards the
+  // SSE contract the Sources UI depends on.
+  it('emits one deduped citations event from delta.annotations after content', async () => {
+    const svc = makeServiceWithChunks([
+      {
+        choices: [
+          {
+            delta: {
+              content: 'answer ',
+              annotations: [
+                {
+                  type: 'url_citation',
+                  url_citation: { url: 'https://a.com', title: 'A' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      {
+        choices: [
+          {
+            delta: {
+              content: 'more',
+              annotations: [
+                // duplicate url — must be collapsed
+                {
+                  type: 'url_citation',
+                  url_citation: { url: 'https://a.com', title: 'A' },
+                },
+                {
+                  type: 'url_citation',
+                  url_citation: { url: 'https://b.com' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream([{ role: 'user', content: 'q' }]),
+    );
+    const citationEvents = events.filter((e) => e.type === 'citations');
+    expect(citationEvents).toHaveLength(1);
+    expect(citationEvents[0]).toEqual({
+      type: 'citations',
+      citations: [
+        { url: 'https://a.com', title: 'A' },
+        { url: 'https://b.com', title: undefined },
+      ],
+    });
+    // Sources come after the visible answer.
+    const lastEvent = events[events.length - 1];
+    expect(lastEvent.type).toBe('citations');
+  });
+
   it('reroutes <think>…</think> content into reasoning events', async () => {
     const svc = makeServiceWithChunks([
       {

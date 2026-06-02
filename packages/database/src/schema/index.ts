@@ -109,6 +109,10 @@ export const companies = pgTable("companies", {
   //   - >0   → enforced; the gate blocks when tenant spend +
   //     estimate >= cap.
   monthlyBudgetCents: integer("monthly_budget_cents"),
+  // Org-wide default for whether projects may use OpenRouter web search.
+  // Teams override via `teams.web_search_enabled`; effective capability
+  // is `team.webSearchEnabled ?? company.webSearchEnabled`.
+  webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -124,6 +128,9 @@ export const teams = pgTable("teams", {
   openrouterKeyId: text("openrouter_key_id"),
   openrouterKeyEncrypted: text("openrouter_key_encrypted"),
   monthlyBudgetCents: integer("monthly_budget_cents").notNull().default(1000),
+  // Per-team override for the web-search capability. NULL → inherit the
+  // org default (`companies.web_search_enabled`); true/false → force.
+  webSearchEnabled: boolean("web_search_enabled"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -196,6 +203,10 @@ export const projects = pgTable("projects", {
   // among them. Empty for legacy projects created before multi-agent
   // support — callers fall back to `[agent]` in that case.
   agents: jsonb("agents").$type<string[]>().notNull().default([]),
+  // Per-project web search switch. Effective only when the resolved
+  // capability (team ?? company) is enabled; the chat path then adds
+  // `plugins: [{ id: "web" }]`.
+  webSearch: boolean("web_search").notNull().default(false),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

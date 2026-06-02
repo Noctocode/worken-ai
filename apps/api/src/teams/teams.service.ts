@@ -154,7 +154,12 @@ export class TeamsService {
   async update(
     teamId: string,
     userId: string,
-    data: { name?: string; description?: string },
+    data: {
+      name?: string;
+      description?: string;
+      /** Per-team web-search override. null → inherit org default. */
+      webSearchEnabled?: boolean | null;
+    },
   ) {
     const [team] = await this.db
       .select()
@@ -180,6 +185,8 @@ export class TeamsService {
     if (data.name !== undefined) updates.name = data.name;
     if (data.description !== undefined)
       updates.description = data.description || null;
+    if (data.webSearchEnabled !== undefined)
+      updates.webSearchEnabled = data.webSearchEnabled;
 
     if (Object.keys(updates).length === 0) {
       return team;

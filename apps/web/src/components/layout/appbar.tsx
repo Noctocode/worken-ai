@@ -20,6 +20,7 @@ import {
   Share2,
   X,
   CheckCircle,
+  Globe,
 } from "lucide-react";
 import { Popover } from "radix-ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -70,6 +71,23 @@ export const Appbar = () => {
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
 
+  // Model Arena back-arrow: the compare-models page dispatches its "viewing a
+  // comparison" state so the appbar can show a back icon (left of the title)
+  // that returns to the composer — mirrors the teamDetail back icon. Clicking
+  // reuses the existing `compare-models:new` reset the page already handles.
+  const [arenaViewing, setArenaViewing] = useState(false);
+  useEffect(() => {
+    const onViewing = (e: Event) =>
+      setArenaViewing(Boolean((e as CustomEvent<boolean>).detail));
+    window.addEventListener("compare-models:viewing", onViewing);
+    return () =>
+      window.removeEventListener("compare-models:viewing", onViewing);
+  }, []);
+  useEffect(() => {
+    // Never let a stale "true" leak onto another route.
+    if (pathname !== "/compare-models") setArenaViewing(false);
+  }, [pathname]);
+
   // Project detail data — hooks always called, gated by `enabled`
   const isProjectDetail = config.appbarType === "projectDetail";
   const projectId = isProjectDetail ? (pathname.split("/").pop() ?? "") : "";
@@ -82,6 +100,22 @@ export const Appbar = () => {
     queryKey: ["teams", _project?.teamId],
     queryFn: () => fetchTeam(_project!.teamId!),
     enabled: isProjectDetail && !!_project?.teamId,
+  });
+
+  // Per-project web search toggle (header). Only rendered when the
+  // org/team allows it; refetches the project so the chat path (which
+  // reads project.webSearch server-side) and the toggle stay in sync.
+  const webSearchMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      updateProject(projectId, { webSearch: next }),
+    onSuccess: (_data, next) => {
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      toast.success(next ? t("appbar.webSearchOn") : t("appbar.webSearchOff"));
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("appbar.webSearchFailed"),
+      ),
   });
 
   // Resolve an agent preset's preferred model against the live catalog,
@@ -355,6 +389,19 @@ export const Appbar = () => {
     const visibleMembers = members.slice(0, 4);
     const extraCount = members.length > 4 ? members.length - 4 : 0;
 
+    // Web search header toggle is ALWAYS shown on a project so the control
+    // never just vanishes. It's interactive only when the org/team allows web
+    // search AND the active model routes via OpenRouter; otherwise it stays
+    // visible but disabled with a reason and reads as off. Disabling it at the
+    // org/team level therefore greys the project toggle rather than hiding it.
+    const webSearchAllowed = !!_project?.webSearchAllowed;
+    const webSearchSupported = !!_project?.webSearchSupported;
+    const webSearchInteractive = webSearchAllowed && webSearchSupported;
+    const webSearchOn = !!_project?.webSearch && webSearchAllowed;
+    const webSearchReason = !webSearchAllowed
+      ? t("appbar.webSearchOrgDisabled")
+      : t("appbar.webSearchUnsupported");
+
     return (
       <>
         <MobileTopbar />
@@ -418,6 +465,48 @@ export const Appbar = () => {
               })}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Per-project web search toggle. Always shown on a project so the
+              control never vanishes. Interactive only when the org/team allows
+              web search AND the active model can use it (native Anthropic BYOK
+              bypasses the OpenRouter plugin); otherwise it stays visible but
+              disabled with a reason and reads as off. */}
+          {_project && (
+            <DisabledReasonTooltip
+              disabled={!webSearchInteractive}
+              reason={webSearchReason}
+            >
+              <button
+                type="button"
+                onClick={() => webSearchMutation.mutate(!_project.webSearch)}
+                disabled={webSearchMutation.isPending || !webSearchInteractive}
+                role="switch"
+                aria-checked={webSearchOn}
+                title={t("appbar.webSearch")}
+                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-4 py-4 cursor-pointer hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Globe
+                  className={`h-4 w-4 ${
+                    webSearchOn ? "text-primary-6" : "text-text-2"
+                  }`}
+                />
+                <span className="text-[15px] text-text-1">
+                  {t("appbar.webSearch")}
+                </span>
+                <span
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                    webSearchOn ? "bg-primary-6" : "bg-border-3"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                      webSearchOn ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+            </DisabledReasonTooltip>
+          )}
         </div>
 
         <div className="flex items-center gap-6">
@@ -621,7 +710,21 @@ export const Appbar = () => {
     <>
       <MobileTopbar />
       <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
+        {pathname === "/compare-models" && arenaViewing && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-black-700 hover:text-black-900"
+            aria-label={t("arena.backToComparison")}
+            title={t("arena.backToComparison")}
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("compare-models:new"))
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
         {config.titleKey ? (
           <h4 className="text-[26px] font-bold text-text-1">{t(config.titleKey)}</h4>
         ) : (
@@ -688,7 +791,7 @@ export const Appbar = () => {
             onClick={() =>
               window.dispatchEvent(new CustomEvent(config.appbarAction!.event))
             }
-            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
+            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""} ${config.appbarActionLgOnly ? "hidden lg:inline-flex" : ""}`}
           >
             <Plus className="h-4 w-4" />
             {t(config.appbarAction.labelKey)}

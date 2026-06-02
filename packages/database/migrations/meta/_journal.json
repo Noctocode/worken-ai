@@ -54,8 +54,15 @@
     {
       "idx": 7,
       "version": "7",
+      "when": 1779930000000,
+      "tag": "0007_web_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
       "when": 1779940000000,
-      "tag": "0007_project_agents",
+      "tag": "0008_project_agents",
       "breakpoints": true
     }
   ]

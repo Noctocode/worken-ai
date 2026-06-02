@@ -437,6 +437,19 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
 
+  // Per-team web-search override. null = inherit org default; true/false
+  // = force on/off for this team's projects.
+  const webSearchMutation = useMutation({
+    mutationFn: (val: boolean | null) =>
+      updateTeam(id, { webSearchEnabled: val }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teams", id] });
+      toast.success(t("teamDetail.webSearchSaved"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("teamDetail.webSearchFailed")),
+  });
+
   const deleteTeamMutation = useMutation({
     mutationFn: () => deleteTeam(id),
     onSuccess: () => {
@@ -658,6 +671,46 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
+      {/* ── Web search override ───────────────────────────────────── */}
+      {canManageTeam && (
+        <div className="bg-bg-white rounded p-4 flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[14px] font-semibold text-text-1">
+              {t("teamDetail.webSearchTitle")}
+            </h3>
+            <p className="text-[12px] text-text-3">
+              {t("teamDetail.webSearchDesc")}
+            </p>
+          </div>
+          <div className="flex shrink-0 overflow-hidden rounded-lg border border-border-3">
+            {(
+              [
+                { val: null, label: t("teamDetail.webSearchInherit") },
+                { val: true, label: t("teamDetail.webSearchOn") },
+                { val: false, label: t("teamDetail.webSearchOff") },
+              ] as const
+            ).map((opt) => {
+              const active = team.webSearchEnabled === opt.val;
+              return (
+                <button
+                  key={String(opt.val)}
+                  type="button"
+                  disabled={webSearchMutation.isPending}
+                  onClick={() => webSearchMutation.mutate(opt.val)}
+                  className={`px-3 py-1.5 text-[13px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                    active
+                      ? "bg-primary-6 text-white"
+                      : "bg-bg-white text-text-2 hover:bg-bg-1"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* ── Description + Budget card ──────────────────────────────── */}
       <div className="bg-bg-white rounded p-4 space-y-[30px]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

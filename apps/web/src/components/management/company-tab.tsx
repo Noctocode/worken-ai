@@ -165,6 +165,16 @@ export function CompanyTab() {
   const updateBudgetMutation = useMutation({
     mutationFn: updateOrgSettings,
   });
+  const webSearchMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      updateOrgSettings({ webSearchEnabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings"] });
+      toast.success(t("mgmt.company.webSearchSaved"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.webSearchFailed")),
+  });
   const removeUserMutation = useMutation({
     mutationFn: (userId: string) => removeOrgUser(userId),
     onSuccess: () => {
@@ -434,6 +444,40 @@ export function CompanyTab() {
 
   return (
     <div className="py-6 space-y-6">
+      {/* Org-wide web search capability. Admin-only. When on, teams can
+          override per-team and projects can flip the per-project switch.
+          When off, the project toggle is hidden. */}
+      {isAdmin && (
+        <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white p-4">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.company.webSearchTitle")}
+            </h3>
+            <p className="text-[12px] text-text-3">
+              {t("mgmt.company.webSearchDesc")}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!orgSettings?.webSearchEnabled}
+            disabled={webSearchMutation.isPending}
+            onClick={() =>
+              webSearchMutation.mutate(!orgSettings?.webSearchEnabled)
+            }
+            className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              orgSettings?.webSearchEnabled ? "bg-primary-6" : "bg-border-3"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                orgSettings?.webSearchEnabled ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </section>
+      )}
+
       {/* "No company budget set" prompt. Warning palette
           (border-warning-7/30 bg-warning-1) matches the per-user
           equivalent on /teams?tab=users so the two prompts read as

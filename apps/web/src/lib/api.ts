@@ -280,6 +280,15 @@ export interface Project {
    *  legacy projects — callers fall back to `[agent]` in that case. */
   agents: string[];
   status: string;
+  /** Per-project web search switch. */
+  webSearch: boolean;
+  /** Whether the org/team allows web search — drives showing the toggle.
+   *  Only populated by the single-project fetch (findOne). */
+  webSearchAllowed?: boolean;
+  /** Whether the project's active model can actually use web search
+   *  (false for native Anthropic BYOK, which bypasses the OpenRouter
+   *  plugin). Only populated by findOne when webSearchAllowed. */
+  webSearchSupported?: boolean;
   teamId: string | null;
   teamName: string | null;
   createdAt: string;
@@ -335,6 +344,7 @@ export interface UpdateProjectInput {
   model?: string;
   agent?: string;
   agents?: string[];
+  webSearch?: boolean;
 }
 
 export async function updateProject(
@@ -567,6 +577,8 @@ export interface Team {
   description: string | null;
   ownerId: string;
   monthlyBudgetCents: number;
+  /** Per-team web-search override; null = inherit the org default. */
+  webSearchEnabled: boolean | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -632,7 +644,11 @@ export async function deleteTeam(id: string): Promise<void> {
 
 export async function updateTeam(
   id: string,
-  data: { name?: string; description?: string },
+  data: {
+    name?: string;
+    description?: string;
+    webSearchEnabled?: boolean | null;
+  },
 ): Promise<Team> {
   const res = await apiFetch(`/teams/${id}`, {
     method: "PATCH",
@@ -1049,11 +1065,42 @@ export interface AlternativeModelSuggestion {
   reason: string;
 }
 
+export interface WebCitation {
+  url: string;
+  title?: string;
+}
+
+/**
+ * Validate an untrusted citations array (SSE payload or persisted message
+ * metadata) into safe WebCitation objects:
+ *  - drops entries whose `url` isn't a string,
+ *  - keeps only http(s) urls so a `javascript:` / `data:` link can never
+ *    reach an anchor `href`,
+ *  - coerces a non-string `title` to undefined so React never receives an
+ *    object as a child (which would throw at render time).
+ */
+export function parseCitations(value: unknown): WebCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (c): c is { url: string; title?: unknown } =>
+        !!c &&
+        typeof c === "object" &&
+        typeof (c as { url?: unknown }).url === "string",
+    )
+    .filter((c) => /^https?:\/\//i.test(c.url))
+    .map((c) => ({
+      url: c.url,
+      title: typeof c.title === "string" ? c.title : undefined,
+    }));
+}
+
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "replace"; text: string }
   | { type: "blocked"; rule: string; validator: string }
+  | { type: "citations"; citations: WebCitation[] }
   | { type: "error"; message: string; status?: number }
   | {
       type: "done";
@@ -1186,6 +1233,9 @@ export async function* streamChatMessage(
             rule: data.rule,
             validator: data.validator,
           };
+        } else if (frame.event === "citations") {
+          const citations = parseCitations(data.citations);
+          if (citations.length > 0) yield { type: "citations", citations };
         } else if (frame.event === "error") {
           yield {
             type: "error",
@@ -2697,6 +2747,8 @@ export interface OrgSettings {
    *   - >0   → enforced when org spend + estimate >= cap
    */
   monthlyBudgetCents: number | null;
+  /** Org-wide default for whether projects may use web search. */
+  webSearchEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -2714,6 +2766,8 @@ export async function updateOrgSettings(input: {
   /** undefined → leave alone; null → clear target (no enforcement);
    *  0 → suspend org-wide chat; >0 → enforced cap. */
   monthlyBudgetCents?: number | null;
+  /** Org-wide web-search capability toggle. */
+  webSearchEnabled?: boolean;
 }): Promise<OrgSettings> {
   const res = await apiFetch("/org-settings", {
     method: "PATCH",
