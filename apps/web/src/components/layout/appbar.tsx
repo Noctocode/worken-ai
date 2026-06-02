@@ -336,6 +336,19 @@ export const Appbar = () => {
     const visibleMembers = members.slice(0, 4);
     const extraCount = members.length > 4 ? members.length - 4 : 0;
 
+    // Web search header toggle is ALWAYS shown on a project so the control
+    // never just vanishes. It's interactive only when the org/team allows web
+    // search AND the active model routes via OpenRouter; otherwise it stays
+    // visible but disabled with a reason and reads as off. Disabling it at the
+    // org/team level therefore greys the project toggle rather than hiding it.
+    const webSearchAllowed = !!_project?.webSearchAllowed;
+    const webSearchSupported = !!_project?.webSearchSupported;
+    const webSearchInteractive = webSearchAllowed && webSearchSupported;
+    const webSearchOn = !!_project?.webSearch && webSearchAllowed;
+    const webSearchReason = !webSearchAllowed
+      ? t("appbar.webSearchOrgDisabled")
+      : t("appbar.webSearchUnsupported");
+
     return (
       <>
         <MobileTopbar />
@@ -365,29 +378,28 @@ export const Appbar = () => {
             <ChevronDown className="h-4 w-4 text-text-2" />
           </button>
 
-          {/* Per-project web search toggle — only when the org/team
-              allows it. Disabled with a reason when the active model
-              can't use web search (native Anthropic BYOK bypasses the
-              OpenRouter plugin), so it never silently no-ops. */}
-          {_project?.webSearchAllowed && (
+          {/* Per-project web search toggle. Always shown on a project so the
+              control never vanishes. Interactive only when the org/team allows
+              web search AND the active model can use it (native Anthropic BYOK
+              bypasses the OpenRouter plugin); otherwise it stays visible but
+              disabled with a reason and reads as off. */}
+          {_project && (
             <DisabledReasonTooltip
-              disabled={!_project.webSearchSupported}
-              reason={t("appbar.webSearchUnsupported")}
+              disabled={!webSearchInteractive}
+              reason={webSearchReason}
             >
               <button
                 type="button"
                 onClick={() => webSearchMutation.mutate(!_project.webSearch)}
-                disabled={
-                  webSearchMutation.isPending || !_project.webSearchSupported
-                }
+                disabled={webSearchMutation.isPending || !webSearchInteractive}
                 role="switch"
-                aria-checked={_project.webSearch}
+                aria-checked={webSearchOn}
                 title={t("appbar.webSearch")}
                 className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-4 py-4 cursor-pointer hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Globe
                   className={`h-4 w-4 ${
-                    _project.webSearch ? "text-primary-6" : "text-text-2"
+                    webSearchOn ? "text-primary-6" : "text-text-2"
                   }`}
                 />
                 <span className="text-[15px] text-text-1">
@@ -395,12 +407,12 @@ export const Appbar = () => {
                 </span>
                 <span
                   className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-                    _project.webSearch ? "bg-primary-6" : "bg-border-3"
+                    webSearchOn ? "bg-primary-6" : "bg-border-3"
                   }`}
                 >
                   <span
                     className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
-                      _project.webSearch ? "left-[18px]" : "left-0.5"
+                      webSearchOn ? "left-[18px]" : "left-0.5"
                     }`}
                   />
                 </span>
