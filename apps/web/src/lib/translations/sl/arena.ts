@@ -3,6 +3,7 @@ import type { arena as arenaEn } from "../en/arena";
 export const arena: Record<keyof typeof arenaEn, string> = {
   'arena.title': 'Arena modelov',
   'arena.addModels': 'Dodajte vsaj 2 modela za začetek primerjave',
+  'arena.addModel': 'Dodaj model',
   'arena.manageModels': 'Upravljaj modele',
   'arena.new': 'Novo',
   'arena.compareTitle': 'Primerjajte modele vzporedno',
