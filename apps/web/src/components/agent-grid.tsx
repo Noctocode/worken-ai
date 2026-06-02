@@ -6,12 +6,19 @@ import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useLanguage } from "@/lib/i18n";
 
 interface AgentGridProps {
-  /** Currently highlighted agent. Cards match on `agent.id`. */
-  selectedAgentId: string | null;
-  /** Fired when a card is clicked. Receives the full preset so the
-   *  parent can decide what to do with it (set state, mutate a
-   *  project, etc.) without each call site re-deriving the model. */
-  onSelect: (agent: AgentPreset) => void;
+  /** Single-select: the currently highlighted agent. Cards match on
+   *  `agent.id`. Ignored when `selectedAgentIds` is provided. */
+  selectedAgentId?: string | null;
+  /** Multi-select: the set of highlighted agent ids. When provided the
+   *  grid switches to multi-select — every card toggles independently
+   *  and `onToggle` fires instead of `onSelect`. */
+  selectedAgentIds?: string[];
+  /** Fired when a card is clicked in single-select mode. Receives the
+   *  full preset so the parent can decide what to do with it (set
+   *  state, mutate a project, etc.) without re-deriving the model. */
+  onSelect?: (agent: AgentPreset) => void;
+  /** Fired when a card is toggled in multi-select mode. */
+  onToggle?: (agent: AgentPreset) => void;
 }
 
 /**
@@ -25,10 +32,18 @@ interface AgentGridProps {
  * Used by /projects/create (initial agent pick) and by the Change
  * model dialog on the dashboard ProjectCard.
  */
-export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
+export function AgentGrid({
+  selectedAgentId,
+  selectedAgentIds,
+  onSelect,
+  onToggle,
+}: AgentGridProps) {
   const { t } = useLanguage();
   const { models: availableModels } = useAvailableModels();
   const { effective: effectiveModels } = useUserModels();
+
+  // Multi-select kicks in as soon as the caller passes an id array.
+  const isMulti = selectedAgentIds !== undefined;
 
   // Routing-aware label suffix. Falls back to "workenai" (no marker)
   // when the slug isn't in the user's effective list — i.e. routes
@@ -45,7 +60,9 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
     <div className="flex flex-wrap gap-2.5 justify-center w-full max-w-[900px]">
       {AGENTS.map((agent) => {
         const Icon = agent.icon;
-        const isSelected = selectedAgentId === agent.id;
+        const isSelected = isMulti
+          ? (selectedAgentIds ?? []).includes(agent.id)
+          : selectedAgentId === agent.id;
         const resolvedModel =
           availableModels.find((m) => m.id === agent.model) ??
           availableModels[0];
@@ -56,7 +73,7 @@ export function AgentGrid({ selectedAgentId, onSelect }: AgentGridProps) {
           <button
             key={agent.id}
             type="button"
-            onClick={() => onSelect(agent)}
+            onClick={() => (isMulti ? onToggle?.(agent) : onSelect?.(agent))}
             title={
               resolvedModel
                 ? willFallback

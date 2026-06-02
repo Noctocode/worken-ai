@@ -32,6 +32,10 @@ export interface CreateProjectDto {
   name: string;
   description?: string;
   model: string;
+  /** Active agent preset on create. Defaults to general-assistant. */
+  agent?: string;
+  /** Pool of agent presets picked for the project. Defaults to [agent]. */
+  agents?: string[];
   teamId?: string;
 }
 
@@ -39,6 +43,8 @@ export interface UpdateProjectDto {
   name?: string;
   description?: string;
   model?: string;
+  agent?: string;
+  agents?: string[];
 }
 
 @Injectable()
@@ -56,6 +62,8 @@ export class ProjectsService {
         name: projects.name,
         description: projects.description,
         model: projects.model,
+        agent: projects.agent,
+        agents: projects.agents,
         status: projects.status,
         teamId: projects.teamId,
         teamName: teams.name,
@@ -285,6 +293,14 @@ export class ProjectsService {
         name: dto.name,
         description: dto.description,
         model: dto.model,
+        // Active agent + the picked pool. Default the active agent to
+        // the general assistant and the pool to just the active agent
+        // so a project always has at least one entry to switch among.
+        agent: dto.agent ?? 'general-assistant',
+        agents:
+          dto.agents && dto.agents.length > 0
+            ? dto.agents
+            : [dto.agent ?? 'general-assistant'],
         userId,
         teamId: dto.teamId ?? null,
       })
@@ -341,6 +357,8 @@ export class ProjectsService {
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.description !== undefined) updates.description = dto.description;
     if (dto.model !== undefined) updates.model = dto.model;
+    if (dto.agent !== undefined) updates.agent = dto.agent;
+    if (dto.agents !== undefined) updates.agents = dto.agents;
     if (Object.keys(updates).length === 0) return project;
     updates.updatedAt = new Date();
 

@@ -145,7 +145,13 @@ export default function CreateProjectPage() {
   const [nameError, setNameError] = useState(false);
   const [teamError, setTeamError] = useState(false);
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
-  const [selectedAgent, setSelectedAgent] = useState<string>("general-assistant");
+  // Multi-select pool of agent presets. The first picked agent becomes
+  // the project's active one; the rest are switchable from the project
+  // header. Seeded with the general assistant so creation never blocks
+  // on an empty selection.
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([
+    "general-assistant",
+  ]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   // const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
   // const [membersError, setMembersError] = useState(false);
@@ -157,6 +163,11 @@ export default function CreateProjectPage() {
   });
 
   const { models: availableModels } = useAvailableModels();
+
+  const toggleAgent = (id: string) =>
+    setSelectedAgents((prev) =>
+      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
+    );
 
   // Only teams the user can actually create a project in. Mirrors the BE
   // gate in projects.service.create() (owner|editor required).
@@ -185,7 +196,9 @@ export default function CreateProjectPage() {
       if (needsTeam) setTeamError(true);
       return;
     }
-    const agent = AGENTS.find((a) => a.id === selectedAgent);
+    // Active agent = first in the pool; switchable later from the header.
+    const activeAgentId = selectedAgents[0];
+    const agent = AGENTS.find((a) => a.id === activeAgentId);
     if (!agent) return;
     if (availableModels.length === 0) {
       // No models in the catalog response — surface a clear error rather
@@ -196,8 +209,8 @@ export default function CreateProjectPage() {
       );
       return;
     }
-    // Prefer the model recommended for this agent; if it isn't in the
-    // catalog response, fall back to the first available model so
+    // Prefer the model recommended for the active agent; if it isn't in
+    // the catalog response, fall back to the first available model so
     // project creation never blocks on missing config.
     const preferredModel = availableModels.find((m) => m.id === agent.model);
     const model = preferredModel?.id ?? availableModels[0].id;
@@ -205,6 +218,8 @@ export default function CreateProjectPage() {
       name,
       description: `${agent.label} project`,
       model,
+      agent: activeAgentId,
+      agents: selectedAgents,
       teamId: projectType === "team" && selectedTeamId ? selectedTeamId : undefined,
     });
   };
@@ -341,9 +356,12 @@ export default function CreateProjectPage() {
         {/* Select Agent — same card pattern as Select Project Type. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
           <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectAgent")}</h2>
+          <p className="text-[14px] text-text-2 md:text-center leading-normal md:max-w-[600px]">
+            {t("projectCreate.selectAgentDesc")}
+          </p>
           <AgentGrid
-            selectedAgentId={selectedAgent}
-            onSelect={(agent) => setSelectedAgent(agent.id)}
+            selectedAgentIds={selectedAgents}
+            onToggle={(agent) => toggleAgent(agent.id)}
           />
         </div>
       </div>
@@ -362,7 +380,7 @@ export default function CreateProjectPage() {
         <Button
           className="h-[43px] md:h-10 flex-1 md:flex-none md:w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
-          disabled={mutation.isPending || !selectedAgent}
+          disabled={mutation.isPending || selectedAgents.length === 0}
         >
           {mutation.isPending ? t("projectCreate.creating") : t("projectCreate.title")}
         </Button>

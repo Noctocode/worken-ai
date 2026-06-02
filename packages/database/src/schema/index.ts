@@ -187,6 +187,15 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   description: text("description"),
   model: text("model").notNull(),
+  // Active agent preset the project currently chats as. Its preset maps
+  // to `model` above; switching the active agent from the project header
+  // updates both. Defaults to the general assistant for legacy rows.
+  agent: text("agent").notNull().default("general-assistant"),
+  // The pool of agent presets picked for this project at create time.
+  // The active `agent` is one of these; the header dropdown switches
+  // among them. Empty for legacy projects created before multi-agent
+  // support — callers fall back to `[agent]` in that case.
+  agents: jsonb("agents").$type<string[]>().notNull().default([]),
   status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
