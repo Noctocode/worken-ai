@@ -62,6 +62,23 @@ export const Appbar = () => {
   const config = getRouteConfig(pathname);
   const { getLabel: getModelLabel } = useAvailableModels();
 
+  // Model Arena back-arrow: the compare-models page dispatches its "viewing a
+  // comparison" state so the appbar can show a back icon (left of the title)
+  // that returns to the composer — mirrors the teamDetail back icon. Clicking
+  // reuses the existing `compare-models:new` reset the page already handles.
+  const [arenaViewing, setArenaViewing] = useState(false);
+  useEffect(() => {
+    const onViewing = (e: Event) =>
+      setArenaViewing(Boolean((e as CustomEvent<boolean>).detail));
+    window.addEventListener("compare-models:viewing", onViewing);
+    return () =>
+      window.removeEventListener("compare-models:viewing", onViewing);
+  }, []);
+  useEffect(() => {
+    // Never let a stale "true" leak onto another route.
+    if (pathname !== "/compare-models") setArenaViewing(false);
+  }, [pathname]);
+
   // Project detail data — hooks always called, gated by `enabled`
   const isProjectDetail = config.appbarType === "projectDetail";
   const projectId = isProjectDetail ? (pathname.split("/").pop() ?? "") : "";
@@ -593,7 +610,21 @@ export const Appbar = () => {
     <>
       <MobileTopbar />
       <header className={`hidden md:flex sticky top-0 z-20 py-6 items-center justify-between gap-4 px-6 ${config.bg}`}>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
+        {pathname === "/compare-models" && arenaViewing && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-black-700 hover:text-black-900"
+            aria-label={t("arena.backToComparison")}
+            title={t("arena.backToComparison")}
+            onClick={() =>
+              window.dispatchEvent(new CustomEvent("compare-models:new"))
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
         {config.titleKey ? (
           <h4 className="text-[26px] font-bold text-text-1">{t(config.titleKey)}</h4>
         ) : (
@@ -660,7 +691,7 @@ export const Appbar = () => {
             onClick={() =>
               window.dispatchEvent(new CustomEvent(config.appbarAction!.event))
             }
-            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""}`}
+            className={`shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7 ${config.appbarSearch ? "hidden sm:inline-flex" : ""} ${config.appbarActionLgOnly ? "hidden lg:inline-flex" : ""}`}
           >
             <Plus className="h-4 w-4" />
             {t(config.appbarAction.labelKey)}

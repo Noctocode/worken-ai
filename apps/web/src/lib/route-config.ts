@@ -17,6 +17,10 @@ interface RouteConfig {
   hideNotifications?: boolean;
   appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
   appbarAction?: AppbarAction;
+  /** Only render the appbar action at lg+ — used where a smaller-width layout
+   *  already provides its own in-page action button (e.g. the Model Arena
+   *  "+ New" header, which is lg:hidden) so the two never duplicate. */
+  appbarActionLgOnly?: boolean;
   appbarSearch?: AppbarSearch;
   appbarExpandControls?: boolean;
 }
@@ -101,7 +105,11 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     titleKey: "appbar.title.modelArena",
     hideSearch: true,
     hideNotifications: true,
+    // lg-only: below lg the in-page "+ New" header (lg:hidden) already provides
+    // this action, so showing it in the appbar there would duplicate. At lg+
+    // the in-page header is gone, so the appbar keeps "New Comparison".
     appbarAction: { labelKey: "appbar.action.newComparison", event: "compare-models:new" },
+    appbarActionLgOnly: true,
   },
   "/knowledge-core": {
     bg: "bg-bg-1",
