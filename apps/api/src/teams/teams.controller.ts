@@ -120,6 +120,15 @@ export class TeamsController {
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
+    if (
+      body.webSearchEnabled !== undefined &&
+      body.webSearchEnabled !== null &&
+      typeof body.webSearchEnabled !== 'boolean'
+    ) {
+      throw new BadRequestException(
+        '`webSearchEnabled` must be a boolean or null (inherit).',
+      );
+    }
     return this.teamsService.update(id, user.id, body);
   }
 

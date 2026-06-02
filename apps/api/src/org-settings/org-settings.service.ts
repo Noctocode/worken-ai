@@ -81,6 +81,9 @@ export class OrgSettingsService {
       updates.monthlyBudgetCents = next;
     }
     if (input.webSearchEnabled !== undefined) {
+      if (typeof input.webSearchEnabled !== 'boolean') {
+        throw new BadRequestException('`webSearchEnabled` must be a boolean.');
+      }
       updates.webSearchEnabled = input.webSearchEnabled;
     }
 

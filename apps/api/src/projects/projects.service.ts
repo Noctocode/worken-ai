@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { and, asc, desc, eq, isNull, inArray, or, type SQL } from 'drizzle-orm';
 import {
-  companies,
   projectMembers,
   projects,
   teamMembers,
@@ -17,7 +16,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
-import { effectiveWebSearchCapability } from '../integrations/web-search-capability.js';
+import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 
 /** Compact preview shape for the avatar stack on team project cards. */
 export interface ProjectMemberPreview {
@@ -73,46 +72,6 @@ export class ProjectsService {
       })
       .from(projects)
       .leftJoin(teams, eq(projects.teamId, teams.id));
-  }
-
-  /**
-   * Whether web search is ALLOWED for a project: per-team override
-   * (`teams.web_search_enabled`) wins when set, otherwise the acting
-   * user's org default (`companies.web_search_enabled`). Mirrors the
-   * resolution in ChatController so the FE toggle and the chat path
-   * agree on the capability.
-   */
-  private async resolveWebSearchCapability(
-    userId: string,
-    teamId: string | null,
-  ): Promise<boolean> {
-    let teamFlag: boolean | null | undefined;
-    if (teamId) {
-      const [team] = await this.db
-        .select({ flag: teams.webSearchEnabled })
-        .from(teams)
-        .where(eq(teams.id, teamId))
-        .limit(1);
-      teamFlag = team?.flag;
-    }
-    // Only hit the org default when the team override doesn't decide it.
-    let companyFlag: boolean | null | undefined;
-    if (teamFlag == null) {
-      const [u] = await this.db
-        .select({ companyId: users.companyId })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      if (u?.companyId) {
-        const [company] = await this.db
-          .select({ flag: companies.webSearchEnabled })
-          .from(companies)
-          .where(eq(companies.id, u.companyId))
-          .limit(1);
-        companyFlag = company?.flag;
-      }
-    }
-    return effectiveWebSearchCapability(teamFlag, companyFlag);
   }
 
   async findAll(userId: string, filter: 'all' | 'personal' | 'team' = 'all') {
@@ -305,18 +264,19 @@ export class ProjectsService {
 
     // Tell the FE whether the org/team allows web search so it can
     // show/hide the per-project toggle.
-    const webSearchAllowed = await this.resolveWebSearchCapability(
+    const webSearchAllowed = await resolveWebSearchCapability(
+      this.db,
       userId,
       project.teamId,
     );
 
-    // Web search rides on the OpenRouter plugin, which only applies on
-    // the openai-sdk transport. A project whose active model routes via
-    // the native Anthropic BYOK SDK can't use it — resolve the transport
-    // so the FE can disable the toggle instead of silently no-op-ing.
-    // Only computed when allowed (the toggle is hidden otherwise) to
-    // avoid the extra BYOK lookup on every project open. Fail open to
-    // the OpenRouter assumption on any resolve error.
+    // Web search rides on the OpenRouter web plugin, which is
+    // OpenRouter-specific — it does NOT work on BYOK / custom
+    // OpenAI-compatible routes even though those also use the openai-sdk
+    // transport kind. Resolve the transport so the FE can disable the toggle
+    // instead of silently no-op-ing. Only computed when allowed (the toggle
+    // is hidden otherwise) to avoid the extra lookup on every project open.
+    // Fail open to the OpenRouter assumption on any resolve error.
     let webSearchSupported = false;
     if (webSearchAllowed) {
       try {
@@ -325,7 +285,7 @@ export class ProjectsService {
           modelIdentifier: project.model,
           projectId: project.id,
         });
-        webSearchSupported = transport.kind === 'openai-sdk';
+        webSearchSupported = transport.source === 'openrouter';
       } catch {
         webSearchSupported = true;
       }
@@ -425,7 +385,8 @@ export class ProjectsService {
       // it OFF is always allowed (so a project can be cleaned up even
       // after the capability is revoked).
       if (dto.webSearch) {
-        const allowed = await this.resolveWebSearchCapability(
+        const allowed = await resolveWebSearchCapability(
+          this.db,
           userId,
           project.teamId,
         );

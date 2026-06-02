@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
-import { companies, projects, teams, users } from '@worken/database/schema';
+import { projects } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
@@ -21,7 +21,7 @@ import {
   STREAM_REEVAL_CHUNK_BYTES,
 } from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
-import { effectiveWebSearchCapability } from '../integrations/web-search-capability.js';
+import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -52,45 +52,6 @@ export class ChatController {
     private readonly modelSuggestions: ModelSuggestionService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
-
-  /**
-   * Resolve whether web search is ALLOWED for this chat: a per-team
-   * override (`teams.web_search_enabled`) takes precedence when set,
-   * otherwise the user's org default (`companies.web_search_enabled`).
-   * Returns false when neither is enabled (or the user has no company).
-   */
-  private async resolveWebSearchCapability(
-    userId: string,
-    teamId: string | null,
-  ): Promise<boolean> {
-    let teamFlag: boolean | null | undefined;
-    if (teamId) {
-      const [team] = await this.db
-        .select({ flag: teams.webSearchEnabled })
-        .from(teams)
-        .where(eq(teams.id, teamId))
-        .limit(1);
-      teamFlag = team?.flag;
-    }
-    // Only hit the org default when the team override doesn't decide it.
-    let companyFlag: boolean | null | undefined;
-    if (teamFlag == null) {
-      const [u] = await this.db
-        .select({ companyId: users.companyId })
-        .from(users)
-        .where(eq(users.id, userId))
-        .limit(1);
-      if (u?.companyId) {
-        const [company] = await this.db
-          .select({ flag: companies.webSearchEnabled })
-          .from(companies)
-          .where(eq(companies.id, u.companyId))
-          .limit(1);
-        companyFlag = company?.flag;
-      }
-    }
-    return effectiveWebSearchCapability(teamFlag, companyFlag);
-  }
 
   /**
    * Token-streaming chat endpoint. Returns text/event-stream so the
@@ -141,14 +102,6 @@ export class ChatController {
       .limit(1);
     const teamId = proj?.teamId ?? null;
 
-    // Effective web search = the project switch AND the org/team
-    // capability. Short-circuit on the project switch so the capability
-    // lookup (extra queries) only runs when the project actually wants
-    // web search.
-    const webSearch =
-      !!proj?.webSearch &&
-      (await this.resolveWebSearchCapability(user.id, teamId));
-
     const inputDecision = await this.guardrails.evaluate({
       text: body.content,
       target: 'input',
@@ -179,6 +132,17 @@ export class ChatController {
       modelIdentifier: body.model ?? 'moonshotai/kimi-k2.5',
       projectId: conversation.projectId,
     });
+
+    // Effective web search = the project switch AND the OpenRouter route AND
+    // the org/team capability. The web plugin is OpenRouter-specific, so it
+    // never applies on BYOK / custom OpenAI-compatible routes — gating here
+    // keeps both the plugin injection and the budget surcharge off those
+    // routes. Short-circuits so the capability lookup (extra queries) only
+    // runs when the project wants web search on an OpenRouter model.
+    const webSearch =
+      !!proj?.webSearch &&
+      transport.source === 'openrouter' &&
+      (await resolveWebSearchCapability(this.db, user.id, teamId));
 
     await this.chatTransport.assertManagedBudgetApproved(transport, user.id, {
       projectId: conversation.projectId,

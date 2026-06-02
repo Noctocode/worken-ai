@@ -1059,6 +1059,31 @@ export interface WebCitation {
   title?: string;
 }
 
+/**
+ * Validate an untrusted citations array (SSE payload or persisted message
+ * metadata) into safe WebCitation objects:
+ *  - drops entries whose `url` isn't a string,
+ *  - keeps only http(s) urls so a `javascript:` / `data:` link can never
+ *    reach an anchor `href`,
+ *  - coerces a non-string `title` to undefined so React never receives an
+ *    object as a child (which would throw at render time).
+ */
+export function parseCitations(value: unknown): WebCitation[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (c): c is { url: string; title?: unknown } =>
+        !!c &&
+        typeof c === "object" &&
+        typeof (c as { url?: unknown }).url === "string",
+    )
+    .filter((c) => /^https?:\/\//i.test(c.url))
+    .map((c) => ({
+      url: c.url,
+      title: typeof c.title === "string" ? c.title : undefined,
+    }));
+}
+
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "reasoning"; text: string }
@@ -1197,16 +1222,8 @@ export async function* streamChatMessage(
             rule: data.rule,
             validator: data.validator,
           };
-        } else if (
-          frame.event === "citations" &&
-          Array.isArray(data.citations)
-        ) {
-          const citations = (data.citations as unknown[])
-            .filter(
-              (c): c is { url: string; title?: string } =>
-                !!c && typeof (c as { url?: unknown }).url === "string",
-            )
-            .map((c) => ({ url: c.url, title: c.title }));
+        } else if (frame.event === "citations") {
+          const citations = parseCitations(data.citations);
           if (citations.length > 0) yield { type: "citations", citations };
         } else if (frame.event === "error") {
           yield {

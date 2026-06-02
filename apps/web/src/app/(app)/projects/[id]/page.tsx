@@ -23,6 +23,7 @@ import {
   fetchProject,
   fetchConversation,
   createConversation,
+  parseCitations,
   streamChatMessage,
   submitMessageFeedback,
   updateProject,
@@ -208,6 +209,10 @@ export default function ProjectChatPage() {
           m.metadata && typeof m.metadata === "object"
             ? (m.metadata as Record<string, unknown>)
             : null;
+        // Validate persisted citations rather than trusting the stored
+        // shape — a bad url/title (or a non-http link) must not reach the
+        // Sources UI. parseCitations drops anything unsafe.
+        const citations = parseCitations(meta?.citations);
         return {
           id: m.id,
           role: m.role as "user" | "assistant",
@@ -220,9 +225,7 @@ export default function ProjectChatPage() {
             typeof meta?.reasoning_details === "string"
               ? (meta.reasoning_details as string)
               : undefined,
-          citations: Array.isArray(meta?.citations)
-            ? (meta.citations as WebCitation[])
-            : undefined,
+          citations: citations.length > 0 ? citations : undefined,
           partial: meta?.partial === true,
           userId: m.userId,
           userName: m.userName,
