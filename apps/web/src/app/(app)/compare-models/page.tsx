@@ -646,8 +646,16 @@ export default function CompareModelsPage() {
   // already uses for its actions. The dispatch only flips post-mount (initial
   // state has no submitted question), so the appbar's listener is always
   // attached before the first `true` lands.
+  // Base this on panel status, NOT hasResults: on submit every panel's
+  // response slot is seeded with "" (so the streaming loop can append), which
+  // makes hasResults true instantly and would hide the composer — and its Stop
+  // button — during the pending phase. modelStatuses starts all "pending" and
+  // only leaves it once a panel actually streams/settles, so the composer
+  // stays put until the run is genuinely under way.
   const arenaViewing =
-    !!submittedQuestion && (!!loadedRunCreatedAt || hasResults);
+    !!submittedQuestion &&
+    (!!loadedRunCreatedAt ||
+      Object.values(modelStatuses).some((s) => s !== "pending"));
   useEffect(() => {
     window.dispatchEvent(
       new CustomEvent("compare-models:viewing", { detail: arenaViewing }),
