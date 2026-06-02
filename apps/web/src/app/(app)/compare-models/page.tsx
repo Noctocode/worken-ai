@@ -2192,7 +2192,7 @@ function AddModelDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="w-[95vw] max-w-[1500px] sm:max-w-[1500px] gap-0 p-0"
+        className="w-[95vw] max-w-[880px] sm:max-w-[880px] gap-0 p-0"
         showCloseButton={false}
       >
         <DialogHeader className="flex flex-row items-center justify-between border-b border-border-2 px-6 py-4">
