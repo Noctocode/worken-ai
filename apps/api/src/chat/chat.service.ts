@@ -304,10 +304,15 @@ export class ChatService {
           yield { type: 'reasoning', delta: delta.reasoning };
         }
         for (const ann of delta?.annotations ?? []) {
+          // Providers may emit other annotation kinds; only collect URL
+          // citations, and validate the fields are strings so the SSE
+          // payload + persisted metadata stay predictable.
+          if (ann?.type && ann.type !== 'url_citation') continue;
           const url = ann.url_citation?.url;
-          if (url && !citations.has(url)) {
-            citations.set(url, ann.url_citation?.title ?? undefined);
-          }
+          if (typeof url !== 'string' || url.length === 0) continue;
+          if (citations.has(url)) continue;
+          const title = ann.url_citation?.title;
+          citations.set(url, typeof title === 'string' ? title : undefined);
         }
         if (delta?.content) {
           for (const ev of sanitize(delta.content)) {

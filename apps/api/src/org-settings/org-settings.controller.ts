@@ -43,7 +43,7 @@ export class OrgSettingsController {
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role !== 'admin') {
       throw new ForbiddenException(
-        'Only admins can change the company monthly budget.',
+        'Only admins can change company settings.',
       );
     }
     return this.orgSettings.update(body, caller.id);
