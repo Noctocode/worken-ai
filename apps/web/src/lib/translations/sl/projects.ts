@@ -29,6 +29,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projDetail.toBill': 'da ponovno zaračunamo na vaš račun.',
   'projDetail.thinking': 'Razmišljam...',
   'projDetail.showThinking': 'Prikaži razmišljanje',
+  'projDetail.sources': 'Viri',
   'projDetail.stopped': 'Ustavljeno',
   'projDetail.noResponse': 'Ni odgovora s AI prehoda. Endpoint za pretok morda ni na voljo — osvežite stran, in če težava traja, znova zaženite API strežnik.',
 };

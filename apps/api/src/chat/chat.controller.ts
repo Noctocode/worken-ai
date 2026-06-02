@@ -21,6 +21,7 @@ import {
   STREAM_REEVAL_CHUNK_BYTES,
 } from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -95,7 +96,7 @@ export class ChatController {
     );
 
     const [proj] = await this.db
-      .select({ teamId: projects.teamId })
+      .select({ teamId: projects.teamId, webSearch: projects.webSearch })
       .from(projects)
       .where(eq(projects.id, conversation.projectId))
       .limit(1);
@@ -132,6 +133,17 @@ export class ChatController {
       projectId: conversation.projectId,
     });
 
+    // Effective web search = the project switch AND the OpenRouter route AND
+    // the org/team capability. The web plugin is OpenRouter-specific, so it
+    // never applies on BYOK / custom OpenAI-compatible routes — gating here
+    // keeps both the plugin injection and the budget surcharge off those
+    // routes. Short-circuits so the capability lookup (extra queries) only
+    // runs when the project wants web search on an OpenRouter model.
+    const webSearch =
+      !!proj?.webSearch &&
+      transport.source === 'openrouter' &&
+      (await resolveWebSearchCapability(this.db, user.id, teamId));
+
     await this.chatTransport.assertManagedBudgetApproved(transport, user.id, {
       projectId: conversation.projectId,
     });
@@ -142,8 +154,18 @@ export class ChatController {
       promptTokens,
       4096,
     );
-    const estimatedCostCents =
-      estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
+    // Web search adds an OpenRouter surcharge the catalog price doesn't
+    // cover. Representative flat estimate = the Exa fallback rate of
+    // $0.005/request (up to 10 results); native engines bill provider
+    // passthrough which varies, so this is approximate. Folded into the
+    // pre-flight budget gate so an enabled project isn't silently
+    // under-gated; actual cost is still trued up from usage.cost
+    // post-stream.
+    const WEB_SEARCH_SURCHARGE_USD = 0.005;
+    const estimatedCostCents = Math.ceil(
+      ((estimatedCostUsd ?? 0) + (webSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
+        100,
+    );
     await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
       projectId: conversation.projectId,
       estimatedCostCents,
@@ -244,6 +266,7 @@ export class ChatController {
     let usageCompletionTokens: number | undefined;
     let usageTotalTokens: number | undefined;
     let usageCostUsd: number | undefined;
+    let citationsCollected: { url: string; title?: string }[] = [];
     let streamErrored = false;
     let streamErrorPayload: { message: string; status?: number } | null = null;
     let blockedDuringStream = false;
@@ -257,7 +280,7 @@ export class ChatController {
         transport.apiKey,
         transport.baseURL,
         transport.kind,
-        { signal: abortController.signal },
+        { signal: abortController.signal, webSearch },
       )) {
         if (event.type === 'content') {
           pending += event.delta;
@@ -290,6 +313,9 @@ export class ChatController {
         } else if (event.type === 'reasoning') {
           reasoningText += event.delta;
           sendEvent('reasoning', { text: event.delta });
+        } else if (event.type === 'citations') {
+          citationsCollected = event.citations;
+          sendEvent('citations', { citations: event.citations });
         } else if (event.type === 'usage') {
           usagePromptTokens = event.promptTokens;
           usageCompletionTokens = event.completionTokens;
@@ -453,6 +479,7 @@ export class ChatController {
     // a "stopped early" badge without re-running the LLM.
     const metadata: Record<string, unknown> = {};
     if (reasoningText) metadata.reasoning_details = reasoningText;
+    if (citationsCollected.length > 0) metadata.citations = citationsCollected;
     if (clientDisconnected) metadata.partial = true;
 
     await this.conversationsService.addMessage(

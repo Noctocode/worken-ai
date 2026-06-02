@@ -20,9 +20,11 @@ import {
   Share2,
   X,
   CheckCircle,
+  Globe,
 } from "lucide-react";
 import { Popover } from "radix-ui";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,7 +41,7 @@ import { MobileTopbar } from "./mobile-topbar";
 import { InviteMembersDialog } from "@/components/project-chat/invite-members-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
-import { fetchProject, fetchTeam } from "@/lib/api";
+import { fetchProject, fetchTeam, updateProject } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
@@ -89,6 +91,23 @@ export const Appbar = () => {
     queryKey: ["teams", _project?.teamId],
     queryFn: () => fetchTeam(_project!.teamId!),
     enabled: isProjectDetail && !!_project?.teamId,
+  });
+  const queryClient = useQueryClient();
+
+  // Per-project web search toggle (header). Only rendered when the
+  // org/team allows it; refetches the project so the chat path (which
+  // reads project.webSearch server-side) and the toggle stay in sync.
+  const webSearchMutation = useMutation({
+    mutationFn: (next: boolean) =>
+      updateProject(projectId, { webSearch: next }),
+    onSuccess: (_data, next) => {
+      void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      toast.success(next ? t("appbar.webSearchOn") : t("appbar.webSearchOff"));
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("appbar.webSearchFailed"),
+      ),
   });
 
   // Team detail team fetch — reuse the page's query so there's only one HTTP
@@ -317,6 +336,19 @@ export const Appbar = () => {
     const visibleMembers = members.slice(0, 4);
     const extraCount = members.length > 4 ? members.length - 4 : 0;
 
+    // Web search header toggle is ALWAYS shown on a project so the control
+    // never just vanishes. It's interactive only when the org/team allows web
+    // search AND the active model routes via OpenRouter; otherwise it stays
+    // visible but disabled with a reason and reads as off. Disabling it at the
+    // org/team level therefore greys the project toggle rather than hiding it.
+    const webSearchAllowed = !!_project?.webSearchAllowed;
+    const webSearchSupported = !!_project?.webSearchSupported;
+    const webSearchInteractive = webSearchAllowed && webSearchSupported;
+    const webSearchOn = !!_project?.webSearch && webSearchAllowed;
+    const webSearchReason = !webSearchAllowed
+      ? t("appbar.webSearchOrgDisabled")
+      : t("appbar.webSearchUnsupported");
+
     return (
       <>
         <MobileTopbar />
@@ -345,6 +377,48 @@ export const Appbar = () => {
             </span>
             <ChevronDown className="h-4 w-4 text-text-2" />
           </button>
+
+          {/* Per-project web search toggle. Always shown on a project so the
+              control never vanishes. Interactive only when the org/team allows
+              web search AND the active model can use it (native Anthropic BYOK
+              bypasses the OpenRouter plugin); otherwise it stays visible but
+              disabled with a reason and reads as off. */}
+          {_project && (
+            <DisabledReasonTooltip
+              disabled={!webSearchInteractive}
+              reason={webSearchReason}
+            >
+              <button
+                type="button"
+                onClick={() => webSearchMutation.mutate(!_project.webSearch)}
+                disabled={webSearchMutation.isPending || !webSearchInteractive}
+                role="switch"
+                aria-checked={webSearchOn}
+                title={t("appbar.webSearch")}
+                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-4 py-4 cursor-pointer hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Globe
+                  className={`h-4 w-4 ${
+                    webSearchOn ? "text-primary-6" : "text-text-2"
+                  }`}
+                />
+                <span className="text-[15px] text-text-1">
+                  {t("appbar.webSearch")}
+                </span>
+                <span
+                  className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
+                    webSearchOn ? "bg-primary-6" : "bg-border-3"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${
+                      webSearchOn ? "left-[18px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+            </DisabledReasonTooltip>
+          )}
         </div>
 
         <div className="flex items-center gap-6">

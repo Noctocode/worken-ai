@@ -15,6 +15,8 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 
 /** Compact preview shape for the avatar stack on team project cards. */
 export interface ProjectMemberPreview {
@@ -39,6 +41,9 @@ export interface UpdateProjectDto {
   name?: string;
   description?: string;
   model?: string;
+  /** Per-project web search switch. Setting true requires the org/team
+   *  capability to be enabled, else the update is rejected. */
+  webSearch?: boolean;
 }
 
 @Injectable()
@@ -47,6 +52,7 @@ export class ProjectsService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly teamsService: TeamsService,
     private readonly notifications: NotificationsService,
+    private readonly chatTransport: ChatTransportService,
   ) {}
 
   private selectWithTeamName() {
@@ -56,6 +62,7 @@ export class ProjectsService {
         name: projects.name,
         description: projects.description,
         model: projects.model,
+        webSearch: projects.webSearch,
         status: projects.status,
         teamId: projects.teamId,
         teamName: teams.name,
@@ -227,31 +234,63 @@ export class ProjectsService {
     // Access sources (any one is sufficient), strictly additive over
     // the legacy model so a row in `project_members` widens the gate
     // but never narrows it: owner, team membership, direct invite.
-    if (project.userId === userId) return project;
+    let hasAccess = project.userId === userId;
 
-    if (project.teamId) {
+    if (!hasAccess && project.teamId) {
       const role = await this.teamsService.getUserTeamRole(
         project.teamId,
         userId,
       );
-      if (role) return project;
+      if (role) hasAccess = true;
     }
 
-    const [direct] = await this.db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(
-        and(
-          eq(projectMembers.projectId, id),
-          eq(projectMembers.userId, userId),
-        ),
-      )
-      .limit(1);
+    if (!hasAccess) {
+      const [direct] = await this.db
+        .select({ userId: projectMembers.userId })
+        .from(projectMembers)
+        .where(
+          and(
+            eq(projectMembers.projectId, id),
+            eq(projectMembers.userId, userId),
+          ),
+        )
+        .limit(1);
+      if (direct) hasAccess = true;
+    }
 
-    if (!direct) {
+    if (!hasAccess) {
       throw new NotFoundException(`Project ${id} not found`);
     }
-    return project;
+
+    // Tell the FE whether the org/team allows web search so it can
+    // show/hide the per-project toggle.
+    const webSearchAllowed = await resolveWebSearchCapability(
+      this.db,
+      userId,
+      project.teamId,
+    );
+
+    // Web search rides on the OpenRouter web plugin, which is
+    // OpenRouter-specific — it does NOT work on BYOK / custom
+    // OpenAI-compatible routes even though those also use the openai-sdk
+    // transport kind. Resolve the transport so the FE can disable the toggle
+    // instead of silently no-op-ing. Only computed when allowed (the toggle
+    // is hidden otherwise) to avoid the extra lookup on every project open.
+    // Fail open to the OpenRouter assumption on any resolve error.
+    let webSearchSupported = false;
+    if (webSearchAllowed) {
+      try {
+        const transport = await this.chatTransport.resolve({
+          userId,
+          modelIdentifier: project.model,
+          projectId: project.id,
+        });
+        webSearchSupported = transport.source === 'openrouter';
+      } catch {
+        webSearchSupported = true;
+      }
+    }
+    return { ...project, webSearchAllowed, webSearchSupported };
   }
 
   async create(dto: CreateProjectDto, userId: string) {
@@ -341,6 +380,24 @@ export class ProjectsService {
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.description !== undefined) updates.description = dto.description;
     if (dto.model !== undefined) updates.model = dto.model;
+    if (dto.webSearch !== undefined) {
+      // Turning web search ON requires the org/team capability. Turning
+      // it OFF is always allowed (so a project can be cleaned up even
+      // after the capability is revoked).
+      if (dto.webSearch) {
+        const allowed = await resolveWebSearchCapability(
+          this.db,
+          userId,
+          project.teamId,
+        );
+        if (!allowed) {
+          throw new ForbiddenException(
+            'Web search is not enabled for this organization or team.',
+          );
+        }
+      }
+      updates.webSearch = dto.webSearch;
+    }
     if (Object.keys(updates).length === 0) return project;
     updates.updatedAt = new Date();
 
