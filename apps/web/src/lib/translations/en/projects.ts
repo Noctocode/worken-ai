@@ -16,7 +16,7 @@ export const projects = {
   'projectCreate.selectAgentDesc': 'Pick one or more agents. The first becomes the active one — switch between them anytime from the project header.',
   'projectCreate.tabRecommended': 'Recommended',
   'projectCreate.tabCustom': 'Custom',
-  'projectCreate.selectCustomDesc': 'Pick one of your team’s pre-configured models. The project is pinned to it.',
+  'projectCreate.selectCustomDesc': 'Pick one or more of your team’s pre-configured models. The first becomes active — switch between them from the project header.',
   'projectCreate.noCustomModels': 'No pre-configured models yet.',
   'projectCreate.addCustomModels': 'Add models in Team Settings → Models',
   'projectCreate.customHint': 'Don’t see your model?',

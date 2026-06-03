@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
+  Bot,
   ChevronRight,
   Search,
   Bell,
@@ -118,13 +119,12 @@ export const Appbar = () => {
       ),
   });
 
-  // Resolve an agent preset's preferred model against the live catalog,
-  // falling back to the first available model when the slug isn't
-  // surfaced — same rule the create flow uses so the active model stays
-  // consistent with what AgentGrid shows.
-  const resolveAgentModel = (agentId: string): string => {
-    const preset = AGENTS.find((a) => a.id === agentId);
-    if (!preset) return _project?.model ?? "";
+  // Resolve a pool entry to its model slug. A pool entry is either an agent
+  // preset id (resolve its preferred model against the catalog) or a
+  // configured-model id (already a slug — use it directly).
+  const resolveSelectionModel = (id: string): string => {
+    const preset = AGENTS.find((a) => a.id === id);
+    if (!preset) return id;
     const inCatalog = availableModels.find((m) => m.id === preset.model);
     // Catalog-empty (transient fetch failure) must NOT overwrite the
     // project's model with a maybe-unavailable slug — keep the current
@@ -137,21 +137,21 @@ export const Appbar = () => {
     );
   };
 
-  // Switch the project's active agent from the header dropdown. Persists
-  // both the agent and its resolved model (the chat path reads
+  // Switch the project's active selection from the header dropdown. Persists
+  // both the active id and its resolved model (the chat path reads
   // project.model), then refetches so the label + chat pick it up.
   const switchAgentMutation = useMutation({
-    mutationFn: (agentId: string) =>
+    mutationFn: (id: string) =>
       updateProject(projectId, {
-        agent: agentId,
-        model: resolveAgentModel(agentId),
+        agent: id,
+        model: resolveSelectionModel(id),
       }),
-    onSuccess: (_data, agentId) => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      const preset = AGENTS.find((a) => a.id === agentId);
+      const preset = AGENTS.find((a) => a.id === id);
       toast.success(
-        `${t("projDetail.switchedTo1")} ${preset?.label ?? agentId} ${t("projDetail.switchedTo2")}`,
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? getModelLabel(id)} ${t("projDetail.switchedTo2")}`,
       );
     },
     onError: (err) => {
@@ -458,24 +458,26 @@ export const Appbar = () => {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="min-w-[220px]">
-                {poolAgentIds.map((agentId) => {
-                  const preset = AGENTS.find((a) => a.id === agentId);
-                  if (!preset) return null;
-                  const Icon = preset.icon;
-                  const isActive = agentId === _project?.agent;
+                {poolAgentIds.map((entryId) => {
+                  // A pool entry is an agent preset (icon + label) or a
+                  // configured-model id (generic icon + model label).
+                  const preset = AGENTS.find((a) => a.id === entryId);
+                  const Icon = preset?.icon ?? Bot;
+                  const label = preset?.label ?? getModelLabel(entryId);
+                  const isActive = entryId === _project?.agent;
                   return (
                     <DropdownMenuItem
-                      key={agentId}
+                      key={entryId}
                       className="gap-2.5 cursor-pointer"
                       disabled={isActive}
                       onSelect={() => {
-                        if (!isActive) switchAgentMutation.mutate(agentId);
+                        if (!isActive) switchAgentMutation.mutate(entryId);
                       }}
                     >
                       <Icon className="h-4 w-4 text-primary-6" />
-                      <span className="flex-1">{preset.label}</span>
+                      <span className="flex-1 truncate">{label}</span>
                       {isActive && (
-                        <CheckCircle className="h-4 w-4 text-success-7" />
+                        <CheckCircle className="h-4 w-4 shrink-0 text-success-7" />
                       )}
                     </DropdownMenuItem>
                   );

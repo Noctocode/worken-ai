@@ -18,7 +18,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projectCreate.selectAgentDesc': 'Izberi enega ali več agentov. Prvi postane aktivni — med njimi lahko kadar koli preklapljaš v glavi projekta.',
   'projectCreate.tabRecommended': 'Priporočeno',
   'projectCreate.tabCustom': 'Po meri',
-  'projectCreate.selectCustomDesc': 'Izberi enega od vnaprej konfiguriranih modelov svoje ekipe. Projekt je vezan nanj.',
+  'projectCreate.selectCustomDesc': 'Izberi enega ali več vnaprej konfiguriranih modelov svoje ekipe. Prvi postane aktivni — med njimi preklapljaš v glavi projekta.',
   'projectCreate.noCustomModels': 'Ni še konfiguriranih modelov.',
   'projectCreate.addCustomModels': 'Dodaj modele v Nastavitve ekipe → Modeli',
   'projectCreate.customHint': 'Ne najdeš svojega modela?',

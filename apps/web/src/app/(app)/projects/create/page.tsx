@@ -159,7 +159,9 @@ export default function CreateProjectPage() {
   const [selectionTab, setSelectionTab] = useState<"recommended" | "custom">(
     "recommended",
   );
-  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
+  // Multi-select pool of configured model ids (Custom tab). The first becomes
+  // the active model; the rest are switchable from the project header.
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   // const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
   // const [membersError, setMembersError] = useState(false);
@@ -176,6 +178,11 @@ export default function CreateProjectPage() {
   const { effective: configuredModels } = useUserModels();
   const routingSuffix = (routing: string): string =>
     routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
+
+  const toggleModel = (id: string) =>
+    setSelectedModelIds((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
+    );
 
   const toggleAgent = (id: string) =>
     setSelectedAgents((prev) =>
@@ -212,17 +219,18 @@ export default function CreateProjectPage() {
     const teamId =
       projectType === "team" && selectedTeamId ? selectedTeamId : undefined;
 
-    // Custom tab — a "direct model" project pinned to one configured model.
-    // No agent pool: the header shows the model name instead of a switcher.
+    // Custom tab — a pool of configured models. The first is active; the rest
+    // are switchable from the project header (model ids live in `agents`).
     if (selectionTab === "custom") {
-      const picked = configuredModels.find((m) => m.id === selectedModelId);
-      if (!picked) return; // Create button is disabled until one is selected.
+      if (selectedModelIds.length === 0) return; // Create disabled until picked.
+      const active = selectedModelIds[0];
+      const picked = configuredModels.find((m) => m.id === active);
       mutation.mutate({
         name,
-        description: `${picked.name} project`,
-        model: picked.id,
-        agent: "",
-        agents: [],
+        description: `${picked?.name ?? active} project`,
+        model: active,
+        agent: active,
+        agents: selectedModelIds,
         teamId,
       });
       return;
@@ -438,12 +446,12 @@ export default function CreateProjectPage() {
                 <>
                   <div className="flex w-full flex-wrap justify-center gap-2.5">
                     {configuredModels.map((m) => {
-                      const isSelected = selectedModelId === m.id;
+                      const isSelected = selectedModelIds.includes(m.id);
                       return (
                         <button
                           key={m.id}
                           type="button"
-                          onClick={() => setSelectedModelId(m.id)}
+                          onClick={() => toggleModel(m.id)}
                           title={m.id}
                           className={`flex w-[calc(50%-5px)] cursor-pointer flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors sm:w-auto sm:min-w-[220px] sm:max-w-[260px] sm:flex-1 ${
                             isSelected
@@ -496,7 +504,7 @@ export default function CreateProjectPage() {
             mutation.isPending ||
             (selectionTab === "recommended"
               ? selectedAgents.length === 0
-              : selectedModelId === null)
+              : selectedModelIds.length === 0)
           }
         >
           {mutation.isPending ? t("projectCreate.creating") : t("projectCreate.title")}
