@@ -274,6 +274,11 @@ export interface Project {
   name: string;
   description: string | null;
   model: string;
+  /** Active agent preset the project chats as. Maps to `model`. */
+  agent: string;
+  /** Pool of agent presets picked for this project. May be empty for
+   *  legacy projects — callers fall back to `[agent]` in that case. */
+  agents: string[];
   status: string;
   /** Per-project web search switch. */
   webSearch: boolean;
@@ -300,6 +305,10 @@ export interface CreateProjectInput {
   name: string;
   description?: string;
   model: string;
+  /** Active agent preset. Defaults to general-assistant when omitted. */
+  agent?: string;
+  /** Pool of agent presets picked for the project. Defaults to [agent]. */
+  agents?: string[];
   teamId?: string;
 }
 
@@ -333,6 +342,8 @@ export interface UpdateProjectInput {
   name?: string;
   description?: string;
   model?: string;
+  agent?: string;
+  agents?: string[];
   webSearch?: boolean;
 }
 

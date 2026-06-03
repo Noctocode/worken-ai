@@ -13,6 +13,7 @@ export const projects = {
   'projectCreate.selectTeamPlaceholder': 'Select a team...',
   'projectCreate.teamRequired': 'Please select a team',
   'projectCreate.selectAgent': 'Select Agent',
+  'projectCreate.selectAgentDesc': 'Pick one or more agents. The first becomes the active one — switch between them anytime from the project header.',
   'projectCreate.creating': 'Creating...',
   'projDetail.failedChangeModel': 'Failed to change model',
   'projDetail.switchedTo1': 'Switched to',

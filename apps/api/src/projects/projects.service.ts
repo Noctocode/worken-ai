@@ -34,6 +34,10 @@ export interface CreateProjectDto {
   name: string;
   description?: string;
   model: string;
+  /** Active agent preset on create. Defaults to general-assistant. */
+  agent?: string;
+  /** Pool of agent presets picked for the project. Defaults to [agent]. */
+  agents?: string[];
   teamId?: string;
 }
 
@@ -41,6 +45,8 @@ export interface UpdateProjectDto {
   name?: string;
   description?: string;
   model?: string;
+  agent?: string;
+  agents?: string[];
   /** Per-project web search switch. Setting true requires the org/team
    *  capability to be enabled, else the update is rejected. */
   webSearch?: boolean;
@@ -62,6 +68,8 @@ export class ProjectsService {
         name: projects.name,
         description: projects.description,
         model: projects.model,
+        agent: projects.agent,
+        agents: projects.agents,
         webSearch: projects.webSearch,
         status: projects.status,
         teamId: projects.teamId,
@@ -293,6 +301,21 @@ export class ProjectsService {
     return { ...project, webSearchAllowed, webSearchSupported };
   }
 
+  /**
+   * Keep the active agent and its pool consistent so the header switcher
+   * always has something to render: the pool is never empty and always
+   * contains the active agent (added to the front when missing). Callers
+   * pass a concrete active agent (resolved from the DTO / existing row).
+   */
+  private static normalizeAgents(
+    agent: string,
+    agents: string[],
+  ): { agent: string; agents: string[] } {
+    const pool = agents.length > 0 ? [...agents] : [agent];
+    if (!pool.includes(agent)) pool.unshift(agent);
+    return { agent, agents: pool };
+  }
+
   async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
@@ -318,12 +341,21 @@ export class ProjectsService {
       }
     }
 
+    // Active agent + the picked pool, normalized so the pool is never
+    // empty and always contains the active agent. Default the active agent
+    // to the general assistant (also the active when only a pool is given).
+    const { agent, agents } = ProjectsService.normalizeAgents(
+      dto.agent ?? dto.agents?.[0] ?? 'general-assistant',
+      dto.agents ?? [],
+    );
     const [project] = await this.db
       .insert(projects)
       .values({
         name: dto.name,
         description: dto.description,
         model: dto.model,
+        agent,
+        agents,
         userId,
         teamId: dto.teamId ?? null,
       })
@@ -380,6 +412,18 @@ export class ProjectsService {
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.description !== undefined) updates.description = dto.description;
     if (dto.model !== undefined) updates.model = dto.model;
+    // Normalize agent + pool together whenever either changes, merging with
+    // the existing row, so we never persist an active agent outside its pool
+    // (or an empty pool). A header switch sends only `agent`; the change-model
+    // dialog sends both.
+    if (dto.agent !== undefined || dto.agents !== undefined) {
+      const { agent, agents } = ProjectsService.normalizeAgents(
+        dto.agent ?? project.agent,
+        dto.agents ?? project.agents,
+      );
+      updates.agent = agent;
+      updates.agents = agents;
+    }
     if (dto.webSearch !== undefined) {
       // Turning web search ON requires the org/team capability. Turning
       // it OFF is always allowed (so a project can be cleaned up even

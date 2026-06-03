@@ -15,6 +15,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projectCreate.selectTeamPlaceholder': 'Izberite ekipo...',
   'projectCreate.teamRequired': 'Prosim izberite ekipo',
   'projectCreate.selectAgent': 'Izberi agenta',
+  'projectCreate.selectAgentDesc': 'Izberi enega ali več agentov. Prvi postane aktivni — med njimi lahko kadar koli preklapljaš v glavi projekta.',
   'projectCreate.creating': 'Ustvarjanje...',
   'projDetail.failedChangeModel': 'Sprememba modela ni uspela',
   'projDetail.switchedTo1': 'Preklopljeno na',

@@ -27,6 +27,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -42,6 +48,7 @@ import { InviteMembersDialog } from "@/components/project-chat/invite-members-di
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
 import { fetchProject, fetchTeam, updateProject } from "@/lib/api";
+import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
@@ -60,7 +67,9 @@ export const Appbar = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const config = getRouteConfig(pathname);
-  const { getLabel: getModelLabel } = useAvailableModels();
+  const queryClient = useQueryClient();
+  const { models: availableModels, getLabel: getModelLabel } =
+    useAvailableModels();
 
   // Model Arena back-arrow: the compare-models page dispatches its "viewing a
   // comparison" state so the appbar can show a back icon (left of the title)
@@ -92,7 +101,6 @@ export const Appbar = () => {
     queryFn: () => fetchTeam(_project!.teamId!),
     enabled: isProjectDetail && !!_project?.teamId,
   });
-  const queryClient = useQueryClient();
 
   // Per-project web search toggle (header). Only rendered when the
   // org/team allows it; refetches the project so the chat path (which
@@ -109,6 +117,59 @@ export const Appbar = () => {
         err instanceof Error ? err.message : t("appbar.webSearchFailed"),
       ),
   });
+
+  // Resolve an agent preset's preferred model against the live catalog,
+  // falling back to the first available model when the slug isn't
+  // surfaced — same rule the create flow uses so the active model stays
+  // consistent with what AgentGrid shows.
+  const resolveAgentModel = (agentId: string): string => {
+    const preset = AGENTS.find((a) => a.id === agentId);
+    if (!preset) return _project?.model ?? "";
+    const inCatalog = availableModels.find((m) => m.id === preset.model);
+    // Catalog-empty (transient fetch failure) must NOT overwrite the
+    // project's model with a maybe-unavailable slug — keep the current
+    // model in that case; preset.model is only a last resort.
+    return (
+      inCatalog?.id ??
+      availableModels[0]?.id ??
+      _project?.model ??
+      preset.model
+    );
+  };
+
+  // Switch the project's active agent from the header dropdown. Persists
+  // both the agent and its resolved model (the chat path reads
+  // project.model), then refetches so the label + chat pick it up.
+  const switchAgentMutation = useMutation({
+    mutationFn: (agentId: string) =>
+      updateProject(projectId, {
+        agent: agentId,
+        model: resolveAgentModel(agentId),
+      }),
+    onSuccess: (_data, agentId) => {
+      queryClient.invalidateQueries({ queryKey: ["project", projectId] });
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      const preset = AGENTS.find((a) => a.id === agentId);
+      toast.success(
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? agentId} ${t("projDetail.switchedTo2")}`,
+      );
+    },
+    onError: (err) => {
+      toast.error(
+        err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
+      );
+    },
+  });
+
+  // The project's agent pool. Falls back to just the active agent for
+  // legacy projects created before multi-agent support.
+  const poolAgentIds =
+    _project && _project.agents.length > 0
+      ? _project.agents
+      : _project?.agent
+        ? [_project.agent]
+        : [];
+  const activeAgent = AGENTS.find((a) => a.id === _project?.agent);
 
   // Team detail team fetch — reuse the page's query so there's only one HTTP
   // round-trip. Data drives the Edit/Delete gate in the team header.
@@ -371,12 +432,47 @@ export const Appbar = () => {
             </div>
           )}
 
-          <button className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1">
-            <span className="text-[16px] text-text-1">
-              {_project ? getModelLabel(_project.model) : t("appbar.model")}
-            </span>
-            <ChevronDown className="h-4 w-4 text-text-2" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
+                disabled={!_project || switchAgentMutation.isPending}
+              >
+                <span className="text-[16px] text-text-1">
+                  {activeAgent
+                    ? activeAgent.label
+                    : _project
+                      ? getModelLabel(_project.model)
+                      : t("appbar.model")}
+                </span>
+                <ChevronDown className="h-4 w-4 text-text-2" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[220px]">
+              {poolAgentIds.map((agentId) => {
+                const preset = AGENTS.find((a) => a.id === agentId);
+                if (!preset) return null;
+                const Icon = preset.icon;
+                const isActive = agentId === _project?.agent;
+                return (
+                  <DropdownMenuItem
+                    key={agentId}
+                    className="gap-2.5 cursor-pointer"
+                    disabled={isActive}
+                    onSelect={() => {
+                      if (!isActive) switchAgentMutation.mutate(agentId);
+                    }}
+                  >
+                    <Icon className="h-4 w-4 text-primary-6" />
+                    <span className="flex-1">{preset.label}</span>
+                    {isActive && (
+                      <CheckCircle className="h-4 w-4 text-success-7" />
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {/* Per-project web search toggle. Always shown on a project so the
               control never vanishes. Interactive only when the org/team allows
