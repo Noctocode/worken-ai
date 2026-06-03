@@ -53,6 +53,7 @@ import {
   type ArenaRunSummary,
 } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useLanguage } from "@/lib/i18n";
 import { type TranslationKey } from "@/lib/translations/en";
 
@@ -112,10 +113,28 @@ function ProjectCard({ project }: { project: Project }) {
   // project's saved `agents` pool so every previously-picked agent shows
   // highlighted (not just the active one). Committed only on Save so
   // cancelling doesn't leave a half-changed selection behind.
+  // Pool is mixed: entries are agent-preset ids OR configured-model ids. The
+  // two tabs each toggle their own kind into the same pool.
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
+  const [modelTab, setModelTab] = useState<"recommended" | "custom">(
+    "recommended",
+  );
   const queryClient = useQueryClient();
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
+  const { effective: configuredModels } = useUserModels();
+  const routingSuffix = (routing: string): string =>
+    routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
+  // Resolve a pool entry (preset id or model id) to its model slug.
+  const resolveSelectionModel = (id: string): string => {
+    const preset = AGENTS.find((a) => a.id === id);
+    if (!preset) return id;
+    return (
+      availableModels.find((m) => m.id === preset.model)?.id ??
+      availableModels[0]?.id ??
+      project.model
+    );
+  };
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteProject(project.id),
@@ -205,9 +224,16 @@ function ProjectCard({ project }: { project: Project }) {
                     onSelect={() => {
                       // Re-seed the picker each open so a previous
                       // cancelled change doesn't linger. Seed from the
-                      // project's full agent pool so every previously
-                      // selected agent shows highlighted.
-                      setPendingAgentIds(seedAgentIds());
+                      // project's full pool so every previously selected
+                      // entry shows highlighted, and open on the tab that
+                      // matches the pool's kind (model ids → Custom).
+                      const seeded = seedAgentIds();
+                      setPendingAgentIds(seeded);
+                      setModelTab(
+                        seeded.some((id) => !AGENTS.some((a) => a.id === id))
+                          ? "custom"
+                          : "recommended",
+                      );
                       setModelDialogOpen(true);
                     }}
                   >
@@ -365,18 +391,85 @@ function ProjectCard({ project }: { project: Project }) {
               {t("dashboard.changeModelPickAgent")} <strong>{project.name}</strong>. {t("dashboard.changeModelNextMessage")}
             </DialogDescription>
           </DialogHeader>
-          <div className="flex justify-center py-2">
-            <AgentGrid
-              selectedAgentIds={pendingAgentIds}
-              onToggle={(agent) =>
-                setPendingAgentIds((prev) =>
-                  prev.includes(agent.id)
-                    ? prev.filter((a) => a !== agent.id)
-                    : [...prev, agent.id],
-                )
-              }
-            />
+          {/* Tab switcher — Recommended (presets) / Custom (configured). */}
+          <div className="flex justify-center">
+            <div className="inline-flex items-center gap-1 rounded-lg border border-border-2 bg-bg-1 p-1">
+              {(["recommended", "custom"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setModelTab(tab)}
+                  className={`cursor-pointer rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors ${
+                    modelTab === tab
+                      ? "bg-bg-white text-text-1 shadow-sm"
+                      : "text-text-2 hover:text-text-1"
+                  }`}
+                >
+                  {tab === "recommended"
+                    ? t("projectCreate.tabRecommended")
+                    : t("projectCreate.tabCustom")}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {modelTab === "recommended" ? (
+            <div className="flex justify-center py-2">
+              <AgentGrid
+                selectedAgentIds={pendingAgentIds}
+                onToggle={(agent) =>
+                  setPendingAgentIds((prev) =>
+                    prev.includes(agent.id)
+                      ? prev.filter((a) => a !== agent.id)
+                      : [...prev, agent.id],
+                  )
+                }
+              />
+            </div>
+          ) : configuredModels.length === 0 ? (
+            <div className="mx-auto my-2 rounded-lg border border-border-2 bg-bg-1 px-4 py-4 text-center text-[14px] text-text-2">
+              {t("projectCreate.noCustomModels")}{" "}
+              <Link
+                href="/teams?tab=models"
+                className="text-primary-6 hover:underline"
+              >
+                {t("projectCreate.addCustomModels")}
+              </Link>
+            </div>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-2.5 py-2">
+              {configuredModels.map((m) => {
+                const isSelected = pendingAgentIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() =>
+                      setPendingAgentIds((prev) =>
+                        prev.includes(m.id)
+                          ? prev.filter((x) => x !== m.id)
+                          : [...prev, m.id],
+                      )
+                    }
+                    title={m.id}
+                    className={`flex w-[calc(50%-5px)] cursor-pointer flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors sm:w-auto sm:min-w-[220px] sm:max-w-[260px] ${
+                      isSelected
+                        ? "border border-primary-6 bg-primary-1"
+                        : "border border-transparent bg-bg-1 hover:border-border-3"
+                    }`}
+                  >
+                    <span className="max-w-full truncate text-[14px] font-medium text-text-1">
+                      {m.name}
+                      {routingSuffix(m.routing)}
+                    </span>
+                    <span className="max-w-full truncate text-[11px] text-text-3">
+                      {m.id}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <p className="mx-auto max-w-[700px] text-center text-[12px] text-text-3">
             <strong>(BYOK)</strong> {t("dashboard.byokNote")}{" "}
             <strong>(Custom)</strong> {t("dashboard.customNote")}
@@ -392,23 +485,17 @@ function ProjectCard({ project }: { project: Project }) {
             <Button
               onClick={() => {
                 if (pendingAgentIds.length === 0) return;
-                // Keep the current active agent if it's still in the pool,
+                // Keep the current active entry if it's still in the pool,
                 // otherwise fall back to the first picked one. The active
-                // agent drives `model` (its preset model, with a catalog
-                // fallback so we never save an unavailable slug).
+                // entry drives `model` — its preset model, or the model id
+                // itself when the entry is a configured model.
                 const activeId = pendingAgentIds.includes(project.agent)
                   ? project.agent
                   : pendingAgentIds[0];
-                const agent = AGENTS.find((a) => a.id === activeId);
-                if (!agent) return;
-                const model =
-                  availableModels.find((m) => m.id === agent.model)?.id ??
-                  availableModels[0]?.id ??
-                  project.model;
                 updateModelMutation.mutate({
                   agents: pendingAgentIds,
                   agent: activeId,
-                  model,
+                  model: resolveSelectionModel(activeId),
                 });
               }}
               // Disabled while the mutation is in flight or the pool is

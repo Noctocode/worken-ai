@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
+  Bot,
   ChevronRight,
   Search,
   Bell,
@@ -55,6 +56,7 @@ import {
 } from "@/lib/api";
 import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -75,6 +77,15 @@ export const Appbar = () => {
   const queryClient = useQueryClient();
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
+  // The user's configured models (Team → Models) carry admin-set custom
+  // names that the catalog doesn't know. Prefer those for header labels so a
+  // Custom-model pool entry shows its alias name, falling back to the catalog
+  // name (presets resolve a raw catalog slug) and then the raw id.
+  const { effective: effectiveModels } = useUserModels();
+  const labelForModel = (id: string): string => {
+    const alias = effectiveModels.find((m) => m.id === id);
+    return alias ? alias.name : getModelLabel(id);
+  };
 
   // Model Arena back-arrow: the compare-models page dispatches its "viewing a
   // comparison" state so the appbar can show a back icon (left of the title)
@@ -130,13 +141,12 @@ export const Appbar = () => {
       ),
   });
 
-  // Resolve an agent preset's preferred model against the live catalog,
-  // falling back to the first available model when the slug isn't
-  // surfaced — same rule the create flow uses so the active model stays
-  // consistent with what AgentGrid shows.
-  const resolveAgentModel = (agentId: string): string => {
-    const preset = AGENTS.find((a) => a.id === agentId);
-    if (!preset) return _project?.model ?? "";
+  // Resolve a pool entry to its model slug. A pool entry is either an agent
+  // preset id (resolve its preferred model against the catalog) or a
+  // configured-model id (already a slug — use it directly).
+  const resolveSelectionModel = (id: string): string => {
+    const preset = AGENTS.find((a) => a.id === id);
+    if (!preset) return id;
     const inCatalog = availableModels.find((m) => m.id === preset.model);
     // Catalog-empty (transient fetch failure) must NOT overwrite the
     // project's model with a maybe-unavailable slug — keep the current
@@ -149,21 +159,21 @@ export const Appbar = () => {
     );
   };
 
-  // Switch the project's active agent from the header dropdown. Persists
-  // both the agent and its resolved model (the chat path reads
+  // Switch the project's active selection from the header dropdown. Persists
+  // both the active id and its resolved model (the chat path reads
   // project.model), then refetches so the label + chat pick it up.
   const switchAgentMutation = useMutation({
-    mutationFn: (agentId: string) =>
+    mutationFn: (id: string) =>
       updateProject(projectId, {
-        agent: agentId,
-        model: resolveAgentModel(agentId),
+        agent: id,
+        model: resolveSelectionModel(id),
       }),
-    onSuccess: (_data, agentId) => {
+    onSuccess: (_data, id) => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      const preset = AGENTS.find((a) => a.id === agentId);
+      const preset = AGENTS.find((a) => a.id === id);
       toast.success(
-        `${t("projDetail.switchedTo1")} ${preset?.label ?? agentId} ${t("projDetail.switchedTo2")}`,
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
       );
     },
     onError: (err) => {
@@ -450,47 +460,59 @@ export const Appbar = () => {
             </div>
           )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
-                disabled={!_project || switchAgentMutation.isPending}
-              >
-                <span className="text-[16px] text-text-1">
-                  {activeAgent
-                    ? activeAgent.label
-                    : _project
-                      ? getModelLabel(_project.model)
-                      : t("appbar.model")}
-                </span>
-                <ChevronDown className="h-4 w-4 text-text-2" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[220px]">
-              {poolAgentIds.map((agentId) => {
-                const preset = AGENTS.find((a) => a.id === agentId);
-                if (!preset) return null;
-                const Icon = preset.icon;
-                const isActive = agentId === _project?.agent;
-                return (
-                  <DropdownMenuItem
-                    key={agentId}
-                    className="gap-2.5 cursor-pointer"
-                    disabled={isActive}
-                    onSelect={() => {
-                      if (!isActive) switchAgentMutation.mutate(agentId);
-                    }}
-                  >
-                    <Icon className="h-4 w-4 text-primary-6" />
-                    <span className="flex-1">{preset.label}</span>
-                    {isActive && (
-                      <CheckCircle className="h-4 w-4 text-success-7" />
-                    )}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {poolAgentIds.length === 0 ? (
+            // Direct-model project (no agent pool): show the pinned model name
+            // as a static chip instead of an agent switcher.
+            <div className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4">
+              <span className="text-[16px] text-text-1">
+                {_project ? labelForModel(_project.model) : t("appbar.model")}
+              </span>
+            </div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
+                  disabled={!_project || switchAgentMutation.isPending}
+                >
+                  <span className="text-[16px] text-text-1">
+                    {activeAgent
+                      ? activeAgent.label
+                      : _project
+                        ? labelForModel(_project.model)
+                        : t("appbar.model")}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-text-2" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[220px]">
+                {poolAgentIds.map((entryId) => {
+                  // A pool entry is an agent preset (icon + label) or a
+                  // configured-model id (generic icon + model label).
+                  const preset = AGENTS.find((a) => a.id === entryId);
+                  const Icon = preset?.icon ?? Bot;
+                  const label = preset?.label ?? labelForModel(entryId);
+                  const isActive = entryId === _project?.agent;
+                  return (
+                    <DropdownMenuItem
+                      key={entryId}
+                      className="gap-2.5 cursor-pointer"
+                      disabled={isActive}
+                      onSelect={() => {
+                        if (!isActive) switchAgentMutation.mutate(entryId);
+                      }}
+                    >
+                      <Icon className="h-4 w-4 text-primary-6" />
+                      <span className="flex-1 truncate">{label}</span>
+                      {isActive && (
+                        <CheckCircle className="h-4 w-4 shrink-0 text-success-7" />
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Per-project web search toggle. Always shown on a project so the
               control never vanishes. Interactive only when the org/team allows
