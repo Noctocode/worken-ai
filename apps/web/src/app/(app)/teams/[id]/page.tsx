@@ -68,6 +68,7 @@ import {
   updateTeamBudget,
   updateMemberRole,
   removeTeamMember,
+  fetchOrgSettings,
   type TeamMember,
   type SubteamListItem,
 } from "@/lib/api";
@@ -361,6 +362,9 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
   const queryClient = useQueryClient();
 
   const { data: team, isLoading, error } = useQuery({ queryKey: ["teams", id], queryFn: () => fetchTeam(id) });
+  // Org default drives the team toggle's default state: with no explicit
+  // team choice the switch reads (and reflects) the company-level value.
+  const { data: orgSettings } = useQuery({ queryKey: ["org-settings"], queryFn: fetchOrgSettings });
   const { data: subteams = [] } = useQuery({ queryKey: ["subteams", id], queryFn: () => fetchSubteams(id) });
   const { data: rawGuardrails = [] } = useQuery({ queryKey: ["guardrails", id], queryFn: () => fetchGuardrails(id) });
   const guardrails = useMemo(
@@ -437,10 +441,11 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teams", id] }),
   });
 
-  // Per-team web-search override. null = inherit org default; true/false
-  // = force on/off for this team's projects.
+  // Per-team web-search switch — On/Off only. The default reflects the
+  // org-level value; the org master switch being Off still overrides
+  // this everywhere (enforced server-side in resolveWebSearchCapability).
   const webSearchMutation = useMutation({
-    mutationFn: (val: boolean | null) =>
+    mutationFn: (val: boolean) =>
       updateTeam(id, { webSearchEnabled: val }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teams", id] });
@@ -682,31 +687,51 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
               {t("teamDetail.webSearchDesc")}
             </p>
           </div>
-          <div className="flex shrink-0 overflow-hidden rounded-lg border border-border-3">
-            {(
-              [
-                { val: null, label: t("teamDetail.webSearchInherit") },
-                { val: true, label: t("teamDetail.webSearchOn") },
-                { val: false, label: t("teamDetail.webSearchOff") },
-              ] as const
-            ).map((opt) => {
-              const active = team.webSearchEnabled === opt.val;
-              return (
-                <button
-                  key={String(opt.val)}
-                  type="button"
-                  disabled={webSearchMutation.isPending}
-                  onClick={() => webSearchMutation.mutate(opt.val)}
-                  className={`px-3 py-1.5 text-[13px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                    active
-                      ? "bg-primary-6 text-white"
-                      : "bg-bg-white text-text-2 hover:bg-bg-1"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
+          <div className="flex flex-col items-end gap-1">
+            {/* Org Off is the master switch — when the company has web search
+                off, the team can't re-enable it, so the control is disabled. */}
+            <DisabledReasonTooltip
+              disabled={orgSettings?.webSearchEnabled !== true}
+              reason={t("teamDetail.webSearchOrgOff")}
+            >
+              <div className="flex shrink-0 overflow-hidden rounded-lg border border-border-3">
+                {(
+                  [
+                    { val: true, label: t("teamDetail.webSearchOn") },
+                    { val: false, label: t("teamDetail.webSearchOff") },
+                  ] as const
+                ).map((opt) => {
+                  // No explicit team choice (null) defaults to the org value.
+                  const effective =
+                    team.webSearchEnabled ??
+                    orgSettings?.webSearchEnabled ??
+                    false;
+                  const active = effective === opt.val;
+                  // Disabled when the org master switch is off (or org settings
+                  // haven't loaded yet) so a click can't fire a no-op save.
+                  const orgOn = orgSettings?.webSearchEnabled === true;
+                  return (
+                    <button
+                      key={String(opt.val)}
+                      type="button"
+                      disabled={webSearchMutation.isPending || !orgOn}
+                      // No-op when already effective — avoids persisting an
+                      // explicit value over the inherited (null) default.
+                      onClick={() => {
+                        if (!active) webSearchMutation.mutate(opt.val);
+                      }}
+                      className={`px-3 py-1.5 text-[13px] cursor-pointer transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        active
+                          ? "bg-primary-6 text-white"
+                          : "bg-bg-white text-text-2 hover:bg-bg-1"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </DisabledReasonTooltip>
           </div>
         </div>
       )}
