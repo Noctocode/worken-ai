@@ -788,16 +788,12 @@ export default function CompareModelsPage() {
   }
 
   return (
-    // `flex-1 h-0` (not `h-full`) — the app shell wraps pages in a
-    // `min-height flex-col` container, which is *min-height*, not
-    // height. That means `h-full` here resolves to auto and the row
-    // below grows with whatever the right rail contains, dragging
-    // the white card with it (so expanding History made the card
-    // visibly "jump"). Using flex-grow against `h-0` forces this
-    // wrapper to claim the remaining definite height of the shell,
-    // which gives the row a fixed height and lets the aside scroll
-    // its history list internally instead of pushing the layout.
-    <div className="flex h-0 min-h-0 flex-1 flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
+    // Natural height: the page grows with its content and the app shell's
+    // own scroll container (layout.tsx → the `overflow-y-auto` wrapper
+    // around {children}) handles scrolling at page level. We deliberately
+    // do NOT claim a fixed shell height here, so the comparison card never
+    // traps content in an inner scrollbar.
+    <div className="flex flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
       {/* Mobile in-page header — the desktop appbar (default variant)
           renders the "Model Arena" title + the "New Comparison"
           appbarAction. At <md the appbar collapses to MobileTopbar
@@ -837,35 +833,16 @@ export default function CompareModelsPage() {
         </div>
       </div>
 
-      {/* Body shell: main column + optional right rail.
-          Switched to CSS Grid at lg+ specifically to decouple the
-          two columns' heights. Flexbox with align-items:stretch was
-          propagating the rail's intrinsic content height back into
-          the main card whenever History expanded — the row grew to
-          fit the rail and dragged the white card with it. Grid
-          assigns each cell its own track height (1fr of a bounded
-          row), so the columns are sized independently and each
-          handles its own internal scroll without affecting the
-          other. */}
-      <div className="flex flex-col min-h-0 flex-1 gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:overflow-hidden">
-        {/* Main column — white card per Figma. Layout is intentionally
-            *static*: scrollable area always takes the remaining height
-            and the composer stays pinned at the bottom, regardless of
-            whether a comparison is loaded, history is expanded, or the
-            rail is open. Keeps the white card visually stable across
-            state transitions. */}
-        {/* Main card. On mobile we fill the column (flex-1 inside the
-            flex-col body shell) so the composer pins at viewport
-            bottom — typical chat UX. On desktop we drop that: the
-            card sits at the top of its grid cell (self-start) at a
-            fixed 750px height — auto-content was too cramped for
-            the placeholder/composer pair, and stretching to the
-            row brought back the rail-driven jump. Fixed height
-            decouples from rail, gives the placeholder its centered
-            whitespace, and lets the composer sit at the card's
-            bottom edge with internal scroll for long streams. */}
-        <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6 lg:min-h-0 lg:self-start lg:h-[750px]">
-          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-1">
+      {/* Body shell: main column + optional right rail. CSS Grid at lg+
+          keeps the two columns side by side; rows are auto-height
+          (items-start) so each column grows with its content and the page
+          — not an inner box — handles scrolling. */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-6 lg:items-start">
+        {/* Main column — white card per Figma. Height is content-driven:
+            the card grows with the responses/composer and the page scrolls,
+            rather than the content scrolling inside a fixed-height box. */}
+        <section className="flex min-w-0 flex-col gap-3 rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6">
+          <div className="flex flex-col gap-3 lg:gap-4">
             {!hasResults && !loading && !submittedQuestion && (
               // `my-auto` keeps the placeholder vertically centred inside
               // the scrollable area without changing the area's flex
@@ -1062,7 +1039,7 @@ export default function CompareModelsPage() {
             Re-introduce as a slide-out Sheet in a follow-up if mobile
             users need history access without scrolling sideways. */}
         {railOpen ? (
-          <div className="hidden lg:flex lg:min-h-0 lg:overflow-hidden">
+          <div className="hidden lg:flex">
             <RightRail
               selectedModels={selectedModels}
               disabledModels={disabledModels}
