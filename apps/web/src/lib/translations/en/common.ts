@@ -111,6 +111,7 @@ export const common = {
   'appbar.webSearch': 'Web search',
   'appbar.webSearchUnsupported': "Web search isn't available for this project's model.",
   'appbar.webSearchOrgDisabled': 'Web search is disabled for your organization. An admin can enable it in Management → Company.',
+  'appbar.webSearchTeamDisabled': "Web search is turned off for this team. A team manager can enable it in the team's settings.",
   'appbar.webSearchOn': 'Web search enabled for this project.',
   'appbar.webSearchOff': 'Web search disabled for this project.',
   'appbar.webSearchFailed': 'Failed to update web search',

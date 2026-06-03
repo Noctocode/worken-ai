@@ -113,6 +113,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'appbar.webSearch': 'Iskanje po spletu',
   'appbar.webSearchUnsupported': 'Iskanje po spletu ni na voljo za model tega projekta.',
   'appbar.webSearchOrgDisabled': 'Iskanje po spletu je onemogočeno za vašo organizacijo. Skrbnik ga lahko omogoči v Upravljanje → Podjetje.',
+  'appbar.webSearchTeamDisabled': 'Iskanje po spletu je izklopljeno za to ekipo. Vodja ekipe ga lahko omogoči v nastavitvah ekipe.',
   'appbar.webSearchOn': 'Iskanje po spletu omogočeno za ta projekt.',
   'appbar.webSearchOff': 'Iskanje po spletu onemogočeno za ta projekt.',
   'appbar.webSearchFailed': 'Posodobitev iskanja po spletu ni uspela',
