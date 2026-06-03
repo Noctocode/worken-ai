@@ -34,6 +34,7 @@ import {
   // type OrgUser,
 } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { AGENTS } from "@/lib/agents";
 import { AgentGrid } from "@/components/agent-grid";
 import { useLanguage } from "@/lib/i18n";
@@ -152,6 +153,13 @@ export default function CreateProjectPage() {
   const [selectedAgents, setSelectedAgents] = useState<string[]>([
     "general-assistant",
   ]);
+  // Model selection has two tabs: "recommended" (agent presets — our picks)
+  // and "custom" (models the admin configured in Team → Models). In custom
+  // mode the project is pinned directly to one configured model.
+  const [selectionTab, setSelectionTab] = useState<"recommended" | "custom">(
+    "recommended",
+  );
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   // const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
   // const [membersError, setMembersError] = useState(false);
@@ -163,6 +171,11 @@ export default function CreateProjectPage() {
   });
 
   const { models: availableModels } = useAvailableModels();
+  // Admin-configured models (aliases from Team → Models). Source for the
+  // "Custom" tab. Routing marker tells the user whose key bills the call.
+  const { effective: configuredModels } = useUserModels();
+  const routingSuffix = (routing: string): string =>
+    routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
 
   const toggleAgent = (id: string) =>
     setSelectedAgents((prev) =>
@@ -196,7 +209,27 @@ export default function CreateProjectPage() {
       if (needsTeam) setTeamError(true);
       return;
     }
-    // Active agent = first in the pool; switchable later from the header.
+    const teamId =
+      projectType === "team" && selectedTeamId ? selectedTeamId : undefined;
+
+    // Custom tab — a "direct model" project pinned to one configured model.
+    // No agent pool: the header shows the model name instead of a switcher.
+    if (selectionTab === "custom") {
+      const picked = configuredModels.find((m) => m.id === selectedModelId);
+      if (!picked) return; // Create button is disabled until one is selected.
+      mutation.mutate({
+        name,
+        description: `${picked.name} project`,
+        model: picked.id,
+        agent: "",
+        agents: [],
+        teamId,
+      });
+      return;
+    }
+
+    // Recommended tab — agent presets. Active agent = first in the pool;
+    // switchable later from the header.
     const activeAgentId = selectedAgents[0];
     const agent = AGENTS.find((a) => a.id === activeAgentId);
     if (!agent) return;
@@ -220,7 +253,7 @@ export default function CreateProjectPage() {
       model,
       agent: activeAgentId,
       agents: selectedAgents,
-      teamId: projectType === "team" && selectedTeamId ? selectedTeamId : undefined,
+      teamId,
     });
   };
 
@@ -353,16 +386,95 @@ export default function CreateProjectPage() {
           )}
         </div>
 
-        {/* Select Agent — same card pattern as Select Project Type. */}
+        {/* Select model — two tabs: Recommended (agent presets, our picks)
+            and Custom (models the admin configured in Team → Models). */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
           <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectAgent")}</h2>
+
+          {/* Tab switcher */}
+          <div className="inline-flex items-center gap-1 self-center rounded-lg border border-border-2 bg-bg-1 p-1">
+            {(["recommended", "custom"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                onClick={() => setSelectionTab(tab)}
+                className={`cursor-pointer rounded-md px-4 py-1.5 text-[14px] font-medium transition-colors ${
+                  selectionTab === tab
+                    ? "bg-bg-white text-text-1 shadow-sm"
+                    : "text-text-2 hover:text-text-1"
+                }`}
+              >
+                {tab === "recommended"
+                  ? t("projectCreate.tabRecommended")
+                  : t("projectCreate.tabCustom")}
+              </button>
+            ))}
+          </div>
+
           <p className="text-[14px] text-text-2 md:text-center leading-normal md:max-w-[600px]">
-            {t("projectCreate.selectAgentDesc")}
+            {selectionTab === "recommended"
+              ? t("projectCreate.selectAgentDesc")
+              : t("projectCreate.selectCustomDesc")}
           </p>
-          <AgentGrid
-            selectedAgentIds={selectedAgents}
-            onToggle={(agent) => toggleAgent(agent.id)}
-          />
+
+          {selectionTab === "recommended" ? (
+            <AgentGrid
+              selectedAgentIds={selectedAgents}
+              onToggle={(agent) => toggleAgent(agent.id)}
+            />
+          ) : (
+            <div className="flex w-full max-w-[900px] flex-col items-center gap-3">
+              {configuredModels.length === 0 ? (
+                <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-4 text-center text-[14px] text-text-2">
+                  {t("projectCreate.noCustomModels")}{" "}
+                  <Link
+                    href="/teams?tab=models"
+                    className="text-primary-6 hover:underline"
+                  >
+                    {t("projectCreate.addCustomModels")}
+                  </Link>
+                </div>
+              ) : (
+                <>
+                  <div className="flex w-full flex-wrap justify-center gap-2.5">
+                    {configuredModels.map((m) => {
+                      const isSelected = selectedModelId === m.id;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => setSelectedModelId(m.id)}
+                          title={m.id}
+                          className={`flex w-[calc(50%-5px)] cursor-pointer flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors sm:w-auto sm:min-w-[220px] sm:max-w-[260px] sm:flex-1 ${
+                            isSelected
+                              ? "border border-primary-6 bg-primary-1"
+                              : "border border-transparent bg-bg-1 hover:border-border-3"
+                          }`}
+                        >
+                          <span className="max-w-full truncate text-[14px] font-medium text-text-1">
+                            {m.name}
+                            {routingSuffix(m.routing)}
+                          </span>
+                          <span className="max-w-full truncate text-[11px] text-text-3">
+                            {m.id}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-center text-[13px] text-text-3">
+                    {t("projectCreate.customHint")}{" "}
+                    <Link
+                      href="/teams?tab=models"
+                      className="text-primary-6 hover:underline"
+                    >
+                      {t("projectCreate.addCustomModels")}
+                    </Link>
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -380,7 +492,12 @@ export default function CreateProjectPage() {
         <Button
           className="h-[43px] md:h-10 flex-1 md:flex-none md:w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
-          disabled={mutation.isPending || selectedAgents.length === 0}
+          disabled={
+            mutation.isPending ||
+            (selectionTab === "recommended"
+              ? selectedAgents.length === 0
+              : selectedModelId === null)
+          }
         >
           {mutation.isPending ? t("projectCreate.creating") : t("projectCreate.title")}
         </Button>

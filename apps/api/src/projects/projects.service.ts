@@ -306,11 +306,16 @@ export class ProjectsService {
    * always has something to render: the pool is never empty and always
    * contains the active agent (added to the front when missing). Callers
    * pass a concrete active agent (resolved from the DTO / existing row).
+   *
+   * Exception — a "direct model" project (no agent AND no pool): the project
+   * is pinned to `model` and the header shows the model name instead of an
+   * agent switcher, so we keep the pool genuinely empty.
    */
   private static normalizeAgents(
     agent: string,
     agents: string[],
   ): { agent: string; agents: string[] } {
+    if (!agent && agents.length === 0) return { agent: '', agents: [] };
     const pool = agents.length > 0 ? [...agents] : [agent];
     if (!pool.includes(agent)) pool.unshift(agent);
     return { agent, agents: pool };

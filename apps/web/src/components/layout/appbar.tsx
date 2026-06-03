@@ -432,47 +432,57 @@ export const Appbar = () => {
             </div>
           )}
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
-                disabled={!_project || switchAgentMutation.isPending}
-              >
-                <span className="text-[16px] text-text-1">
-                  {activeAgent
-                    ? activeAgent.label
-                    : _project
-                      ? getModelLabel(_project.model)
-                      : t("appbar.model")}
-                </span>
-                <ChevronDown className="h-4 w-4 text-text-2" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[220px]">
-              {poolAgentIds.map((agentId) => {
-                const preset = AGENTS.find((a) => a.id === agentId);
-                if (!preset) return null;
-                const Icon = preset.icon;
-                const isActive = agentId === _project?.agent;
-                return (
-                  <DropdownMenuItem
-                    key={agentId}
-                    className="gap-2.5 cursor-pointer"
-                    disabled={isActive}
-                    onSelect={() => {
-                      if (!isActive) switchAgentMutation.mutate(agentId);
-                    }}
-                  >
-                    <Icon className="h-4 w-4 text-primary-6" />
-                    <span className="flex-1">{preset.label}</span>
-                    {isActive && (
-                      <CheckCircle className="h-4 w-4 text-success-7" />
-                    )}
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          {poolAgentIds.length === 0 ? (
+            // Direct-model project (no agent pool): show the pinned model name
+            // as a static chip instead of an agent switcher.
+            <div className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4">
+              <span className="text-[16px] text-text-1">
+                {_project ? getModelLabel(_project.model) : t("appbar.model")}
+              </span>
+            </div>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
+                  disabled={!_project || switchAgentMutation.isPending}
+                >
+                  <span className="text-[16px] text-text-1">
+                    {activeAgent
+                      ? activeAgent.label
+                      : _project
+                        ? getModelLabel(_project.model)
+                        : t("appbar.model")}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-text-2" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-[220px]">
+                {poolAgentIds.map((agentId) => {
+                  const preset = AGENTS.find((a) => a.id === agentId);
+                  if (!preset) return null;
+                  const Icon = preset.icon;
+                  const isActive = agentId === _project?.agent;
+                  return (
+                    <DropdownMenuItem
+                      key={agentId}
+                      className="gap-2.5 cursor-pointer"
+                      disabled={isActive}
+                      onSelect={() => {
+                        if (!isActive) switchAgentMutation.mutate(agentId);
+                      }}
+                    >
+                      <Icon className="h-4 w-4 text-primary-6" />
+                      <span className="flex-1">{preset.label}</span>
+                      {isActive && (
+                        <CheckCircle className="h-4 w-4 text-success-7" />
+                      )}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
 
           {/* Per-project web search toggle. Always shown on a project so the
               control never vanishes. Interactive only when the org/team allows
