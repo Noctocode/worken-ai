@@ -299,7 +299,10 @@ export class ChatController {
       );
     };
     let usedTransport = transport;
-    const self = this;
+    // Capture the services as locals so the generator below doesn't have to
+    // alias `this` (and trip @typescript-eslint/no-this-alias).
+    const chatService = this.chatService;
+    const chatTransport = this.chatTransport;
     async function* streamWithFallback() {
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
@@ -307,12 +310,12 @@ export class ChatController {
         // re-resolve + re-gate for fallbacks (they may route differently).
         let t = transport;
         if (i > 0) {
-          t = await self.chatTransport.resolve({
+          t = await chatTransport.resolve({
             userId: user.id,
             modelIdentifier: candidate,
             projectId: conversation.projectId,
           });
-          await self.chatTransport.assertManagedBudgetApproved(t, user.id, {
+          await chatTransport.assertManagedBudgetApproved(t, user.id, {
             projectId: conversation.projectId,
           });
         }
@@ -320,7 +323,7 @@ export class ChatController {
         const candidateWebSearch = webSearch && t.source === 'openrouter';
         let producedOutput = false;
         let attemptError: { message: string; status?: number } | null = null;
-        for await (const ev of self.chatService.sendMessageStream(
+        for await (const ev of chatService.sendMessageStream(
           apiMessages,
           t.model,
           body.enableReasoning,
