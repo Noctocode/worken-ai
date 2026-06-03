@@ -5,6 +5,8 @@ export const arena: Record<keyof typeof arenaEn, string> = {
   'arena.addModels': 'Dodajte vsaj 2 modela za začetek primerjave',
   'arena.addModel': 'Dodaj model',
   'arena.answeredBy': 'odgovoril',
+  'arena.bestAnswer': 'Označi kot najboljši odgovor',
+  'arena.best': 'Najboljši',
   'arena.fallbackUnavailable': 'ni bil na voljo; odgovoril je',
   'arena.manageModels': 'Upravljaj modele',
   'arena.new': 'Novo',

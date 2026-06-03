@@ -20,6 +20,7 @@ import {
   Send,
   Sparkles,
   Square,
+  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -256,6 +257,10 @@ export default function CompareModelsPage() {
   // Per-panel actual model: set only when a fallback answered in place of the
   // picked model, so the card can show which model really responded.
   const [usedModels, setUsedModels] = useState<Record<string, string>>({});
+  // The model whose answer the user marked as their favorite for this
+  // comparison. Single-select — marking one clears the previous. Stays put
+  // until cleared or a new comparison starts.
+  const [favoriteModel, setFavoriteModel] = useState<string | null>(null);
 
   // Top-level evaluator phase. After all panels reach done/error
   // the BE moves on to running the comparison eval — the FE has no
@@ -617,6 +622,7 @@ export default function CompareModelsPage() {
     setExpectedOutput("");
     setResponses({});
     setUsedModels({});
+    setFavoriteModel(null);
     setEvaluations({});
     setEvaluatorError(null);
     setArenaError(null);
@@ -1002,6 +1008,10 @@ export default function CompareModelsPage() {
                       response={responses[id] ?? null}
                       evaluation={evaluations[id] ?? null}
                       status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                      isFavorite={favoriteModel === id}
+                      onToggleFavorite={() =>
+                        setFavoriteModel((prev) => (prev === id ? null : id))
+                      }
                       onCopy={(text) => copyText(text, getModelLabel(id))}
                     />
                   ))}
@@ -1023,6 +1033,10 @@ export default function CompareModelsPage() {
                         response={responses[id] ?? null}
                         evaluation={evaluations[id] ?? null}
                         status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                        isFavorite={favoriteModel === id}
+                        onToggleFavorite={() =>
+                          setFavoriteModel((prev) => (prev === id ? null : id))
+                        }
                         onCopy={(text) => copyText(text, getModelLabel(id))}
                       />
                     ))}
@@ -1219,12 +1233,17 @@ function ResponseCard({
   response,
   evaluation,
   status,
+  isFavorite,
+  onToggleFavorite,
   onCopy,
 }: {
   modelId: string;
   /** Set when a configured fallback answered in place of `modelId` (the
    *  picked model was dead/unavailable). Drives the "via …" indicator. */
   usedModel?: string;
+  /** True when this is the model whose answer the user marked as best. */
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
   response: string | null;
   evaluation: ModelEvaluation | null;
   /** Per-panel lifecycle. Drives the body's loading-style text:
@@ -1247,7 +1266,11 @@ function ResponseCard({
     usedModel && usedModel !== modelId ? getModelLabel(usedModel) : null;
 
   return (
-    <article className="flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4">
+    <article
+      className={`flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4 transition-shadow ${
+        isFavorite ? "ring-2 ring-success-7" : ""
+      }`}
+    >
       {/* Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -1359,7 +1382,7 @@ function ResponseCard({
       {evaluation && <EvaluationBlock evaluation={evaluation} />}
 
       {/* Footer actions */}
-      <footer className="flex items-center justify-end border-t border-border-2 pt-2">
+      <footer className="flex items-center justify-end gap-1 border-t border-border-2 pt-2">
         <button
           type="button"
           onClick={() => response && onCopy(response)}
@@ -1369,6 +1392,25 @@ function ResponseCard({
           aria-label={t("compareModels.titleCopy")}
         >
           <Clipboard className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          aria-pressed={isFavorite}
+          title={t("arena.bestAnswer")}
+          aria-label={t("arena.bestAnswer")}
+          className={`flex h-7 cursor-pointer items-center gap-1.5 rounded px-2 text-[12px] font-medium transition-colors ${
+            isFavorite
+              ? "bg-success-1 text-success-7"
+              : "text-text-3 hover:bg-bg-white hover:text-text-1"
+          }`}
+        >
+          <ThumbsUp
+            className="h-3.5 w-3.5"
+            fill={isFavorite ? "currentColor" : "none"}
+            strokeWidth={2}
+          />
+          {isFavorite && <span>{t("arena.best")}</span>}
         </button>
       </footer>
     </article>

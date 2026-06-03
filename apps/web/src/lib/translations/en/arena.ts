@@ -3,6 +3,8 @@ export const arena = {
   'arena.addModels': 'Add at least 2 models to start comparing',
   'arena.addModel': 'Add Model',
   'arena.answeredBy': 'answered by',
+  'arena.bestAnswer': 'Mark as best answer',
+  'arena.best': 'Best',
   'arena.fallbackUnavailable': 'was unavailable; answered by',
   'arena.manageModels': 'Manage Models',
   'arena.new': 'New',
