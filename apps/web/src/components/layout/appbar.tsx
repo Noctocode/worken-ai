@@ -56,6 +56,7 @@ import {
 } from "@/lib/api";
 import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -76,6 +77,15 @@ export const Appbar = () => {
   const queryClient = useQueryClient();
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
+  // The user's configured models (Team → Models) carry admin-set custom
+  // names that the catalog doesn't know. Prefer those for header labels so a
+  // Custom-model pool entry shows its alias name, falling back to the catalog
+  // name (presets resolve a raw catalog slug) and then the raw id.
+  const { effective: effectiveModels } = useUserModels();
+  const labelForModel = (id: string): string => {
+    const alias = effectiveModels.find((m) => m.id === id);
+    return alias ? alias.name : getModelLabel(id);
+  };
 
   // Model Arena back-arrow: the compare-models page dispatches its "viewing a
   // comparison" state so the appbar can show a back icon (left of the title)
@@ -163,7 +173,7 @@ export const Appbar = () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       const preset = AGENTS.find((a) => a.id === id);
       toast.success(
-        `${t("projDetail.switchedTo1")} ${preset?.label ?? getModelLabel(id)} ${t("projDetail.switchedTo2")}`,
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
       );
     },
     onError: (err) => {
@@ -455,7 +465,7 @@ export const Appbar = () => {
             // as a static chip instead of an agent switcher.
             <div className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4">
               <span className="text-[16px] text-text-1">
-                {_project ? getModelLabel(_project.model) : t("appbar.model")}
+                {_project ? labelForModel(_project.model) : t("appbar.model")}
               </span>
             </div>
           ) : (
@@ -469,7 +479,7 @@ export const Appbar = () => {
                     {activeAgent
                       ? activeAgent.label
                       : _project
-                        ? getModelLabel(_project.model)
+                        ? labelForModel(_project.model)
                         : t("appbar.model")}
                   </span>
                   <ChevronDown className="h-4 w-4 text-text-2" />
@@ -481,7 +491,7 @@ export const Appbar = () => {
                   // configured-model id (generic icon + model label).
                   const preset = AGENTS.find((a) => a.id === entryId);
                   const Icon = preset?.icon ?? Bot;
-                  const label = preset?.label ?? getModelLabel(entryId);
+                  const label = preset?.label ?? labelForModel(entryId);
                   const isActive = entryId === _project?.agent;
                   return (
                     <DropdownMenuItem
