@@ -67,6 +67,7 @@ import {
   fetchShortcuts,
   parseArenaAttachment,
   streamCompareModels,
+  updateArenaRunFavorite,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
@@ -261,6 +262,17 @@ export default function CompareModelsPage() {
   // comparison. Single-select — marking one clears the previous. Stays put
   // until cleared or a new comparison starts.
   const [favoriteModel, setFavoriteModel] = useState<string | null>(null);
+  // The saved run id for the current comparison (set once the evaluator
+  // persists the run, or when a history run is loaded). When present, the
+  // "best answer" pick is persisted to the DB so it survives reload.
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  // Mirror of favoriteModel for reads inside the streaming closure (which
+  // captures a stale value): lets the evaluation handler flush a pick the
+  // user made mid-stream once the run id finally lands.
+  const favoriteModelRef = useRef<string | null>(null);
+  useEffect(() => {
+    favoriteModelRef.current = favoriteModel;
+  }, [favoriteModel]);
 
   // Top-level evaluator phase. After all panels reach done/error
   // the BE moves on to running the comparison eval — the FE has no
@@ -570,12 +582,22 @@ export default function CompareModelsPage() {
           }
           setEvaluations(nextEvaluations);
           if (event.runId) {
+            const runId = event.runId;
             const newEntry: HistoryEntry = {
-              id: event.runId,
+              id: runId,
               question,
               createdAt: new Date().toISOString(),
             };
             setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+            setCurrentRunId(runId);
+            // Persist a "best answer" the user may have marked before the run
+            // was saved (the toggle couldn't reach the DB without a run id).
+            if (favoriteModelRef.current) {
+              void updateArenaRunFavorite(
+                runId,
+                favoriteModelRef.current,
+              ).catch(() => {});
+            }
           }
         }
         // `done` event is a noop — loop exits naturally after it.
@@ -630,8 +652,27 @@ export default function CompareModelsPage() {
     setEvaluatorStatus("idle");
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
+    setCurrentRunId(null);
     setAttachedFile(null);
   }, []);
+
+  // Toggle the "best answer" pick (single-select). Persists to the saved run
+  // when one already exists; otherwise it's persisted once the run is saved
+  // (the evaluation handler flushes the pending pick).
+  const toggleFavorite = useCallback(
+    (modelId: string) => {
+      setFavoriteModel((prev) => {
+        const next = prev === modelId ? null : modelId;
+        if (currentRunId) {
+          void updateArenaRunFavorite(currentRunId, next).catch(() => {
+            toast.error(t("compareModels.toastSaveFavoriteFailed"));
+          });
+        }
+        return next;
+      });
+    },
+    [currentRunId, t],
+  );
 
   const changeModel = (index: number, newId: string) => {
     setSelectedModels((prev) => {
@@ -707,6 +748,10 @@ export default function CompareModelsPage() {
           setDisabledModels(new Set());
           setSubmittedQuestion(run.question);
           setLoadedRunCreatedAt(run.createdAt);
+          // Restore the saved "best answer" pick and bind to this run so
+          // toggling persists straight back to it.
+          setCurrentRunId(run.id);
+          setFavoriteModel(run.favoriteModel ?? null);
           const nextResponses: Record<string, string | null> = {};
           const nextEvaluations: Record<string, ModelEvaluation | null> = {};
           const nextStatuses: Record<string, ModelStatus> = {};
@@ -1009,9 +1054,7 @@ export default function CompareModelsPage() {
                       evaluation={evaluations[id] ?? null}
                       status={modelStatuses[id] ?? (loading ? "pending" : "done")}
                       isFavorite={favoriteModel === id}
-                      onToggleFavorite={() =>
-                        setFavoriteModel((prev) => (prev === id ? null : id))
-                      }
+                      onToggleFavorite={() => toggleFavorite(id)}
                       onCopy={(text) => copyText(text, getModelLabel(id))}
                     />
                   ))}
@@ -1034,9 +1077,7 @@ export default function CompareModelsPage() {
                         evaluation={evaluations[id] ?? null}
                         status={modelStatuses[id] ?? (loading ? "pending" : "done")}
                         isFavorite={favoriteModel === id}
-                        onToggleFavorite={() =>
-                          setFavoriteModel((prev) => (prev === id ? null : id))
-                        }
+                        onToggleFavorite={() => toggleFavorite(id)}
                         onCopy={(text) => copyText(text, getModelLabel(id))}
                       />
                     ))}

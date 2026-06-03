@@ -68,6 +68,7 @@ export const arena: Record<keyof typeof arenaEn, string> = {
   'modelSugg.tryIt': 'Poskusi',
   'modelSugg.dismiss': 'Opusti predlog',
   'compareModels.toastStopped': 'Primerjava ustavljena.',
+  'compareModels.toastSaveFavoriteFailed': 'Izbire najboljšega odgovora ni bilo mogoče shraniti.',
   'compareModels.toastCopyFailed': 'Kopiranje v odložišče ni uspelo.',
   'compareModels.placeholderSearchModels': 'Iskanje modelov',
   'compareModels.placeholderSearchPrompts': 'Iskanje vaših pozivov',

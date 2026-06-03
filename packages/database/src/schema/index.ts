@@ -389,6 +389,8 @@ export const arenaRuns = pgTable("arena_runs", {
   models: jsonb("models").notNull(),
   responses: jsonb("responses").notNull(),
   comparison: jsonb("comparison").notNull(),
+  // Model whose answer the user marked as best for this run. NULL = none.
+  favoriteModel: text("favorite_model"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

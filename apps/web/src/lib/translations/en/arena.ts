@@ -66,6 +66,7 @@ export const arena = {
   'modelSugg.tryIt': 'Try It',
   'modelSugg.dismiss': 'Dismiss suggestion',
   'compareModels.toastStopped': 'Comparison stopped.',
+  'compareModels.toastSaveFavoriteFailed': "Couldn't save your best-answer pick.",
   'compareModels.toastCopyFailed': "Couldn't copy to clipboard.",
   'compareModels.placeholderSearchModels': 'Search Models',
   'compareModels.placeholderSearchPrompts': 'Search your prompts',

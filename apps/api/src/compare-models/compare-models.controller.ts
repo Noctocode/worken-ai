@@ -11,6 +11,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   Res,
@@ -751,8 +752,53 @@ export class CompareModelsController {
       models: row.models as string[],
       responses: row.responses as ModelResponse[],
       comparison: row.comparison as ComparisonItem[],
+      favoriteModel: row.favoriteModel ?? null,
       createdAt: row.createdAt,
     };
+  }
+
+  /**
+   * Mark (or clear) the model whose answer the user liked best for a run.
+   * `favoriteModel: null` clears it. Must be one of the run's models.
+   */
+  @Patch('runs/:id')
+  async updateRunFavorite(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { favoriteModel?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    if (
+      body.favoriteModel !== undefined &&
+      body.favoriteModel !== null &&
+      typeof body.favoriteModel !== 'string'
+    ) {
+      throw new BadRequestException(
+        '`favoriteModel` must be a string or null.',
+      );
+    }
+
+    const [row] = await this.db
+      .select({ models: arenaRuns.models })
+      .from(arenaRuns)
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)));
+    if (!row) {
+      throw new NotFoundException('Arena run not found.');
+    }
+
+    const favorite = body.favoriteModel ?? null;
+    const models = Array.isArray(row.models) ? (row.models as string[]) : [];
+    if (favorite !== null && !models.includes(favorite)) {
+      throw new BadRequestException(
+        '`favoriteModel` must be one of the run’s models.',
+      );
+    }
+
+    await this.db
+      .update(arenaRuns)
+      .set({ favoriteModel: favorite })
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)));
+
+    return { id, favoriteModel: favorite };
   }
 
   @Delete('runs/:id')

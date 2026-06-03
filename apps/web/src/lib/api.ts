@@ -1754,6 +1754,8 @@ export interface ArenaRunDetail {
   models: string[];
   responses: ModelResponse[];
   comparison: ModelComparisonEntry[];
+  /** Model the user marked as best for this run (null = none). */
+  favoriteModel?: string | null;
   createdAt: string;
 }
 
@@ -1772,6 +1774,19 @@ export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
 export async function deleteArenaRun(id: string): Promise<void> {
   const res = await apiFetch(`/compare-models/runs/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete arena run");
+}
+
+/** Persist (or clear with null) the user's "best answer" pick for a run. */
+export async function updateArenaRunFavorite(
+  id: string,
+  favoriteModel: string | null,
+): Promise<void> {
+  const res = await apiFetch(`/compare-models/runs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favoriteModel }),
+  });
+  if (!res.ok) throw new Error("Failed to save best answer");
 }
 
 export async function parseArenaAttachment(
