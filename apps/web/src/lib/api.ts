@@ -1108,6 +1108,10 @@ export type ChatStreamEvent =
       costUsd?: number | null;
       partial?: boolean;
       alternativeModel?: AlternativeModelSuggestion;
+      /** Model that actually answered (a fallback when it differs from the
+       *  requested one), and the originally-requested model. */
+      model?: string;
+      requestedModel?: string;
     };
 
 /**
@@ -1256,6 +1260,11 @@ export async function* streamChatMessage(
             costUsd:
               typeof data.costUsd === "number" ? data.costUsd : null,
             partial: data.partial === true,
+            model: typeof data.model === "string" ? data.model : undefined,
+            requestedModel:
+              typeof data.requestedModel === "string"
+                ? data.requestedModel
+                : undefined,
           };
         }
       }
@@ -1568,9 +1577,12 @@ export type CompareModelsStreamEvent =
   | { type: "model-delta"; model: string; text: string }
   | { type: "model-replace"; model: string; text: string }
   | { type: "model-error"; model: string; message: string; status?: number }
+  | { type: "model-fallback"; model: string; usedModel: string }
   | {
       type: "model-done";
       model: string;
+      /** Model that actually answered (differs from `model` on a fallback). */
+      usedModel?: string;
       totalTokens?: number;
       costUsd?: number | null;
       time?: number;
@@ -1679,10 +1691,18 @@ export async function* streamCompareModels(
             message: data.message as string,
             status: typeof data.status === "number" ? data.status : undefined,
           };
+        } else if (frame.event === "model-fallback") {
+          yield {
+            type: "model-fallback",
+            model: data.model as string,
+            usedModel: data.usedModel as string,
+          };
         } else if (frame.event === "model-done") {
           yield {
             type: "model-done",
             model: data.model as string,
+            usedModel:
+              typeof data.usedModel === "string" ? data.usedModel : undefined,
             totalTokens:
               typeof data.totalTokens === "number"
                 ? data.totalTokens
@@ -1734,6 +1754,8 @@ export interface ArenaRunDetail {
   models: string[];
   responses: ModelResponse[];
   comparison: ModelComparisonEntry[];
+  /** Model the user marked as best for this run (null = none). */
+  favoriteModel?: string | null;
   createdAt: string;
 }
 
@@ -1752,6 +1774,19 @@ export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
 export async function deleteArenaRun(id: string): Promise<void> {
   const res = await apiFetch(`/compare-models/runs/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete arena run");
+}
+
+/** Persist (or clear with null) the user's "best answer" pick for a run. */
+export async function updateArenaRunFavorite(
+  id: string,
+  favoriteModel: string | null,
+): Promise<void> {
+  const res = await apiFetch(`/compare-models/runs/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ favoriteModel }),
+  });
+  if (!res.ok) throw new Error("Failed to save best answer");
 }
 
 export async function parseArenaAttachment(

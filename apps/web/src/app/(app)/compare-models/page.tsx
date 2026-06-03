@@ -20,6 +20,7 @@ import {
   Send,
   Sparkles,
   Square,
+  ThumbsUp,
   Trash2,
   X,
 } from "lucide-react";
@@ -66,6 +67,7 @@ import {
   fetchShortcuts,
   parseArenaAttachment,
   streamCompareModels,
+  updateArenaRunFavorite,
   type ArenaRunSummary,
   type PromptSummary,
   type Shortcut,
@@ -253,6 +255,24 @@ export default function CompareModelsPage() {
   const [modelStatuses, setModelStatuses] = useState<
     Record<string, ModelStatus>
   >({});
+  // Per-panel actual model: set only when a fallback answered in place of the
+  // picked model, so the card can show which model really responded.
+  const [usedModels, setUsedModels] = useState<Record<string, string>>({});
+  // The model whose answer the user marked as their favorite for this
+  // comparison. Single-select — marking one clears the previous. Stays put
+  // until cleared or a new comparison starts.
+  const [favoriteModel, setFavoriteModel] = useState<string | null>(null);
+  // The saved run id for the current comparison (set once the evaluator
+  // persists the run, or when a history run is loaded). When present, the
+  // "best answer" pick is persisted to the DB so it survives reload.
+  const [currentRunId, setCurrentRunId] = useState<string | null>(null);
+  // Mirror of favoriteModel for reads inside the streaming closure (which
+  // captures a stale value): lets the evaluation handler flush a pick the
+  // user made mid-stream once the run id finally lands.
+  const favoriteModelRef = useRef<string | null>(null);
+  useEffect(() => {
+    favoriteModelRef.current = favoriteModel;
+  }, [favoriteModel]);
 
   // Top-level evaluator phase. After all panels reach done/error
   // the BE moves on to running the comparison eval — the FE has no
@@ -455,6 +475,13 @@ export default function CompareModelsPage() {
             ...prev,
             [event.model]: buffers[event.model],
           }));
+        } else if (event.type === "model-fallback") {
+          // The picked model was dead/unavailable; a configured fallback
+          // answered instead. Record it so the panel shows the real model.
+          setUsedModels((prev) => ({
+            ...prev,
+            [event.model]: event.usedModel,
+          }));
         } else if (event.type === "model-replace") {
           // Per-model output guardrail fix-rule pass; swap the
           // panel's visible text for the redacted version.
@@ -499,6 +526,12 @@ export default function CompareModelsPage() {
             return next;
           });
         } else if (event.type === "model-done") {
+          // Belt-and-suspenders: also capture the used model from the final
+          // event in case the fallback notice was missed.
+          if (event.usedModel && event.usedModel !== event.model) {
+            const used = event.usedModel;
+            setUsedModels((prev) => ({ ...prev, [event.model]: used }));
+          }
           // Per-model totals arrive here. We don't surface them
           // outside the evaluation card below today; the BE
           // already records observability events. Settle the
@@ -549,12 +582,22 @@ export default function CompareModelsPage() {
           }
           setEvaluations(nextEvaluations);
           if (event.runId) {
+            const runId = event.runId;
             const newEntry: HistoryEntry = {
-              id: event.runId,
+              id: runId,
               question,
               createdAt: new Date().toISOString(),
             };
             setHistory((prev) => [newEntry, ...prev].slice(0, 50));
+            setCurrentRunId(runId);
+            // Persist a "best answer" the user may have marked before the run
+            // was saved (the toggle couldn't reach the DB without a run id).
+            if (favoriteModelRef.current) {
+              void updateArenaRunFavorite(
+                runId,
+                favoriteModelRef.current,
+              ).catch(() => {});
+            }
           }
         }
         // `done` event is a noop — loop exits naturally after it.
@@ -600,6 +643,8 @@ export default function CompareModelsPage() {
     setQuestion("");
     setExpectedOutput("");
     setResponses({});
+    setUsedModels({});
+    setFavoriteModel(null);
     setEvaluations({});
     setEvaluatorError(null);
     setArenaError(null);
@@ -607,8 +652,27 @@ export default function CompareModelsPage() {
     setEvaluatorStatus("idle");
     setSubmittedQuestion(null);
     setLoadedRunCreatedAt(null);
+    setCurrentRunId(null);
     setAttachedFile(null);
   }, []);
+
+  // Toggle the "best answer" pick (single-select). Persists to the saved run
+  // when one already exists; otherwise it's persisted once the run is saved
+  // (the evaluation handler flushes the pending pick).
+  const toggleFavorite = useCallback(
+    (modelId: string) => {
+      setFavoriteModel((prev) => {
+        const next = prev === modelId ? null : modelId;
+        if (currentRunId) {
+          void updateArenaRunFavorite(currentRunId, next).catch(() => {
+            toast.error(t("compareModels.toastSaveFavoriteFailed"));
+          });
+        }
+        return next;
+      });
+    },
+    [currentRunId, t],
+  );
 
   const changeModel = (index: number, newId: string) => {
     setSelectedModels((prev) => {
@@ -684,6 +748,10 @@ export default function CompareModelsPage() {
           setDisabledModels(new Set());
           setSubmittedQuestion(run.question);
           setLoadedRunCreatedAt(run.createdAt);
+          // Restore the saved "best answer" pick and bind to this run so
+          // toggling persists straight back to it.
+          setCurrentRunId(run.id);
+          setFavoriteModel(run.favoriteModel ?? null);
           const nextResponses: Record<string, string | null> = {};
           const nextEvaluations: Record<string, ModelEvaluation | null> = {};
           const nextStatuses: Record<string, ModelStatus> = {};
@@ -788,16 +856,12 @@ export default function CompareModelsPage() {
   }
 
   return (
-    // `flex-1 h-0` (not `h-full`) — the app shell wraps pages in a
-    // `min-height flex-col` container, which is *min-height*, not
-    // height. That means `h-full` here resolves to auto and the row
-    // below grows with whatever the right rail contains, dragging
-    // the white card with it (so expanding History made the card
-    // visibly "jump"). Using flex-grow against `h-0` forces this
-    // wrapper to claim the remaining definite height of the shell,
-    // which gives the row a fixed height and lets the aside scroll
-    // its history list internally instead of pushing the layout.
-    <div className="flex h-0 min-h-0 flex-1 flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
+    // Natural height: the page grows with its content and the app shell's
+    // own scroll container (layout.tsx → the `overflow-y-auto` wrapper
+    // around {children}) handles scrolling at page level. We deliberately
+    // do NOT claim a fixed shell height here, so the comparison card never
+    // traps content in an inner scrollbar.
+    <div className="flex flex-col gap-3 lg:gap-6 pb-3 lg:pb-6">
       {/* Mobile in-page header — the desktop appbar (default variant)
           renders the "Model Arena" title + the "New Comparison"
           appbarAction. At <md the appbar collapses to MobileTopbar
@@ -837,35 +901,16 @@ export default function CompareModelsPage() {
         </div>
       </div>
 
-      {/* Body shell: main column + optional right rail.
-          Switched to CSS Grid at lg+ specifically to decouple the
-          two columns' heights. Flexbox with align-items:stretch was
-          propagating the rail's intrinsic content height back into
-          the main card whenever History expanded — the row grew to
-          fit the rail and dragged the white card with it. Grid
-          assigns each cell its own track height (1fr of a bounded
-          row), so the columns are sized independently and each
-          handles its own internal scroll without affecting the
-          other. */}
-      <div className="flex flex-col min-h-0 flex-1 gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:overflow-hidden">
-        {/* Main column — white card per Figma. Layout is intentionally
-            *static*: scrollable area always takes the remaining height
-            and the composer stays pinned at the bottom, regardless of
-            whether a comparison is loaded, history is expanded, or the
-            rail is open. Keeps the white card visually stable across
-            state transitions. */}
-        {/* Main card. On mobile we fill the column (flex-1 inside the
-            flex-col body shell) so the composer pins at viewport
-            bottom — typical chat UX. On desktop we drop that: the
-            card sits at the top of its grid cell (self-start) at a
-            fixed 750px height — auto-content was too cramped for
-            the placeholder/composer pair, and stretching to the
-            row brought back the rail-driven jump. Fixed height
-            decouples from rail, gives the placeholder its centered
-            whitespace, and lets the composer sit at the card's
-            bottom edge with internal scroll for long streams. */}
-        <section className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6 lg:min-h-0 lg:self-start lg:h-[750px]">
-          <div className="flex min-h-0 flex-1 flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-1">
+      {/* Body shell: main column + optional right rail. CSS Grid at lg+
+          keeps the two columns side by side; rows are auto-height
+          (items-start) so each column grows with its content and the page
+          — not an inner box — handles scrolling. */}
+      <div className="flex flex-col gap-3 lg:grid lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-6 lg:items-start">
+        {/* Main column — white card per Figma. Height is content-driven:
+            the card grows with the responses/composer and the page scrolls,
+            rather than the content scrolling inside a fixed-height box. */}
+        <section className="flex min-w-0 flex-col gap-3 rounded-xl bg-bg-white p-3 lg:gap-4 lg:rounded-[20px] lg:p-6">
+          <div className="flex flex-col gap-3 lg:gap-4">
             {!hasResults && !loading && !submittedQuestion && (
               // `my-auto` keeps the placeholder vertically centred inside
               // the scrollable area without changing the area's flex
@@ -1004,9 +1049,12 @@ export default function CompareModelsPage() {
                     <ResponseCard
                       key={id}
                       modelId={id}
+                      usedModel={usedModels[id]}
                       response={responses[id] ?? null}
                       evaluation={evaluations[id] ?? null}
                       status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                      isFavorite={favoriteModel === id}
+                      onToggleFavorite={() => toggleFavorite(id)}
                       onCopy={(text) => copyText(text, getModelLabel(id))}
                     />
                   ))}
@@ -1024,9 +1072,12 @@ export default function CompareModelsPage() {
                       <ResponseCard
                         key={id}
                         modelId={id}
+                        usedModel={usedModels[id]}
                         response={responses[id] ?? null}
                         evaluation={evaluations[id] ?? null}
                         status={modelStatuses[id] ?? (loading ? "pending" : "done")}
+                        isFavorite={favoriteModel === id}
+                        onToggleFavorite={() => toggleFavorite(id)}
                         onCopy={(text) => copyText(text, getModelLabel(id))}
                       />
                     ))}
@@ -1062,7 +1113,7 @@ export default function CompareModelsPage() {
             Re-introduce as a slide-out Sheet in a follow-up if mobile
             users need history access without scrolling sideways. */}
         {railOpen ? (
-          <div className="hidden lg:flex lg:min-h-0 lg:overflow-hidden">
+          <div className="hidden lg:flex">
             <RightRail
               selectedModels={selectedModels}
               disabledModels={disabledModels}
@@ -1219,12 +1270,21 @@ function PromptBubble({ question }: { question: string }) {
 
 function ResponseCard({
   modelId,
+  usedModel,
   response,
   evaluation,
   status,
+  isFavorite,
+  onToggleFavorite,
   onCopy,
 }: {
   modelId: string;
+  /** Set when a configured fallback answered in place of `modelId` (the
+   *  picked model was dead/unavailable). Drives the "via …" indicator. */
+  usedModel?: string;
+  /** True when this is the model whose answer the user marked as best. */
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
   response: string | null;
   evaluation: ModelEvaluation | null;
   /** Per-panel lifecycle. Drives the body's loading-style text:
@@ -1242,9 +1302,16 @@ function ResponseCard({
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
   const provider = getModelProvider(modelId);
+  // When a fallback answered, surface the model that actually responded.
+  const usedLabel =
+    usedModel && usedModel !== modelId ? getModelLabel(usedModel) : null;
 
   return (
-    <article className="flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4">
+    <article
+      className={`flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4 transition-shadow ${
+        isFavorite ? "ring-2 ring-success-7" : ""
+      }`}
+    >
       {/* Header */}
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
@@ -1253,9 +1320,19 @@ function ResponseCard({
           >
             <Bot className="h-3.5 w-3.5" strokeWidth={2} />
           </span>
-          <span className="truncate text-[14px] font-medium text-text-2">
-            {label}
-          </span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-[14px] font-medium text-text-2">
+              {label}
+            </span>
+            {usedLabel && (
+              <span
+                className="truncate text-[11px] text-warning-6"
+                title={`${label} ${t("arena.fallbackUnavailable")} ${usedLabel}`}
+              >
+                ↳ {t("arena.answeredBy")} {usedLabel}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {evaluation?.time !== undefined && (
@@ -1289,6 +1366,9 @@ function ResponseCard({
               <div className="flex flex-col gap-1.5 px-2 py-1.5 text-[11px]">
                 <InfoRow label="Provider" value={provider} />
                 <InfoRow label="Model ID" value={modelId} mono />
+                {usedLabel && (
+                  <InfoRow label={t("arena.answeredBy")} value={usedLabel} />
+                )}
                 <InfoRow label="Tier" value="Free" />
                 {evaluation?.totalTokens !== undefined && (
                   <InfoRow label="Tokens" value={String(evaluation.totalTokens)} />
@@ -1343,7 +1423,7 @@ function ResponseCard({
       {evaluation && <EvaluationBlock evaluation={evaluation} />}
 
       {/* Footer actions */}
-      <footer className="flex items-center justify-end border-t border-border-2 pt-2">
+      <footer className="flex items-center justify-end gap-1 border-t border-border-2 pt-2">
         <button
           type="button"
           onClick={() => response && onCopy(response)}
@@ -1353,6 +1433,25 @@ function ResponseCard({
           aria-label={t("compareModels.titleCopy")}
         >
           <Clipboard className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onToggleFavorite}
+          aria-pressed={isFavorite}
+          title={t("arena.bestAnswer")}
+          aria-label={t("arena.bestAnswer")}
+          className={`flex h-7 cursor-pointer items-center gap-1.5 rounded px-2 text-[12px] font-medium transition-colors ${
+            isFavorite
+              ? "bg-success-1 text-success-7"
+              : "text-text-3 hover:bg-bg-white hover:text-text-1"
+          }`}
+        >
+          <ThumbsUp
+            className="h-3.5 w-3.5"
+            fill={isFavorite ? "currentColor" : "none"}
+            strokeWidth={2}
+          />
+          {isFavorite && <span>{t("arena.best")}</span>}
         </button>
       </footer>
     </article>
@@ -1533,6 +1632,7 @@ function Composer({
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
+  const expectedRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-grow the question textarea to fit its content, capped so a
   // pasted novel can't push the composer to fill the page. Past the
@@ -1546,6 +1646,19 @@ function Composer({
     ta.style.height = `${next}px`;
     ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
   }, [question]);
+
+  // Auto-grow the expected-output textarea the same way: fit content up to a
+  // cap, then scroll internally past it (replaces the manual resize handle /
+  // fixed-height scroller).
+  useEffect(() => {
+    const ta = expectedRef.current;
+    if (!ta) return;
+    const MAX = 160;
+    ta.style.height = "auto";
+    const next = Math.min(ta.scrollHeight, MAX);
+    ta.style.height = `${next}px`;
+    ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
+  }, [expectedOutput]);
 
   function handleInsertShortcut(shortcut: Shortcut) {
     const ta = questionRef.current;
@@ -1657,10 +1770,12 @@ function Composer({
         </div>
         {/* Expected output (functional addition — not in Figma) */}
         <textarea
+          ref={expectedRef}
           value={expectedOutput}
           onChange={(e) => setExpectedOutput(e.target.value)}
           placeholder={t("arena.expectedOutput")}
-          className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+          rows={1}
+          className="min-h-[24px] w-full resize-none overflow-hidden border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
         {/* Attached file pill — single slot. */}

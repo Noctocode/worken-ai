@@ -42,9 +42,7 @@ export class OrgSettingsController {
       .from(users)
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role !== 'admin') {
-      throw new ForbiddenException(
-        'Only admins can change company settings.',
-      );
+      throw new ForbiddenException('Only admins can change company settings.');
     }
     return this.orgSettings.update(body, caller.id);
   }

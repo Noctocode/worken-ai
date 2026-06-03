@@ -71,6 +71,11 @@ interface LocalMessage {
    *  the `citations` SSE event and hydrated from metadata.citations on
    *  reload; renders a "Sources" list under the bubble. */
   citations?: WebCitation[];
+  /** Set only when a configured fallback model answered in place of the
+   *  requested one (the requested model was dead/unavailable). Streamed via
+   *  the `done` event and hydrated from metadata.model on reload; renders an
+   *  "answered by …" note so the substitution is visible. */
+  usedModel?: string;
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
@@ -226,6 +231,14 @@ export default function ProjectChatPage() {
               ? (meta.reasoning_details as string)
               : undefined,
           citations: citations.length > 0 ? citations : undefined,
+          // A fallback answered only when the persisted model differs from the
+          // requested one (BE stores `requestedModel` alongside `model`).
+          usedModel:
+            typeof meta?.model === "string" &&
+            typeof meta?.requestedModel === "string" &&
+            meta.model !== meta.requestedModel
+              ? meta.model
+              : undefined,
           partial: meta?.partial === true,
           userId: m.userId,
           userName: m.userName,
@@ -477,6 +490,20 @@ export default function ProjectChatPage() {
                 m.id === assistantId
                   ? { ...m, alternativeModel: event.alternativeModel }
                   : m,
+              ),
+            );
+          }
+          // Surface the actual model when a fallback answered in place of the
+          // requested one, so the substitution is never silent.
+          if (
+            event.model &&
+            event.requestedModel &&
+            event.model !== event.requestedModel
+          ) {
+            const used = event.model;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantId ? { ...m, usedModel: used } : m,
               ),
             );
           }
@@ -990,6 +1017,16 @@ export default function ProjectChatPage() {
                             strokeWidth={0}
                           />
                           {t("projDetail.stopped")}
+                        </span>
+                      )}
+                      {msg.role === "assistant" && msg.usedModel && (
+                        // The requested model was unavailable; a configured
+                        // fallback answered. Show which one so it's not silent.
+                        <span
+                          className="ml-2 inline-flex items-center rounded-full bg-warning-1 px-1.5 py-0.5 text-[10px] font-medium text-warning-7"
+                          title={`${t("projDetail.answeredBy")} ${msg.usedModel}`}
+                        >
+                          ↳ {t("projDetail.answeredBy")} {msg.usedModel}
                         </span>
                       )}
                     </span>

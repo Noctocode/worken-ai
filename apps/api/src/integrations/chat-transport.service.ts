@@ -433,6 +433,75 @@ export class ChatTransportService {
   }
 
   /**
+   * Configured fallback model ids for an alias, in the user-specified order.
+   * Mirrors `resolve`'s alias lookup (team-scoped first, then user-personal)
+   * so the chat + arena stream paths can retry a dead/unavailable model with
+   * the next fallback. Returns [] when no alias matches or none are set; the
+   * primary itself and duplicates are filtered out so the attempt list stays
+   * clean.
+   */
+  async resolveFallbackModels(input: {
+    userId: string;
+    modelIdentifier: string;
+    projectId?: string | null;
+    teamId?: string | null;
+  }): Promise<string[]> {
+    const { userId, modelIdentifier, projectId, teamId } = input;
+
+    let teamScopeId = teamId ?? null;
+    if (!teamScopeId && projectId) {
+      const [proj] = await this.db
+        .select({ teamId: projects.teamId })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      teamScopeId = proj?.teamId ?? null;
+    }
+
+    let row: { fallbackModels: unknown } | undefined;
+    if (teamScopeId) {
+      const [teamAlias] = await this.db
+        .select({ fallbackModels: modelConfigs.fallbackModels })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.teamId, teamScopeId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (teamAlias) row = teamAlias;
+    }
+    if (!row) {
+      const [userAlias] = await this.db
+        .select({ fallbackModels: modelConfigs.fallbackModels })
+        .from(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, userId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.modelIdentifier, modelIdentifier),
+          ),
+        )
+        .limit(1);
+      if (userAlias) row = userAlias;
+    }
+
+    const raw = Array.isArray(row?.fallbackModels)
+      ? (row.fallbackModels as unknown[])
+      : [];
+    const out: string[] = [];
+    const seen = new Set<string>([modelIdentifier]);
+    for (const m of raw) {
+      if (typeof m === 'string' && m && !seen.has(m)) {
+        seen.add(m);
+        out.push(m);
+      }
+    }
+    return out;
+  }
+
+  /**
    * Pending-approval gate for Managed Cloud (OpenRouter-routed) calls.
    *
    * Managed-Cloud users sit at `monthlyBudgetCents = 0` from onboarding

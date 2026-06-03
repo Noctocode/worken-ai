@@ -30,5 +30,6 @@ export const projects = {
   'projDetail.showThinking': 'Show thinking',
   'projDetail.sources': 'Sources',
   'projDetail.stopped': 'Stopped',
+  'projDetail.answeredBy': 'answered by',
   'projDetail.noResponse': 'No response from the AI gateway. The streaming endpoint may not be available — try refreshing the page, and if the problem persists, restart the API server.',
 } as const;

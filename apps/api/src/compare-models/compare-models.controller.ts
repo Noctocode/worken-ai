@@ -11,6 +11,7 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
   Res,
@@ -31,7 +32,10 @@ import {
   GUARDRAIL_BLOCKED_MARKER,
   GuardrailEvaluatorService,
 } from '../guardrails/guardrail-evaluator.service.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  type ChatTransport,
+} from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
@@ -296,62 +300,32 @@ export class CompareModelsController {
         // non-stream arena. Failures here become a model-error SSE
         // event so only this panel shows the failure; the rest keep
         // streaming.
-        let transport;
-        try {
-          transport = await this.chatTransport.resolve({
-            userId: user.id,
-            modelIdentifier: model,
-            teamId,
-          });
-          await this.chatTransport.assertManagedBudgetApproved(
-            transport,
-            user.id,
-            { teamId },
+        // Model attempt list: requested model first, then its configured
+        // fallbacks (in order). A retryable failure (dead/unavailable model —
+        // "no endpoints found", 404, provider 5xx) before any token reaches
+        // this panel switches to the next candidate. `usedModel` records which
+        // one actually answered so the FE can show the substituted model.
+        const fallbackModels = await this.chatTransport.resolveFallbackModels({
+          userId: user.id,
+          modelIdentifier: model,
+          teamId,
+        });
+        const candidates = [model, ...fallbackModels];
+        // Fall back if a candidate emits no token within this window AND a
+        // fallback exists ("timeouts (3s) or returns error" per Models tab).
+        const FALLBACK_FIRST_TOKEN_TIMEOUT_MS = 3000;
+        const isRetryableModelError = (status?: number, message?: string) => {
+          const m = (message ?? '').toLowerCase();
+          return (
+            m.includes('no endpoints found') ||
+            m.includes('model not found') ||
+            status === 404 ||
+            (status != null && status >= 500)
           );
-          const promptTokens = Math.ceil(safeQuestion.length / 4);
-          const estimatedCostUsd = await this.catalogService.estimateCost(
-            model,
-            promptTokens,
-            4096,
-          );
-          const estimatedCostCents =
-            estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
-          await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
-            teamId,
-            estimatedCostCents,
-          });
-          await this.chatTransport.assertTeamBudgetNotExceeded({
-            teamId,
-            estimatedCostCents,
-          });
-          await this.chatTransport.assertOrgBudgetNotExceeded({
-            estimatedCostCents,
-            callerUserId: user.id,
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const status =
-            err instanceof HttpException ? err.getStatus() : undefined;
-          sendEvent('model-error', { model, message: msg, status });
-          void this.observabilityService.recordLLMCall({
-            userId: user.id,
-            teamId,
-            eventType: 'arena_call',
-            model,
-            latencyMs: Date.now() - modelStart,
-            success: false,
-            errorMessage: msg,
-            prompt: safeQuestion,
-            metadata: { streamed: true },
-          });
-          return;
-        }
+        };
 
-        // Stream the model. Reasoning is OFF for arena — arena UI
-        // doesn't have a thinking pane, and the per-model panel is
-        // already showing the visible answer. Reuses ChatService
-        // streaming primitive so there's only one place that
-        // maps SDK chunk shapes to ChatStreamEvent.
+        let transport: ChatTransport | null = null;
+        let usedModel = model;
         let buffer = '';
         let promptTokens: number | undefined;
         let completionTokens: number | undefined;
@@ -359,42 +333,161 @@ export class CompareModelsController {
         let costUsd: number | undefined;
         let modelErrored = false;
         let errorPayload: { message: string; status?: number } | null = null;
+        let preflightFailed = false;
 
-        try {
-          for await (const event of this.chatService.sendMessageStream(
-            [{ role: 'user', content: safeQuestion }],
-            transport.model,
-            false,
-            composedContext || undefined,
-            transport.apiKey,
-            transport.baseURL,
-            transport.kind,
-            { signal: abortController.signal },
-          )) {
-            if (event.type === 'content') {
-              buffer += event.delta;
-              sendEvent('model-delta', { model, text: event.delta });
-            } else if (event.type === 'usage') {
-              promptTokens = event.promptTokens;
-              completionTokens = event.completionTokens;
-              totalTokens = event.totalTokens;
-              costUsd = event.costUsd;
-            } else if (event.type === 'error') {
-              modelErrored = true;
-              errorPayload = {
-                message: event.message,
-                status: event.status,
-              };
-              break;
-            }
-            // `reasoning` events ignored — arena UI doesn't render
-            // thinking text.
+        for (let ci = 0; ci < candidates.length; ci++) {
+          const candidate = candidates[ci];
+
+          // Per-candidate pre-flight (transport + budget gates). A failure
+          // here is a budget/approval problem, not model availability — it
+          // ends the panel rather than falling back.
+          let t: ChatTransport;
+          try {
+            t = await this.chatTransport.resolve({
+              userId: user.id,
+              modelIdentifier: candidate,
+              teamId,
+            });
+            await this.chatTransport.assertManagedBudgetApproved(t, user.id, {
+              teamId,
+            });
+            const promptTok = Math.ceil(safeQuestion.length / 4);
+            const estimatedCostUsd = await this.catalogService.estimateCost(
+              candidate,
+              promptTok,
+              4096,
+            );
+            const estimatedCostCents =
+              estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
+            await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+              teamId,
+              estimatedCostCents,
+            });
+            await this.chatTransport.assertTeamBudgetNotExceeded({
+              teamId,
+              estimatedCostCents,
+            });
+            await this.chatTransport.assertOrgBudgetNotExceeded({
+              estimatedCostCents,
+              callerUserId: user.id,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const status =
+              err instanceof HttpException ? err.getStatus() : undefined;
+            sendEvent('model-error', { model, message: msg, status });
+            void this.observabilityService.recordLLMCall({
+              userId: user.id,
+              teamId,
+              eventType: 'arena_call',
+              model: candidate,
+              latencyMs: Date.now() - modelStart,
+              success: false,
+              errorMessage: msg,
+              prompt: safeQuestion,
+              metadata: { streamed: true },
+            });
+            preflightFailed = true;
+            break;
           }
-        } catch (err) {
-          modelErrored = true;
-          errorPayload = {
-            message: err instanceof Error ? err.message : String(err),
-          };
+
+          // Stream. Reasoning is OFF for arena — no thinking pane. A pre-token
+          // error from a dead model is retried with the next candidate.
+          //
+          // First-token timeout: abort + fall back if no token arrives in time,
+          // but only when a fallback exists — the final candidate runs to
+          // completion so a slow-but-valid model isn't killed. A per-attempt
+          // AbortController, OR-ed with the run's abort, distinguishes a
+          // timeout from a real cancellation.
+          const hasNext = ci < candidates.length - 1;
+          const attemptAbort = new AbortController();
+          const signal = hasNext
+            ? AbortSignal.any([abortController.signal, attemptAbort.signal])
+            : abortController.signal;
+          let firstTokenSeen = false;
+          const timer = hasNext
+            ? setTimeout(() => {
+                if (!firstTokenSeen) attemptAbort.abort();
+              }, FALLBACK_FIRST_TOKEN_TIMEOUT_MS)
+            : null;
+
+          let producedOutput = false;
+          let attemptError: { message: string; status?: number } | null = null;
+          try {
+            for await (const event of this.chatService.sendMessageStream(
+              [{ role: 'user', content: safeQuestion }],
+              t.model,
+              false,
+              composedContext || undefined,
+              t.apiKey,
+              t.baseURL,
+              t.kind,
+              { signal },
+            )) {
+              if (event.type === 'error') {
+                attemptError = { message: event.message, status: event.status };
+                break;
+              }
+              if (!firstTokenSeen) {
+                firstTokenSeen = true;
+                if (timer) clearTimeout(timer);
+              }
+              if (event.type === 'content') {
+                producedOutput = true;
+                buffer += event.delta;
+                sendEvent('model-delta', { model, text: event.delta });
+              } else if (event.type === 'usage') {
+                producedOutput = true;
+                promptTokens = event.promptTokens;
+                completionTokens = event.completionTokens;
+                totalTokens = event.totalTokens;
+                costUsd = event.costUsd;
+              }
+              // `reasoning` events ignored — arena UI has no thinking pane.
+            }
+          } catch (err) {
+            attemptError = {
+              message: err instanceof Error ? err.message : String(err),
+            };
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+
+          // The attempt's own abort fired (not the run) before any token →
+          // the model was too slow; fall back.
+          const timedOut =
+            !producedOutput &&
+            attemptAbort.signal.aborted &&
+            !abortController.signal.aborted;
+
+          // Retry when there's no visible token yet, a fallback exists, and the
+          // failure is a timeout or a retryable availability error.
+          if (
+            !producedOutput &&
+            hasNext &&
+            (timedOut ||
+              (attemptError !== null &&
+                isRetryableModelError(
+                  attemptError.status,
+                  attemptError.message,
+                )))
+          ) {
+            continue;
+          }
+          transport = t;
+          usedModel = candidate;
+          if (attemptError) {
+            modelErrored = true;
+            errorPayload = attemptError;
+          }
+          break;
+        }
+
+        if (preflightFailed || !transport) return;
+
+        // Surface the substituted model so a fallback is never silent.
+        if (usedModel !== model) {
+          sendEvent('model-fallback', { model, usedModel });
         }
 
         const latencyMs = Date.now() - modelStart;
@@ -409,7 +502,7 @@ export class CompareModelsController {
             userId: user.id,
             teamId,
             eventType: 'arena_call',
-            model,
+            model: usedModel,
             provider: transport.provider,
             latencyMs,
             success: false,
@@ -442,7 +535,7 @@ export class CompareModelsController {
             userId: user.id,
             teamId,
             eventType: 'arena_call',
-            model,
+            model: usedModel,
             provider: transport.provider,
             latencyMs,
             success: false,
@@ -472,7 +565,7 @@ export class CompareModelsController {
           completionTokens != null
         ) {
           const estimated = await this.catalogService.estimateCost(
-            model,
+            usedModel,
             promptTokens,
             completionTokens,
           );
@@ -507,6 +600,9 @@ export class CompareModelsController {
 
         sendEvent('model-done', {
           model,
+          // The model that actually answered (differs from `model` when a
+          // fallback was used), so the panel can label the real model.
+          usedModel,
           totalTokens,
           costUsd: resolvedCostUsd,
           time: latencyMs,
@@ -693,8 +789,57 @@ export class CompareModelsController {
       models: row.models as string[],
       responses: row.responses as ModelResponse[],
       comparison: row.comparison as ComparisonItem[],
+      favoriteModel: row.favoriteModel ?? null,
       createdAt: row.createdAt,
     };
+  }
+
+  /**
+   * Mark (or clear) the model whose answer the user liked best for a run.
+   * `favoriteModel: null` clears it. Must be one of the run's models.
+   */
+  @Patch('runs/:id')
+  async updateRunFavorite(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { favoriteModel?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    // Require the field explicitly — a string to set, or null to clear. An
+    // absent field would otherwise silently wipe the saved pick, which is
+    // surprising PATCH behaviour and easy to trigger by accident.
+    if (body.favoriteModel === undefined) {
+      throw new BadRequestException(
+        '`favoriteModel` is required (a model id to set, or null to clear).',
+      );
+    }
+    if (body.favoriteModel !== null && typeof body.favoriteModel !== 'string') {
+      throw new BadRequestException(
+        '`favoriteModel` must be a string or null.',
+      );
+    }
+
+    const [row] = await this.db
+      .select({ models: arenaRuns.models })
+      .from(arenaRuns)
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)));
+    if (!row) {
+      throw new NotFoundException('Arena run not found.');
+    }
+
+    const favorite = body.favoriteModel;
+    const models = Array.isArray(row.models) ? (row.models as string[]) : [];
+    if (favorite !== null && !models.includes(favorite)) {
+      throw new BadRequestException(
+        '`favoriteModel` must be one of the run’s models.',
+      );
+    }
+
+    await this.db
+      .update(arenaRuns)
+      .set({ favoriteModel: favorite })
+      .where(and(eq(arenaRuns.id, id), eq(arenaRuns.userId, user.id)));
+
+    return { id, favoriteModel: favorite };
   }
 
   @Delete('runs/:id')
