@@ -804,11 +804,15 @@ export class CompareModelsController {
     @Body() body: { favoriteModel?: string | null },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    if (
-      body.favoriteModel !== undefined &&
-      body.favoriteModel !== null &&
-      typeof body.favoriteModel !== 'string'
-    ) {
+    // Require the field explicitly — a string to set, or null to clear. An
+    // absent field would otherwise silently wipe the saved pick, which is
+    // surprising PATCH behaviour and easy to trigger by accident.
+    if (body.favoriteModel === undefined) {
+      throw new BadRequestException(
+        '`favoriteModel` is required (a model id to set, or null to clear).',
+      );
+    }
+    if (body.favoriteModel !== null && typeof body.favoriteModel !== 'string') {
       throw new BadRequestException(
         '`favoriteModel` must be a string or null.',
       );
@@ -822,7 +826,7 @@ export class CompareModelsController {
       throw new NotFoundException('Arena run not found.');
     }
 
-    const favorite = body.favoriteModel ?? null;
+    const favorite = body.favoriteModel;
     const models = Array.isArray(row.models) ? (row.models as string[]) : [];
     if (favorite !== null && !models.includes(favorite)) {
       throw new BadRequestException(

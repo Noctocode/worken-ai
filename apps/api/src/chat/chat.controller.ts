@@ -307,6 +307,7 @@ export class ChatController {
     // alias `this` (and trip @typescript-eslint/no-this-alias).
     const chatService = this.chatService;
     const chatTransport = this.chatTransport;
+    const catalogService = this.catalogService;
     async function* streamWithFallback() {
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
@@ -322,8 +323,34 @@ export class ChatController {
           await chatTransport.assertManagedBudgetApproved(t, user.id, {
             projectId: conversation.projectId,
           });
+          // Re-run the spend gates for the fallback: its cost may differ from
+          // the requested model's pre-flight estimate, and a fallback must not
+          // bypass the team-member-cap / team / org budget limits.
+          const fbWebSearch = webSearch && t.source === 'openrouter';
+          const fbEstUsd = await catalogService.estimateCost(
+            candidate,
+            promptTokens,
+            4096,
+          );
+          const fbEstCents = Math.ceil(
+            ((fbEstUsd ?? 0) + (fbWebSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
+              100,
+          );
+          await chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+            projectId: conversation.projectId,
+            estimatedCostCents: fbEstCents,
+          });
+          await chatTransport.assertTeamBudgetNotExceeded({
+            projectId: conversation.projectId,
+            estimatedCostCents: fbEstCents,
+          });
+          await chatTransport.assertOrgBudgetNotExceeded({
+            estimatedCostCents: fbEstCents,
+            callerUserId: user.id,
+          });
         }
-        // Web search is OpenRouter-specific — re-gate per candidate.
+        // Web search is OpenRouter-specific — re-gate per candidate (uses the
+        // final resolved transport for this candidate).
         const candidateWebSearch = webSearch && t.source === 'openrouter';
 
         // First-token timeout: abort and fall back if no token arrives in
@@ -636,7 +663,7 @@ export class ChatController {
       userId: user.id,
       teamId,
       eventType: 'chat_call',
-      model: body.model ?? 'moonshotai/kimi-k2.5',
+      model: usedModel,
       provider: transport.provider,
       totalTokens: usageTotalTokens,
       costUsd,
