@@ -126,7 +126,15 @@ export const Appbar = () => {
     const preset = AGENTS.find((a) => a.id === agentId);
     if (!preset) return _project?.model ?? "";
     const inCatalog = availableModels.find((m) => m.id === preset.model);
-    return inCatalog?.id ?? availableModels[0]?.id ?? preset.model;
+    // Catalog-empty (transient fetch failure) must NOT overwrite the
+    // project's model with a maybe-unavailable slug — keep the current
+    // model in that case; preset.model is only a last resort.
+    return (
+      inCatalog?.id ??
+      availableModels[0]?.id ??
+      _project?.model ??
+      preset.model
+    );
   };
 
   // Switch the project's active agent from the header dropdown. Persists
