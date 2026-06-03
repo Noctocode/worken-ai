@@ -2,6 +2,8 @@ export const arena = {
   'arena.title': 'Model Arena',
   'arena.addModels': 'Add at least 2 models to start comparing',
   'arena.addModel': 'Add Model',
+  'arena.answeredBy': 'answered by',
+  'arena.fallbackUnavailable': 'was unavailable; answered by',
   'arena.manageModels': 'Manage Models',
   'arena.new': 'New',
   'arena.compareTitle': 'Compare models side by side',

@@ -253,6 +253,9 @@ export default function CompareModelsPage() {
   const [modelStatuses, setModelStatuses] = useState<
     Record<string, ModelStatus>
   >({});
+  // Per-panel actual model: set only when a fallback answered in place of the
+  // picked model, so the card can show which model really responded.
+  const [usedModels, setUsedModels] = useState<Record<string, string>>({});
 
   // Top-level evaluator phase. After all panels reach done/error
   // the BE moves on to running the comparison eval — the FE has no
@@ -455,6 +458,13 @@ export default function CompareModelsPage() {
             ...prev,
             [event.model]: buffers[event.model],
           }));
+        } else if (event.type === "model-fallback") {
+          // The picked model was dead/unavailable; a configured fallback
+          // answered instead. Record it so the panel shows the real model.
+          setUsedModels((prev) => ({
+            ...prev,
+            [event.model]: event.usedModel,
+          }));
         } else if (event.type === "model-replace") {
           // Per-model output guardrail fix-rule pass; swap the
           // panel's visible text for the redacted version.
@@ -499,6 +509,12 @@ export default function CompareModelsPage() {
             return next;
           });
         } else if (event.type === "model-done") {
+          // Belt-and-suspenders: also capture the used model from the final
+          // event in case the fallback notice was missed.
+          if (event.usedModel && event.usedModel !== event.model) {
+            const used = event.usedModel;
+            setUsedModels((prev) => ({ ...prev, [event.model]: used }));
+          }
           // Per-model totals arrive here. We don't surface them
           // outside the evaluation card below today; the BE
           // already records observability events. Settle the
@@ -600,6 +616,7 @@ export default function CompareModelsPage() {
     setQuestion("");
     setExpectedOutput("");
     setResponses({});
+    setUsedModels({});
     setEvaluations({});
     setEvaluatorError(null);
     setArenaError(null);
@@ -981,6 +998,7 @@ export default function CompareModelsPage() {
                     <ResponseCard
                       key={id}
                       modelId={id}
+                      usedModel={usedModels[id]}
                       response={responses[id] ?? null}
                       evaluation={evaluations[id] ?? null}
                       status={modelStatuses[id] ?? (loading ? "pending" : "done")}
@@ -1001,6 +1019,7 @@ export default function CompareModelsPage() {
                       <ResponseCard
                         key={id}
                         modelId={id}
+                        usedModel={usedModels[id]}
                         response={responses[id] ?? null}
                         evaluation={evaluations[id] ?? null}
                         status={modelStatuses[id] ?? (loading ? "pending" : "done")}
@@ -1196,12 +1215,16 @@ function PromptBubble({ question }: { question: string }) {
 
 function ResponseCard({
   modelId,
+  usedModel,
   response,
   evaluation,
   status,
   onCopy,
 }: {
   modelId: string;
+  /** Set when a configured fallback answered in place of `modelId` (the
+   *  picked model was dead/unavailable). Drives the "via …" indicator. */
+  usedModel?: string;
   response: string | null;
   evaluation: ModelEvaluation | null;
   /** Per-panel lifecycle. Drives the body's loading-style text:
@@ -1219,6 +1242,9 @@ function ResponseCard({
   const label = getModelLabel(modelId);
   const tone = getModelTone(modelId);
   const provider = getModelProvider(modelId);
+  // When a fallback answered, surface the model that actually responded.
+  const usedLabel =
+    usedModel && usedModel !== modelId ? getModelLabel(usedModel) : null;
 
   return (
     <article className="flex min-w-0 flex-col gap-2.5 rounded bg-bg-1 p-4">
@@ -1230,9 +1256,19 @@ function ResponseCard({
           >
             <Bot className="h-3.5 w-3.5" strokeWidth={2} />
           </span>
-          <span className="truncate text-[14px] font-medium text-text-2">
-            {label}
-          </span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-[14px] font-medium text-text-2">
+              {label}
+            </span>
+            {usedLabel && (
+              <span
+                className="truncate text-[11px] text-warning-6"
+                title={`${label} ${t("arena.fallbackUnavailable")} ${usedLabel}`}
+              >
+                ↳ {t("arena.answeredBy")} {usedLabel}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {evaluation?.time !== undefined && (
@@ -1266,6 +1302,9 @@ function ResponseCard({
               <div className="flex flex-col gap-1.5 px-2 py-1.5 text-[11px]">
                 <InfoRow label="Provider" value={provider} />
                 <InfoRow label="Model ID" value={modelId} mono />
+                {usedLabel && (
+                  <InfoRow label={t("arena.answeredBy")} value={usedLabel} />
+                )}
                 <InfoRow label="Tier" value="Free" />
                 {evaluation?.totalTokens !== undefined && (
                   <InfoRow label="Tokens" value={String(evaluation.totalTokens)} />
