@@ -31,7 +31,10 @@ import {
   GUARDRAIL_BLOCKED_MARKER,
   GuardrailEvaluatorService,
 } from '../guardrails/guardrail-evaluator.service.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  type ChatTransport,
+} from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
@@ -296,62 +299,29 @@ export class CompareModelsController {
         // non-stream arena. Failures here become a model-error SSE
         // event so only this panel shows the failure; the rest keep
         // streaming.
-        let transport;
-        try {
-          transport = await this.chatTransport.resolve({
-            userId: user.id,
-            modelIdentifier: model,
-            teamId,
-          });
-          await this.chatTransport.assertManagedBudgetApproved(
-            transport,
-            user.id,
-            { teamId },
+        // Model attempt list: requested model first, then its configured
+        // fallbacks (in order). A retryable failure (dead/unavailable model —
+        // "no endpoints found", 404, provider 5xx) before any token reaches
+        // this panel switches to the next candidate. `usedModel` records which
+        // one actually answered so the FE can show the substituted model.
+        const fallbackModels = await this.chatTransport.resolveFallbackModels({
+          userId: user.id,
+          modelIdentifier: model,
+          teamId,
+        });
+        const candidates = [model, ...fallbackModels];
+        const isRetryableModelError = (status?: number, message?: string) => {
+          const m = (message ?? '').toLowerCase();
+          return (
+            m.includes('no endpoints found') ||
+            m.includes('model not found') ||
+            status === 404 ||
+            (status != null && status >= 500)
           );
-          const promptTokens = Math.ceil(safeQuestion.length / 4);
-          const estimatedCostUsd = await this.catalogService.estimateCost(
-            model,
-            promptTokens,
-            4096,
-          );
-          const estimatedCostCents =
-            estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
-          await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
-            teamId,
-            estimatedCostCents,
-          });
-          await this.chatTransport.assertTeamBudgetNotExceeded({
-            teamId,
-            estimatedCostCents,
-          });
-          await this.chatTransport.assertOrgBudgetNotExceeded({
-            estimatedCostCents,
-            callerUserId: user.id,
-          });
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const status =
-            err instanceof HttpException ? err.getStatus() : undefined;
-          sendEvent('model-error', { model, message: msg, status });
-          void this.observabilityService.recordLLMCall({
-            userId: user.id,
-            teamId,
-            eventType: 'arena_call',
-            model,
-            latencyMs: Date.now() - modelStart,
-            success: false,
-            errorMessage: msg,
-            prompt: safeQuestion,
-            metadata: { streamed: true },
-          });
-          return;
-        }
+        };
 
-        // Stream the model. Reasoning is OFF for arena — arena UI
-        // doesn't have a thinking pane, and the per-model panel is
-        // already showing the visible answer. Reuses ChatService
-        // streaming primitive so there's only one place that
-        // maps SDK chunk shapes to ChatStreamEvent.
+        let transport: ChatTransport | null = null;
+        let usedModel = model;
         let buffer = '';
         let promptTokens: number | undefined;
         let completionTokens: number | undefined;
@@ -359,42 +329,127 @@ export class CompareModelsController {
         let costUsd: number | undefined;
         let modelErrored = false;
         let errorPayload: { message: string; status?: number } | null = null;
+        let preflightFailed = false;
 
-        try {
-          for await (const event of this.chatService.sendMessageStream(
-            [{ role: 'user', content: safeQuestion }],
-            transport.model,
-            false,
-            composedContext || undefined,
-            transport.apiKey,
-            transport.baseURL,
-            transport.kind,
-            { signal: abortController.signal },
-          )) {
-            if (event.type === 'content') {
-              buffer += event.delta;
-              sendEvent('model-delta', { model, text: event.delta });
-            } else if (event.type === 'usage') {
-              promptTokens = event.promptTokens;
-              completionTokens = event.completionTokens;
-              totalTokens = event.totalTokens;
-              costUsd = event.costUsd;
-            } else if (event.type === 'error') {
-              modelErrored = true;
-              errorPayload = {
-                message: event.message,
-                status: event.status,
-              };
-              break;
-            }
-            // `reasoning` events ignored — arena UI doesn't render
-            // thinking text.
+        for (let ci = 0; ci < candidates.length; ci++) {
+          const candidate = candidates[ci];
+
+          // Per-candidate pre-flight (transport + budget gates). A failure
+          // here is a budget/approval problem, not model availability — it
+          // ends the panel rather than falling back.
+          let t: ChatTransport;
+          try {
+            t = await this.chatTransport.resolve({
+              userId: user.id,
+              modelIdentifier: candidate,
+              teamId,
+            });
+            await this.chatTransport.assertManagedBudgetApproved(t, user.id, {
+              teamId,
+            });
+            const promptTok = Math.ceil(safeQuestion.length / 4);
+            const estimatedCostUsd = await this.catalogService.estimateCost(
+              candidate,
+              promptTok,
+              4096,
+            );
+            const estimatedCostCents =
+              estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
+            await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
+              teamId,
+              estimatedCostCents,
+            });
+            await this.chatTransport.assertTeamBudgetNotExceeded({
+              teamId,
+              estimatedCostCents,
+            });
+            await this.chatTransport.assertOrgBudgetNotExceeded({
+              estimatedCostCents,
+              callerUserId: user.id,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const status =
+              err instanceof HttpException ? err.getStatus() : undefined;
+            sendEvent('model-error', { model, message: msg, status });
+            void this.observabilityService.recordLLMCall({
+              userId: user.id,
+              teamId,
+              eventType: 'arena_call',
+              model: candidate,
+              latencyMs: Date.now() - modelStart,
+              success: false,
+              errorMessage: msg,
+              prompt: safeQuestion,
+              metadata: { streamed: true },
+            });
+            preflightFailed = true;
+            break;
           }
-        } catch (err) {
-          modelErrored = true;
-          errorPayload = {
-            message: err instanceof Error ? err.message : String(err),
-          };
+
+          // Stream. Reasoning is OFF for arena — no thinking pane. A pre-token
+          // error from a dead model is retried with the next candidate.
+          let producedOutput = false;
+          let attemptError: { message: string; status?: number } | null = null;
+          try {
+            for await (const event of this.chatService.sendMessageStream(
+              [{ role: 'user', content: safeQuestion }],
+              t.model,
+              false,
+              composedContext || undefined,
+              t.apiKey,
+              t.baseURL,
+              t.kind,
+              { signal: abortController.signal },
+            )) {
+              if (event.type === 'error') {
+                attemptError = { message: event.message, status: event.status };
+                break;
+              }
+              if (event.type === 'content') {
+                producedOutput = true;
+                buffer += event.delta;
+                sendEvent('model-delta', { model, text: event.delta });
+              } else if (event.type === 'usage') {
+                producedOutput = true;
+                promptTokens = event.promptTokens;
+                completionTokens = event.completionTokens;
+                totalTokens = event.totalTokens;
+                costUsd = event.costUsd;
+              }
+              // `reasoning` events ignored — arena UI has no thinking pane.
+            }
+          } catch (err) {
+            attemptError = {
+              message: err instanceof Error ? err.message : String(err),
+            };
+          }
+
+          // Retry only when the failure happened before any visible token,
+          // it's a retryable availability error, and another candidate exists.
+          if (
+            attemptError &&
+            !producedOutput &&
+            !abortController.signal.aborted &&
+            ci < candidates.length - 1 &&
+            isRetryableModelError(attemptError.status, attemptError.message)
+          ) {
+            continue;
+          }
+          transport = t;
+          usedModel = candidate;
+          if (attemptError) {
+            modelErrored = true;
+            errorPayload = attemptError;
+          }
+          break;
+        }
+
+        if (preflightFailed || !transport) return;
+
+        // Surface the substituted model so a fallback is never silent.
+        if (usedModel !== model) {
+          sendEvent('model-fallback', { model, usedModel });
         }
 
         const latencyMs = Date.now() - modelStart;
@@ -409,7 +464,7 @@ export class CompareModelsController {
             userId: user.id,
             teamId,
             eventType: 'arena_call',
-            model,
+            model: usedModel,
             provider: transport.provider,
             latencyMs,
             success: false,
@@ -442,7 +497,7 @@ export class CompareModelsController {
             userId: user.id,
             teamId,
             eventType: 'arena_call',
-            model,
+            model: usedModel,
             provider: transport.provider,
             latencyMs,
             success: false,
@@ -472,7 +527,7 @@ export class CompareModelsController {
           completionTokens != null
         ) {
           const estimated = await this.catalogService.estimateCost(
-            model,
+            usedModel,
             promptTokens,
             completionTokens,
           );
@@ -507,6 +562,9 @@ export class CompareModelsController {
 
         sendEvent('model-done', {
           model,
+          // The model that actually answered (differs from `model` when a
+          // fallback was used), so the panel can label the real model.
+          usedModel,
           totalTokens,
           costUsd: resolvedCostUsd,
           time: latencyMs,

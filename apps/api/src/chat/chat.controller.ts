@@ -127,11 +127,16 @@ export class ChatController {
       user.id,
     );
 
-    const transport = await this.chatTransport.resolve({
+    const requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
+    // `transport` / `usedModel` are reassigned once the stream commits to the
+    // model that actually answered (the requested one, or a fallback) so all
+    // post-stream cost / observability / persistence follows the real model.
+    let transport = await this.chatTransport.resolve({
       userId: user.id,
-      modelIdentifier: body.model ?? 'moonshotai/kimi-k2.5',
+      modelIdentifier: requestedModel,
       projectId: conversation.projectId,
     });
+    let usedModel = requestedModel;
 
     // Effective web search = the project switch AND the OpenRouter route AND
     // the org/team capability. The web plugin is OpenRouter-specific, so it
@@ -150,7 +155,7 @@ export class ChatController {
 
     const promptTokens = Math.ceil(safePrompt.length / 4);
     const estimatedCostUsd = await this.catalogService.estimateCost(
-      body.model ?? 'moonshotai/kimi-k2.5',
+      requestedModel,
       promptTokens,
       4096,
     );
@@ -271,17 +276,102 @@ export class ChatController {
     let streamErrorPayload: { message: string; status?: number } | null = null;
     let blockedDuringStream = false;
 
+    // Model attempt list: the requested model first, then its configured
+    // fallbacks (in order). When a candidate fails with a retryable error
+    // (dead/unavailable model — "no endpoints found", 404, provider 5xx)
+    // BEFORE any token reaches the client, switch transparently to the next
+    // candidate. `usedModel` / `usedTransport` capture the one that actually
+    // produced the stream so cost / observability / persistence reflect it.
+    const fallbackModels = await this.chatTransport.resolveFallbackModels({
+      userId: user.id,
+      modelIdentifier: requestedModel,
+      projectId: conversation.projectId,
+      teamId,
+    });
+    const candidates = [requestedModel, ...fallbackModels];
+    const isRetryableModelError = (status?: number, message?: string) => {
+      const m = (message ?? '').toLowerCase();
+      return (
+        m.includes('no endpoints found') ||
+        m.includes('model not found') ||
+        status === 404 ||
+        (status != null && status >= 500)
+      );
+    };
+    let usedTransport = transport;
+    const self = this;
+    async function* streamWithFallback() {
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+        // Reuse the primary transport (already resolved + budget-approved);
+        // re-resolve + re-gate for fallbacks (they may route differently).
+        let t = transport;
+        if (i > 0) {
+          t = await self.chatTransport.resolve({
+            userId: user.id,
+            modelIdentifier: candidate,
+            projectId: conversation.projectId,
+          });
+          await self.chatTransport.assertManagedBudgetApproved(t, user.id, {
+            projectId: conversation.projectId,
+          });
+        }
+        // Web search is OpenRouter-specific — re-gate per candidate.
+        const candidateWebSearch = webSearch && t.source === 'openrouter';
+        let producedOutput = false;
+        let attemptError: { message: string; status?: number } | null = null;
+        for await (const ev of self.chatService.sendMessageStream(
+          apiMessages,
+          t.model,
+          body.enableReasoning,
+          context,
+          t.apiKey,
+          t.baseURL,
+          t.kind,
+          { signal: abortController.signal, webSearch: candidateWebSearch },
+        )) {
+          // A pre-content error from a dead model → abandon this candidate
+          // and try the next. Client-disconnect errors are NOT retryable —
+          // pass them through so the loop treats them as a cancellation.
+          if (
+            ev.type === 'error' &&
+            !producedOutput &&
+            !abortController.signal.aborted &&
+            !clientDisconnected
+          ) {
+            attemptError = { message: ev.message, status: ev.status };
+            break;
+          }
+          producedOutput = true;
+          usedModel = candidate;
+          usedTransport = t;
+          yield ev;
+        }
+        if (
+          attemptError &&
+          !producedOutput &&
+          i < candidates.length - 1 &&
+          isRetryableModelError(attemptError.status, attemptError.message)
+        ) {
+          continue; // try the next fallback
+        }
+        if (attemptError && !producedOutput) {
+          // Last candidate / non-retryable: surface so the loop maps it to
+          // an `error` SSE.
+          usedModel = candidate;
+          usedTransport = t;
+          yield {
+            type: 'error' as const,
+            message: attemptError.message,
+            status: attemptError.status,
+          };
+        }
+        return;
+      }
+    }
+
     try {
-      for await (const event of this.chatService.sendMessageStream(
-        apiMessages,
-        transport.model,
-        body.enableReasoning,
-        context,
-        transport.apiKey,
-        transport.baseURL,
-        transport.kind,
-        { signal: abortController.signal, webSearch },
-      )) {
+      for await (const event of streamWithFallback()) {
         if (event.type === 'content') {
           pending += event.delta;
           bytesSinceEval += Buffer.byteLength(event.delta, 'utf8');
@@ -352,6 +442,11 @@ export class ChatController {
       if (!res.writableEnded) sendEvent('error', streamErrorPayload);
     }
 
+    // Point `transport` at whatever model actually answered (the requested
+    // one or a fallback) so all the cost / observability / persistence below
+    // reports the real route, not the originally-requested one.
+    transport = usedTransport;
+
     // ── POST-STREAM: final guardrail + persistence + observability ──
     const latencyMs = Date.now() - chatStart;
 
@@ -363,7 +458,7 @@ export class ChatController {
         userId: user.id,
         teamId,
         eventType: 'chat_call',
-        model: body.model ?? 'moonshotai/kimi-k2.5',
+        model: usedModel,
         provider: transport.provider,
         totalTokens: usageTotalTokens,
         costUsd: usageCostUsd ?? null,
@@ -388,7 +483,7 @@ export class ChatController {
         userId: user.id,
         teamId,
         eventType: 'chat_call',
-        model: body.model ?? 'moonshotai/kimi-k2.5',
+        model: usedModel,
         provider: transport.provider,
         latencyMs,
         success: false,
@@ -425,7 +520,7 @@ export class ChatController {
         userId: user.id,
         teamId,
         eventType: 'chat_call',
-        model: body.model ?? 'moonshotai/kimi-k2.5',
+        model: usedModel,
         provider: transport.provider,
         totalTokens: usageTotalTokens,
         costUsd: usageCostUsd ?? null,
@@ -464,7 +559,7 @@ export class ChatController {
       usageCompletionTokens != null
     ) {
       const estimated = await this.catalogService.estimateCost(
-        body.model ?? 'moonshotai/kimi-k2.5',
+        usedModel,
         usagePromptTokens,
         usageCompletionTokens,
       );
@@ -481,6 +576,10 @@ export class ChatController {
     if (reasoningText) metadata.reasoning_details = reasoningText;
     if (citationsCollected.length > 0) metadata.citations = citationsCollected;
     if (clientDisconnected) metadata.partial = true;
+    // Record which model actually answered so the FE can show it (and flag a
+    // fallback when it differs from the requested model) on reload.
+    metadata.model = usedModel;
+    if (usedModel !== requestedModel) metadata.requestedModel = requestedModel;
 
     await this.conversationsService.addMessage(
       body.conversationId,
@@ -530,6 +629,10 @@ export class ChatController {
         costUsd,
         partial: clientDisconnected ? true : undefined,
         alternativeModel: alternativeModel ?? undefined,
+        // The model that actually answered + the originally-requested one, so
+        // the FE can surface "answered by <fallback>" when they differ.
+        model: usedModel,
+        requestedModel,
       });
       res.end();
     }
