@@ -47,7 +47,12 @@ import { MobileTopbar } from "./mobile-topbar";
 import { InviteMembersDialog } from "@/components/project-chat/invite-members-dialog";
 import { useBreadcrumbs } from "@/hooks/use-breadcrumbs";
 import { getRouteConfig } from "@/lib/route-config";
-import { fetchProject, fetchTeam, updateProject } from "@/lib/api";
+import {
+  fetchProject,
+  fetchTeam,
+  fetchOrgSettings,
+  updateProject,
+} from "@/lib/api";
 import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useAuth } from "@/components/providers";
@@ -100,6 +105,13 @@ export const Appbar = () => {
     queryKey: ["teams", _project?.teamId],
     queryFn: () => fetchTeam(_project!.teamId!),
     enabled: isProjectDetail && !!_project?.teamId,
+  });
+  // Org master switch — lets the web-search tooltip distinguish "off for the
+  // organization" from "off for this team" when the toggle is disabled.
+  const { data: _orgSettings } = useQuery({
+    queryKey: ["org-settings"],
+    queryFn: fetchOrgSettings,
+    enabled: isProjectDetail,
   });
 
   // Per-project web search toggle (header). Only rendered when the
@@ -406,8 +418,14 @@ export const Appbar = () => {
     const webSearchSupported = !!_project?.webSearchSupported;
     const webSearchInteractive = webSearchAllowed && webSearchSupported;
     const webSearchOn = !!_project?.webSearch && webSearchAllowed;
+    // When disabled, point the user at the right place: if the org master
+    // switch is ON, it's the team that turned web search off (enable in team
+    // settings); otherwise it's the org default (enable in Management →
+    // Company). Supported-but-not-allowed falls through to the model reason.
     const webSearchReason = !webSearchAllowed
-      ? t("appbar.webSearchOrgDisabled")
+      ? _orgSettings?.webSearchEnabled === true && !!_project?.teamId
+        ? t("appbar.webSearchTeamDisabled")
+        : t("appbar.webSearchOrgDisabled")
       : t("appbar.webSearchUnsupported");
 
     return (
