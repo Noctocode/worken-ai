@@ -152,6 +152,7 @@ export const teams: Record<keyof typeof teamsEn, string> = {
   'teamDetail.webSearchDesc': 'Iskanje po spletu za projekte te ekipe. Privzeto sledi nastavitvi organizacije; če je na ravni organizacije izklopljeno, je tukaj izklopljeno ne glede na to.',
   'teamDetail.webSearchOn': 'Vklopljeno',
   'teamDetail.webSearchOff': 'Izklopljeno',
+  'teamDetail.webSearchOrgOff': 'Iskanje po spletu je izklopljeno za vašo organizacijo. Skrbnik ga lahko omogoči v Upravljanje → Podjetje.',
   'teamDetail.webSearchSaved': 'Nastavitev iskanja po spletu shranjena.',
   'teamDetail.webSearchFailed': 'Posodobitev nastavitve iskanja po spletu ni uspela',
   'teamDetail.couldntSaveDetails': 'Shranjevanje podrobnosti ekipe ni uspelo.',

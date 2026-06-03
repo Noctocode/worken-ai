@@ -150,6 +150,7 @@ export const teams = {
   'teamDetail.webSearchDesc': "Web search for this team's projects. Defaults to the organization setting; turning it off at the organization level disables it here regardless.",
   'teamDetail.webSearchOn': 'On',
   'teamDetail.webSearchOff': 'Off',
+  'teamDetail.webSearchOrgOff': 'Web search is turned off for your organization. An admin can enable it in Management → Company.',
   'teamDetail.webSearchSaved': 'Web search setting saved.',
   'teamDetail.webSearchFailed': 'Failed to update web search setting',
   'teamDetail.couldntSaveDetails': "Couldn't save team details.",

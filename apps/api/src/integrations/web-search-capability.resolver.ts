@@ -13,7 +13,8 @@ import { effectiveWebSearchCapability } from './web-search-capability.js';
  * Shared by ChatController (the chat path) and ProjectsService (the FE
  * toggle) so the two never drift — the pure decision rule lives in
  * `effectiveWebSearchCapability`; this is the DB-bound lookup around it.
- * The org default is always fetched because Org Off overrides the team.
+ * The company flag is fetched only when the team hasn't explicitly opted
+ * out (an explicit team Off is already final).
  */
 export async function resolveWebSearchCapability(
   db: Database,
@@ -29,8 +30,15 @@ export async function resolveWebSearchCapability(
       .limit(1);
     teamFlag = team?.flag;
   }
-  // Org default always matters now — Org Off is a hard override that
-  // disables web search even when a team explicitly turned it on.
+  // Team explicitly Off → off everywhere, regardless of the org master
+  // switch. Short-circuit before the company lookup — this resolver runs on
+  // the chat hot path, so skip the two extra queries when the answer is
+  // already settled.
+  if (teamFlag === false) return false;
+
+  // Otherwise the org default decides: Org Off is a hard override, and Org On
+  // with an unset team defaults to on. Org Off matters even when the team
+  // turned it on, so the company flag is fetched here.
   let companyFlag: boolean | null | undefined;
   const [u] = await db
     .select({ companyId: users.companyId })
