@@ -1510,6 +1510,7 @@ function Composer({
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const questionRef = useRef<HTMLTextAreaElement>(null);
+  const expectedRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-grow the question textarea to fit its content, capped so a
   // pasted novel can't push the composer to fill the page. Past the
@@ -1523,6 +1524,19 @@ function Composer({
     ta.style.height = `${next}px`;
     ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
   }, [question]);
+
+  // Auto-grow the expected-output textarea the same way: fit content up to a
+  // cap, then scroll internally past it (replaces the manual resize handle /
+  // fixed-height scroller).
+  useEffect(() => {
+    const ta = expectedRef.current;
+    if (!ta) return;
+    const MAX = 160;
+    ta.style.height = "auto";
+    const next = Math.min(ta.scrollHeight, MAX);
+    ta.style.height = `${next}px`;
+    ta.style.overflowY = ta.scrollHeight > MAX ? "auto" : "hidden";
+  }, [expectedOutput]);
 
   function handleInsertShortcut(shortcut: Shortcut) {
     const ta = questionRef.current;
@@ -1634,10 +1648,12 @@ function Composer({
         </div>
         {/* Expected output (functional addition — not in Figma) */}
         <textarea
+          ref={expectedRef}
           value={expectedOutput}
           onChange={(e) => setExpectedOutput(e.target.value)}
           placeholder={t("arena.expectedOutput")}
-          className="min-h-[24px] w-full resize-y border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
+          rows={1}
+          className="min-h-[24px] w-full resize-none overflow-hidden border-t border-border-2 bg-transparent px-4 py-3 text-[14px] leading-[1.3] text-text-1 placeholder:text-text-2 focus:outline-none"
           disabled={loading}
         />
         {/* Attached file pill — single slot. */}
