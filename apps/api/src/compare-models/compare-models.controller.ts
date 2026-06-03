@@ -311,6 +311,9 @@ export class CompareModelsController {
           teamId,
         });
         const candidates = [model, ...fallbackModels];
+        // Fall back if a candidate emits no token within this window AND a
+        // fallback exists ("timeouts (3s) or returns error" per Models tab).
+        const FALLBACK_FIRST_TOKEN_TIMEOUT_MS = 3000;
         const isRetryableModelError = (status?: number, message?: string) => {
           const m = (message ?? '').toLowerCase();
           return (
@@ -390,6 +393,24 @@ export class CompareModelsController {
 
           // Stream. Reasoning is OFF for arena — no thinking pane. A pre-token
           // error from a dead model is retried with the next candidate.
+          //
+          // First-token timeout: abort + fall back if no token arrives in time,
+          // but only when a fallback exists — the final candidate runs to
+          // completion so a slow-but-valid model isn't killed. A per-attempt
+          // AbortController, OR-ed with the run's abort, distinguishes a
+          // timeout from a real cancellation.
+          const hasNext = ci < candidates.length - 1;
+          const attemptAbort = new AbortController();
+          const signal = hasNext
+            ? AbortSignal.any([abortController.signal, attemptAbort.signal])
+            : abortController.signal;
+          let firstTokenSeen = false;
+          const timer = hasNext
+            ? setTimeout(() => {
+                if (!firstTokenSeen) attemptAbort.abort();
+              }, FALLBACK_FIRST_TOKEN_TIMEOUT_MS)
+            : null;
+
           let producedOutput = false;
           let attemptError: { message: string; status?: number } | null = null;
           try {
@@ -401,11 +422,15 @@ export class CompareModelsController {
               t.apiKey,
               t.baseURL,
               t.kind,
-              { signal: abortController.signal },
+              { signal },
             )) {
               if (event.type === 'error') {
                 attemptError = { message: event.message, status: event.status };
                 break;
+              }
+              if (!firstTokenSeen) {
+                firstTokenSeen = true;
+                if (timer) clearTimeout(timer);
               }
               if (event.type === 'content') {
                 producedOutput = true;
@@ -424,16 +449,28 @@ export class CompareModelsController {
             attemptError = {
               message: err instanceof Error ? err.message : String(err),
             };
+          } finally {
+            if (timer) clearTimeout(timer);
           }
 
-          // Retry only when the failure happened before any visible token,
-          // it's a retryable availability error, and another candidate exists.
-          if (
-            attemptError &&
+          // The attempt's own abort fired (not the run) before any token →
+          // the model was too slow; fall back.
+          const timedOut =
             !producedOutput &&
-            !abortController.signal.aborted &&
-            ci < candidates.length - 1 &&
-            isRetryableModelError(attemptError.status, attemptError.message)
+            attemptAbort.signal.aborted &&
+            !abortController.signal.aborted;
+
+          // Retry when there's no visible token yet, a fallback exists, and the
+          // failure is a timeout or a retryable availability error.
+          if (
+            !producedOutput &&
+            hasNext &&
+            (timedOut ||
+              (attemptError !== null &&
+                isRetryableModelError(
+                  attemptError.status,
+                  attemptError.message,
+                )))
           ) {
             continue;
           }

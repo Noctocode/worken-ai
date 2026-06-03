@@ -289,6 +289,10 @@ export class ChatController {
       teamId,
     });
     const candidates = [requestedModel, ...fallbackModels];
+    // If a candidate emits no first token within this window AND a fallback
+    // exists, treat it like a dead model and switch. Matches the Models-tab
+    // promise ("timeouts (3s) or returns error").
+    const FALLBACK_FIRST_TOKEN_TIMEOUT_MS = 3000;
     const isRetryableModelError = (status?: number, message?: string) => {
       const m = (message ?? '').toLowerCase();
       return (
@@ -321,40 +325,76 @@ export class ChatController {
         }
         // Web search is OpenRouter-specific — re-gate per candidate.
         const candidateWebSearch = webSearch && t.source === 'openrouter';
+
+        // First-token timeout: abort and fall back if no token arrives in
+        // time. Only when a fallback exists — the final candidate is left to
+        // run so a slow-but-valid model isn't killed with nothing to switch
+        // to. A separate AbortController, OR-ed with the client-disconnect
+        // signal, so a timeout is distinguishable from a real cancellation.
+        const hasNext = i < candidates.length - 1;
+        const attemptAbort = new AbortController();
+        const signal = hasNext
+          ? AbortSignal.any([abortController.signal, attemptAbort.signal])
+          : abortController.signal;
+        let firstTokenSeen = false;
+        const timer = hasNext
+          ? setTimeout(() => {
+              if (!firstTokenSeen) attemptAbort.abort();
+            }, FALLBACK_FIRST_TOKEN_TIMEOUT_MS)
+          : null;
+
         let producedOutput = false;
         let attemptError: { message: string; status?: number } | null = null;
-        for await (const ev of chatService.sendMessageStream(
-          apiMessages,
-          t.model,
-          body.enableReasoning,
-          context,
-          t.apiKey,
-          t.baseURL,
-          t.kind,
-          { signal: abortController.signal, webSearch: candidateWebSearch },
-        )) {
-          // A pre-content error from a dead model → abandon this candidate
-          // and try the next. Client-disconnect errors are NOT retryable —
-          // pass them through so the loop treats them as a cancellation.
-          if (
-            ev.type === 'error' &&
-            !producedOutput &&
-            !abortController.signal.aborted &&
-            !clientDisconnected
-          ) {
-            attemptError = { message: ev.message, status: ev.status };
-            break;
+        try {
+          for await (const ev of chatService.sendMessageStream(
+            apiMessages,
+            t.model,
+            body.enableReasoning,
+            context,
+            t.apiKey,
+            t.baseURL,
+            t.kind,
+            { signal, webSearch: candidateWebSearch },
+          )) {
+            // A pre-content error from a dead model → abandon this candidate.
+            // Client-disconnect / timeout aborts are handled below, not here.
+            if (
+              ev.type === 'error' &&
+              !producedOutput &&
+              !abortController.signal.aborted &&
+              !attemptAbort.signal.aborted &&
+              !clientDisconnected
+            ) {
+              attemptError = { message: ev.message, status: ev.status };
+              break;
+            }
+            if (!firstTokenSeen) {
+              firstTokenSeen = true;
+              if (timer) clearTimeout(timer);
+            }
+            producedOutput = true;
+            usedModel = candidate;
+            usedTransport = t;
+            yield ev;
           }
-          producedOutput = true;
-          usedModel = candidate;
-          usedTransport = t;
-          yield ev;
+        } finally {
+          if (timer) clearTimeout(timer);
         }
-        if (
-          attemptError &&
+
+        // The attempt's own abort fired (not the client) before any token →
+        // the model was too slow; fall back.
+        const timedOut =
           !producedOutput &&
-          i < candidates.length - 1 &&
-          isRetryableModelError(attemptError.status, attemptError.message)
+          attemptAbort.signal.aborted &&
+          !abortController.signal.aborted &&
+          !clientDisconnected;
+
+        if (
+          !producedOutput &&
+          hasNext &&
+          (timedOut ||
+            (attemptError !== null &&
+              isRetryableModelError(attemptError.status, attemptError.message)))
         ) {
           continue; // try the next fallback
         }
