@@ -290,8 +290,12 @@ export function CompanyTab() {
 
   const toggleGuardrailMutation = useMutation({
     mutationFn: toggleGuardrailItem,
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
+      // isActive is global — refresh team-detail listings too so their
+      // status badge doesn't go stale (same as the remove mutation).
+      queryClient.invalidateQueries({ queryKey: ["guardrails"] });
+    },
     onError: (err: Error) =>
       toast.error(err.message || t("mgmt.company.guardrailToggleFailed")),
   });

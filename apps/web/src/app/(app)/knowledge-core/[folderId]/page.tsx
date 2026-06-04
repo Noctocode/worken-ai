@@ -261,18 +261,11 @@ export default function FolderDetailPage({
     queryKey: ["knowledge-folder", folderId],
     queryFn: isAllFiles
       ? async (): Promise<KnowledgeFolderDetail> => {
+          // Newest first with a stable `id` tiebreaker is applied by the
+          // backend (ORDER BY created_at DESC, id DESC), so the most
+          // recently added file is at the top and exclude/include never
+          // reshuffles tied rows. No client-side re-sort needed.
           const files = await fetchAllKnowledgeFiles();
-          // Newest first — the most recently added file sits at the
-          // top. The `id` tiebreaker keeps the order deterministic when
-          // several files share a createdAt (e.g. a Drive import stamps
-          // them all in one transaction); without it, a refetch after
-          // exclude/include would reshuffle the tied rows and a file
-          // would appear to "jump".
-          const sorted = [...files].sort((a, b) => {
-            const byTime =
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-            return byTime !== 0 ? byTime : b.id.localeCompare(a.id);
-          });
           return {
             id: ALL_FILES_FOLDER_ID,
             name: "All Files",
@@ -280,7 +273,7 @@ export default function FolderDetailPage({
             parentFolderId: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            files: sorted,
+            files,
             children: [],
             breadcrumb: [],
           };
