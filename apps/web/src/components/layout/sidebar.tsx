@@ -268,7 +268,7 @@ export const SidebarContent = ({
             collapsed ? "" : "w-full"
           }`}
         >
-          <LanguageSelector collapsed={collapsed} />
+          <LanguageSelector collapsed={collapsed} triggerFlag={false} />
           <NotificationsPopover>
           {({ unreadCount }) =>
             collapsed ? (

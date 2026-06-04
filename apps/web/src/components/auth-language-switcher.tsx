@@ -12,7 +12,10 @@ import { LanguageSelector } from "@/components/language-selector";
  */
 export function AuthLanguageSwitcher() {
   return (
-    <div className="fixed right-4 top-4 z-50 rounded-lg border border-border-2 bg-bg-white/95 px-1 shadow-sm backdrop-blur">
+    // The pill supplies the border/shadow; the inner Button's own
+    // hover/focus chrome is neutralised inside LanguageSelector itself
+    // (shared by the sidebar too), so nothing extra is needed here.
+    <div className="fixed right-4 top-4 z-50 rounded-lg border border-border-2 bg-bg-white/95 px-3 py-0.5 shadow-sm backdrop-blur">
       <LanguageSelector collapsed={false} side="bottom" align="end" />
     </div>
   );
