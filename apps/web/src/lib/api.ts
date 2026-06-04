@@ -1595,6 +1595,11 @@ export type CompareModelsStreamEvent =
         time?: number;
       })[];
       runId?: string;
+      /** The judge model that produced these scores. */
+      judgeModel?: string;
+      /** True when the judge model was also one of the compared models
+       *  (it graded its own answer — possible self-evaluation bias). */
+      selfJudge?: boolean;
       /** Set when every retry of the evaluator failed. Empty
        *  comparisonItems alone isn't a sufficient signal — a 0-model
        *  response set would also produce empty items legitimately. */
@@ -1614,6 +1619,9 @@ export async function* streamCompareModels(
   expectedOutput: string,
   context?: string,
   signal?: AbortSignal,
+  /** Optional judge-model override (UI selector). Omitted → the BE
+   *  falls back to ARENA_JUDGE_MODEL env / its default. */
+  judgeModel?: string,
 ): AsyncIterable<CompareModelsStreamEvent> {
   const res = await apiFetch(`/compare-models/stream`, {
     method: "POST",
@@ -1623,6 +1631,7 @@ export async function* streamCompareModels(
       question,
       expectedOutput,
       context,
+      ...(judgeModel ? { judgeModel } : {}),
     }),
     signal,
   });
@@ -1756,6 +1765,8 @@ export interface ArenaRunDetail {
   comparison: ModelComparisonEntry[];
   /** Model the user marked as best for this run (null = none). */
   favoriteModel?: string | null;
+  /** Judge model that scored this run (null for legacy runs). */
+  judgeModel?: string | null;
   createdAt: string;
 }
 

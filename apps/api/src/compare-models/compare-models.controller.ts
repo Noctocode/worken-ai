@@ -38,7 +38,6 @@ import {
 } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
-import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
@@ -46,11 +45,28 @@ const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
 
 const MAX_COMPARE_ATTEMPTS = 3;
 
+// Default "judge" model that scores the arena answers. A capable
+// evaluator must outclass the models it grades, so the default is a
+// reasonable price/performance model rather than the old free tier.
+// Override without a deploy via the ARENA_JUDGE_MODEL env var, or
+// per-run via the request body (`judgeModel`, set by the UI selector).
+const DEFAULT_JUDGE_MODEL = 'deepseek/deepseek-chat';
+
+function resolveJudgeModel(requested?: string): string {
+  const fromRequest = requested?.trim();
+  if (fromRequest) return fromRequest;
+  const fromEnv = process.env['ARENA_JUDGE_MODEL']?.trim();
+  return fromEnv || DEFAULT_JUDGE_MODEL;
+}
+
 interface CompareModelsRequestBody {
   models: string[];
   question: string;
   expectedOutput: string;
   context?: string;
+  /** Optional per-run judge override (UI selector). Falls back to
+   *  ARENA_JUDGE_MODEL env / DEFAULT_JUDGE_MODEL when absent. */
+  judgeModel?: string;
 }
 
 interface ModelResponse {
@@ -90,7 +106,6 @@ export class CompareModelsController {
   constructor(
     private readonly compareModelsService: CompareModelsService,
     private readonly chatService: ChatService,
-    private readonly keyResolverService: KeyResolverService,
     private readonly chatTransport: ChatTransportService,
     private readonly catalogService: OpenRouterCatalogService,
     private readonly observabilityService: ObservabilityService,
@@ -214,21 +229,36 @@ export class CompareModelsController {
     }
     body.expectedOutput = body.expectedOutput ?? '';
 
-    let evaluatorApiKey: string;
+    // Arena is Personal-only — every run (the compared models AND the
+    // hidden judge) bills against the caller's own key / budget, never
+    // a team or our shared general key. `teamId: null` keeps the
+    // routing on the personal tier.
+    const teamId: string | null = null;
+
+    // Resolve the judge model + its transport up front so a key/route
+    // failure comes back as a regular JSON 4xx before SSE headers
+    // flush. Routed through ChatTransportService exactly like a normal
+    // personal model call: personal OpenRouter key, or the user's own
+    // BYOK for that model. Same mechanism, same billing.
+    const judgeModel = resolveJudgeModel(body.judgeModel);
+    let judgeTransport: ChatTransport;
     try {
-      evaluatorApiKey = await this.keyResolverService.resolveUserKey(user.id);
+      judgeTransport = await this.chatTransport.resolve({
+        userId: user.id,
+        modelIdentifier: judgeModel,
+        teamId,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Key resolution failed for user ${user.id}: ${msg}`);
+      this.logger.error(`Judge transport resolve failed for user ${user.id}: ${msg}`);
       throw new ServiceUnavailableException(
         `AI gateway key unavailable: ${msg}`,
       );
     }
-
-    // Arena is Personal-only — every run bills against
-    // `user.monthlyBudgetCents`. Team scoping was removed: callers
-    // can no longer attribute spend to a team here.
-    const teamId: string | null = null;
+    // Surfaced to the FE so it can warn that the judge also graded its
+    // own answer (possible self-evaluation bias) when the user put the
+    // judge model into the comparison set.
+    const selfJudge = body.models.includes(judgeModel);
 
     const inputDecision = await this.guardrails.evaluate({
       text: body.question,
@@ -616,7 +646,6 @@ export class CompareModelsController {
     let comparisonItems: ComparisonItem[] = [];
     let evaluatorError: string | null = null;
     if (responses.length > 0) {
-      const EVALUATOR_MODEL = 'nvidia/nemotron-3-super-120b-a12b:free';
       let lastParseError: string | undefined;
       let lastRawContent = '';
       let lastCallError: string | undefined;
@@ -634,18 +663,42 @@ export class CompareModelsController {
             await this.compareModelsService.compareModelAnswers(
               responses,
               body.expectedOutput,
-              EVALUATOR_MODEL,
+              judgeTransport.model,
               false,
-              evaluatorApiKey,
+              judgeTransport.apiKey,
+              judgeTransport.baseURL,
+              judgeTransport.kind,
             );
+          // OpenRouter returns cost inline; BYOK / Custom don't, so
+          // estimate from the catalog. Either way the judge call's
+          // cost lands on the caller's own usage, never the general key.
+          let judgeCostUsd = comparison.totalCost ?? null;
+          if (
+            judgeCostUsd == null &&
+            comparison.promptTokens != null &&
+            comparison.completionTokens != null
+          ) {
+            judgeCostUsd = await this.catalogService.estimateCost(
+              judgeModel,
+              comparison.promptTokens,
+              comparison.completionTokens,
+            );
+          }
           void this.observabilityService.recordLLMCall({
             userId: user.id,
             teamId,
             eventType: 'evaluator_call',
-            model: EVALUATOR_MODEL,
+            model: judgeModel,
             latencyMs: Date.now() - evalStart,
             success: true,
-            metadata: { attempt, streamed: true },
+            totalTokens: comparison.totalTokens,
+            costUsd: judgeCostUsd ?? undefined,
+            metadata: {
+              attempt,
+              streamed: true,
+              source: judgeTransport.source,
+              selfJudge,
+            },
           });
           lastRawContent = comparison.content ?? '';
           try {
@@ -667,17 +720,22 @@ export class CompareModelsController {
             userId: user.id,
             teamId,
             eventType: 'evaluator_call',
-            model: EVALUATOR_MODEL,
+            model: judgeModel,
             latencyMs: Date.now() - evalStart,
             success: false,
             errorMessage: msg,
-            metadata: { attempt, streamed: true },
+            metadata: {
+              attempt,
+              streamed: true,
+              source: judgeTransport.source,
+              selfJudge,
+            },
           });
           this.logger.error(
             `Evaluator call failed on attempt ${attempt}/${MAX_COMPARE_ATTEMPTS}: ${msg}`,
           );
-          // Retry — could be a transient :free-tier rate limit. The
-          // last error message gets surfaced if every attempt fails.
+          // Retry — could be a transient rate limit. The last error
+          // message gets surfaced if every attempt fails.
         }
       }
 
@@ -719,6 +777,7 @@ export class CompareModelsController {
             models: body.models,
             responses,
             comparison: comparisonWithMetrics,
+            judgeModel,
           })
           .returning({ id: arenaRuns.id });
         runId = row?.id;
@@ -734,6 +793,11 @@ export class CompareModelsController {
       sendEvent('evaluation', {
         comparisonItems: comparisonWithMetrics,
         runId,
+        // The judge model that produced these scores + whether it also
+        // graded its own answer, so the FE can label the evaluator and
+        // warn about possible self-evaluation bias.
+        judgeModel,
+        selfJudge,
         // When every retry of the evaluator failed (or produced
         // unparseable JSON), surface the underlying reason so the
         // FE can show a toast / banner — better UX than silently
@@ -790,6 +854,7 @@ export class CompareModelsController {
       responses: row.responses as ModelResponse[],
       comparison: row.comparison as ComparisonItem[],
       favoriteModel: row.favoriteModel ?? null,
+      judgeModel: row.judgeModel ?? null,
       createdAt: row.createdAt,
     };
   }

@@ -71,6 +71,13 @@
       "when": 1779950000000,
       "tag": "0009_arena_favorite",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779960000000,
+      "tag": "0010_arena_judge_model",
+      "breakpoints": true
     }
   ]
 }

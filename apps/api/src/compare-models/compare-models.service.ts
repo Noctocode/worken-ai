@@ -132,6 +132,8 @@ export class CompareModelsService {
     model: string,
     enableReasoning: boolean = true,
     apiKey?: string,
+    baseURL?: string,
+    kind: ChatTransportKind = 'openai-sdk',
   ): Promise<QuestionResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
 
@@ -176,6 +178,24 @@ export class CompareModelsService {
       content: prompt,
     });
 
+    // Native Anthropic path for a BYOK Claude model picked as the
+    // judge — the prompt is folded into the system slot, the answers
+    // JSON into the user turn, matching sendQuestion's BYOK branch.
+    if (kind === 'anthropic-sdk') {
+      const r = await this.anthropic.sendMessage(
+        [{ role: 'user', content: JSON.stringify(answers) }],
+        model,
+        apiKey ?? '',
+        prompt,
+      );
+      return {
+        content: r.content,
+        totalTokens: r.totalTokens,
+        promptTokens: r.promptTokens,
+        completionTokens: r.completionTokens,
+      };
+    }
+
     const messages = [
       ...systemMessages,
       { role: 'user', content: JSON.stringify(answers) },
@@ -183,11 +203,13 @@ export class CompareModelsService {
 
     let completion;
     try {
-      completion = await this.makeClient(apiKey).chat.completions.create({
-        model,
-        messages,
-        ...(enableReasoning && { reasoning: { enabled: true } }),
-      });
+      completion = await this.makeClient(apiKey, baseURL).chat.completions.create(
+        {
+          model,
+          messages,
+          ...(enableReasoning && { reasoning: { enabled: true } }),
+        },
+      );
     } catch (err) {
       throw describeOpenRouterError(
         model,
@@ -199,11 +221,18 @@ export class CompareModelsService {
     // Extract response with reasoning_details
     const response = completion.choices[0].message;
 
+    const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {
       content: response.content || '',
       ...(response.reasoning_details
         ? { reasoning_details: response.reasoning_details }
         : {}),
+      totalTokens: completion.usage?.total_tokens,
+      promptTokens: completion.usage?.prompt_tokens,
+      completionTokens: completion.usage?.completion_tokens,
+      // Undefined for BYOK / Custom (no upstream cost) — the controller
+      // estimates from the OpenRouter catalog in that case.
+      ...(orCost != null ? { totalCost: orCost } : {}),
     };
   }
 }

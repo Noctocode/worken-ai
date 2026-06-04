@@ -154,6 +154,9 @@ const MIN_MODELS = 2;
 // Where the picked-model set is mirrored so revisits restore the
 // last selection instead of resetting to the catalog's first two.
 const ARENA_MODELS_STORAGE_KEY = "arena.selectedModels";
+// Persisted judge-model choice. Empty string = "use the backend
+// default" (ARENA_JUDGE_MODEL env / its built-in default).
+const ARENA_JUDGE_STORAGE_KEY = "arena.judgeModel";
 
 function slotLabel(index: number): string {
   // A, B, C, ... AA after Z. Plenty for our purposes.
@@ -240,6 +243,46 @@ export default function CompareModelsPage() {
   // inline banner is harder to miss when you're focused on the
   // comparison cards. Cleared on every new run.
   const [evaluatorError, setEvaluatorError] = useState<string | null>(null);
+
+  // Judge-model selection. "" = let the backend pick its default. The
+  // judge (a hidden 3rd model that scores the answers) runs through the
+  // caller's own key — its cost lands on the user's personal budget,
+  // same as the compared models. Persisted across visits.
+  const [selectedJudge, setSelectedJudge] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      return window.localStorage.getItem(ARENA_JUDGE_STORAGE_KEY) ?? "";
+    } catch {
+      return "";
+    }
+  });
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (selectedJudge) {
+        window.localStorage.setItem(ARENA_JUDGE_STORAGE_KEY, selectedJudge);
+      } else {
+        window.localStorage.removeItem(ARENA_JUDGE_STORAGE_KEY);
+      }
+    } catch {
+      // Quota / privacy mode — non-fatal.
+    }
+  }, [selectedJudge]);
+  // Drop a persisted judge id that's no longer in the catalog.
+  useEffect(() => {
+    if (!selectedJudge || availableModels.length === 0) return;
+    if (!availableModels.some((m) => m.id === selectedJudge)) {
+      setSelectedJudge("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableModels]);
+  // The judge that actually scored the latest run (from the evaluation
+  // event), plus whether it also graded its own answer. Drives the
+  // "Evaluated by … · billed to your budget" note + self-judge warning.
+  const [judgeInfo, setJudgeInfo] = useState<{
+    model: string;
+    selfJudge: boolean;
+  } | null>(null);
 
   // Pre-flight / network-level failure that prevents the run from
   // even reaching per-panel streams (e.g. budget=0 → 402 from BE,
@@ -408,6 +451,7 @@ export default function CompareModelsPage() {
     setResponses(initialResponses);
     setEvaluations({});
     setEvaluatorError(null);
+    setJudgeInfo(null);
     setArenaError(null);
     setSubmittedQuestion(question);
     setLoadedRunCreatedAt(null);
@@ -451,6 +495,8 @@ export default function CompareModelsPage() {
         expectedOutput,
         context,
         controller.signal,
+        // Empty string → backend default judge model.
+        selectedJudge || undefined,
       )) {
         // Defensive: if the user pressed Stop, the abort signal is
         // set but BE-side bytes already on the wire still surface
@@ -574,6 +620,14 @@ export default function CompareModelsPage() {
           } else {
             setEvaluatorStatus("done");
           }
+          // Record which judge scored this run (+ self-judge bias flag)
+          // so the UI can label the evaluator and its billing note.
+          if (event.judgeModel) {
+            setJudgeInfo({
+              model: event.judgeModel,
+              selfJudge: !!event.selfJudge,
+            });
+          }
           const nextEvaluations: Record<string, ModelEvaluation | null> =
             {};
           for (const id of activeModels) {
@@ -647,6 +701,7 @@ export default function CompareModelsPage() {
     setFavoriteModel(null);
     setEvaluations({});
     setEvaluatorError(null);
+    setJudgeInfo(null);
     setArenaError(null);
     setModelStatuses({});
     setEvaluatorStatus("idle");
@@ -771,6 +826,14 @@ export default function CompareModelsPage() {
           setModelStatuses(nextStatuses);
           setEvaluatorStatus(run.comparison.length > 0 ? "done" : "idle");
           setEvaluatorError(null);
+          setJudgeInfo(
+            run.judgeModel
+              ? {
+                  model: run.judgeModel,
+                  selfJudge: run.models.includes(run.judgeModel),
+                }
+              : null,
+          );
           // Surface the loaded run in the history rail so users see
           // it highlighted alongside the other entries.
           setRailOpen(true);
@@ -997,6 +1060,30 @@ export default function CompareModelsPage() {
               </div>
             )}
 
+            {/* Who scored this run + where the evaluation cost lands.
+                The judge is a hidden 3rd model; its cost bills the same
+                personal budget as the compared models. */}
+            {judgeInfo && (
+              <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-border-2 bg-bg-1 px-4 py-2.5 text-[12px] leading-relaxed text-text-3">
+                <Sparkles className="h-4 w-4 shrink-0 text-primary-6 mt-0.5" />
+                <div>
+                  <span className="text-text-2">
+                    {t("arena.evaluatedBy").replace(
+                      "{model}",
+                      getModelLabel(judgeInfo.model),
+                    )}
+                  </span>{" "}
+                  <span>{t("arena.judgeCostNote")}</span>
+                  {judgeInfo.selfJudge && (
+                    <span className="mt-1 flex items-center gap-1.5 text-warning-7">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      {t("arena.selfJudgeWarning")}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+
             {(loading || hasResults) && (
               <>
                 {/* Mobile tabs (<md) — pick which model's response to
@@ -1129,6 +1216,8 @@ export default function CompareModelsPage() {
               onLoadHistory={loadHistoryRun}
               onClose={() => setRailOpen(false)}
               onAddModel={() => setAddModelOpen(true)}
+              selectedJudge={selectedJudge}
+              onChangeJudge={setSelectedJudge}
             />
           </div>
         ) : (
@@ -1180,6 +1269,8 @@ export default function CompareModelsPage() {
               setAddModelOpen(true);
               setMobileRailOpen(false);
             }}
+            selectedJudge={selectedJudge}
+            onChangeJudge={setSelectedJudge}
           />
         </SheetContent>
       </Sheet>
@@ -1913,6 +2004,8 @@ function RightRail({
   onDeleteHistory,
   onClose,
   onAddModel,
+  selectedJudge,
+  onChangeJudge,
   hideClose = false,
   className,
 }: {
@@ -1930,6 +2023,9 @@ function RightRail({
   onDeleteHistory: (runId: string) => void;
   onClose: () => void;
   onAddModel: () => void;
+  /** Judge-model selection ("" = backend default) + setter. */
+  selectedJudge: string;
+  onChangeJudge: (id: string) => void;
   /** When the rail is embedded in a parent that already supplies a
    *  close affordance (e.g. the mobile Sheet's built-in X), suppress
    *  the local X in the header to avoid two stacked dismiss buttons. */
@@ -1938,9 +2034,10 @@ function RightRail({
   className?: string;
 }) {
   const { t } = useLanguage();
-  const { models } = useUserModels();
+  const { models, getLabel } = useUserModels();
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
+  const [judgeExpanded, setJudgeExpanded] = useState(false);
 
   // History pagination — 5 entries per page so the rail doesn't grow
   // into a wall of past prompts. Page state is local to the rail so
@@ -2030,6 +2127,31 @@ function RightRail({
           <Plus className="h-4 w-4" />
           {t("arena.addModel")}
         </button>
+      </RailSection>
+
+      {/* Judge model — which model scores the answers. "Default" lets
+          the backend pick (ARENA_JUDGE_MODEL). Its cost bills the same
+          personal budget as the compared models. */}
+      <RailSection
+        title={t("arena.judgeModel")}
+        expanded={judgeExpanded}
+        onToggle={() => setJudgeExpanded(!judgeExpanded)}
+      >
+        <p className="text-[12px] leading-relaxed text-text-3">
+          {t("arena.judgeModelHint")}
+        </p>
+        <select
+          value={selectedJudge}
+          onChange={(e) => onChangeJudge(e.target.value)}
+          className="h-9 w-full cursor-pointer rounded-lg border border-border-2 bg-bg-white px-2 text-[13px] text-text-1 outline-none focus:border-primary-6"
+        >
+          <option value="">{t("arena.judgeDefault")}</option>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {getLabel(m.id)}
+            </option>
+          ))}
+        </select>
       </RailSection>
 
       {/* History section — paginated 5 per page so the rail doesn't
