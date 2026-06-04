@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Download,
   FileText,
+  Files,
   FolderInput,
   Folder,
   Loader2,
@@ -51,6 +52,7 @@ import {
 import {
   fetchKnowledgeFolder,
   fetchKnowledgeFolders,
+  fetchAllKnowledgeFiles,
   fetchProjects,
   fetchTeams,
   uploadKnowledgeFiles,
@@ -61,7 +63,9 @@ import {
   moveKnowledgeFile,
   deleteKnowledgeFile,
   deleteKnowledgeFolder,
+  ALL_FILES_FOLDER_ID,
   type KnowledgeFileVisibility,
+  type KnowledgeFolderDetail,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
 } from "@/lib/api";
@@ -240,6 +244,13 @@ export default function FolderDetailPage({
 }) {
   const { t } = useLanguage();
   const { folderId } = use(params);
+  // Virtual "All Files" view — not a real folder. We reuse the exact
+  // same query key + folder-detail shape so every per-file mutation's
+  // `["knowledge-folder", folderId]` invalidation already refreshes
+  // this list with no extra wiring. fetchAllKnowledgeFiles() returns
+  // the same KnowledgeFile shape; the synthesized wrapper just has no
+  // children / breadcrumb so the folder-only UI below collapses.
+  const isAllFiles = folderId === ALL_FILES_FOLDER_ID;
   const [query, setQuery] = useState("");
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
@@ -248,7 +259,22 @@ export default function FolderDetailPage({
 
   const { data: folder, isLoading } = useQuery({
     queryKey: ["knowledge-folder", folderId],
-    queryFn: () => fetchKnowledgeFolder(folderId),
+    queryFn: isAllFiles
+      ? async (): Promise<KnowledgeFolderDetail> => {
+          const files = await fetchAllKnowledgeFiles();
+          return {
+            id: ALL_FILES_FOLDER_ID,
+            name: "All Files",
+            ownerId: "",
+            parentFolderId: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            files,
+            children: [],
+            breadcrumb: [],
+          };
+        }
+      : () => fetchKnowledgeFolder(folderId),
     enabled: !!folderId,
     // Auto-poll while ingestion is still in flight so the status
     // badge transitions Queued → Adding → In context without the
@@ -803,48 +829,65 @@ export default function FolderDetailPage({
         ))}
         <span className="flex items-center gap-1">
           <span className="text-text-3/60">/</span>
-          <span className="text-text-1 font-medium">{folder.name}</span>
+          <span className="text-text-1 font-medium">
+            {isAllFiles ? t("kcFolder.allFilesName") : folder.name}
+          </span>
         </span>
       </nav>
 
       {/* Folder info card */}
       <div className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
-          <Folder
-            className="h-10 w-10 shrink-0 text-primary-6"
-            strokeWidth={1.5}
-          />
+          {isAllFiles ? (
+            <Files
+              className="h-10 w-10 shrink-0 text-primary-6"
+              strokeWidth={1.5}
+            />
+          ) : (
+            <Folder
+              className="h-10 w-10 shrink-0 text-primary-6"
+              strokeWidth={1.5}
+            />
+          )}
           <div className="flex flex-col">
             <h1 className="text-[20px] font-bold text-text-1">
-              {folder.name}
+              {isAllFiles ? t("kcFolder.allFilesName") : folder.name}
             </h1>
             <div className="flex flex-wrap items-center gap-3 text-[13px] text-text-3">
               <span>{folder.files.length} {t("kcFolder.files")}</span>
               <span>{formatBytes(totalBytes)} {t("kcFolder.totalSuffix")}</span>
-              <span>
-                {t("kcFolder.lastModified")} {formatDate(folder.updatedAt)}
-              </span>
+              {/* The virtual view has no real modified time — only show
+                  it for real folders. */}
+              {!isAllFiles && (
+                <span>
+                  {t("kcFolder.lastModified")} {formatDate(folder.updatedAt)}
+                </span>
+              )}
             </div>
           </div>
         </div>
-        <label>
-          <input
-            type="file"
-            multiple
-            accept=".pdf,.docx,.xls,.xlsx"
-            className="hidden"
-            onChange={handleBrowse}
-          />
-          <Button
-            asChild
-            className="shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
-          >
-            <span>
-              <Upload className="h-4 w-4" />
-              {t("kcFolder.uploadFiles")}
-            </span>
-          </Button>
-        </label>
+        {/* No upload target for the virtual aggregate — uploads happen
+            inside a real folder (or the KC root dropzone). */}
+        {!isAllFiles && (
+          <label>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={handleBrowse}
+            />
+            <Button
+              asChild
+              className="shrink-0 cursor-pointer gap-2 bg-primary-6 hover:bg-primary-7"
+            >
+              <span>
+                <Upload className="h-4 w-4" />
+                {t("kcFolder.uploadFiles")}
+              </span>
+            </Button>
+          </label>
+        )}
       </div>
 
       {/* Subfolders section — only when this folder has children.
