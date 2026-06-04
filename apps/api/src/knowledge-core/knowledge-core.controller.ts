@@ -62,6 +62,15 @@ export class KnowledgeCoreController {
     return this.service.findAllFolders(user.id);
   }
 
+  // Flat list of every file the user owns — backs the "All files"
+  // option in the Manage Context attach picker. Declared before the
+  // `files/:id/...` routes; an exact-path GET can't be shadowed by
+  // the parameterized ones, but keeping it here documents the intent.
+  @Get('files')
+  findAllFiles(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.findAllFiles(user.id);
+  }
+
   @Get('folders/:id')
   findFolder(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.findFolder(id, user.id);

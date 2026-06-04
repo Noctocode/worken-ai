@@ -2231,6 +2231,17 @@ export async function fetchKnowledgeFolder(
   return res.json();
 }
 
+/**
+ * Flat list of every KC file the user owns, across all folders —
+ * backs the "All files" option in the Manage Context attach picker.
+ * Same file shape as `KnowledgeFolderDetail.files`.
+ */
+export async function fetchAllKnowledgeFiles(): Promise<KnowledgeFile[]> {
+  const res = await apiFetch("/knowledge-core/files");
+  if (!res.ok) throw new Error("Failed to fetch files");
+  return res.json();
+}
+
 export async function createKnowledgeFolder(
   name: string,
   parentFolderId?: string | null,

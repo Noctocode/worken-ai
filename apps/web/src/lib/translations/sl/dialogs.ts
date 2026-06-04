@@ -97,6 +97,7 @@ export const dialogs: Record<keyof typeof dialogsEn, string> = {
   'addDoc.pickFromKC': 'Izberi iz baze znanja',
   'addDoc.selected': 'izbrano',
   'addDoc.pickFolder': 'Izberi mapo',
+  'addDoc.allFiles': 'Vse datoteke',
   'addDoc.filterFiles': 'Filtriraj datoteke…',
   'addDoc.pickFolderHint': 'Izberite mapo, da vidite njene datoteke.',
   'addDoc.noFilesAttach': 'Ni datotek na voljo za pripenjanje.',

@@ -9,12 +9,14 @@ import {
   deleteDocumentGroup,
   fetchKnowledgeFolders,
   fetchKnowledgeFolder,
+  fetchAllKnowledgeFiles,
   fetchProjectKnowledgeFiles,
   fetchProjectKnowledgeUploadDefaults,
   attachKnowledgeFiles,
   detachKnowledgeFile,
   uploadProjectKnowledgeFiles,
   type DocumentGroup,
+  type KnowledgeFile,
   type ProjectKnowledgeFile,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
@@ -63,6 +65,12 @@ interface AddDocumentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
+
+/** Sentinel folder-filter value for the attach picker meaning "show
+ *  every file the user owns, across all folders". Not a real folder
+ *  id, so it can't collide with one. This is the default so the user
+ *  sees their whole Knowledge Core without first drilling in. */
+const ALL_FILES = "__all__";
 
 /* ── Small visual helpers (kept local — not reused elsewhere) ──── */
 
@@ -165,7 +173,7 @@ export function AddDocumentDialog({
   const [attachSelectedIds, setAttachSelectedIds] = useState<Set<string>>(
     new Set(),
   );
-  const [attachFolderId, setAttachFolderId] = useState<string>("");
+  const [attachFolderId, setAttachFolderId] = useState<string>(ALL_FILES);
   const [attachQuery, setAttachQuery] = useState("");
 
   /* Delete-confirm shared by both lists */
@@ -227,12 +235,24 @@ export function AddDocumentDialog({
     enabled: open,
   });
 
+  const attachAll = attachFolderId === ALL_FILES;
+
   // Files inside the selected folder on the Attach tab — fetched
-  // lazily so we don't pull every KC file in the workspace.
+  // lazily so we don't pull every KC file in the workspace. Skipped
+  // when "All files" is selected; the flat query below covers it.
   const { data: attachFolderDetail } = useQuery({
     queryKey: ["knowledge-folder", attachFolderId],
     queryFn: () => fetchKnowledgeFolder(attachFolderId),
-    enabled: open && !!attachFolderId,
+    enabled: open && !!attachFolderId && !attachAll,
+  });
+
+  // Every owned KC file, flat — powers the default "All files" option
+  // so the user can browse their whole Knowledge Core without first
+  // drilling into a folder. Only fetched while that option is active.
+  const { data: allKnowledgeFiles = [] } = useQuery({
+    queryKey: ["knowledge-all-files"],
+    queryFn: fetchAllKnowledgeFiles,
+    enabled: open && attachAll,
   });
 
   /* ── Effects ──────────────────────────────────────────────────── */
@@ -242,13 +262,16 @@ export function AddDocumentDialog({
   useEffect(() => {
     if (!open) {
       setUploadDefaultsApplied(false);
+      // Snap the attach filter back to "All files" so a folder the
+      // user drilled into last time doesn't persist into the next open.
+      setAttachFolderId(ALL_FILES);
       return;
     }
     if (uploadDefaults && !uploadDefaultsApplied) {
       setUploadFolderId(uploadDefaults.folderId);
-      // Also default the attach-folder filter to "Projects" so the
-      // user sees something useful when they switch tabs.
-      setAttachFolderId(uploadDefaults.folderId);
+      // The attach-folder filter stays on its "All files" default
+      // (set in useState) so the user sees their whole Knowledge Core
+      // when they switch tabs, not just the smart-default folder.
       setUploadDefaultsApplied(true);
     }
   }, [open, uploadDefaults, uploadDefaultsApplied]);
@@ -470,13 +493,15 @@ export function AddDocumentDialog({
     setSelectedFiles((prev) => prev.filter((_, i) => i !== idx));
 
   const filteredAttachCandidates = useMemo(() => {
-    const all = attachFolderDetail?.files ?? [];
+    const all: KnowledgeFile[] = attachAll
+      ? allKnowledgeFiles
+      : (attachFolderDetail?.files ?? []);
     const attachedSet = new Set(attachedFiles.map((f) => f.fileId));
     const q = attachQuery.trim().toLowerCase();
     return all
       .filter((f) => !attachedSet.has(f.id))
       .filter((f) => (q ? f.name.toLowerCase().includes(q) : true));
-  }, [attachFolderDetail, attachedFiles, attachQuery]);
+  }, [attachAll, allKnowledgeFiles, attachFolderDetail, attachedFiles, attachQuery]);
 
   /* ── Render ──────────────────────────────────────────────────── */
 
@@ -701,6 +726,9 @@ export function AddDocumentDialog({
                         <SelectValue placeholder={t("addDoc.pickFolder")} />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={ALL_FILES}>
+                          {t("addDoc.allFiles")}
+                        </SelectItem>
                         {kcFolders.map((f) => (
                           <SelectItem key={f.id} value={f.id}>
                             {f.name}
