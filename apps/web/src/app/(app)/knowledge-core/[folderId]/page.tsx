@@ -522,6 +522,19 @@ export default function FolderDetailPage({
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", moveTargetId],
       });
+      // In the virtual "All Files" view `folderId` is the sentinel, not
+      // the file's real source folder — invalidate the file's actual
+      // source so it doesn't linger there until a hard refetch.
+      if (isAllFiles) {
+        const sourceFolderId = folder?.files.find(
+          (f) => f.id === moveFileId,
+        )?.folderId;
+        if (sourceFolderId) {
+          queryClient.invalidateQueries({
+            queryKey: ["knowledge-folder", sourceFolderId],
+          });
+        }
+      }
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
       setMoveFileId(null);
