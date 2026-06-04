@@ -18,10 +18,15 @@ interface OpenRouterUsage {
   cost?: number;
 }
 
-function describeOpenRouterError(
+// `source` names the upstream in the message. Defaults to OpenRouter
+// (the common path), but the judge can now be routed through a BYOK /
+// Custom endpoint, where an "OpenRouter ... failed" prefix would be
+// misleading — callers pass the actual source in that case.
+function describeUpstreamError(
   model: string,
   action: string,
   err: unknown,
+  source = 'OpenRouter',
 ): Error {
   if (err instanceof OpenAI.APIError) {
     const body =
@@ -29,11 +34,11 @@ function describeOpenRouterError(
         ? err.error
         : JSON.stringify(err.error ?? {});
     return new Error(
-      `OpenRouter ${action} failed for model "${model}": ${err.status} ${err.name} — ${err.message}${body && body !== '{}' ? ` | body=${body}` : ''}`,
+      `${source} ${action} failed for model "${model}": ${err.status} ${err.name} — ${err.message}${body && body !== '{}' ? ` | body=${body}` : ''}`,
     );
   }
   const msg = err instanceof Error ? err.message : String(err);
-  return new Error(`OpenRouter ${action} failed for model "${model}": ${msg}`);
+  return new Error(`${source} ${action} failed for model "${model}": ${msg}`);
 }
 
 @Injectable()
@@ -102,7 +107,7 @@ export class CompareModelsService {
         ...(enableReasoning && { reasoning: { enabled: true } }),
       });
     } catch (err) {
-      throw describeOpenRouterError(model, 'chat.completions.create', err);
+      throw describeUpstreamError(model, 'chat.completions.create', err);
     }
 
     // Extract response with reasoning_details
@@ -211,10 +216,17 @@ export class CompareModelsService {
         },
       );
     } catch (err) {
-      throw describeOpenRouterError(
+      // The judge may route through OpenRouter or a BYOK / Custom
+      // OpenAI-compatible endpoint — label the message with the actual
+      // upstream rather than always saying "OpenRouter".
+      const source = baseURL?.includes('openrouter.ai')
+        ? 'OpenRouter'
+        : 'AI gateway';
+      throw describeUpstreamError(
         model,
         'chat.completions.create (compare)',
         err,
+        source,
       );
     }
 

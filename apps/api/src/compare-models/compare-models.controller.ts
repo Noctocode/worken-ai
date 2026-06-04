@@ -52,8 +52,10 @@ const MAX_COMPARE_ATTEMPTS = 3;
 // per-run via the request body (`judgeModel`, set by the UI selector).
 const DEFAULT_JUDGE_MODEL = 'deepseek/deepseek-chat';
 
-function resolveJudgeModel(requested?: string): string {
-  const fromRequest = requested?.trim();
+function resolveJudgeModel(requested?: unknown): string {
+  // Tolerate a non-string `judgeModel` in the body — a bad client
+  // shouldn't 500 here; we just fall through to the env/default.
+  const fromRequest = typeof requested === 'string' ? requested.trim() : '';
   if (fromRequest) return fromRequest;
   const fromEnv = process.env['ARENA_JUDGE_MODEL']?.trim();
   return fromEnv || DEFAULT_JUDGE_MODEL;

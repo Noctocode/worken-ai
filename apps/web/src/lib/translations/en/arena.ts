@@ -27,7 +27,7 @@ export const arena = {
   'arena.judgeCostNote': "· the evaluation runs through your own key, so its cost is billed to your personal budget.",
   'arena.selfJudgeWarning': 'This model also graded its own answer — its score may be biased.',
   'arena.judgeModel': 'Judge model',
-  'arena.judgeModelHint': "The hidden model that scores the answers. Pick a capable one — it should outclass the models it grades. Its cost bills to your personal budget.",
+  'arena.judgeModelHint': "The hidden model that scores the answers. Pick a capable one — it should outclass the models it grades. Its cost is billed to your personal budget.",
   'arena.judgeDefault': 'Default (recommended)',
   'arena.attachFile': 'Attach File',
   'arena.promptLibrary': 'Prompt Library',
