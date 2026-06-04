@@ -243,7 +243,10 @@ export class KnowledgeCoreService {
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
       .where(eq(knowledgeFolders.ownerId, userId))
-      .orderBy(desc(knowledgeFiles.createdAt));
+      // `id` tiebreaker so files sharing a createdAt (a Drive import
+      // stamps them in one transaction) keep a stable order across
+      // refetches — otherwise excluding one would reshuffle the ties.
+      .orderBy(desc(knowledgeFiles.createdAt), desc(knowledgeFiles.id));
 
     const fileIds = files.map((f) => f.id);
     const [teamLinks, projectLinks] = await Promise.all([

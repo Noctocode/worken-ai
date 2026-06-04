@@ -263,12 +263,16 @@ export default function FolderDetailPage({
       ? async (): Promise<KnowledgeFolderDetail> => {
           const files = await fetchAllKnowledgeFiles();
           // Newest first — the most recently added file sits at the
-          // top. The BE already orders this way, but sorting here keeps
-          // it correct regardless of source order.
-          const sorted = [...files].sort(
-            (a, b) =>
-              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-          );
+          // top. The `id` tiebreaker keeps the order deterministic when
+          // several files share a createdAt (e.g. a Drive import stamps
+          // them all in one transaction); without it, a refetch after
+          // exclude/include would reshuffle the tied rows and a file
+          // would appear to "jump".
+          const sorted = [...files].sort((a, b) => {
+            const byTime =
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            return byTime !== 0 ? byTime : b.id.localeCompare(a.id);
+          });
           return {
             id: ALL_FILES_FOLDER_ID,
             name: "All Files",
