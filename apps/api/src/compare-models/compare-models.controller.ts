@@ -47,10 +47,12 @@ const MAX_COMPARE_ATTEMPTS = 3;
 
 // Default "judge" model that scores the arena answers. A capable
 // evaluator must outclass the models it grades, so the default is a
-// reasonable price/performance model rather than the old free tier.
+// strong, JSON-reliable model with a low enough output price that it
+// won't surprise the caller's personal budget (the judge bills it):
+// Gemini 2.5 Flash — solid reasoning, 1M context, ~$0.30/$2.50 per M.
 // Override without a deploy via the ARENA_JUDGE_MODEL env var, or
 // per-run via the request body (`judgeModel`, set by the UI selector).
-const DEFAULT_JUDGE_MODEL = 'deepseek/deepseek-chat';
+const DEFAULT_JUDGE_MODEL = 'google/gemini-2.5-flash';
 
 function resolveJudgeModel(requested?: unknown): string {
   // Tolerate a non-string `judgeModel` in the body — a bad client
