@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FileText,
+  Files,
   Folder,
   FolderInput,
   Loader2,
@@ -37,6 +38,8 @@ import {
   untrainKnowledgeFile,
   moveKnowledgeFile,
   deleteKnowledgeFile,
+  ALL_FILES_FOLDER_ID,
+  UPLOADS_FOLDER_NAME,
   type KnowledgeFileVisibility,
   type KnowledgeUploadNameConflict,
   type NameConflictAction,
@@ -415,10 +418,14 @@ export default function KnowledgeCorePage() {
     setDeleteFolderId(null);
   };
 
-  const getAllFilesFolderId = async (): Promise<string> => {
-    const existing = folders.find((f) => f.name === "All Files");
+  // Dropzone uploads from the KC root need a real destination folder.
+  // "All Files" is now a virtual view (see ALL_FILES_FOLDER_ID), so
+  // uploads land in a real "Uploads" folder instead — created on the
+  // first upload and reused thereafter.
+  const getUploadsFolderId = async (): Promise<string> => {
+    const existing = folders.find((f) => f.name === UPLOADS_FOLDER_NAME);
     if (existing) return existing.id;
-    const created = await createKnowledgeFolder("All Files");
+    const created = await createKnowledgeFolder(UPLOADS_FOLDER_NAME);
     await queryClient.refetchQueries({ queryKey: ["knowledge-folders"] });
     return created.id;
   };
@@ -479,7 +486,7 @@ export default function KnowledgeCorePage() {
     }
     setUploading(true);
     try {
-      const folderId = await getAllFilesFolderId();
+      const folderId = await getUploadsFolderId();
       const result = await runUpload(folderId, stagedFiles, undefined);
       if (result.nameConflicts.length > 0) {
         // Hold the conflict context so the resolution dialog can
@@ -758,6 +765,32 @@ export default function KnowledgeCorePage() {
           </Button>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {/* Virtual "All Files" card — pinned first, not a real
+              folder. Clicking it opens the flat view of every file the
+              user owns (across all folders), so a file appears here AND
+              in its real folder without being stored twice. Hidden
+              while searching folders, since it isn't a folder match.
+              Recursive folder totals already sum to the global totals. */}
+          {!query && (
+            <Link
+              href={`/knowledge-core/${ALL_FILES_FOLDER_ID}`}
+              className="flex flex-col gap-3 rounded border border-primary-2 bg-primary-1/40 p-6 transition-colors hover:bg-primary-1"
+            >
+              <div className="flex items-start justify-between">
+                <Files className="h-8 w-8 text-primary-6" strokeWidth={1.5} />
+              </div>
+              <h3 className="text-[16px] font-medium text-text-1">
+                {t("knowledgeCore.allFilesName")}
+              </h3>
+              <div className="flex flex-col gap-1 text-[13px] text-text-3">
+                <span>
+                  {folders.reduce((s, f) => s + f.fileCount, 0)} files •{" "}
+                  {formatBytes(folders.reduce((s, f) => s + f.totalBytes, 0))}
+                </span>
+                <span>{t("knowledgeCore.allFilesHint")}</span>
+              </div>
+            </Link>
+          )}
           {filteredFolders.map((folder) => (
             <Link
               key={folder.id}

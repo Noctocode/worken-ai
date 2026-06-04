@@ -2231,6 +2231,33 @@ export async function fetchKnowledgeFolder(
   return res.json();
 }
 
+/**
+ * Sentinel folder id for the virtual "All Files" view on
+ * /knowledge-core. NOT a real `knowledge_folders` row — it can't
+ * collide with one (real ids are uuids). The folder grid pins a card
+ * with this id, and the detail route swaps to fetchAllKnowledgeFiles()
+ * when its `[folderId]` param equals this, so a file shows up both in
+ * its real folder AND in "All Files" without ever being duplicated.
+ */
+export const ALL_FILES_FOLDER_ID = "__all__";
+
+/** Real folder that dropzone uploads from the /knowledge-core root
+ *  land in, now that "All Files" is a virtual view rather than a real
+ *  upload target. Created on demand. Persisted name — not translated. */
+export const UPLOADS_FOLDER_NAME = "Uploads";
+
+/**
+ * Flat list of every KC file the user owns, across all folders —
+ * backs the "All files" option in the Manage Context attach picker
+ * AND the virtual "All Files" folder on /knowledge-core. Same file
+ * shape as `KnowledgeFolderDetail.files`.
+ */
+export async function fetchAllKnowledgeFiles(): Promise<KnowledgeFile[]> {
+  const res = await apiFetch("/knowledge-core/files");
+  if (!res.ok) throw new Error("Failed to fetch files");
+  return res.json();
+}
+
 export async function createKnowledgeFolder(
   name: string,
   parentFolderId?: string | null,

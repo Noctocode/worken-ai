@@ -95,6 +95,7 @@ export const dialogs = {
   'addDoc.pickFromKC': 'Pick from Knowledge Core',
   'addDoc.selected': 'selected',
   'addDoc.pickFolder': 'Pick a folder',
+  'addDoc.allFiles': 'All files',
   'addDoc.filterFiles': 'Filter files…',
   'addDoc.pickFolderHint': 'Pick a folder to see its files.',
   'addDoc.noFilesAttach': 'No files available to attach.',

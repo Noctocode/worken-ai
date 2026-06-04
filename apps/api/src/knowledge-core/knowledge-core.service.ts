@@ -211,6 +211,55 @@ export class KnowledgeCoreService {
     });
   }
 
+  /**
+   * Every file the user owns, flat — across all folders and nesting
+   * levels. Powers the "All files" option in the Manage Context attach
+   * picker, where the user wants to browse their whole Knowledge Core
+   * without first drilling into a folder. Ownership is scoped via the
+   * file's folder (`folder.ownerId`), the same check findFolder uses.
+   * Reuses the row shape + link hydration of findFolder so the FE can
+   * render the same file rows regardless of which option is selected.
+   */
+  async findAllFiles(userId: string) {
+    const files = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        folderId: knowledgeFiles.folderId,
+        name: knowledgeFiles.name,
+        fileType: knowledgeFiles.fileType,
+        sizeBytes: knowledgeFiles.sizeBytes,
+        storagePath: knowledgeFiles.storagePath,
+        uploadedById: knowledgeFiles.uploadedById,
+        uploadedByName: users.name,
+        ingestionStatus: knowledgeFiles.ingestionStatus,
+        ingestionError: knowledgeFiles.ingestionError,
+        visibility: knowledgeFiles.visibility,
+        createdAt: knowledgeFiles.createdAt,
+      })
+      .from(knowledgeFiles)
+      .innerJoin(
+        knowledgeFolders,
+        eq(knowledgeFolders.id, knowledgeFiles.folderId),
+      )
+      .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
+      .where(eq(knowledgeFolders.ownerId, userId))
+      // `id` tiebreaker so files sharing a createdAt (a Drive import
+      // stamps them in one transaction) keep a stable order across
+      // refetches — otherwise excluding one would reshuffle the ties.
+      .orderBy(desc(knowledgeFiles.createdAt), desc(knowledgeFiles.id));
+
+    const fileIds = files.map((f) => f.id);
+    const [teamLinks, projectLinks] = await Promise.all([
+      this.hydrateTeamLinks(fileIds),
+      this.hydrateProjectLinks(fileIds),
+    ]);
+    return files.map((f) => ({
+      ...f,
+      teams: teamLinks.get(f.id) ?? [],
+      projects: projectLinks.get(f.id) ?? [],
+    }));
+  }
+
   async findFolder(id: string, userId: string) {
     const [folder] = await this.db
       .select()

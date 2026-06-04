@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
   Check,
@@ -23,7 +24,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogTrigger,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -42,11 +45,14 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAuth } from "@/components/providers";
 import {
   deleteCompanyProfile,
+  fetchGuardrailItems,
   fetchOnboardingProfile,
   fetchOrgSettings,
   fetchOrgUsers,
   fetchTeams,
   removeOrgUser,
+  toggleGuardrailItem,
+  toggleGuardrailOrgWide,
   updateOnboardingProfile,
   updateOrgSettings,
   type OrgUser,
@@ -86,6 +92,10 @@ const TEAM_SIZES = [
   { value: "1000+", label: "1,000+" },
 ];
 
+// Row view-model for the Primary Guardrails table — a thin projection
+// of the real `GuardrailItem` from /guardrails-section so the existing
+// markup (name + type chips + severity + triggers + status) renders
+// unchanged.
 interface CompanyGuardrail {
   id: string;
   name: string;
@@ -95,19 +105,119 @@ interface CompanyGuardrail {
   active: boolean;
 }
 
-// Org-level guardrails BE isn't there yet — these stay as static demo
-// rows until that work lands. Profile + budget aggregates above are
-// fully wired to real data.
-const DEMO_GUARDRAILS: CompanyGuardrail[] = [
-  { id: "1", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
-  { id: "2", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
-  { id: "3", name: "Content Safety Filter", types: ["Content Safety", "Input"], severity: "high", triggers: 1247, active: true },
-];
-
 const labelFor = (
   options: Array<{ value: string; label: string }>,
   value: string | null,
 ) => options.find((o) => o.value === value)?.label ?? value;
+
+/**
+ * "Add Guardrail" picker for the Company tab — mirrors the team-detail
+ * dialog: pick an existing rule from a dropdown and apply it. On a
+ * team that means assignGuardrailToTeam; the company equivalent is
+ * flipping the rule Org-wide (toggleGuardrailOrgWide), which makes it
+ * apply to every chat in the company and surfaces it in this list.
+ * Candidates are rules that aren't already org-wide.
+ */
+function CompanyAddGuardrailDialog({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { t } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState("");
+  const qc = useQueryClient();
+
+  const { data: allGuardrails = [], isLoading } = useQuery({
+    queryKey: ["guardrails-section"],
+    queryFn: fetchGuardrailItems,
+    enabled: open,
+  });
+
+  const candidates = allGuardrails.filter((g) => !g.isOrgWide);
+
+  const mutation = useMutation({
+    mutationFn: () => toggleGuardrailOrgWide(selectedId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["guardrails-section"] });
+      // Team listings show org-wide rules too — keep them in sync.
+      qc.invalidateQueries({ queryKey: ["guardrails"] });
+      toast.success(t("mgmt.company.guardrailAddedToCompany"));
+      setOpen(false);
+      setSelectedId("");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.guardrailAddFailed")),
+  });
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) setSelectedId("");
+      }}
+    >
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("mgmt.company.addGuardrail")}</DialogTitle>
+          <DialogDescription>
+            {t("mgmt.company.addGuardrailDesc")}
+          </DialogDescription>
+        </DialogHeader>
+        {isLoading ? (
+          <div className="flex justify-center py-6">
+            <Loader2 className="h-5 w-5 animate-spin text-text-3" />
+          </div>
+        ) : candidates.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 py-6 text-center">
+            <p className="text-[14px] text-text-3">
+              {t("mgmt.company.noGuardrailsAvailable")}
+            </p>
+            <Link
+              href="/guardrails"
+              className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
+            >
+              {t("mgmt.company.createOnGuardrails")}
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>{t("mgmt.company.guardrail")}</Label>
+              <Select value={selectedId} onValueChange={setSelectedId}>
+                <SelectTrigger className="border-border-2 text-text-1 cursor-pointer">
+                  <SelectValue
+                    placeholder={t("mgmt.company.selectGuardrail")}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {candidates.map((g) => (
+                    <SelectItem key={g.id} value={g.id}>
+                      {g.name} — {g.type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                onClick={() => mutation.mutate()}
+                disabled={!selectedId || mutation.isPending}
+                className="cursor-pointer bg-primary-6 hover:bg-primary-7"
+              >
+                {mutation.isPending
+                  ? t("mgmt.company.assigning")
+                  : t("mgmt.company.assignGuardrail")}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 export function CompanyTab() {
   const { t } = useLanguage();
@@ -151,13 +261,58 @@ export function CompanyTab() {
     null,
   );
 
-  const [guardrails, setGuardrails] =
-    useState<CompanyGuardrail[]>(DEMO_GUARDRAILS);
-  const toggleGuardrail = (id: string) => {
-    setGuardrails((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, active: !g.active } : g)),
-    );
-  };
+  // Primary Guardrails = the company-wide (org-wide) rules from the
+  // real /guardrails-section API. Adding a guardrail here flips an
+  // existing rule Org-wide; removing it flips Org-wide back off — the
+  // same select-to-attach / detach model the team-detail page uses,
+  // just scoped to the whole company instead of one team.
+  const { data: guardrailItems = [] } = useQuery({
+    queryKey: ["guardrails-section"],
+    queryFn: fetchGuardrailItems,
+  });
+  const guardrails = useMemo<CompanyGuardrail[]>(
+    () =>
+      guardrailItems
+        .filter((g) => g.isOrgWide)
+        .map((g) => ({
+          id: g.id,
+          name: g.name,
+          // `type` is the rule category; `target` (input/output) is
+          // shown as a second chip when present, mirroring the old
+          // two-chip demo layout.
+          types: g.target ? [g.type, g.target] : [g.type],
+          severity: g.severity,
+          triggers: g.triggers,
+          active: g.isActive,
+        })),
+    [guardrailItems],
+  );
+
+  const toggleGuardrailMutation = useMutation({
+    mutationFn: toggleGuardrailItem,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
+      // isActive is global — refresh team-detail listings too so their
+      // status badge doesn't go stale (same as the remove mutation).
+      queryClient.invalidateQueries({ queryKey: ["guardrails"] });
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.guardrailToggleFailed")),
+  });
+  // "Remove from company" = flip the rule's Org-wide flag off. The
+  // guardrail itself is kept (matching the team page's "remove from
+  // team", which detaches rather than deletes); full deletion lives
+  // on /guardrails.
+  const removeFromCompanyMutation = useMutation({
+    mutationFn: toggleGuardrailOrgWide,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["guardrails-section"] });
+      queryClient.invalidateQueries({ queryKey: ["guardrails"] });
+      toast.success(t("mgmt.company.guardrailRemovedFromCompany"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.guardrailRemoveFailed")),
+  });
 
   const updateMutation = useMutation({
     mutationFn: updateOnboardingProfile,
@@ -1039,15 +1194,21 @@ export function CompanyTab() {
         </div>
       </div>
 
-      {/* Primary Guardrails — DEMO data, awaiting org-level guardrails BE */}
+      {/* Primary Guardrails — company-wide (org-wide) rules from
+          /guardrails-section. Add picks an existing rule and flips it
+          Org-wide; the row toggle flips global active; the row menu
+          removes it from the company (Org-wide off). Same select-to-
+          attach model as the team-detail page. */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.primaryGuardrails")}</p>
           {isAdmin ? (
-            <Button variant="plusAction" className="rounded-lg w-[155px]">
-              <Plus className="h-4 w-4 text-text-white" />
-              {t("mgmt.company.addGuardrail")}
-            </Button>
+            <CompanyAddGuardrailDialog>
+              <Button variant="plusAction" className="rounded-lg w-[155px]">
+                <Plus className="h-4 w-4 text-text-white" />
+                {t("mgmt.company.addGuardrail")}
+              </Button>
+            </CompanyAddGuardrailDialog>
           ) : (
             // Basic / advanced users see the button disabled with a
             // tooltip — matches the Invite User pattern above and the
@@ -1114,7 +1275,10 @@ export function CompanyTab() {
                         {isAdmin ? (
                           <Switch
                             checked={g.active}
-                            onCheckedChange={() => toggleGuardrail(g.id)}
+                            disabled={toggleGuardrailMutation.isPending}
+                            onCheckedChange={() =>
+                              toggleGuardrailMutation.mutate(g.id)
+                            }
                           />
                         ) : (
                           <DisabledReasonTooltip
@@ -1140,29 +1304,29 @@ export function CompanyTab() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            {/* Disabled menu items rather than hiding
-                                the kebab — keeps the affordance
-                                discoverable for non-admins and the
-                                tooltip explains the gate on hover. */}
-                            <DropdownMenuItem
-                              className="gap-2"
-                              disabled={!isAdmin}
-                              title={
-                                isAdmin ? undefined : t("mgmt.company.editAdminOnly")
-                              }
-                            >
-                              <Pencil className="h-4 w-4" />
-                              {t("mgmt.company.edit")}
-                            </DropdownMenuItem>
+                            {/* Disabled item rather than hiding the
+                                kebab — keeps the affordance discoverable
+                                for non-admins, tooltip explains the gate.
+                                "Remove from company" detaches (Org-wide
+                                off); the rule itself stays in /guardrails. */}
                             <DropdownMenuItem
                               className="gap-2 text-danger-6 focus:text-danger-6"
-                              disabled={!isAdmin}
+                              disabled={
+                                !isAdmin || removeFromCompanyMutation.isPending
+                              }
                               title={
                                 isAdmin ? undefined : t("mgmt.company.deleteAdminOnly")
                               }
+                              onSelect={(e) => {
+                                if (!isAdmin) {
+                                  e.preventDefault();
+                                  return;
+                                }
+                                removeFromCompanyMutation.mutate(g.id);
+                              }}
                             >
-                              <Trash2 className="h-4 w-4" />
-                              {t("mgmt.company.delete")}
+                              <UserX className="h-4 w-4" />
+                              {t("mgmt.company.removeFromCompany")}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -1170,6 +1334,16 @@ export function CompanyTab() {
                     </td>
                   </tr>
                 ))}
+                {guardrails.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-4 py-8 text-center text-[16px] text-text-3"
+                    >
+                      {t("mgmt.company.noGuardrails")}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
