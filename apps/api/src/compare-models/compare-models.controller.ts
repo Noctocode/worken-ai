@@ -813,6 +813,24 @@ export class CompareModelsController {
     }
   }
 
+  // The judge used when the caller doesn't pick one — resolved live
+  // (ARENA_JUDGE_MODEL env / DEFAULT_JUDGE_MODEL) so the UI can name it
+  // without hardcoding. `name` is the catalog display name (provider
+  // prefix stripped), falling back to the raw id.
+  @Get('judge-default')
+  async judgeDefault() {
+    const id = resolveJudgeModel();
+    let name = id;
+    try {
+      const catalog = await this.catalogService.list();
+      const match = catalog.find((m) => m.id === id);
+      if (match?.name) name = match.name.split(': ').pop() ?? match.name;
+    } catch {
+      // Catalog unavailable — the raw id is a fine fallback.
+    }
+    return { id, name };
+  }
+
   @Get('runs')
   async listRuns(@CurrentUser() user: AuthenticatedUser) {
     const rows = await this.db

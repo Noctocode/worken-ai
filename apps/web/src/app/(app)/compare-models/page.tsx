@@ -33,6 +33,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -63,6 +64,7 @@ import {
   deleteArenaRun,
   fetchArenaRun,
   fetchArenaRuns,
+  fetchArenaJudgeDefault,
   fetchPrompts,
   fetchShortcuts,
   parseArenaAttachment,
@@ -2042,6 +2044,16 @@ function RightRail({
   const canRemove = selectedModels.length > MIN_MODELS;
   const canAddMore = selectedModels.length < models.length;
   const [judgeExpanded, setJudgeExpanded] = useState(false);
+  // The BE-resolved default judge (ARENA_JUDGE_MODEL / its default) so
+  // the "Default" option names the real model without hardcoding it.
+  const { data: judgeDefault } = useQuery({
+    queryKey: ["arena-judge-default"],
+    queryFn: fetchArenaJudgeDefault,
+    staleTime: 60 * 60 * 1000,
+  });
+  const judgeDefaultLabel = judgeDefault?.name
+    ? t("arena.judgeDefault").replace("{model}", judgeDefault.name)
+    : t("arena.judgeDefaultPlain");
 
   // History pagination — 5 entries per page so the rail doesn't grow
   // into a wall of past prompts. Page state is local to the rail so
@@ -2149,7 +2161,7 @@ function RightRail({
           onChange={(e) => onChangeJudge(e.target.value)}
           className="h-9 w-full cursor-pointer rounded-lg border border-border-2 bg-bg-white px-2 text-[13px] text-text-1 outline-none focus:border-primary-6"
         >
-          <option value="">{t("arena.judgeDefault")}</option>
+          <option value="">{judgeDefaultLabel}</option>
           {models.map((m) => (
             <option key={m.id} value={m.id}>
               {getLabel(m.id)}

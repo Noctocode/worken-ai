@@ -1776,6 +1776,17 @@ export async function fetchArenaRuns(): Promise<ArenaRunSummary[]> {
   return res.json();
 }
 
+/** The judge model used when no per-run override is picked — resolved
+ *  live on the BE so the UI can name it without hardcoding. */
+export async function fetchArenaJudgeDefault(): Promise<{
+  id: string;
+  name: string;
+}> {
+  const res = await apiFetch(`/compare-models/judge-default`);
+  if (!res.ok) throw new Error("Failed to load default judge model");
+  return res.json();
+}
+
 export async function fetchArenaRun(id: string): Promise<ArenaRunDetail> {
   const res = await apiFetch(`/compare-models/runs/${id}`);
   if (!res.ok) throw new Error("Failed to load arena run");
