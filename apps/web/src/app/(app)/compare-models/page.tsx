@@ -622,11 +622,15 @@ export default function CompareModelsPage() {
           }
           // Record which judge scored this run (+ self-judge bias flag)
           // so the UI can label the evaluator and its billing note.
-          if (event.judgeModel) {
+          // Only on success — showing "Evaluated by X" next to the
+          // "Couldn't score" banner would contradict itself.
+          if (event.judgeModel && !event.error) {
             setJudgeInfo({
               model: event.judgeModel,
               selfJudge: !!event.selfJudge,
             });
+          } else {
+            setJudgeInfo(null);
           }
           const nextEvaluations: Record<string, ModelEvaluation | null> =
             {};
@@ -827,7 +831,7 @@ export default function CompareModelsPage() {
           setEvaluatorStatus(run.comparison.length > 0 ? "done" : "idle");
           setEvaluatorError(null);
           setJudgeInfo(
-            run.judgeModel
+            run.judgeModel && run.comparison.length > 0
               ? {
                   model: run.judgeModel,
                   selfJudge: run.models.includes(run.judgeModel),
