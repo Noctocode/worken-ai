@@ -19,6 +19,7 @@ import {
   type OnboardingDraft,
 } from "@/lib/api";
 import { Card } from "@/components/ui/card";
+import { AuthLanguageSwitcher } from "@/components/auth-language-switcher";
 
 type ProfileType = "company" | "personal";
 type InfraChoice = "managed" | "on-premise";
@@ -278,6 +279,7 @@ export default function SetupProfileLayout({
       : "your organization";
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
+        <AuthLanguageSwitcher />
         <Card className="w-full max-w-[480px] flex flex-col items-center gap-6 p-[40px] bg-bg-white rounded-md text-center">
           <Image
             src="/full-logo.png"
@@ -307,6 +309,9 @@ export default function SetupProfileLayout({
 
   return (
     <OnboardingContext.Provider value={value}>
+      {/* Language switcher pinned top-right across every step — the
+          sidebar that normally hosts it isn't mounted during onboarding. */}
+      <AuthLanguageSwitcher />
       {/* OnboardingExit is rendered by each step *inside* its centered
           column so the Sign out / Cancel & delete links sit directly
           under the wizard Card. Keeping the escape hatch close to the

@@ -16,7 +16,18 @@ const LANGUAGES: Array<{ code: Language; label: string }> = [
   { code: "sl", label: "Slovenščina" },
 ];
 
-export function LanguageSelector({ collapsed }: { collapsed: boolean }) {
+export function LanguageSelector({
+  collapsed,
+  // Dropdown placement. Defaults match the sidebar (menu opens upward);
+  // top-of-page callers (login / register / onboarding) pass
+  // side="bottom" so it opens downward instead of off-screen.
+  side = "top",
+  align,
+}: {
+  collapsed: boolean;
+  side?: "top" | "bottom" | "left" | "right";
+  align?: "start" | "center" | "end";
+}) {
   const { language, setLanguage, t } = useLanguage();
   const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
 
@@ -46,7 +57,10 @@ export function LanguageSelector({ collapsed }: { collapsed: boolean }) {
           </Button>
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={collapsed ? "end" : "center"} side="top">
+      <DropdownMenuContent
+        align={align ?? (collapsed ? "end" : "center")}
+        side={side}
+      >
         {LANGUAGES.map((lang) => (
           <DropdownMenuItem
             key={lang.code}
