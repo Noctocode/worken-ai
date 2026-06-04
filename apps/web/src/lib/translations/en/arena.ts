@@ -28,7 +28,7 @@ export const arena = {
   'arena.selfJudgeWarning': 'This model also graded its own answer — its score may be biased.',
   'arena.judgeModel': 'Judge model',
   'arena.judgeModelHint': "The hidden model that scores the answers. Pick a capable one — it should outclass the models it grades. Its cost is billed to your personal budget.",
-  'arena.judgeDefault': 'Default (recommended)',
+  'arena.judgeDefault': 'Default — Gemini 2.5 Flash (recommended)',
   'arena.attachFile': 'Attach File',
   'arena.promptLibrary': 'Prompt Library',
   'arena.voiceComingSoon': 'Voice input (coming soon)',

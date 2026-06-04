@@ -30,7 +30,7 @@ export const arena: Record<keyof typeof arenaEn, string> = {
   'arena.selfJudgeWarning': 'Ta model je ocenil tudi svoj odgovor — njegova ocena je lahko pristranska.',
   'arena.judgeModel': 'Ocenjevalni model',
   'arena.judgeModelHint': 'Skriti model, ki oceni odgovore. Izberi zmogljivega — biti mora boljši od modelov, ki jih ocenjuje. Strošek se beleži na tvoj osebni proračun.',
-  'arena.judgeDefault': 'Privzeto (priporočeno)',
+  'arena.judgeDefault': 'Privzeto — Gemini 2.5 Flash (priporočeno)',
   'arena.attachFile': 'Priloži datoteko',
   'arena.promptLibrary': 'Knjižnica promptov',
   'arena.voiceComingSoon': 'Glasovni vnos (kmalu)',
