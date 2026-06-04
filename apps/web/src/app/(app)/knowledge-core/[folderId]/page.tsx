@@ -262,6 +262,13 @@ export default function FolderDetailPage({
     queryFn: isAllFiles
       ? async (): Promise<KnowledgeFolderDetail> => {
           const files = await fetchAllKnowledgeFiles();
+          // Newest first — the most recently added file sits at the
+          // top. The BE already orders this way, but sorting here keeps
+          // it correct regardless of source order.
+          const sorted = [...files].sort(
+            (a, b) =>
+              new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+          );
           return {
             id: ALL_FILES_FOLDER_ID,
             name: "All Files",
@@ -269,7 +276,7 @@ export default function FolderDetailPage({
             parentFolderId: null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
-            files,
+            files: sorted,
             children: [],
             breadcrumb: [],
           };
