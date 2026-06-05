@@ -665,7 +665,7 @@ export default function SetupProfileStep6Page() {
               {t("common.back")}
             </Button>
             <Button
-              className="h-12 w-[200px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
+              className="h-12 min-w-[200px] rounded-lg px-8 bg-primary-6 hover:bg-primary-7 text-text-white"
               onClick={() => mutation.mutate()}
               disabled={mutation.isPending}
             >
