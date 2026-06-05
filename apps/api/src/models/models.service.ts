@@ -280,6 +280,48 @@ export class ModelsService {
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
 
+    // Azure has no OpenRouter catalog (it isn't an OpenRouter slug), so
+    // its selectable models are the deployments the user configured on
+    // the integration. Collect the configs from every enabled azure
+    // integration (personal + team-linked) so we can synthesize one
+    // `azure/<deployment>` entry per deployment below.
+    const azureConfigs: { azureDeployments?: { deploymentName: string; label: string }[] }[] = [];
+    if (enabledProviders.has('azure')) {
+      const personalAzure = await this.db
+        .select({ config: integrations.config })
+        .from(integrations)
+        .where(
+          and(
+            eq(integrations.ownerId, userId),
+            isNull(integrations.teamId),
+            eq(integrations.providerId, 'azure'),
+            eq(integrations.isEnabled, true),
+          ),
+        );
+      const teamAzure =
+        teamIds.length > 0
+          ? await this.db
+              .select({ config: integrations.config })
+              .from(teamIntegrationLinks)
+              .innerJoin(
+                integrations,
+                eq(integrations.id, teamIntegrationLinks.integrationId),
+              )
+              .where(
+                and(
+                  inArray(teamIntegrationLinks.teamId, teamIds),
+                  eq(teamIntegrationLinks.isEnabled, true),
+                  eq(integrations.providerId, 'azure'),
+                  eq(integrations.isEnabled, true),
+                ),
+              )
+          : [];
+      azureConfigs.push(
+        ...personalAzure.map((r) => r.config),
+        ...teamAzure.map((r) => r.config),
+      );
+    }
+
     // Mirror chat-transport's routing decision so the picker marker
     // matches what a chat call will actually do. Returns:
     //   - 'custom'   for aliases bound to a Custom LLM integration
@@ -335,6 +377,26 @@ export class ModelsService {
           description: m.description,
           context_length: m.context_length,
           pricing: m.pricing,
+        });
+      }
+    }
+
+    // Synthesize Azure deployments as selectable models. Id is
+    // `azure/<deploymentName>` so providerOfModel() resolves "azure" and
+    // chat-transport routes the call through the AzureOpenAI client with
+    // the deployment as the model. Deduped against aliases/catalog above.
+    for (const cfg of azureConfigs) {
+      for (const dep of cfg?.azureDeployments ?? []) {
+        const name = dep?.deploymentName?.trim();
+        if (!name) continue;
+        const id = `azure/${name}`;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({
+          id,
+          name: dep.label?.trim() || name,
+          source: 'byok',
+          routing: computeRouting(id, false),
         });
       }
     }

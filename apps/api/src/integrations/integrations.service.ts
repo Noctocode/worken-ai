@@ -10,6 +10,7 @@ import {
   integrations,
   modelConfigs,
   observabilityEvents,
+  type IntegrationConfig,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -59,9 +60,54 @@ export interface IntegrationView {
    * integration. Drives the "delete will unlink N aliases" warning.
    */
   boundAliasCount: number;
+  /**
+   * Provider-specific config. `{}` for everything except Azure OpenAI,
+   * where it carries the endpoint / api-version / deployments the
+   * Settings dialog edits. Never holds secrets.
+   */
+  config: IntegrationConfig;
   stats: IntegrationStats;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+/** Validate + normalize an Azure OpenAI integration's config. Throws
+ *  BadRequestException on anything that would make chat-transport fall
+ *  back to OpenRouter (missing endpoint / api-version / deployments). */
+function validateAzureConfig(config: IntegrationConfig | undefined): IntegrationConfig {
+  const endpoint = config?.azureEndpoint?.trim();
+  const apiVersion = config?.azureApiVersion?.trim();
+  const deployments = config?.azureDeployments ?? [];
+  if (!endpoint) {
+    throw new BadRequestException('Azure OpenAI requires a resource endpoint');
+  }
+  try {
+    const u = new URL(endpoint);
+    if (u.protocol !== 'https:') throw new Error('not https');
+  } catch {
+    throw new BadRequestException(
+      'Azure endpoint must be a valid https URL (https://{resource}.openai.azure.com)',
+    );
+  }
+  if (!apiVersion) {
+    throw new BadRequestException('Azure OpenAI requires an api-version');
+  }
+  const cleanDeployments = deployments
+    .map((d) => ({
+      deploymentName: d?.deploymentName?.trim() ?? '',
+      label: d?.label?.trim() || d?.deploymentName?.trim() || '',
+    }))
+    .filter((d) => d.deploymentName);
+  if (cleanDeployments.length === 0) {
+    throw new BadRequestException(
+      'Azure OpenAI requires at least one deployment',
+    );
+  }
+  return {
+    azureEndpoint: endpoint.replace(/\/+$/, ''),
+    azureApiVersion: apiVersion,
+    azureDeployments: cleanDeployments,
+  };
 }
 
 @Injectable()
@@ -238,6 +284,7 @@ export class IntegrationsService {
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,
         boundAliasCount: 0,
+        config: row?.config ?? {},
         stats: buildStats(p.id),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
@@ -270,6 +317,7 @@ export class IntegrationsService {
         openAICompatible: true,
         byokSupported: true,
         boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
+        config: r.config ?? {},
         stats: buildStats('custom'),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
@@ -297,12 +345,19 @@ export class IntegrationsService {
        *  auto-creates a bound `model_configs` alias so the user
        *  doesn't have to take a second trip through /catalog. */
       customName?: string | null;
+      /** Provider-specific config. Required (and validated) when
+       *  providerId === "azure": endpoint + api-version + deployments. */
+      config?: IntegrationConfig;
     },
   ): Promise<IntegrationView> {
     const isCustom = input.providerId === 'custom';
+    const isAzure = input.providerId === 'azure';
     if (!isCustom && !isPredefinedProvider(input.providerId)) {
       throw new BadRequestException(`Unknown provider: ${input.providerId}`);
     }
+    // Azure needs a complete config (endpoint / api-version /
+    // deployments) or chat would silently fall back to OpenRouter.
+    const azureConfig = isAzure ? validateAzureConfig(input.config) : {};
     if (isCustom) {
       if (!input.apiUrl?.trim()) {
         throw new BadRequestException('Custom LLM requires apiUrl');
@@ -398,6 +453,12 @@ export class IntegrationsService {
       if (input.apiKey !== undefined) {
         conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
       }
+      // Azure config is validated above; persist it on conflict too so
+      // re-saving from the Settings dialog updates the endpoint /
+      // deployments. Non-azure providers never carry a config.
+      if (isAzure) {
+        conflictUpdates.config = azureConfig;
+      }
 
       await this.db
         .insert(integrations)
@@ -408,6 +469,7 @@ export class IntegrationsService {
           apiUrl: null,
           apiKeyEncrypted,
           isEnabled: input.isEnabled ?? true,
+          config: azureConfig,
         })
         .onConflictDoUpdate({
           target: [integrations.ownerId, integrations.providerId],
@@ -426,7 +488,11 @@ export class IntegrationsService {
   async update(
     userId: string,
     id: string,
-    input: { isEnabled?: boolean; apiKey?: string | null },
+    input: {
+      isEnabled?: boolean;
+      apiKey?: string | null;
+      config?: IntegrationConfig;
+    },
   ): Promise<IntegrationView> {
     const [row] = await this.db
       .select()
@@ -455,6 +521,13 @@ export class IntegrationsService {
       updates.apiKeyEncrypted = input.apiKey
         ? this.encryptionService.encrypt(input.apiKey)
         : null;
+    }
+    // Azure config edits (endpoint / api-version / deployments) come
+    // through here when the Settings dialog patches an existing row.
+    // Validated against the same rules as upsert; ignored for providers
+    // that don't carry a config.
+    if (input.config !== undefined && row.providerId === 'azure') {
+      updates.config = validateAzureConfig(input.config);
     }
     await this.db
       .update(integrations)
