@@ -12,6 +12,7 @@ import {
   LogOut,
   MessageSquare,
   Moon,
+  Network,
   Plus,
   Shield,
   Sun,
@@ -106,6 +107,7 @@ export const SidebarContent = ({
     ],
     [
       { href: "/resources", label: t("sidebar.nav.resources"), icon: BookOpen, match: "prefix" },
+      { href: "/resources/how-it-works", label: t("sidebar.nav.howItWorks"), icon: Network, match: "exact" },
     ],
   ];
 

@@ -80,6 +80,12 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
+  "/resources/how-it-works": {
+    bg: "bg-bg-1",
+    titleKey: "appbar.title.howItWorks",
+    hideSearch: true,
+    hideNotifications: true,
+  },
   "/guardrails": {
     bg: "bg-bg-white",
     titleKey: "appbar.title.guardrails",
