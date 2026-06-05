@@ -107,6 +107,13 @@ jobs:
             FRONTEND_URL=${{ vars.FRONTEND_URL }}
             API_URL=${{ vars.API_URL }}
             COOKIE_DOMAIN=${{ vars.COOKIE_DOMAIN }}
+            # Auth rate limiting (issue #23). TRUST_PROXY_HOPS must match the
+            # reverse-proxy chain so req.ip is the real client: Cloudflare +
+            # Caddy = 2. Override via repo variable if the topology changes.
+            # LOG_PROXY_IP=true logs the forwarding chain for a one-off check;
+            # the per-endpoint RL_* limits fall back to sensible defaults.
+            TRUST_PROXY_HOPS=${{ vars.TRUST_PROXY_HOPS || 2 }}
+            LOG_PROXY_IP=${{ vars.LOG_PROXY_IP || 'false' }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
             GOOGLE_CALLBACK_URL=${{ vars.GOOGLE_CALLBACK_URL }}
