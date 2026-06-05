@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { buildIndustries, TEAM_SIZES, labelFor } from "@/lib/profile-options";
+import { getPlanDetails } from "@/lib/plan";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -82,46 +84,26 @@ function Section({
   );
 }
 
-/**
- * Static plan catalog. The BE column is loose-typed (any string) so
- * unknown plan ids fall back to a capitalize-the-raw-string render
- * rather than crashing — anyone can ship a new plan id without an
- * FE deploy. Add an entry here when the new plan launches and the
- * marketing copy is final.
- */
-function getPlanDetails(
-  plan: string,
-  t: (key: import("@/lib/translations/en").TranslationKey) => string,
-): { label: string; tagline: string; tone: "neutral" | "primary" | "premium" } {
-  if (plan === "free") {
-    return {
-      label: t("mgmt.account.planFree"),
-      tagline: t("mgmt.account.freeTagline"),
-      tone: "neutral",
-    };
-  }
-  return {
-    label: plan
-      .split(/[-_\s]+/)
-      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
-      .join(" "),
-    tagline: t("mgmt.account.customPlan"),
-    tone: "neutral",
-  };
-}
-
 function buildPermissions(
   role: "admin" | "advanced" | "basic",
+  profileType: "company" | "personal" | null,
   t: (key: import("@/lib/translations/en").TranslationKey) => string,
 ) {
   const isAdvanced = role === "admin" || role === "advanced";
   const isAdmin = role === "admin";
+  // Teams / invites / member removal are company-tenant operations.
+  // A personal profile is a sole account with no org, and it gets
+  // role:'admin' at onboarding too — so without this gate the list
+  // would promise capabilities a personal user can't exercise (the
+  // invite/remove flows are profileType-gated on the BE and hidden in
+  // the Company tab). View + project creation apply to both profiles.
+  const isCompany = profileType === "company";
   return [
     { label: t("mgmt.account.perm.view"), allowed: true },
     { label: t("mgmt.account.perm.createProjects"), allowed: isAdvanced },
-    { label: t("mgmt.account.perm.createTeams"), allowed: isAdvanced },
-    { label: t("mgmt.account.perm.inviteUsers"), allowed: isAdvanced },
-    { label: t("mgmt.account.perm.removeUsers"), allowed: isAdmin },
+    { label: t("mgmt.account.perm.createTeams"), allowed: isAdvanced && isCompany },
+    { label: t("mgmt.account.perm.inviteUsers"), allowed: isAdvanced && isCompany },
+    { label: t("mgmt.account.perm.removeUsers"), allowed: isAdmin && isCompany },
   ];
 }
 
@@ -153,7 +135,11 @@ export function AccountTab() {
   const InfraIcon = data.infraChoice === "on-premise" ? Server : Cloud;
   const role = currentUser?.role ?? "basic";
   const isAdvanced = role === "admin" || role === "advanced";
-  const permissions = buildPermissions(role as "admin" | "advanced" | "basic", t);
+  const permissions = buildPermissions(
+    role as "admin" | "advanced" | "basic",
+    data.profileType,
+    t,
+  );
 
   return (
     <div className="py-5">
@@ -218,8 +204,22 @@ export function AccountTab() {
             {data.profileType === "company" && (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <Field label={t("mgmt.account.companyName")} value={data.companyName} />
-                <Field label={t("mgmt.account.industry")} value={data.industry} />
-                <Field label={t("mgmt.account.teamSize")} value={data.teamSize} />
+                {/* industry/teamSize are stored as enum values
+                    ("technology", "1-10"); map to the localized label
+                    via the same catalog the Company tab editor uses so
+                    the two surfaces never disagree. */}
+                <Field
+                  label={t("mgmt.account.industry")}
+                  value={
+                    data.industry
+                      ? labelFor(buildIndustries(t), data.industry)
+                      : null
+                  }
+                />
+                <Field
+                  label={t("mgmt.account.teamSize")}
+                  value={data.teamSize ? labelFor(TEAM_SIZES, data.teamSize) : null}
+                />
               </div>
             )}
             {data.profileType === "personal" && (

@@ -103,17 +103,23 @@ export default function TeamsPage() {
   // its "needs attention" red dot — when an admin has never set a
   // company-wide cap. Non-admins see no prompt because they can't
   // act on it, matching the users-tab pendingBudgetApproval gating.
+  // Personal-profile admins are gated out too: the Company tab renders
+  // a "this is a personal profile" empty state (no budget editor), so
+  // a budget-not-set dot would point at an action that doesn't exist
+  // there — same `profileType === "company"` gate CompanyTab uses.
   // staleTime: the default QueryClient has none, so without this
   // CompanyTab would refetch on mount despite the shared cache key —
   // 60s matches the cadence other admin-settings queries use here.
+  const isCompanyAdmin =
+    user?.role === "admin" && user?.profileType === "company";
   const { data: orgSettings } = useQuery({
     queryKey: ["org-settings"],
     queryFn: fetchOrgSettings,
-    enabled: user?.role === "admin",
+    enabled: isCompanyAdmin,
     staleTime: 60 * 1000,
   });
   const companyBudgetUnset =
-    user?.role === "admin" && orgSettings?.monthlyBudgetCents === null;
+    isCompanyAdmin && orgSettings?.monthlyBudgetCents === null;
 
   const {
     data: models = [],
@@ -344,8 +350,11 @@ export default function TeamsPage() {
             banner is clickable: it filters the table to just those rows
             so the action is one click away. Admin-only because only
             admins can mutate budgets — basic / advanced users seeing
-            this would have no way to act on it. */}
-        {user?.role === "admin" && pendingApprovalCount > 0 && (
+            this would have no way to act on it. Company-only: budget
+            approval is a managed-cloud / tenant concept, so a personal
+            admin (sole member, no org-users) never has anything to
+            action here — same isCompanyAdmin gate as the budget dot. */}
+        {isCompanyAdmin && pendingApprovalCount > 0 && (
           <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-warning-7/30 bg-warning-1 px-4 py-3">
             <p className="text-[13px] text-text-1">
               <strong className="font-semibold">

@@ -374,7 +374,11 @@ export const SidebarContent = ({
                               ? "bg-primary-1 text-primary-7"
                               : "bg-bg-3 text-text-2"
                         }`}>
-                          {user.role === "admin" ? "Admin" : user.role === "advanced" ? "Advanced" : "Basic"}
+                          {user.role === "admin"
+                            ? t("mgmt.account.roleAdmin")
+                            : user.role === "advanced"
+                              ? t("mgmt.account.roleAdvanced")
+                              : t("mgmt.account.roleBasic")}
                         </Badge>
                       )}
                     </div>
