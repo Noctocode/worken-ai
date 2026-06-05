@@ -77,6 +77,7 @@ import { TeamIntegrationsSection } from "@/components/team-integrations-section"
 import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
+import { severityLabel } from "@/lib/guardrails";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
 
@@ -1312,7 +1313,7 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
                         </div>
                       </td>
                       <td className="hidden px-4 align-middle lg:table-cell">
-                        <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{g.severity}</span>
+                        <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">{severityLabel(g.severity, t)}</span>
                       </td>
                       <td className="hidden px-4 align-middle text-[16px] text-text-1 lg:table-cell">
                         {g.triggers.toLocaleString()}

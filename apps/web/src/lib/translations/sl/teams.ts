@@ -39,7 +39,7 @@ export const teams: Record<keyof typeof teamsEn, string> = {
   'teams.company': 'Podjetje',
   'teams.companyBudgetNotSet': 'Proračun podjetja ni nastavljen',
   'teams.api': 'API',
-  'teams.billing': 'Zaračunavanje',
+  'teams.billing': 'Plačila',
   'teams.integration': 'Integracija',
   'teams.userIs': 'uporabnik je',
   'teams.usersAre': 'uporabnikov je',
