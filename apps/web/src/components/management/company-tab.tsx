@@ -67,30 +67,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useLanguage } from "@/lib/i18n";
-import type { TranslationKey } from "@/lib/translations/en";
-
-// Mirror the wizard step-2 dropdowns so the post-onboarding edit flow
-// offers the same options. Source of truth: setup-profile/step-2 (BE
-// validates against the same enum).
-function buildIndustries(t: (key: TranslationKey) => string) {
-  return [
-    { value: "technology", label: t("mgmt.company.industry.technology") },
-    { value: "finance", label: t("mgmt.company.industry.finance") },
-    { value: "healthcare", label: t("mgmt.company.industry.healthcare") },
-    { value: "government", label: t("mgmt.company.industry.government") },
-    { value: "manufacturing", label: t("mgmt.company.industry.manufacturing") },
-    { value: "retail", label: t("mgmt.company.industry.retail") },
-    { value: "other", label: t("mgmt.company.industry.other") },
-  ];
-}
-
-const TEAM_SIZES = [
-  { value: "1-10", label: "1 – 10" },
-  { value: "11-50", label: "11 – 50" },
-  { value: "51-200", label: "51 – 200" },
-  { value: "201-1000", label: "201 – 1,000" },
-  { value: "1000+", label: "1,000+" },
-];
+import { buildIndustries, TEAM_SIZES, labelFor } from "@/lib/profile-options";
 
 // Row view-model for the Primary Guardrails table — a thin projection
 // of the real `GuardrailItem` from /guardrails-section so the existing
@@ -104,11 +81,6 @@ interface CompanyGuardrail {
   triggers: number;
   active: boolean;
 }
-
-const labelFor = (
-  options: Array<{ value: string; label: string }>,
-  value: string | null,
-) => options.find((o) => o.value === value)?.label ?? value;
 
 /**
  * "Add Guardrail" picker for the Company tab — mirrors the team-detail
