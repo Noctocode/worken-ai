@@ -228,7 +228,11 @@ export class CompareModelsService {
     // deployment name. Other routes keep the plain baseURL client.
     const azure =
       kind === 'azure-sdk' && azureEndpoint && azureApiVersion
-        ? { endpoint: azureEndpoint, apiVersion: azureApiVersion, deployment: model }
+        ? {
+            endpoint: azureEndpoint,
+            apiVersion: azureApiVersion,
+            deployment: model,
+          }
         : undefined;
 
     let completion;
@@ -237,13 +241,11 @@ export class CompareModelsService {
         apiKey,
         baseURL,
         azure,
-      ).chat.completions.create(
-        {
-          model,
-          messages,
-          ...(enableReasoning && { reasoning: { enabled: true } }),
-        },
-      );
+      ).chat.completions.create({
+        model,
+        messages,
+        ...(enableReasoning && { reasoning: { enabled: true } }),
+      });
     } catch (err) {
       // The judge may route through OpenRouter or a BYOK / Custom
       // OpenAI-compatible endpoint — label the message with the actual

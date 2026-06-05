@@ -74,7 +74,9 @@ export interface IntegrationView {
 /** Validate + normalize an Azure OpenAI integration's config. Throws
  *  BadRequestException on anything that would make chat-transport fall
  *  back to OpenRouter (missing endpoint / api-version / deployments). */
-function validateAzureConfig(config: IntegrationConfig | undefined): IntegrationConfig {
+function validateAzureConfig(
+  config: IntegrationConfig | undefined,
+): IntegrationConfig {
   const endpoint = config?.azureEndpoint?.trim();
   const apiVersion = config?.azureApiVersion?.trim();
   const deployments = config?.azureDeployments ?? [];

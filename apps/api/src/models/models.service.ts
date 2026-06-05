@@ -285,7 +285,9 @@ export class ModelsService {
     // the integration. Collect the configs from every enabled azure
     // integration (personal + team-linked) so we can synthesize one
     // `azure/<deployment>` entry per deployment below.
-    const azureConfigs: { azureDeployments?: { deploymentName: string; label: string }[] }[] = [];
+    const azureConfigs: {
+      azureDeployments?: { deploymentName: string; label: string }[];
+    }[] = [];
     if (enabledProviders.has('azure')) {
       const personalAzure = await this.db
         .select({ config: integrations.config })

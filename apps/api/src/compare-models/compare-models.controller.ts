@@ -254,7 +254,9 @@ export class CompareModelsController {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Judge transport resolve failed for user ${user.id}: ${msg}`);
+      this.logger.error(
+        `Judge transport resolve failed for user ${user.id}: ${msg}`,
+      );
       throw new ServiceUnavailableException(
         `AI gateway key unavailable: ${msg}`,
       );
