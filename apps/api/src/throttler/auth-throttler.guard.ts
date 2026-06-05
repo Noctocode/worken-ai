@@ -13,7 +13,7 @@ import {
  */
 @Injectable()
 export class AuthThrottlerGuard extends ThrottlerGuard {
-  protected async throwThrottlingException(
+  protected throwThrottlingException(
     context: ExecutionContext,
     detail: ThrottlerLimitDetail,
   ): Promise<void> {

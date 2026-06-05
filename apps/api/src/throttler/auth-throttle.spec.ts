@@ -1,4 +1,4 @@
-import { Body, Controller, HttpCode, INestApplication, Post } from '@nestjs/common';
+import { Controller, HttpCode, INestApplication, Post } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -16,31 +16,33 @@ import {
 // in-memory store — a fresh one per app, which beforeEach recreates.
 @Controller('auth')
 class StubAuthController {
+  // Handlers are trivial; the email/IP trackers read `req.body`/`req.ip`
+  // directly off the request, so no @Body() param is needed here.
   @ThrottleLogin()
   @HttpCode(200)
   @Post('login')
-  login(@Body() _body: { email?: string }) {
+  login() {
     return { ok: true };
   }
 
   @ThrottleSignup()
   @HttpCode(200)
   @Post('signup')
-  signup(@Body() _body: { email?: string }) {
+  signup() {
     return { ok: true };
   }
 
   @ThrottleResendVerification()
   @HttpCode(200)
   @Post('resend-verification')
-  resend(@Body() _body: { email?: string }) {
+  resend() {
     return { ok: true };
   }
 
   @ThrottleForgotPassword()
   @HttpCode(200)
   @Post('forgot-password')
-  forgot(@Body() _body: { email?: string }) {
+  forgot() {
     return { ok: true };
   }
 }
