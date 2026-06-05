@@ -111,8 +111,19 @@ export const SidebarContent = ({
     ],
   ];
 
-  const isActive = (item: NavItem) =>
-    item.match === "prefix" ? pathname.startsWith(item.href) : pathname === item.href;
+  // When a more specific item has its own exact entry for the current
+  // path (e.g. /resources/how-it-works sits under the /resources prefix
+  // item), the prefix parent yields so only the precise item lights up.
+  const exactMatchExists = navGroups
+    .flat()
+    .some((i) => i.href === pathname);
+  const isActive = (item: NavItem) => {
+    if (item.match === "exact") return pathname === item.href;
+    return (
+      pathname.startsWith(item.href) &&
+      !(exactMatchExists && item.href !== pathname)
+    );
+  };
 
   const newProjectButton = collapsed ? (
     <Button
