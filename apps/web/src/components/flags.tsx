@@ -1,9 +1,9 @@
 import { cn } from "@/lib/utils";
 import type { Language } from "@/lib/i18n";
 
-const FLAGS: Record<Language, { src: string; alt: string }> = {
-  en: { src: "/united-kingdom.png", alt: "English" },
-  sl: { src: "/slovenia.png", alt: "Slovenščina" },
+const FLAGS: Record<Language, { src: string }> = {
+  en: { src: "/united-kingdom.png" },
+  sl: { src: "/slovenia.png" },
 };
 
 /**
@@ -19,12 +19,12 @@ export function Flag({
   code: Language;
   className?: string;
 }) {
-  const { src, alt } = FLAGS[code] ?? FLAGS.en;
+  const { src } = FLAGS[code] ?? FLAGS.en;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
-      alt={alt}
+      alt=""
       aria-hidden="true"
       className={cn(
         "pointer-events-none inline-block shrink-0 rounded-[2px] object-cover",
