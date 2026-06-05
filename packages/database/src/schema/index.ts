@@ -389,6 +389,11 @@ export const arenaRuns = pgTable("arena_runs", {
   models: jsonb("models").notNull(),
   responses: jsonb("responses").notNull(),
   comparison: jsonb("comparison").notNull(),
+  // The "judge" model that scored this run's answers. Configurable
+  // (env default ARENA_JUDGE_MODEL or a per-run UI selection); stored
+  // so history shows which evaluator produced the scores. NULL for
+  // legacy runs created before this column existed.
+  judgeModel: text("judge_model"),
   // Model whose answer the user marked as best for this run. NULL = none.
   favoriteModel: text("favorite_model"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
