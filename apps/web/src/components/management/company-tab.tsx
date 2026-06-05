@@ -68,6 +68,8 @@ import {
 } from "@/components/ui/tooltip";
 import { useLanguage } from "@/lib/i18n";
 import { buildIndustries, TEAM_SIZES, labelFor } from "@/lib/profile-options";
+import { severityLabel } from "@/lib/guardrails";
+import { getPlanDetails } from "@/lib/plan";
 
 // Row view-model for the Primary Guardrails table — a thin projection
 // of the real `GuardrailItem` from /guardrails-section so the existing
@@ -820,8 +822,8 @@ export function CompanyTab() {
 
           <div className="space-y-3">
             <p className="text-[18px] font-bold text-text-1">{t("mgmt.company.plan")}</p>
-            <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1 capitalize">
-              {profile.plan}
+            <div className="flex h-[56px] items-center px-1 text-[16px] text-text-1">
+              {getPlanDetails(profile.plan, t).label}
             </div>
           </div>
         </div>
@@ -1232,7 +1234,7 @@ export function CompanyTab() {
                     </td>
                     <td className="px-4 align-middle">
                       <span className="rounded-lg bg-bg-1 px-2 py-1 text-[13px] text-text-3">
-                        {g.severity}
+                        {severityLabel(g.severity, t)}
                       </span>
                     </td>
                     <td className="px-4 align-middle text-[16px] text-text-1">

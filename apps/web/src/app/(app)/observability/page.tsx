@@ -59,6 +59,7 @@ import {
   type ObservabilityTokenUsage,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { severityLabel } from "@/lib/guardrails";
 
 function formatUsd(n: number): string {
   if (Math.abs(n) >= 1) return `$${n.toFixed(2)}`;
@@ -691,7 +692,10 @@ export default function ObservabilityPage() {
                 className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border-2 bg-bg-1/50 px-3 py-2 text-[13px]"
               >
                 <div className="flex items-center gap-2">
-                  <SeverityPill severity={trigger.severity} />
+                  <SeverityPill
+                    severity={trigger.severity}
+                    label={severityLabel(trigger.severity, t)}
+                  />
                   <span className="font-medium text-text-1">
                     {trigger.guardrailName ?? "Unknown guardrail"}
                   </span>
@@ -873,7 +877,13 @@ function EventRow({ event: e }: { event: ObservabilityEvent }) {
   );
 }
 
-function SeverityPill({ severity }: { severity: string | null }) {
+function SeverityPill({
+  severity,
+  label,
+}: {
+  severity: string | null;
+  label: string;
+}) {
   const sev = (severity ?? "low").toLowerCase();
   const tone =
     sev === "high"
@@ -883,7 +893,7 @@ function SeverityPill({ severity }: { severity: string | null }) {
         : "bg-bg-3 text-text-2";
   return (
     <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium uppercase ${tone}`}>
-      {sev}
+      {label}
     </span>
   );
 }

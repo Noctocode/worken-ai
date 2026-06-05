@@ -24,6 +24,7 @@ import { useAuth } from "@/components/providers";
 import { fetchOnboardingProfile, type OnboardingProfile } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { buildIndustries, TEAM_SIZES, labelFor } from "@/lib/profile-options";
+import { getPlanDetails } from "@/lib/plan";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -81,34 +82,6 @@ function Section({
       {children}
     </div>
   );
-}
-
-/**
- * Static plan catalog. The BE column is loose-typed (any string) so
- * unknown plan ids fall back to a capitalize-the-raw-string render
- * rather than crashing — anyone can ship a new plan id without an
- * FE deploy. Add an entry here when the new plan launches and the
- * marketing copy is final.
- */
-function getPlanDetails(
-  plan: string,
-  t: (key: import("@/lib/translations/en").TranslationKey) => string,
-): { label: string; tagline: string; tone: "neutral" | "primary" | "premium" } {
-  if (plan === "free") {
-    return {
-      label: t("mgmt.account.planFree"),
-      tagline: t("mgmt.account.freeTagline"),
-      tone: "neutral",
-    };
-  }
-  return {
-    label: plan
-      .split(/[-_\s]+/)
-      .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : ""))
-      .join(" "),
-    tagline: t("mgmt.account.customPlan"),
-    tone: "neutral",
-  };
 }
 
 function buildPermissions(

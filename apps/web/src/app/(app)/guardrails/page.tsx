@@ -62,6 +62,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
+import { severityLabel } from "@/lib/guardrails";
 
 type Tab = "overview" | "templates";
 type Severity = "high" | "medium" | "low";
@@ -415,7 +416,7 @@ function OverviewTab({
               <span
                 className={`inline-flex rounded-md px-2 py-0.5 text-[11px] font-medium ${SEVERITY_STYLES[g.severity]}`}
               >
-                {g.severity}
+                {severityLabel(g.severity, t)}
               </span>
               {!g.isActive && (
                 <span className="rounded-md bg-bg-1 px-2 py-0.5 text-[11px] font-medium text-text-3">
@@ -466,7 +467,7 @@ function OverviewTab({
                   <span
                     className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${SEVERITY_STYLES[g.severity]}`}
                   >
-                    {g.severity}
+                    {severityLabel(g.severity, t)}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-text-2">
