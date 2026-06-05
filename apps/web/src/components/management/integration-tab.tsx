@@ -24,7 +24,9 @@ import {
   fetchIntegrations,
   updateIntegration,
   upsertIntegration,
+  type AzureDeployment,
   type IntegrationCard,
+  type IntegrationConfig,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 
@@ -75,6 +77,8 @@ function iconForHint(hint: string): React.ReactNode {
       return <GeminiIcon />;
     case "chatgpt":
       return <BrandIcon color="#10a37f" letter="G" />;
+    case "azure":
+      return <BrandIcon color="#0078d4" letter="Az" />;
     case "deepseek":
       return <BrandIcon color="#1a73e8" letter="D" />;
     case "mistral":
@@ -114,8 +118,36 @@ function ProviderSettingsDialog({
   // Avoids the user typing over an already-good key by accident.
   const [editingKey, setEditingKey] = useState(!card.hasApiKey);
 
+  // Azure carries extra config (endpoint / api-version / deployments)
+  // the other providers express through a single key. Seeded from the
+  // saved config so re-opening the dialog round-trips it.
+  const isAzure = card.providerId === "azure";
+  const [azureEndpoint, setAzureEndpoint] = useState(
+    card.config?.azureEndpoint ?? "",
+  );
+  const [azureApiVersion, setAzureApiVersion] = useState(
+    card.config?.azureApiVersion ?? "2024-10-21",
+  );
+  const [deployments, setDeployments] = useState<AzureDeployment[]>(
+    card.config?.azureDeployments?.length
+      ? card.config.azureDeployments
+      : [{ deploymentName: "", label: "" }],
+  );
+
+  const buildAzureConfig = (): IntegrationConfig => ({
+    azureEndpoint: azureEndpoint.trim(),
+    azureApiVersion: azureApiVersion.trim(),
+    azureDeployments: deployments
+      .map((d) => ({
+        deploymentName: d.deploymentName.trim(),
+        label: d.label.trim() || d.deploymentName.trim(),
+      }))
+      .filter((d) => d.deploymentName),
+  });
+
   const saveMutation = useMutation({
     mutationFn: async () => {
+      const config = isAzure ? buildAzureConfig() : undefined;
       // Card has no DB row yet (untouched predefined): create on first save.
       // Otherwise patch the existing one.
       if (card.id) {
@@ -129,12 +161,14 @@ function ProviderSettingsDialog({
             : editingKey && apiKey
               ? apiKey
               : undefined,
+          config,
         });
       }
       return upsertIntegration({
         providerId: card.providerId,
         apiKey: useOwnKey && apiKey ? apiKey : undefined,
         isEnabled: enabled,
+        config,
       });
     },
     onSuccess: () => {
@@ -318,6 +352,107 @@ function ProviderSettingsDialog({
             </>
           )}
         </div>
+
+        {/* Azure OpenAI resource config. Unlike a single-key provider,
+            Azure needs the per-resource endpoint, an api-version, and at
+            least one deployment (each surfaces as a selectable model). */}
+        {isAzure && (
+          <div className="space-y-3 rounded-lg border border-border-2 p-4">
+            <p className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.integ.azureTitle")}
+            </p>
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-text-2">
+                {t("mgmt.integ.azureEndpoint")}
+              </label>
+              <input
+                type="text"
+                value={azureEndpoint}
+                onChange={(e) => setAzureEndpoint(e.target.value)}
+                placeholder="https://my-resource.openai.azure.com"
+                className="w-full h-11 rounded-lg border border-border-3 bg-transparent px-3 text-[15px] font-mono text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[13px] text-text-2">
+                {t("mgmt.integ.azureApiVersion")}
+              </label>
+              <input
+                type="text"
+                value={azureApiVersion}
+                onChange={(e) => setAzureApiVersion(e.target.value)}
+                placeholder="2024-10-21"
+                className="w-full h-11 rounded-lg border border-border-3 bg-transparent px-3 text-[15px] font-mono text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[13px] text-text-2">
+                {t("mgmt.integ.azureDeployments")}
+              </label>
+              {deployments.map((d, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={d.deploymentName}
+                    onChange={(e) =>
+                      setDeployments((prev) =>
+                        prev.map((x, j) =>
+                          j === i
+                            ? { ...x, deploymentName: e.target.value }
+                            : x,
+                        ),
+                      )
+                    }
+                    placeholder={t("mgmt.integ.azureDeploymentName")}
+                    className="h-10 flex-1 rounded-lg border border-border-3 bg-transparent px-3 text-[14px] font-mono text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <input
+                    type="text"
+                    value={d.label}
+                    onChange={(e) =>
+                      setDeployments((prev) =>
+                        prev.map((x, j) =>
+                          j === i ? { ...x, label: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    placeholder={t("mgmt.integ.azureDeploymentLabel")}
+                    className="h-10 flex-1 rounded-lg border border-border-3 bg-transparent px-3 text-[14px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeployments((prev) =>
+                        prev.filter((_, j) => j !== i),
+                      )
+                    }
+                    disabled={deployments.length === 1}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-danger-6 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={t("mgmt.integ.azureRemoveDeployment")}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                onClick={() =>
+                  setDeployments((prev) => [
+                    ...prev,
+                    { deploymentName: "", label: "" },
+                  ])
+                }
+                className="inline-flex items-center gap-1 text-[13px] font-medium text-primary-6 hover:underline"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                {t("mgmt.integ.azureAddDeployment")}
+              </button>
+            </div>
+            <p className="text-[12px] leading-snug text-text-3">
+              {t("mgmt.integ.azureHint")}
+            </p>
+          </div>
+        )}
 
         <p className="text-[16px] font-normal leading-[24px] text-text-1">
           {t("mgmt.integ.techFee")}
