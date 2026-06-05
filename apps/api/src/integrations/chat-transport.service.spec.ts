@@ -407,6 +407,75 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
   });
 });
 
+/* ─── resolve() Azure BYOK routing (with mocked db) ──────────────── */
+
+describe('ChatTransportService.resolve (Azure BYOK)', () => {
+  const USER_ID = 'user-id';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as any,
+      // encryption: decrypt returns a deterministic plaintext key
+      { decrypt: (s: string) => `plain:${s}` } as any,
+      // key-resolver: OpenRouter fallback key
+      { resolveUserKey: () => Promise.resolve('openrouter-key') } as any,
+      {
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
+      } as any,
+    );
+  }
+
+  it('routes azure/<deployment> through the AzureOpenAI client with endpoint + api-version', async () => {
+    const svc = makeService([
+      [], // user alias lookup — none
+      [
+        {
+          apiKeyEncrypted: 'enc',
+          config: {
+            azureEndpoint: 'https://my-res.openai.azure.com',
+            azureApiVersion: '2024-10-21',
+            azureDeployments: [{ deploymentName: 'gpt4-prod', label: 'GPT-4' }],
+          },
+        },
+      ], // user BYOK azure row
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: 'azure/gpt4-prod',
+    });
+
+    expect(t.kind).toBe('azure-sdk');
+    expect(t.source).toBe('byok');
+    expect(t.provider).toBe('azure');
+    expect(t.model).toBe('gpt4-prod'); // the deployment name
+    expect(t.apiKey).toBe('plain:enc');
+    expect(t.azureEndpoint).toBe('https://my-res.openai.azure.com');
+    expect(t.azureApiVersion).toBe('2024-10-21');
+  });
+
+  it('falls back to OpenRouter when the azure config is incomplete', async () => {
+    const svc = makeService([
+      [], // user alias lookup — none
+      [{ apiKeyEncrypted: 'enc', config: { azureApiVersion: '2024-10-21' } }], // no endpoint
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: 'azure/gpt4-prod',
+    });
+
+    expect(t.kind).toBe('openai-sdk');
+    expect(t.source).toBe('openrouter');
+    expect(t.apiKey).toBe('openrouter-key');
+    expect(t.model).toBe('azure/gpt4-prod');
+  });
+});
+
 /* ─── assertTeamBudgetNotExceeded (with mocked db) ────────────────── */
 
 describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
