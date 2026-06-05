@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
@@ -45,20 +45,36 @@ function describeUpstreamError(
 export class CompareModelsService {
   constructor(private readonly anthropic: AnthropicClientService) {}
 
-  private makeClient(apiKey?: string, baseURL?: string): OpenAI {
+  private makeClient(
+    apiKey?: string,
+    baseURL?: string,
+    azure?: { endpoint: string; apiVersion: string; deployment: string },
+  ): OpenAI {
     const resolved = apiKey ?? process.env['OPENROUTER_API_KEY'];
     if (!resolved) {
       throw new Error(
         'No API key available. Resolver returned empty and OPENROUTER_API_KEY env var is not set.',
       );
     }
+    const defaultHeaders = {
+      'HTTP-Referer': process.env['SITE_URL'] || '',
+      'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
+    };
+    // Azure judge: AzureOpenAI client (per-resource endpoint +
+    // api-version + deployment), same chat.completions wire format.
+    if (azure) {
+      return new AzureOpenAI({
+        endpoint: azure.endpoint,
+        apiVersion: azure.apiVersion,
+        deployment: azure.deployment,
+        apiKey: resolved || 'no-auth',
+        defaultHeaders,
+      });
+    }
     return new OpenAI({
       baseURL: baseURL ?? 'https://openrouter.ai/api/v1',
       apiKey: resolved || 'no-auth',
-      defaultHeaders: {
-        'HTTP-Referer': process.env['SITE_URL'] || '',
-        'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
-      },
+      defaultHeaders,
     });
   }
 
@@ -139,6 +155,8 @@ export class CompareModelsService {
     apiKey?: string,
     baseURL?: string,
     kind: ChatTransportKind = 'openai-sdk',
+    azureEndpoint?: string,
+    azureApiVersion?: string,
   ): Promise<QuestionResponse> {
     const systemMessages: { role: 'system'; content: string }[] = [];
 
@@ -206,9 +224,20 @@ export class CompareModelsService {
       { role: 'user', content: JSON.stringify(answers) },
     ] as ChatCompletionMessageParam[];
 
+    // Azure judge routes through the AzureOpenAI client; `model` is the
+    // deployment name. Other routes keep the plain baseURL client.
+    const azure =
+      kind === 'azure-sdk' && azureEndpoint && azureApiVersion
+        ? { endpoint: azureEndpoint, apiVersion: azureApiVersion, deployment: model }
+        : undefined;
+
     let completion;
     try {
-      completion = await this.makeClient(apiKey, baseURL).chat.completions.create(
+      completion = await this.makeClient(
+        apiKey,
+        baseURL,
+        azure,
+      ).chat.completions.create(
         {
           model,
           messages,

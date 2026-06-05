@@ -114,14 +114,16 @@ export type ChatRoutingSource = 'openrouter' | 'byok' | 'custom';
  * LLMs alike. `anthropic-sdk` triggers AnthropicClientService for
  * Anthropic BYOK (their native API isn't OpenAI-compatible).
  */
-export type ChatTransportKind = 'openai-sdk' | 'anthropic-sdk';
+export type ChatTransportKind = 'openai-sdk' | 'anthropic-sdk' | 'azure-sdk';
 
 export interface ChatTransport {
-  /** baseURL for the OpenAI SDK client. Unused when kind is 'anthropic-sdk'. */
+  /** baseURL for the OpenAI SDK client. Unused when kind is 'anthropic-sdk'
+   *  or 'azure-sdk' (Azure uses azureEndpoint + azureApiVersion instead). */
   baseURL: string;
   /** Plaintext API key. Empty string means "no auth header" (rare). */
   apiKey: string;
-  /** Model id to pass to the SDK. May differ from input for custom routes. */
+  /** Model id to pass to the SDK. May differ from input for custom routes.
+   *  For 'azure-sdk' this is the Azure deployment name. */
   model: string;
   /** Provider label for observability. */
   provider: string;
@@ -129,6 +131,11 @@ export interface ChatTransport {
   source: ChatRoutingSource;
   /** Which SDK to use. */
   kind: ChatTransportKind;
+  /** Azure only ('azure-sdk'): per-resource endpoint
+   *  (https://{resource}.openai.azure.com) from integrations.config. */
+  azureEndpoint?: string;
+  /** Azure only ('azure-sdk'): api-version query param, e.g. 2024-10-21. */
+  azureApiVersion?: string;
 }
 
 /**
@@ -315,6 +322,9 @@ export class ChatTransportService {
         const [teamByok] = await this.db
           .select({
             apiKeyEncrypted: integrations.apiKeyEncrypted,
+            // Azure needs the endpoint / api-version / deployments that
+            // live in `config`; harmless ({}) for every other provider.
+            config: integrations.config,
           })
           .from(teamIntegrationLinks)
           .innerJoin(
@@ -334,6 +344,7 @@ export class ChatTransportService {
         if (teamByok?.apiKeyEncrypted) {
           byokRow = {
             apiKeyEncrypted: teamByok.apiKeyEncrypted,
+            config: teamByok.config,
           } as typeof integrations.$inferSelect;
         }
       }
@@ -362,9 +373,38 @@ export class ChatTransportService {
           `BYOK ${provider}`,
         );
 
-        // 2a. OpenAI-compatible providers go through the standard
-        // OpenAI SDK with a custom baseURL.
-        if (native?.openAICompatible) {
+        // 2a-azure. Azure OpenAI: OpenAI wire-format, but the endpoint
+        // is per-resource and `bareModel` is the deployment name — both
+        // sourced from the integration's `config`. Routed via the
+        // AzureOpenAI client (kind 'azure-sdk'). If the config is
+        // incomplete (endpoint / api-version missing), fall through to
+        // OpenRouter rather than 400 on a half-set-up integration.
+        if (provider === 'azure') {
+          const cfg = byokRow.config ?? {};
+          const endpoint = cfg.azureEndpoint?.trim();
+          const apiVersion = cfg.azureApiVersion?.trim();
+          if (endpoint && apiVersion) {
+            return {
+              baseURL: '',
+              apiKey,
+              model: bareModel,
+              provider,
+              source: 'byok',
+              kind: 'azure-sdk',
+              azureEndpoint: endpoint,
+              azureApiVersion: apiVersion,
+            };
+          }
+          this.logger.warn(
+            `BYOK Azure key set but endpoint/api-version missing in config for ${modelIdentifier} — falling back to OpenRouter.`,
+          );
+        }
+
+        // 2b. OpenAI-compatible providers go through the standard
+        // OpenAI SDK with a custom baseURL. Azure is excluded — it's
+        // openAICompatible but handled above; an incomplete Azure config
+        // must fall through to OpenRouter, not hit an empty baseURL here.
+        if (native?.openAICompatible && provider !== 'azure') {
           return {
             baseURL: native.baseURL,
             apiKey,

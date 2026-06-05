@@ -456,7 +456,11 @@ export class CompareModelsController {
               t.apiKey,
               t.baseURL,
               t.kind,
-              { signal },
+              {
+                signal,
+                azureEndpoint: t.azureEndpoint,
+                azureApiVersion: t.azureApiVersion,
+              },
             )) {
               if (event.type === 'error') {
                 attemptError = { message: event.message, status: event.status };
@@ -672,6 +676,8 @@ export class CompareModelsController {
               judgeTransport.apiKey,
               judgeTransport.baseURL,
               judgeTransport.kind,
+              judgeTransport.azureEndpoint,
+              judgeTransport.azureApiVersion,
             );
           // OpenRouter returns cost inline; BYOK / Custom don't, so
           // estimate from the catalog. Either way the judge call's

@@ -381,7 +381,12 @@ export class ChatController {
             t.apiKey,
             t.baseURL,
             t.kind,
-            { signal, webSearch: candidateWebSearch },
+            {
+              signal,
+              webSearch: candidateWebSearch,
+              azureEndpoint: t.azureEndpoint,
+              azureApiVersion: t.azureApiVersion,
+            },
           )) {
             // A pre-content error from a dead model → abandon this candidate.
             // Client-disconnect / timeout aborts are handled below, not here.
