@@ -14,6 +14,12 @@ import { AuthService } from './auth.service.js';
 import { TeamsService } from '../teams/teams.service.js';
 import { MailService } from '../mail/mail.service.js';
 import { Public } from './public.decorator.js';
+import {
+  ThrottleLogin,
+  ThrottleSignup,
+  ThrottleResendVerification,
+  ThrottleForgotPassword,
+} from '../throttler/throttle-auth.decorators.js';
 import { CurrentUser } from './current-user.decorator.js';
 import type { AuthenticatedUser, GoogleProfile } from './types.js';
 import { COOKIE_OPTIONS } from './cookie-options.js';
@@ -140,6 +146,7 @@ export class AuthController {
   }
 
   @Public()
+  @ThrottleSignup()
   @Post('signup')
   async signup(
     @Body()
@@ -260,6 +267,7 @@ export class AuthController {
   }
 
   @Public()
+  @ThrottleResendVerification()
   @Post('resend-verification')
   async resendVerification(@Body() body: { email?: string }) {
     if (body?.email) {
@@ -284,6 +292,7 @@ export class AuthController {
   }
 
   @Public()
+  @ThrottleForgotPassword()
   @Post('forgot-password')
   async forgotPassword(@Body() body: { email?: string }) {
     if (body?.email) {
@@ -317,6 +326,7 @@ export class AuthController {
   }
 
   @Public()
+  @ThrottleLogin()
   @Post('login')
   async login(
     @Body() body: { email?: string; password?: string },

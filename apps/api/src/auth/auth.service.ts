@@ -106,7 +106,6 @@ export class AuthService {
     return user;
   }
 
-  // TODO: rate limiting / bruteforce protection on /auth/signup.
   async signupWithPassword(input: {
     email: string;
     password: string;
@@ -213,7 +212,6 @@ export class AuthService {
     return { user, verificationToken };
   }
 
-  // TODO: rate limiting / bruteforce protection on /auth/login.
   async loginWithPassword(emailInput: string, password: string) {
     const email = emailInput.trim().toLowerCase();
     if (!EMAIL_RE.test(email) || !password) {
@@ -314,7 +312,6 @@ export class AuthService {
    * should swallow "user not found" / "already verified" to avoid email
    * enumeration; this method simply returns null in those cases.
    */
-  // TODO: rate limiting on /auth/resend-verification.
   async issueVerificationToken(emailInput: string) {
     const email = emailInput.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return null;
@@ -348,7 +345,6 @@ export class AuthService {
    * caller should still surface a generic "email sent" message to avoid
    * enumeration.
    */
-  // TODO: rate limiting on /auth/forgot-password.
   async issuePasswordResetToken(emailInput: string) {
     const email = emailInput.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return null;
