@@ -22,6 +22,7 @@ import {
   resendVerificationEmail,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { AuthLanguageSwitcher } from "@/components/auth-language-switcher";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -95,6 +96,7 @@ function LoginContent() {
 
   return (
     <div className="flex h-screen w-full items-center justify-center bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat">
+      <AuthLanguageSwitcher />
       <Card className="w-full max-w-[500px] mx-4 text-center p-8">
         <CardHeader>
           <div className="flex items-center justify-center">
