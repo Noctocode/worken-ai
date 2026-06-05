@@ -36,6 +36,7 @@ import {
   projects,
   messages,
   documents as documentsTable,
+  type IntegrationConfig,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -57,6 +58,9 @@ export interface OnboardingPayload {
   infraChoice: InfraChoice;
   // Step 5 — each key is optional; omitted/empty means "skipped"
   apiKeys?: Partial<Record<Provider, string>>;
+  // Step 5 (Azure only) — the endpoint / api-version / deployments that
+  // accompany the azure key. Stored on the azure integration's config.
+  azureConfig?: IntegrationConfig;
   // Step 6 — visibility for the knowledge files uploaded in this
   // batch. Only meaningful when profileType === 'company' (where
   // 'admins' restricts access to admin role only). Personal-profile
@@ -92,13 +96,48 @@ const VALID_PROVIDERS: Provider[] = [
   'private-vpc',
 ];
 
-// Subset of step-5 providers that 1:1 map to predefined providers in
-// the Integration tab catalog, and so can flow straight into the
-// `integrations` table on onboarding completion. Azure / private-vpc
-// need extra fields (deployment URL, VPC endpoint) the wizard never
-// collects, so their keys are deliberately dropped — see comment in
-// completeInner where this list is consulted.
-const SUPPORTED_FOR_INTEGRATION_TABLE: Provider[] = ['openai', 'anthropic'];
+// Subset of step-5 providers that flow into the `integrations` table on
+// onboarding completion. openai / anthropic map 1:1 from just a key;
+// azure also rides along but needs its endpoint / api-version /
+// deployments in `payload.azureConfig` (the wizard collects them when
+// Azure is expanded). private-vpc still needs fields the wizard doesn't
+// collect, so its key is dropped — see completeInner.
+const SUPPORTED_FOR_INTEGRATION_TABLE: Provider[] = [
+  'openai',
+  'anthropic',
+  'azure',
+];
+
+/**
+ * Normalize + validate an Azure config from the onboarding payload.
+ * Returns the cleaned config, or null when it's incomplete — in which
+ * case the azure key is dropped rather than persisting a half-set-up
+ * integration that would silently fall back to OpenRouter at chat time.
+ */
+function normalizeAzureConfig(
+  config: IntegrationConfig | undefined,
+): IntegrationConfig | null {
+  const endpoint = config?.azureEndpoint?.trim();
+  const apiVersion = config?.azureApiVersion?.trim();
+  if (!endpoint || !apiVersion) return null;
+  try {
+    if (new URL(endpoint).protocol !== 'https:') return null;
+  } catch {
+    return null;
+  }
+  const deployments = (config?.azureDeployments ?? [])
+    .map((d) => ({
+      deploymentName: d?.deploymentName?.trim() ?? '',
+      label: d?.label?.trim() || d?.deploymentName?.trim() || '',
+    }))
+    .filter((d) => d.deploymentName);
+  if (deployments.length === 0) return null;
+  return {
+    azureEndpoint: endpoint.replace(/\/+$/, ''),
+    azureApiVersion: apiVersion,
+    azureDeployments: deployments,
+  };
+}
 
 // Whitelisted enum values for the company-branch dropdowns. Must stay in
 // sync with apps/web/src/app/setup-profile/step-2/page.tsx — the FE
@@ -521,6 +560,21 @@ export class OnboardingService {
             );
             continue;
           }
+          // Azure rides the same insert but needs a complete config
+          // (endpoint / api-version / deployments). Drop the key if the
+          // wizard didn't carry one rather than persisting an azure row
+          // that silently falls back to OpenRouter at chat time.
+          let config: IntegrationConfig = {};
+          if (provider === 'azure') {
+            const azure = normalizeAzureConfig(payload.azureConfig);
+            if (!azure) {
+              this.logger.warn(
+                `Onboarding step-5: azure key supplied without a complete config — skipping. User ${userId} can finish setup in Management → Integration.`,
+              );
+              continue;
+            }
+            config = azure;
+          }
           // onConflictDoNothing on the partial unique index
           // `(owner_id, provider_id) WHERE api_url IS NULL AND
           // team_id IS NULL` so a re-run of onboarding (e.g. support
@@ -537,6 +591,7 @@ export class OnboardingService {
               apiUrl: null,
               apiKeyEncrypted: this.encryption.encrypt(key.trim()),
               isEnabled: true,
+              config,
             })
             .onConflictDoNothing({
               target: [integrations.ownerId, integrations.providerId],

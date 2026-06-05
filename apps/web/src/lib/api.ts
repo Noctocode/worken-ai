@@ -2928,6 +2928,9 @@ export interface CompleteOnboardingPayload {
   apiKeys?: Partial<
     Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
   >;
+  /** Azure-only companion to apiKeys.azure: endpoint + api-version +
+   *  deployments. The BE drops the azure key if this is incomplete. */
+  azureConfig?: IntegrationConfig;
   /** Visibility for the knowledge files uploaded in step 6. Only
    *  honoured for `profileType: "company"` — personal uploads are
    *  owner-only via the scope filter regardless. Defaults to 'all'. */

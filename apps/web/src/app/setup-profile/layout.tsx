@@ -16,6 +16,7 @@ import {
   fetchCurrentUserOptional,
   fetchOnboardingDraft,
   updateOnboardingDraft,
+  type IntegrationConfig,
   type OnboardingDraft,
 } from "@/lib/api";
 import { Card } from "@/components/ui/card";
@@ -34,6 +35,10 @@ export interface OnboardingScalarState {
   teamSize?: string;
   infraChoice?: InfraChoice;
   apiKeys: Partial<Record<Provider, string>>;
+  // Azure-only companion to apiKeys.azure (endpoint / api-version /
+  // deployments). Held in memory only, same as the keys — never
+  // round-tripped through storage or the BE draft.
+  azureConfig?: IntegrationConfig;
 }
 
 interface OnboardingContextValue {
@@ -62,10 +67,12 @@ const emptyState: OnboardingScalarState = { apiKeys: {} };
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
-/** Strip apiKeys before sending to either storage layer. */
+/** Strip apiKeys + azureConfig before sending to either storage layer —
+ *  both are memory-only (keys are secret; azureConfig rides with them). */
 function persistableScalars(state: OnboardingScalarState): OnboardingDraft {
-  const { apiKeys: _apiKeys, ...rest } = state;
+  const { apiKeys: _apiKeys, azureConfig: _azureConfig, ...rest } = state;
   void _apiKeys;
+  void _azureConfig;
   return rest;
 }
 
