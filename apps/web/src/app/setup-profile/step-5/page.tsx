@@ -63,6 +63,7 @@ export default function SetupProfileStep5Page() {
   const { state, setApiKey, update } = useOnboarding();
   const { t } = useLanguage();
   const [expanded, setExpanded] = useState<ProviderId | null>("openai");
+  const [azureError, setAzureError] = useState(false);
   const apiKeys = state.apiKeys;
 
   // Azure carries extra config alongside its key (endpoint / api-version
@@ -76,6 +77,17 @@ export default function SetupProfileStep5Page() {
   const patchAzure = (patch: Partial<typeof azureConfig>) =>
     update({ azureConfig: { ...azureConfig, ...patch } });
   const deployments = azureConfig.azureDeployments ?? [];
+
+  // A typed Azure key is only persisted if its config is complete
+  // (endpoint + api-version + ≥1 deployment) — otherwise the BE drops
+  // it silently. Block Continue and surface why, so the user doesn't
+  // finish onboarding thinking Azure is set up when it isn't.
+  const azureKey = (apiKeys["azure"] ?? "").trim();
+  const azureComplete =
+    (azureConfig.azureEndpoint ?? "").trim() !== "" &&
+    (azureConfig.azureApiVersion ?? "").trim() !== "" &&
+    deployments.some((d) => (d.deploymentName ?? "").trim() !== "");
+  const azureIncomplete = azureKey !== "" && !azureComplete;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -248,6 +260,8 @@ export default function SetupProfileStep5Page() {
                                     })
                                   }
                                   disabled={deployments.length === 1}
+                                  title={t("onboarding.step5.removeDeployment")}
+                                  aria-label={t("onboarding.step5.removeDeployment")}
                                   className="shrink-0 px-2 text-text-3 hover:text-danger-6 disabled:cursor-not-allowed disabled:opacity-40"
                                 >
                                   ✕
@@ -269,6 +283,11 @@ export default function SetupProfileStep5Page() {
                               + {t("onboarding.step5.azureAddDeployment")}
                             </button>
                           </div>
+                          {azureError && azureIncomplete && (
+                            <p className="text-[12px] font-medium text-danger-6 leading-snug">
+                              {t("onboarding.step5.azureIncomplete")}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -288,7 +307,17 @@ export default function SetupProfileStep5Page() {
             </Button>
             <Button
               className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-              onClick={() => router.push("/setup-profile/step-6")}
+              onClick={() => {
+                // Don't advance with a half-configured Azure key — the BE
+                // would silently drop it. Surface the inline error and
+                // expand the Azure section instead.
+                if (azureIncomplete) {
+                  setAzureError(true);
+                  setExpanded("azure");
+                  return;
+                }
+                router.push("/setup-profile/step-6");
+              }}
             >
               {t("common.continue")}
             </Button>

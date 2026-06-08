@@ -19,6 +19,10 @@ import {
   isPredefinedProvider,
   type PredefinedProvider,
 } from './predefined-providers.js';
+import {
+  AZURE_DEPLOYMENT_NAME_RE,
+  isAzureEndpointHost,
+} from './azure-validation.js';
 
 interface IntegrationStats {
   successRate: number; // 0..1 over last 30 days
@@ -86,9 +90,10 @@ function validateAzureConfig(
   try {
     const u = new URL(endpoint);
     if (u.protocol !== 'https:') throw new Error('not https');
+    if (!isAzureEndpointHost(u.hostname)) throw new Error('not azure host');
   } catch {
     throw new BadRequestException(
-      'Azure endpoint must be a valid https URL (https://{resource}.openai.azure.com)',
+      'Azure endpoint must be an https URL on *.openai.azure.com',
     );
   }
   if (!apiVersion) {
@@ -103,6 +108,14 @@ function validateAzureConfig(
   if (cleanDeployments.length === 0) {
     throw new BadRequestException(
       'Azure OpenAI requires at least one deployment',
+    );
+  }
+  const bad = cleanDeployments.find(
+    (d) => !AZURE_DEPLOYMENT_NAME_RE.test(d.deploymentName),
+  );
+  if (bad) {
+    throw new BadRequestException(
+      `Invalid Azure deployment name "${bad.deploymentName}" — use letters, digits, '-' or '_' only.`,
     );
   }
   return {

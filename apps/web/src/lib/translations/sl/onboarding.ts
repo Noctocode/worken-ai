@@ -51,6 +51,8 @@ export const onboarding: Record<keyof typeof onboardingEn, string> = {
   'onboarding.step5.azureDeploymentName': 'Ime deploymenta',
   'onboarding.step5.azureDeploymentLabel': 'Oznaka (neobvezno)',
   'onboarding.step5.azureAddDeployment': 'Dodaj deployment',
+  'onboarding.step5.removeDeployment': 'Odstrani deployment',
+  'onboarding.step5.azureIncomplete': 'Za Azure ključ dodajte endpoint, api-version in vsaj en deployment — sicer ne bo shranjen.',
   'onboarding.step6.title': 'Inicializiraj bazo znanja',
   'onboarding.step6.subtitle': 'Naložite dokumente, da bo vaš AI odgovarjal z vašim notranjim znanjem in strokovno izkušnjo.',
   'onboarding.step6.companyBannerBold': 'Te datoteke bodo deljene z vsemi v vašem podjetju.',

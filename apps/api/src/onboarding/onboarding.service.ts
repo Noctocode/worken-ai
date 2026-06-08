@@ -42,6 +42,10 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { sha256File } from '../knowledge-core/knowledge-core.service.js';
+import {
+  AZURE_DEPLOYMENT_NAME_RE,
+  isAzureEndpointHost,
+} from '../integrations/azure-validation.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -121,7 +125,9 @@ function normalizeAzureConfig(
   const apiVersion = config?.azureApiVersion?.trim();
   if (!endpoint || !apiVersion) return null;
   try {
-    if (new URL(endpoint).protocol !== 'https:') return null;
+    const u = new URL(endpoint);
+    if (u.protocol !== 'https:') return null;
+    if (!isAzureEndpointHost(u.hostname)) return null;
   } catch {
     return null;
   }
@@ -130,7 +136,10 @@ function normalizeAzureConfig(
       deploymentName: d?.deploymentName?.trim() ?? '',
       label: d?.label?.trim() || d?.deploymentName?.trim() || '',
     }))
-    .filter((d) => d.deploymentName);
+    .filter(
+      (d) =>
+        d.deploymentName && AZURE_DEPLOYMENT_NAME_RE.test(d.deploymentName),
+    );
   if (deployments.length === 0) return null;
   return {
     azureEndpoint: endpoint.replace(/\/+$/, ''),

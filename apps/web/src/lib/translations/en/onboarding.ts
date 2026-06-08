@@ -49,6 +49,8 @@ export const onboarding = {
   'onboarding.step5.azureDeploymentName': 'Deployment name',
   'onboarding.step5.azureDeploymentLabel': 'Label (optional)',
   'onboarding.step5.azureAddDeployment': 'Add deployment',
+  'onboarding.step5.removeDeployment': 'Remove deployment',
+  'onboarding.step5.azureIncomplete': 'Add the endpoint, api-version, and at least one deployment for your Azure key — otherwise it won’t be saved.',
   'onboarding.step6.title': 'Initialize your Knowledge Core',
   'onboarding.step6.subtitle': 'Upload documents so your enterprise AI can answer using your internal expertise and institutional knowledge.',
   'onboarding.step6.companyBannerBold': 'These files will be shared with your whole company workspace.',
