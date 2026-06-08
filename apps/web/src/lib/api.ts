@@ -1157,12 +1157,20 @@ export type ChatStreamEvent =
  *     stream actually closes; consumers should treat AbortError as
  *     a clean stop, not a failure.
  */
+/** Inline image attachment sent with a chat message. `data` is base64
+ *  WITHOUT the `data:` URL prefix; `mediaType` is the MIME type. */
+export interface ChatImageInput {
+  mediaType: string;
+  data: string;
+}
+
 export async function* streamChatMessage(
   conversationId: string,
   content: string,
   model?: string,
   projectId?: string,
   signal?: AbortSignal,
+  images?: ChatImageInput[],
 ): AsyncIterable<ChatStreamEvent> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
@@ -1173,6 +1181,7 @@ export async function* streamChatMessage(
       model,
       enableReasoning: true,
       projectId,
+      ...(images && images.length > 0 ? { images } : {}),
     }),
     signal,
   });

@@ -34,7 +34,10 @@ import {
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { ProjectDetailsPanel } from "@/components/project-chat/project-details-panel";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
-import { ChatComposer } from "@/components/project-chat/chat-composer";
+import {
+  ChatComposer,
+  type ComposerImage,
+} from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
 import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
 import { useAuth } from "@/components/providers";
@@ -80,6 +83,10 @@ interface LocalMessage {
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
+  /** Inline images the user attached to this turn. Hydrated from
+   *  metadata.images on reload; set optimistically on send. base64
+   *  data without the `data:` prefix. */
+  images?: { mediaType: string; data: string }[];
 }
 
 function getTimestamp() {
@@ -166,6 +173,7 @@ export default function ProjectChatPage() {
   >(null);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
+  const [images, setImages] = useState<ComposerImage[]>([]);
   const [isSending, setIsSending] = useState(false);
   // Holds the AbortController for the in-flight stream so the Stop
   // button can cancel mid-token. Null when no stream is active.
@@ -245,6 +253,19 @@ export default function ProjectChatPage() {
               ? meta.model
               : undefined,
           partial: meta?.partial === true,
+          // Inline images persisted on the user turn (metadata.images).
+          // Guard the shape so a malformed row can't crash the render.
+          images:
+            Array.isArray(meta?.images) &&
+            (meta.images as unknown[]).every(
+              (im) =>
+                im &&
+                typeof im === "object" &&
+                typeof (im as { mediaType?: unknown }).mediaType === "string" &&
+                typeof (im as { data?: unknown }).data === "string",
+            )
+              ? (meta.images as { mediaType: string; data: string }[])
+              : undefined,
           userId: m.userId,
           userName: m.userName,
           userPicture: m.userPicture,
@@ -315,7 +336,8 @@ export default function ProjectChatPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isSending || !project) return;
+    if ((!message.trim() && images.length === 0) || isSending || !project)
+      return;
     // Cooldown after a Stop click — same race as the arena page.
     // React swaps Stop → Send under the cursor while the click is
     // in flight; without this, the just-rendered Send button
@@ -323,7 +345,14 @@ export default function ProjectChatPage() {
     if (Date.now() - lastStopAtRef.current < 200) return;
 
     const content = message.trim();
+    // Snapshot + clear the attached images alongside the text so the
+    // composer resets and the same images can't be sent twice.
+    const sentImages = images.map((img) => ({
+      mediaType: img.mediaType,
+      data: img.data,
+    }));
     setMessage("");
+    setImages([]);
     setIsSending(true);
 
     // Optimistic user message
@@ -335,6 +364,7 @@ export default function ProjectChatPage() {
       userId: user?.id,
       userName: user?.name,
       userPicture: user?.picture,
+      images: sentImages.length > 0 ? sentImages : undefined,
     };
     // Placeholder assistant bubble — gets filled token-by-token as
     // SSE deltas arrive. Holding a stable id so we can update only
@@ -388,6 +418,7 @@ export default function ProjectChatPage() {
         project.model,
         projectId,
         controller.signal,
+        sentImages,
       )) {
         // Defensive: BE-side bytes already buffered on the wire
         // surface here even after the user pressed Stop. Bail
@@ -715,6 +746,26 @@ export default function ProjectChatPage() {
                       msg.role === "user" ? "items-end" : "items-start"
                     }`}
                   >
+                    {/* Inline image attachments (multimodal). Shown
+                        above the text bubble; right-aligned on the
+                        user's side to match the bubble alignment. */}
+                    {msg.images && msg.images.length > 0 && (
+                      <div
+                        className={`mb-1.5 flex flex-wrap gap-1.5 ${
+                          msg.role === "user" ? "justify-end" : ""
+                        }`}
+                      >
+                        {msg.images.map((img, i) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            key={i}
+                            src={`data:${img.mediaType};base64,${img.data}`}
+                            alt=""
+                            className="h-24 w-24 rounded-lg border border-border-2 object-cover"
+                          />
+                        ))}
+                      </div>
+                    )}
                     {/* Show sender name for team conversations */}
                     {msg.role === "user" &&
                       project.teamId &&
@@ -724,6 +775,11 @@ export default function ProjectChatPage() {
                           {msg.userName}
                         </span>
                       )}
+                    {/* Skip the bubble entirely for an image-only user
+                        turn (no text) so we don't render an empty
+                        coloured box under the thumbnails. */}
+                    {(msg.content !== "" ||
+                      (msg.role === "assistant" && isSending)) && (
                     <div
                       className={`rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                         msg.role === "assistant"
@@ -893,6 +949,7 @@ export default function ProjectChatPage() {
                         </ReactMarkdown>
                       )}
                     </div>
+                    )}
                     {/* Collapsible reasoning pane. Renders only on
                         assistant bubbles that have thinking text
                         (either streamed during the current session
@@ -1063,6 +1120,8 @@ export default function ProjectChatPage() {
           onSubmit={handleSubmit}
           onStop={handleStop}
           isSending={isSending}
+          images={images}
+          onImagesChange={setImages}
         />
       </div>
 

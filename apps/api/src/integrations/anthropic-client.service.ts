@@ -1,10 +1,64 @@
 import { Injectable } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
-import type { ChatStreamEvent, StreamOptions } from '../chat/chat.service.js';
+import type {
+  ChatImage,
+  ChatStreamEvent,
+  StreamOptions,
+} from '../chat/chat.service.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  images?: ChatImage[];
+}
+
+/** Media types Anthropic's Messages API accepts for image blocks. */
+const ANTHROPIC_IMAGE_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+
+/**
+ * Map our transport-neutral messages onto Anthropic's MessageParam
+ * shape, expanding a user turn that carries images into content
+ * blocks (text block + one base64 image block per image). Text-only
+ * turns keep the plain-string content. Unsupported media types are
+ * dropped defensively — the controller already validates, this is a
+ * second guard so a bad type can't 400 the whole stream.
+ */
+function toAnthropicMessages(
+  messages: ChatMessage[],
+): Anthropic.MessageParam[] {
+  return messages.map((m): Anthropic.MessageParam => {
+    if (m.role === 'user' && m.images && m.images.length > 0) {
+      const imageBlocks = m.images
+        .filter((img) => ANTHROPIC_IMAGE_TYPES.has(img.mediaType))
+        .map(
+          (img): Anthropic.ImageBlockParam => ({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: img.mediaType as
+                | 'image/jpeg'
+                | 'image/png'
+                | 'image/gif'
+                | 'image/webp',
+              data: img.data,
+            },
+          }),
+        );
+      return {
+        role: 'user',
+        content: [
+          ...(m.content ? [{ type: 'text' as const, text: m.content }] : []),
+          ...imageBlocks,
+        ],
+      };
+    }
+    return { role: m.role, content: m.content };
+  });
 }
 
 export interface AnthropicChatResponse {
@@ -116,10 +170,7 @@ export class AnthropicClientService {
       model: nativeModel,
       max_tokens: maxTokens,
       ...(systemPiece ? { system: systemPiece } : {}),
-      messages: filteredMessages.map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
+      messages: toAnthropicMessages(filteredMessages),
     });
 
     // Concatenate any text content blocks. Tool use / images would live
@@ -190,10 +241,7 @@ export class AnthropicClientService {
           model: nativeModel,
           max_tokens: maxTokens,
           ...(systemPiece ? { system: systemPiece } : {}),
-          messages: filteredMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: toAnthropicMessages(filteredMessages),
         },
         { signal: options.signal },
       );
