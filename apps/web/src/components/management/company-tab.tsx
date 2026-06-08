@@ -17,6 +17,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PersonalProfileNotice } from "@/components/personal-profile-notice";
 import {
   Dialog,
   DialogContent,
@@ -511,11 +512,7 @@ export function CompanyTab() {
   // editor that would silently no-op (BE rejects PATCH with 400). The
   // Account tab has the same wording for parity.
   if (profile.profileType !== "company") {
-    return (
-      <div className="py-12 text-center text-[14px] text-text-3">
-        {t("mgmt.company.personalOnly")}
-      </div>
-    );
+    return <PersonalProfileNotice message={t("mgmt.company.personalOnly")} />;
   }
 
   // Per-user spentCents covers personal projects + arena; per-team

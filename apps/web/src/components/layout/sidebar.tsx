@@ -12,6 +12,7 @@ import {
   LogOut,
   MessageSquare,
   Moon,
+  Network,
   Plus,
   Shield,
   Sun,
@@ -25,6 +26,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers";
+import { MY_ACCOUNT_ROUTE } from "@/lib/routes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -98,7 +100,17 @@ export const SidebarContent = ({
       { href: "/compare-models", label: t("sidebar.nav.modelArena"), icon: Layers, match: "exact" },
       { href: "/guardrails", label: t("sidebar.nav.guardrails"), icon: Shield, match: "exact" },
       { href: "/observability", label: t("sidebar.nav.observability"), icon: Activity, match: "exact" },
-      { href: "/teams", label: t("sidebar.nav.teamManagement"), icon: Users, match: "prefix" },
+      {
+        href: "/teams",
+        // Personal profiles have no teams — the page is just their
+        // account + models/api/billing settings, so label it generically.
+        label:
+          user?.profileType === "company"
+            ? t("sidebar.nav.teamManagement")
+            : t("sidebar.nav.management"),
+        icon: Users,
+        match: "prefix",
+      },
     ],
     [
       { href: "/tender-ai", label: t("sidebar.nav.tenderAI"), icon: MessageSquare, match: "prefix" },
@@ -106,11 +118,23 @@ export const SidebarContent = ({
     ],
     [
       { href: "/resources", label: t("sidebar.nav.resources"), icon: BookOpen, match: "prefix" },
+      { href: "/resources/how-it-works", label: t("sidebar.nav.howItWorks"), icon: Network, match: "exact" },
     ],
   ];
 
-  const isActive = (item: NavItem) =>
-    item.match === "prefix" ? pathname.startsWith(item.href) : pathname === item.href;
+  // When a more specific item has its own exact entry for the current
+  // path (e.g. /resources/how-it-works sits under the /resources prefix
+  // item), the prefix parent yields so only the precise item lights up.
+  const exactMatchExists = navGroups
+    .flat()
+    .some((i) => i.href === pathname);
+  const isActive = (item: NavItem) => {
+    if (item.match === "exact") return pathname === item.href;
+    return (
+      pathname.startsWith(item.href) &&
+      !(exactMatchExists && item.href !== pathname)
+    );
+  };
 
   const newProjectButton = collapsed ? (
     <Button
@@ -391,7 +415,7 @@ export const SidebarContent = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56">
               <DropdownMenuItem asChild>
-                <Link href="/teams?tab=my-account" className="cursor-pointer">
+                <Link href={MY_ACCOUNT_ROUTE} className="cursor-pointer">
                   <UserIcon className="mr-2 h-4 w-4" />
                   {t("sidebar.myAccount")}
                 </Link>

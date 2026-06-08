@@ -68,8 +68,10 @@ export class TeamsService {
     monthlyBudgetCents?: number,
     parentTeamId?: string,
   ) {
-    // Subteams inherit the parent's management gate: only owners or
-    // editors of the parent can create children.
+    // Personal-profile callers are rejected at the controller (one
+    // query alongside the role gate). Subteams inherit the parent's
+    // management gate: only owners or editors of the parent can create
+    // children.
     if (parentTeamId) {
       const parentRole = await this.getUserTeamRole(parentTeamId, userId);
       if (
