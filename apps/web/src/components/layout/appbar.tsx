@@ -364,9 +364,15 @@ export const Appbar = () => {
 
   /* ── AI Chat appbar (dashboard) ────────────────────────────────────────── */
   if (config.appbarType === "aiChat") {
-    const activeTab = searchParams.get("filter") ?? "all";
+    // Personal profiles only have the Personal view — All / Team are
+    // disabled with a reason and the active tab is forced to Personal.
+    const isPersonal = currentUser?.profileType !== "company";
+    const activeTab = isPersonal
+      ? "personal"
+      : (searchParams.get("filter") ?? "all");
 
     const setTab = (tab: string) => {
+      if (isPersonal && tab !== "personal") return;
       const params = new URLSearchParams(searchParams.toString());
       if (tab === "all") {
         params.delete("filter");
@@ -386,19 +392,30 @@ export const Appbar = () => {
         <h4 className="text-text-1 shrink-0">{t("appbar.aiChat")}</h4>
 
         <div className="flex items-start rounded-[4px] border border-border-2 overflow-hidden shrink-0">
-          {AI_CHAT_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => setTab(tab.value)}
-              className={`px-[14px] py-[8px] text-[16px] font-normal cursor-pointer transition-colors ${
-                activeTab === tab.value
-                  ? "bg-bg-3 text-text-1"
-                  : "bg-bg-white text-text-1 hover:bg-bg-1"
-              }`}
-            >
-              {t(tab.labelKey)}
-            </button>
-          ))}
+          {AI_CHAT_TABS.map((tab) => {
+            const disabled = isPersonal && tab.value !== "personal";
+            return (
+              <DisabledReasonTooltip
+                key={tab.value}
+                disabled={disabled}
+                reason={t("common.personalViewsDisabled")}
+              >
+                <button
+                  onClick={() => setTab(tab.value)}
+                  disabled={disabled}
+                  className={`px-[14px] py-[8px] text-[16px] font-normal transition-colors ${
+                    disabled
+                      ? "cursor-not-allowed bg-bg-white text-text-3 opacity-50"
+                      : activeTab === tab.value
+                        ? "bg-bg-3 text-text-1 cursor-pointer"
+                        : "bg-bg-white text-text-1 hover:bg-bg-1 cursor-pointer"
+                  }`}
+                >
+                  {t(tab.labelKey)}
+                </button>
+              </DisabledReasonTooltip>
+            );
+          })}
         </div>
 
         <div className="flex flex-1 items-center gap-[8px] rounded-[6px] border border-border-3 bg-bg-white px-[13px] py-[9px]">

@@ -61,6 +61,7 @@ export const common = {
   'common.team': 'Team',
   'common.personal': 'Personal',
   'common.visitMyAccount': 'Visit My Account to update your profile type.',
+  'common.personalViewsDisabled': 'Team and All views need a company profile. Visit My Account to update your profile type.',
   'common.all': 'All',
   'common.failedToLoad': 'Failed to load. Is the API running?',
   'dashboard.teamProjects': 'Team Projects',
