@@ -203,8 +203,8 @@ export const Appbar = () => {
     queryFn: () => fetchTeam(teamDetailId),
     enabled: isTeamDetail && !!teamDetailId,
   });
-  const { user: currentUser } = useAuth();
-  const isPersonal = isPersonalProfile(currentUser);
+  const { user: currentUser, isLoading: authLoading } = useAuth();
+  const isPersonal = isPersonalProfile(currentUser, authLoading);
   const canManageCurrentTeam = (() => {
     if (!teamDetailData || !currentUser) return false;
     if (currentUser.id === teamDetailData.ownerId) return true;
