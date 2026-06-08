@@ -5,6 +5,7 @@ import { Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar, Appbar, Footer } from "@/components/layout";
 import { AuthProvider, useAuth } from "@/components/providers";
+import { RealtimeProvider } from "@/components/realtime-provider";
 import { SidebarProvider } from "@/hooks/use-sidebar";
 import { getRouteConfig } from "@/lib/route-config";
 
@@ -49,6 +50,7 @@ export default function AppLayout({
 
   return (
     <AuthProvider>
+      <RealtimeProvider>
       <OnboardingGuard>
         <SidebarProvider>
           <div className={`flex h-screen w-full overflow-hidden text-slate-600 selection:bg-blue-100 selection:text-blue-900 ${bg}`}>
@@ -76,6 +78,7 @@ export default function AppLayout({
           </div>
         </SidebarProvider>
       </OnboardingGuard>
+      </RealtimeProvider>
     </AuthProvider>
   );
 }

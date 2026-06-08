@@ -29,6 +29,7 @@ import {
   type ProjectMember,
 } from "@/lib/api";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { useOnlineUsers } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -145,6 +146,7 @@ export function ProjectDetailsPanel({
   // just show an empty "no members" state. Hide it (and skip the
   // fetch) for them, consistent with main's personal-account model.
   const isPersonal = useIsPersonal();
+  const onlineUserIds = useOnlineUsers();
 
   /* Chat Context edit state */
   const [editing, setEditing] = useState(false);
@@ -393,7 +395,9 @@ export function ProjectDetailsPanel({
             </p>
           ) : (
             <ul className="flex flex-col gap-2.5">
-              {members.map((m) => (
+              {members.map((m) => {
+                const online = onlineUserIds.has(m.userId);
+                return (
                 <li key={m.userId} className="flex items-center gap-2.5">
                   <div className="relative shrink-0">
                     <Avatar className="h-8 w-8 border border-border-2">
@@ -407,9 +411,18 @@ export function ProjectDetailsPanel({
                         {getInitials(m.userName ?? m.userEmail)}
                       </AvatarFallback>
                     </Avatar>
-                    {/* Presence dot — neutral placeholder until FA4
-                        wires real-time presence over WebSocket. */}
-                    <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-white bg-bg-3" />
+                    {/* Live presence dot — green when the member has an
+                        active socket (FA4), muted grey when offline. */}
+                    <span
+                      title={
+                        online
+                          ? t("projDetails.online")
+                          : t("projDetails.offline")
+                      }
+                      className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-white ${
+                        online ? "bg-success-7" : "bg-bg-3"
+                      }`}
+                    />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-medium text-text-1">
@@ -421,7 +434,8 @@ export function ProjectDetailsPanel({
                     </p>
                   </div>
                 </li>
-              ))}
+                );
+              })}
             </ul>
           )}
         </Section>

@@ -58,6 +58,8 @@ export const chat = {
   'projDetails.toolReport': 'Generate Report',
   'projDetails.toolTrends': 'Analyze Trends',
   'projDetails.teamMembers': 'Team Members',
+  'projDetails.online': 'Online',
+  'projDetails.offline': 'Offline',
   'projDetails.noMembers': 'No members yet.',
   'projDetails.roleAdmin': 'Admin',
   'projDetails.roleEditor': 'Can Edit',

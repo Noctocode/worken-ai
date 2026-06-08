@@ -60,6 +60,8 @@ export const chat: Record<keyof typeof chatEn, string> = {
   'projDetails.toolReport': 'Ustvari poročilo',
   'projDetails.toolTrends': 'Analiziraj trende',
   'projDetails.teamMembers': 'Člani ekipe',
+  'projDetails.online': 'Na spletu',
+  'projDetails.offline': 'Nepovezan',
   'projDetails.noMembers': 'Članov še ni.',
   'projDetails.roleAdmin': 'Skrbnik',
   'projDetails.roleEditor': 'Lahko ureja',

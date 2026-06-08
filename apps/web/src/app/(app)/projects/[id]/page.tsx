@@ -38,6 +38,7 @@ import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
 import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
 import { useAuth } from "@/components/providers";
+import { useConversationLiveSync } from "@/components/realtime-provider";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useLanguage } from "@/lib/i18n";
 
@@ -275,6 +276,20 @@ export default function ProjectChatPage() {
   const handleSelectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
   }, []);
+
+  // Live sync (FA4): when another member posts in the open conversation,
+  // pull the canonical view. The conversation query is gated on
+  // `!isSending`, so this no-ops mid-stream and refetches once our own
+  // send settles — own messages are skipped server-side via senderId.
+  const handleRemoteMessage = useCallback(() => {
+    if (activeConversationId) {
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", activeConversationId],
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["conversations", projectId] });
+  }, [queryClient, activeConversationId, projectId]);
+  useConversationLiveSync(activeConversationId, user?.id, handleRemoteMessage);
 
   const handleStop = () => {
     lastStopAtRef.current = Date.now();

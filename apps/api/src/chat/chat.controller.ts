@@ -28,6 +28,7 @@ import { ObservabilityService } from '../observability/observability.service.js'
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { ChatService } from './chat.service.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
+import { ChatGateway } from '../realtime/chat.gateway.js';
 
 interface ChatRequestBody {
   conversationId: string;
@@ -50,6 +51,7 @@ export class ChatController {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly projectKnowledge: ProjectKnowledgeService,
     private readonly modelSuggestions: ModelSuggestionService,
+    private readonly chatGateway: ChatGateway,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -122,6 +124,10 @@ export class ChatController {
       safePrompt,
       user.id,
     );
+    // Live sync: tell other members in this conversation a new message
+    // landed (senderId = author, so the author's own client skips the
+    // redundant refetch — it already shows the message optimistically).
+    this.chatGateway.emitMessage(body.conversationId, user.id);
     const conversationAfterPersist = await this.conversationsService.findOne(
       body.conversationId,
       user.id,
@@ -658,6 +664,10 @@ export class ChatController {
       null,
       Object.keys(metadata).length > 0 ? metadata : undefined,
     );
+    // Live sync the assistant reply to other members. senderId is the
+    // triggering user so their own client (which streamed the reply)
+    // skips the refetch; everyone else in the room refetches to see it.
+    this.chatGateway.emitMessage(body.conversationId, user.id);
 
     void this.observabilityService.recordLLMCall({
       userId: user.id,
