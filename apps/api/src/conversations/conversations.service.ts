@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, asc } from 'drizzle-orm';
+import { and, desc, eq, asc, ilike, or } from 'drizzle-orm';
 import {
   conversations,
   messageFeedback,
@@ -94,14 +94,37 @@ export class ConversationsService {
     return conversation;
   }
 
-  async findByProject(projectId: string, userId: string) {
+  async findByProject(projectId: string, userId: string, query?: string) {
     await this.verifyProjectAccess(projectId, userId);
 
-    const convos = await this.db
+    let convos = await this.db
       .select()
       .from(conversations)
       .where(eq(conversations.projectId, projectId))
       .orderBy(desc(conversations.updatedAt));
+
+    // Optional server-side search: a conversation matches when its
+    // title OR any of its messages' content contains the term (case-
+    // insensitive). We resolve the matching ids in one ILIKE query
+    // and filter the already-ordered list in memory, preserving the
+    // updatedAt ordering. LIKE wildcards in the user term are escaped
+    // so a literal `%`/`_` can't widen the match.
+    const term = query?.trim();
+    if (term) {
+      const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const matches = await this.db
+        .selectDistinct({ id: conversations.id })
+        .from(conversations)
+        .leftJoin(messages, eq(messages.conversationId, conversations.id))
+        .where(
+          and(
+            eq(conversations.projectId, projectId),
+            or(ilike(conversations.title, like), ilike(messages.content, like)),
+          ),
+        );
+      const matchedIds = new Set(matches.map((m) => m.id));
+      convos = convos.filter((c) => matchedIds.has(c.id));
+    }
 
     // For each conversation, get distinct participants from messages
     const result = await Promise.all(

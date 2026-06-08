@@ -895,8 +895,10 @@ export interface ConversationWithMessages {
 
 export async function fetchConversations(
   projectId: string,
+  query?: string,
 ): Promise<ConversationListItem[]> {
-  const res = await apiFetch(`/projects/${projectId}/conversations`);
+  const qs = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const res = await apiFetch(`/projects/${projectId}/conversations${qs}`);
   if (!res.ok) throw new Error("Failed to fetch conversations");
   return res.json();
 }

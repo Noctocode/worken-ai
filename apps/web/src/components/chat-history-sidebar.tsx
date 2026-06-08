@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, MessageSquare, Loader2, Trash2, Search, Users } from "lucide-react";
 
@@ -79,25 +79,35 @@ export function ChatHistorySidebar({
   const [tab, setTab] = useState<FilterTab>("all");
   const [query, setQuery] = useState("");
 
+  // Debounce the search term so each keystroke doesn't fire a request.
+  // The setState lives in a timeout callback (async), so it doesn't
+  // trip the set-state-in-effect lint rule.
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(query.trim()), 250);
+    return () => clearTimeout(id);
+  }, [query]);
+
+  // Server-side search across conversation titles AND message content.
+  // The term is part of the query key so each distinct search caches
+  // independently; invalidating ["conversations", projectId] (done on
+  // send) matches all of them via react-query's prefix rule.
   const { data: conversations, isLoading } = useQuery({
-    queryKey: ["conversations", projectId],
-    queryFn: () => fetchConversations(projectId),
+    queryKey: ["conversations", projectId, debouncedQuery],
+    queryFn: () => fetchConversations(projectId, debouncedQuery || undefined),
   });
 
+  // Tab filter stays client-side — it's a cheap partition over the
+  // already-fetched (and possibly already-searched) list.
   const filtered = useMemo(() => {
     if (!conversations) return [];
-    const q = query.trim().toLowerCase();
     return conversations.filter((convo) => {
       const isTeam = isTeamConversation(convo, user?.id);
       if (tab === "team" && !isTeam) return false;
       if (tab === "personal" && isTeam) return false;
-      if (q) {
-        const title = (convo.title ?? t("chatHist.newConvo")).toLowerCase();
-        if (!title.includes(q)) return false;
-      }
       return true;
     });
-  }, [conversations, tab, query, user?.id, t]);
+  }, [conversations, tab, user?.id]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();

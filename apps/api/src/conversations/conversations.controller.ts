@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -20,8 +21,9 @@ export class ConversationsController {
   findByProject(
     @Param('projectId') projectId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('q') q?: string,
   ) {
-    return this.conversationsService.findByProject(projectId, user.id);
+    return this.conversationsService.findByProject(projectId, user.id, q);
   }
 
   @Get('conversations/:id')
