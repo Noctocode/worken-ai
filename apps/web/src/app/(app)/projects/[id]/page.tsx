@@ -32,6 +32,7 @@ import {
   type WebCitation,
 } from "@/lib/api";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
+import { ProjectDetailsPanel } from "@/components/project-chat/project-details-panel";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
 import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
@@ -156,6 +157,10 @@ export default function ProjectChatPage() {
     },
   });
 
+  // Right-hand "Project Details" panel (Figma 238:17561). Open by
+  // default on wide screens; the panel renders a thin collapsed rail
+  // when closed.
+  const [detailsOpen, setDetailsOpen] = useState(true);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -667,7 +672,7 @@ export default function ProjectChatPage() {
                   hero (still rendered below by the regular composer
                   block). */}
               {messages.length === 0 && !isLoadingConversation && (
-                <ChatEmptyState project={project} />
+                <ChatEmptyState project={project} onPickPrompt={setMessage} />
               )}
 
               {isLoadingConversation && (
@@ -1060,6 +1065,18 @@ export default function ProjectChatPage() {
           isSending={isSending}
         />
       </div>
+
+      {/* Right "Project Details" panel (Figma 238:17561). conversationData
+          is gated on !isSending, so on a fresh chat it's briefly null —
+          the panel's Chat Context section handles that with its
+          "start a conversation" empty state. */}
+      <ProjectDetailsPanel
+        projectId={projectId}
+        conversation={conversationData ?? null}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        onPickPrompt={setMessage}
+      />
     </div>
   );
 }

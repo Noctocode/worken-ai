@@ -286,6 +286,11 @@ export const conversations = pgTable("conversations", {
     .references(() => users.id)
     .notNull(),
   title: text("title"),
+  // Free-form "Chat Context" the right-hand Project Details panel
+  // (Figma 238:17561 → "Chat Context") shows and lets members edit.
+  // Per-conversation: shared task framing / brief that's prepended to
+  // the conversation, distinct from the project description.
+  context: text("context"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -5,6 +5,7 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service.js';
@@ -34,6 +35,24 @@ export class ConversationsController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversationsService.create(projectId, user.id);
+  }
+
+  /**
+   * Update the conversation's free-form Chat Context (right-panel
+   * "Edit Context", Figma 238:17561). Any project member who can read
+   * the conversation can edit its shared context.
+   */
+  @Patch('conversations/:id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { context?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversationsService.updateContext(
+      id,
+      user.id,
+      body.context ?? null,
+    );
   }
 
   @Delete('conversations/:id')

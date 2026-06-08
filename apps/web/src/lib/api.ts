@@ -885,6 +885,9 @@ export interface ConversationWithMessages {
   projectId: string;
   userId: string;
   title: string | null;
+  /** Free-form Chat Context shown/edited in the right Project Details
+   *  panel (Figma 238:17561). Null when unset. */
+  context: string | null;
   createdAt: string;
   updatedAt: string;
   messages: ConversationMessage[];
@@ -919,6 +922,24 @@ export async function createConversation(
 export async function deleteConversation(id: string): Promise<void> {
   const res = await apiFetch(`/conversations/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete conversation");
+}
+
+/**
+ * Update a conversation's free-form Chat Context (right Project
+ * Details panel "Edit Context"). Pass null/empty to clear it. Returns
+ * the normalised stored value.
+ */
+export async function updateConversationContext(
+  id: string,
+  context: string | null,
+): Promise<{ context: string | null }> {
+  const res = await apiFetch(`/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context }),
+  });
+  if (!res.ok) throw new Error("Failed to update chat context");
+  return res.json();
 }
 
 /**

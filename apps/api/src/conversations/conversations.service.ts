@@ -143,6 +143,7 @@ export class ConversationsService {
     projectId: string;
     userId: string;
     title: string | null;
+    context: string | null;
     createdAt: Date;
     updatedAt: Date;
     messages: {
@@ -249,6 +250,33 @@ export class ConversationsService {
     }
 
     return msg;
+  }
+
+  /**
+   * Update a conversation's free-form Chat Context (right-panel "Edit
+   * Context"). Access is gated on project membership — any member who
+   * can read the conversation can edit its shared context. Trims and
+   * normalises empty/whitespace-only input to null so the panel can
+   * fall back to its empty state. Returns the new value.
+   */
+  async updateContext(
+    conversationId: string,
+    userId: string,
+    context: string | null,
+  ) {
+    await this.verifyConversationAccess(conversationId, userId);
+
+    const trimmed =
+      typeof context === 'string' && context.trim().length > 0
+        ? context.trim()
+        : null;
+
+    await this.db
+      .update(conversations)
+      .set({ context: trimmed, updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId));
+
+    return { context: trimmed };
   }
 
   async remove(conversationId: string, userId: string) {

@@ -1,13 +1,19 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, MessageSquare, Loader2, Trash2 } from "lucide-react";
+import { Plus, MessageSquare, Loader2, Trash2, Search, Users } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { fetchConversations, deleteConversation } from "@/lib/api";
+import {
+  fetchConversations,
+  deleteConversation,
+  type ConversationListItem,
+} from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -17,6 +23,8 @@ interface ChatHistorySidebarProps {
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
 }
+
+type FilterTab = "all" | "personal" | "team";
 
 function makeGetRelativeTime(t: (k: TranslationKey) => string) {
   return (dateStr: string) => {
@@ -43,6 +51,20 @@ function getInitials(name: string | null) {
     .slice(0, 2);
 }
 
+/**
+ * A conversation reads as "team" once anyone other than the current
+ * user has posted in it (participants come from message authors). This
+ * is a client-side heuristic — we have no per-conversation team flag —
+ * but it matches the Figma intent: shared chats get the Users marker
+ * and surface under the Team filter, solo chats under Personal.
+ */
+function isTeamConversation(
+  convo: ConversationListItem,
+  currentUserId: string | undefined,
+) {
+  return convo.participants.some((p) => p.id && p.id !== currentUserId);
+}
+
 export function ChatHistorySidebar({
   projectId,
   activeConversationId,
@@ -50,13 +72,32 @@ export function ChatHistorySidebar({
   onNewChat,
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
+  const { user } = useAuth();
   const getRelativeTime = makeGetRelativeTime(t);
   const queryClient = useQueryClient();
+
+  const [tab, setTab] = useState<FilterTab>("all");
+  const [query, setQuery] = useState("");
 
   const { data: conversations, isLoading } = useQuery({
     queryKey: ["conversations", projectId],
     queryFn: () => fetchConversations(projectId),
   });
+
+  const filtered = useMemo(() => {
+    if (!conversations) return [];
+    const q = query.trim().toLowerCase();
+    return conversations.filter((convo) => {
+      const isTeam = isTeamConversation(convo, user?.id);
+      if (tab === "team" && !isTeam) return false;
+      if (tab === "personal" && isTeam) return false;
+      if (q) {
+        const title = (convo.title ?? t("chatHist.newConvo")).toLowerCase();
+        if (!title.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [conversations, tab, query, user?.id, t]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -71,6 +112,12 @@ export function ChatHistorySidebar({
     }
   };
 
+  const tabs: { key: FilterTab; label: string }[] = [
+    { key: "all", label: t("chatHist.filterAll") },
+    { key: "personal", label: t("chatHist.filterPersonal") },
+    { key: "team", label: t("chatHist.filterTeam") },
+  ];
+
   return (
     <div className="hidden w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/60 lg:flex">
       <div className="flex h-14 shrink-0 items-center justify-between px-4">
@@ -84,6 +131,39 @@ export function ChatHistorySidebar({
           <Plus className="h-4 w-4" />
         </Button>
       </div>
+
+      {/* Search */}
+      <div className="px-3 pb-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t("chatHist.searchPh")}
+            className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-3 text-[13px] text-slate-900 placeholder:text-slate-400 focus:border-primary-5 focus:outline-none"
+          />
+        </div>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1 px-3 pb-2">
+        {tabs.map((tabItem) => (
+          <button
+            key={tabItem.key}
+            type="button"
+            onClick={() => setTab(tabItem.key)}
+            className={`flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${
+              tab === tabItem.key
+                ? "bg-primary-6 text-white"
+                : "bg-slate-100/60 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            {tabItem.label}
+          </button>
+        ))}
+      </div>
+
       <ScrollArea className="flex-1">
         <div className="space-y-0.5 px-2 pb-4">
           {isLoading && (
@@ -91,74 +171,85 @@ export function ChatHistorySidebar({
               <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
             </div>
           )}
-          {!isLoading && (!conversations || conversations.length === 0) && (
+          {!isLoading && filtered.length === 0 && (
             <div className="px-3 py-8 text-center">
               <MessageSquare className="mx-auto h-8 w-8 text-slate-300" />
               <p className="mt-2 text-xs text-slate-400">
-                {t("chatHist.noConvos")}
+                {query.trim() || tab !== "all"
+                  ? t("chatHist.noMatches")
+                  : t("chatHist.noConvos")}
               </p>
             </div>
           )}
-          {conversations?.map((convo) => (
-            <div
-              key={convo.id}
-              role="button"
-              tabIndex={0}
-              onClick={() => onSelectConversation(convo.id)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onSelectConversation(convo.id);
-                }
-              }}
-              className={`group flex w-full cursor-pointer items-start gap-3 overflow-hidden rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-100/60 ${
-                activeConversationId === convo.id ? "bg-blue-50/50" : ""
-              }`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="min-w-0 truncate text-sm font-medium text-slate-900">
-                    {(convo.title || t("chatHist.newConvo")).length > 28
-                      ? (convo.title || t("chatHist.newConvo")).slice(0, 28) + "..."
-                      : convo.title || t("chatHist.newConvo")}
-                  </span>
-                  <span className="shrink-0 text-[11px] text-slate-400">
-                    {getRelativeTime(convo.updatedAt)}
-                  </span>
-                </div>
-                <div className="mt-1.5 flex items-center justify-between">
-                  {/* Participant avatars */}
-                  <div className="flex -space-x-1.5">
-                    {convo.participants.slice(0, 3).map((p, i) => (
-                      <Avatar
-                        key={p.id || i}
-                        className="h-5 w-5 border border-white"
-                      >
-                        {p.picture ? (
-                          <AvatarImage src={p.picture} alt={p.name || ""} />
-                        ) : null}
-                        <AvatarFallback className="bg-slate-100 text-[9px] text-slate-600">
-                          {getInitials(p.name)}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
-                    {convo.participants.length > 3 && (
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-slate-100 text-[9px] text-slate-500">
-                        +{convo.participants.length - 3}
-                      </span>
-                    )}
+          {filtered.map((convo) => {
+            const isTeam = isTeamConversation(convo, user?.id);
+            const rawTitle = convo.title || t("chatHist.newConvo");
+            const title =
+              rawTitle.length > 28 ? rawTitle.slice(0, 28) + "..." : rawTitle;
+            return (
+              <div
+                key={convo.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => onSelectConversation(convo.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onSelectConversation(convo.id);
+                  }
+                }}
+                className={`group flex w-full cursor-pointer items-start gap-3 overflow-hidden rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-100/60 ${
+                  activeConversationId === convo.id ? "bg-blue-50/50" : ""
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-slate-900">
+                      {/* Team marker — shared conversations get the
+                          Users icon, mirroring the Figma chat list. */}
+                      {isTeam && (
+                        <Users className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                      )}
+                      <span className="truncate">{title}</span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-slate-400">
+                      {getRelativeTime(convo.updatedAt)}
+                    </span>
                   </div>
-                  {/* Delete button */}
-                  <button
-                    onClick={(e) => handleDelete(e, convo.id)}
-                    className="shrink-0 text-slate-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="mt-1.5 flex items-center justify-between">
+                    {/* Participant avatars */}
+                    <div className="flex -space-x-1.5">
+                      {convo.participants.slice(0, 3).map((p, i) => (
+                        <Avatar
+                          key={p.id || i}
+                          className="h-5 w-5 border border-white"
+                        >
+                          {p.picture ? (
+                            <AvatarImage src={p.picture} alt={p.name || ""} />
+                          ) : null}
+                          <AvatarFallback className="bg-slate-100 text-[9px] text-slate-600">
+                            {getInitials(p.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                      ))}
+                      {convo.participants.length > 3 && (
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full border border-white bg-slate-100 text-[9px] text-slate-500">
+                          +{convo.participants.length - 3}
+                        </span>
+                      )}
+                    </div>
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDelete(e, convo.id)}
+                      className="shrink-0 text-slate-400 opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </ScrollArea>
     </div>
