@@ -135,7 +135,7 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.billing.colStatus': 'Status',
   'mgmt.billing.statusPaid': 'Plačano',
   'mgmt.company.failedLoad': 'Nalaganje profila podjetja ni uspelo.',
-  'mgmt.company.personalOnly': 'To delovno okolje je registrirano kot osebni profil, zato ni informacij o podjetju. Obiščite Moj račun za posodobitev vrste profila.',
+  'mgmt.company.personalOnly': 'To delovno okolje je registrirano kot osebni profil, zato ni informacij o podjetju.',
   'mgmt.teams.personalOnly': 'To delovno okolje je registrirano kot osebni profil, zato ni ekip za upravljanje.',
   'mgmt.users.personalOnly': 'To delovno okolje je registrirano kot osebni profil — gre za en sam račun, zato ni drugih uporabnikov za upravljanje.',
   'mgmt.company.companyNameEmpty': 'Ime podjetja ne sme biti prazno.',
