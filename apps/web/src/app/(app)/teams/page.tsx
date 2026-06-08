@@ -179,7 +179,7 @@ export default function TeamsPage() {
         {/* Filter bar per Figma 4719:31181. Mobile: row 1 = Teams +
             Create Team, row 2 = full-width search. Desktop: original
             single-row layout. */}
-        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-4">
+        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
           <div className="flex items-center justify-between gap-3 lg:contents">
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
               {t("teams.title")}
@@ -205,7 +205,12 @@ export default function TeamsPage() {
               </CreateTeamDialog>
             </DisabledReasonTooltip>
           </div>
-          {!isPersonal && (
+          {isPersonal ? (
+            // Spacer fills the flex-1 slot the search normally occupies
+            // so the Create Team button stays right-aligned on the lg
+            // single-row layout.
+            <div className="hidden lg:block lg:flex-1" aria-hidden />
+          ) : (
             <SearchInput
               className="flex-1"
               placeholder={t("teams.searchTeams")}
@@ -360,7 +365,12 @@ export default function TeamsPage() {
               </InviteUserDialog>
             </DisabledReasonTooltip>
           </div>
-          {!isPersonal && (
+          {isPersonal ? (
+            // Spacer fills the flex-1 slot the search normally occupies
+            // so the Invite User button stays right-aligned on the lg
+            // single-row layout.
+            <div className="hidden lg:block lg:flex-1" aria-hidden />
+          ) : (
             <SearchInput
               className="flex-1"
               placeholder={t("teams.searchUsers")}
