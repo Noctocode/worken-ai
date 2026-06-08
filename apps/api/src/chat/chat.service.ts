@@ -188,7 +188,10 @@ export class ChatService {
           ],
           stream: true,
           stream_options: { include_usage: true },
-          ...(enableReasoning && { reasoning: { enabled: true } }),
+          // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
+          // unknown body args, so never send it on the azure-sdk route.
+          ...(enableReasoning &&
+            kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
           // OpenRouter web search plugin — lets the model browse the live
           // web. Kept off the model id (no `:online` suffix) so catalog
           // pricing / observability lookups still match the base model.
