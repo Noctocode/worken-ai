@@ -33,6 +33,7 @@ import {
   // fetchOrgUsers,
   // type OrgUser,
 } from "@/lib/api";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { AGENTS } from "@/lib/agents";
@@ -141,6 +142,11 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
+  // Team projects are a company-tenant feature — a personal profile is
+  // a sole account with no teammates to share with. The Team type is
+  // disabled (not removed) with a hover reason; switching profile type
+  // in My Account re-enables it.
+  const isPersonal = useIsPersonal();
 
   const [projectName, setProjectName] = useState("");
   const [nameError, setNameError] = useState(false);
@@ -322,11 +328,16 @@ export default function CreateProjectPage() {
               </Tooltip>
             </button>
             <button
-              onClick={() => setProjectType("team")}
-              className={`flex flex-1 md:flex-none md:w-[150px] items-center justify-center gap-2 py-3 text-[16px] cursor-pointer transition-colors ${
-                projectType === "team"
-                  ? "bg-primary-6 text-white"
-                  : "bg-bg-white text-text-1 hover:bg-bg-1"
+              onClick={() => {
+                if (!isPersonal) setProjectType("team");
+              }}
+              aria-disabled={isPersonal}
+              className={`flex flex-1 md:flex-none md:w-[150px] items-center justify-center gap-2 py-3 text-[16px] transition-colors ${
+                isPersonal
+                  ? "cursor-not-allowed bg-bg-white text-text-3 opacity-60"
+                  : projectType === "team"
+                    ? "bg-primary-6 text-white cursor-pointer"
+                    : "bg-bg-white text-text-1 hover:bg-bg-1 cursor-pointer"
               }`}
             >
               {t("common.team")}
@@ -337,7 +348,9 @@ export default function CreateProjectPage() {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs text-center">
-                  {t("projectCreate.teamTooltip")}
+                  {isPersonal
+                    ? t("projectCreate.teamPersonalDisabled")
+                    : t("projectCreate.teamTooltip")}
                 </TooltipContent>
               </Tooltip>
             </button>

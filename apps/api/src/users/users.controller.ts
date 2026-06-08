@@ -99,6 +99,17 @@ export class UsersController {
         'Only admin or advanced users can invite users.',
       );
     }
+    // Personal profiles are sole accounts — inviting would create a
+    // company-less dangling user. Gate on `companyId` (the authoritative
+    // tenant pointer) rather than `profileType`, so a company member
+    // whose profileType is briefly null mid-onboarding isn't wrongly
+    // 403'd. The capability isn't removed; a personal user switches to
+    // a company profile (My Account) first. Mirrors the FE Users tab.
+    if (!callerUser.companyId) {
+      throw new ForbiddenException(
+        'Personal profiles cannot invite users. Switch to a company profile to manage users.',
+      );
+    }
 
     const validRoles = ['basic', 'advanced', 'admin'];
     if (!validRoles.includes(body.role)) {

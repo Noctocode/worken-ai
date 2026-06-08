@@ -1,6 +1,8 @@
 export const teams = {
   'teams.title': 'Teams',
   'teams.createTeam': 'Create Team',
+  'teams.personalNoCreate': "Personal profiles can't create teams. Visit My Account to switch to a company profile.",
+  'teams.personalNoInvite': "Personal profiles can't invite users. Visit My Account to switch to a company profile.",
   'teams.searchTeams': 'Search teams...',
   'teams.monthlyBudget': 'Monthly Budget',
   'teams.spentRemaining': 'Spent / Remaining',

@@ -169,19 +169,21 @@ describe('UsersController auth gates', () => {
       id: 'advanced-id',
       email: 'adv@example.com',
     };
+    // Invite is company-only (personal profiles are gated out), so the
+    // callers in these role/cross-tenant tests are company profiles.
     const advancedCallerRow = {
       id: 'advanced-id',
       role: 'advanced',
       email: 'adv@example.com',
-      companyId: null,
-      profileType: null,
+      companyId: 'company-1',
+      profileType: 'company',
     };
     const adminCallerRow = {
       id: 'admin-id',
       role: 'admin',
       email: 'admin@example.com',
-      companyId: null,
-      profileType: null,
+      companyId: 'company-1',
+      profileType: 'company',
     };
 
     // Regression: advanced caller invites an existing admin user with
@@ -241,7 +243,9 @@ describe('UsersController auth gates', () => {
           id: 'target-id',
           role: 'basic',
           email: 'target@example.com',
-          companyId: null,
+          // Same tenant as the caller + already sealed, so no company
+          // backfill patch fires — the re-invite must not call update.
+          companyId: 'company-1',
         },
       });
       await expect(
@@ -272,6 +276,28 @@ describe('UsersController auth gates', () => {
           ADVANCED,
         ),
       ).rejects.toThrow(ForbiddenException);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    // Personal profiles are sole accounts — inviting would create a
+    // company-less dangling user, so it's gated even for an admin.
+    it('personal profile cannot invite users', async () => {
+      const { controller, update } = bootstrapInvite({
+        caller: {
+          id: 'admin-id',
+          role: 'admin',
+          email: 'admin@example.com',
+          companyId: null,
+          profileType: 'personal',
+        },
+        existing: null,
+      });
+      await expect(
+        controller.inviteUser(
+          { email: 'new@example.com', role: 'basic' },
+          { id: 'admin-id', email: 'admin@example.com' },
+        ),
+      ).rejects.toThrow(/Personal profiles cannot invite users/);
       expect(update).not.toHaveBeenCalled();
     });
   });
