@@ -59,21 +59,20 @@ function Boundary({
 
 export default function HowItWorksPage() {
   const { t } = useLanguage();
-  const tk = (k: string) => t(k as TranslationKey);
 
   const L = {
-    infra: tk("resources.how.label.infra"),
-    cloud: tk("resources.how.label.cloud"),
-    app: tk("resources.how.label.app"),
-    data: tk("resources.how.label.data"),
-    model: tk("resources.how.label.model"),
-    external: tk("resources.how.label.external"),
+    infra: t("resources.how.label.infra"),
+    cloud: t("resources.how.label.cloud"),
+    app: t("resources.how.label.app"),
+    data: t("resources.how.label.data"),
+    model: t("resources.how.label.model"),
+    external: t("resources.how.label.external"),
   };
 
   const cards: Array<{
-    titleKey: string;
-    captionKey: string;
-    costKey: string;
+    titleKey: TranslationKey;
+    captionKey: TranslationKey;
+    costKey: TranslationKey;
     diagram: React.ReactNode;
   }> = [
     {
@@ -132,12 +131,12 @@ export default function HowItWorksPage() {
       <div className="flex items-center gap-2 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
         <Wrench className="h-4 w-4 shrink-0 text-danger-6" strokeWidth={2} />
         <span className="text-[13px] font-medium text-danger-6">
-          {tk("resources.how.wip")}
+          {t("resources.how.wip")}
         </span>
       </div>
 
       <p className="max-w-[720px] text-[15px] leading-[1.6] text-text-2">
-        {tk("resources.how.intro")}
+        {t("resources.how.intro")}
       </p>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -147,15 +146,15 @@ export default function HowItWorksPage() {
             className="flex flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6"
           >
             <h3 className="text-[18px] font-bold leading-[1.4] text-text-1">
-              {tk(c.titleKey)}
+              {t(c.titleKey)}
             </h3>
             {c.diagram}
             <p className="text-[13px] leading-[1.6] text-text-2">
-              {tk(c.captionKey)}
+              {t(c.captionKey)}
             </p>
             <p className="mt-auto flex items-start gap-2 text-[12px] leading-[1.5] text-text-3">
               <ShieldCheck className="h-4 w-4 shrink-0 text-text-3" strokeWidth={2} />
-              {tk(c.costKey)}
+              {t(c.costKey)}
             </p>
           </div>
         ))}
