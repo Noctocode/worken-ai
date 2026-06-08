@@ -8,6 +8,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'sidebar.nav.guardrails': 'Varovala',
   'sidebar.nav.observability': 'Nadzor',
   'sidebar.nav.teamManagement': 'Upravljanje ekipe',
+  'sidebar.nav.management': 'Upravljanje',
   'sidebar.nav.tenderAI': 'Tender AI',
   'sidebar.nav.knowledgeCore': 'Baza znanja',
   'sidebar.nav.resources': 'Viri & Učenje',

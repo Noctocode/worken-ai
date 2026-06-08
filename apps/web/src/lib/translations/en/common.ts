@@ -6,6 +6,7 @@ export const common = {
   'sidebar.nav.guardrails': 'Guardrails',
   'sidebar.nav.observability': 'Observability',
   'sidebar.nav.teamManagement': 'Team Management',
+  'sidebar.nav.management': 'Management',
   'sidebar.nav.tenderAI': 'Tender AI',
   'sidebar.nav.knowledgeCore': 'Knowledge Core',
   'sidebar.nav.resources': 'Resources & Learning',

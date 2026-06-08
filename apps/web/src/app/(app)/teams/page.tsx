@@ -55,9 +55,12 @@ export default function TeamsPage() {
   // from My Account.
   const isPersonal = user?.profileType !== "company";
   const rawTab = searchParams.get("tab");
+  // Personal profiles land on My Account by default — the Teams tab is
+  // just a "no teams" notice for them, so it's a poor first screen.
+  const defaultTab = isPersonal ? "my-account" : "teams";
   const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
     ? rawTab!
-    : "teams";
+    : defaultTab;
   const setActiveTab = (tab: string) => {
     router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };

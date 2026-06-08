@@ -98,7 +98,17 @@ export const SidebarContent = ({
       { href: "/compare-models", label: t("sidebar.nav.modelArena"), icon: Layers, match: "exact" },
       { href: "/guardrails", label: t("sidebar.nav.guardrails"), icon: Shield, match: "exact" },
       { href: "/observability", label: t("sidebar.nav.observability"), icon: Activity, match: "exact" },
-      { href: "/teams", label: t("sidebar.nav.teamManagement"), icon: Users, match: "prefix" },
+      {
+        href: "/teams",
+        // Personal profiles have no teams — the page is just their
+        // account + models/api/billing settings, so label it generically.
+        label:
+          user?.profileType === "company"
+            ? t("sidebar.nav.teamManagement")
+            : t("sidebar.nav.management"),
+        icon: Users,
+        match: "prefix",
+      },
     ],
     [
       { href: "/tender-ai", label: t("sidebar.nav.tenderAI"), icon: MessageSquare, match: "prefix" },
