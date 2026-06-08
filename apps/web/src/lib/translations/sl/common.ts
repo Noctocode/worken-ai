@@ -124,6 +124,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'appbar.webSearchFailed': 'Posodobitev iskanja po spletu ni uspela',
   'appbar.teamMembers': 'Člani ekipe',
   'appbar.pending': 'V teku',
+  'appbar.online': 'Na spletu',
   'appbar.inviteMember': 'Povabi člana',
   'appbar.createProject': 'Ustvari projekt',
   'appbar.backToDashboard': 'Nazaj na nadzorno ploščo',

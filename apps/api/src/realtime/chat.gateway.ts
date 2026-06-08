@@ -13,27 +13,27 @@ import type { Server, Socket } from 'socket.io';
 import { ConversationsService } from '../conversations/conversations.service.js';
 
 /**
- * Realtime chat gateway (FA4). Two responsibilities:
+ * Realtime chat gateway (FA4). Responsibilities:
  *
- *  1. **Presence** — a global, in-memory `userId -> socketIds` map. A
- *     user is "online" while they hold at least one socket (multiple
- *     tabs/devices collapse to one presence). Newcomers get the current
- *     online set; everyone else gets online/offline deltas. The FE
- *     turns this into the green dots on member avatars.
+ *  1. **Presence** — an in-memory `userId -> { sockets, companyId }` map.
+ *     A user is "online" while they hold at least one socket. Presence
+ *     is **tenant-scoped**: broadcasts and the initial state only reach
+ *     the user's own company (a personal profile, companyId === null, is
+ *     a tenant of one and only ever sees itself) — no cross-tenant
+ *     online-list leakage. The FE turns this into green member dots.
  *
  *  2. **Live message sync** — clients join a `conversation:<id>` room
- *     (after an access check) and receive `message:new` whenever another
- *     member's message is persisted, so a shared conversation updates
- *     without a manual refresh.
+ *     (access-checked) and receive `message:new` when another member's
+ *     message is persisted. Clients also join `project:<id>` to get
+ *     `project:activity` (new message / conversation in the project) so
+ *     the conversation sidebar refreshes without a manual reload.
  *
- * Auth: the socket.io handshake carries the browser's cookies (the
- * client sets `withCredentials`), so we verify the same `access_token`
- * JWT the REST API uses. An unauthenticated/invalid handshake is
- * disconnected immediately.
+ * Auth: the socket.io handshake carries the browser cookies (client sets
+ * `withCredentials`), so we verify the same `access_token` JWT the REST
+ * API uses. Invalid handshakes are disconnected.
  *
- * Scope (v1): single-instance, in-memory presence. Multi-instance
- * deployment would need the socket.io Redis adapter (ioredis is already
- * a dependency) so presence + rooms span processes — a follow-up.
+ * Scope (v1): single-instance, in-memory. Multi-instance needs the
+ * socket.io Redis adapter (ioredis is already a dependency).
  */
 @WebSocketGateway({
   cors: {
@@ -43,14 +43,23 @@ import { ConversationsService } from '../conversations/conversations.service.js'
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() private server!: Server;
-  /** userId -> set of live socket ids. Presence = key has a non-empty set. */
-  private readonly online = new Map<string, Set<string>>();
+  /** userId -> live sockets + tenant. Presence = key has a non-empty set. */
+  private readonly online = new Map<
+    string,
+    { sockets: Set<string>; companyId: string | null }
+  >();
 
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly conversations: ConversationsService,
   ) {}
+
+  /** Presence broadcast scope: the company for company users, the lone
+   *  user for personal profiles (so all null-company users don't pool). */
+  private presenceRoom(companyId: string | null, userId: string): string {
+    return companyId ? `company:${companyId}` : `user:${userId}`;
+  }
 
   private readCookie(header: string | undefined, name: string): string | null {
     if (!header) return null;
@@ -64,7 +73,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return null;
   }
 
-  handleConnection(client: Socket): void {
+  async handleConnection(client: Socket): Promise<void> {
     let userId: string;
     try {
       const token = this.readCookie(
@@ -77,62 +86,73 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       });
       userId = payload.sub;
     } catch {
-      // Unauthenticated handshake — drop it.
       client.disconnect(true);
       return;
     }
 
-    client.data.userId = userId;
-    let sockets = this.online.get(userId);
-    const wasOffline = !sockets || sockets.size === 0;
-    if (!sockets) {
-      sockets = new Set();
-      this.online.set(userId, sockets);
-    }
-    sockets.add(client.id);
+    const companyId = await this.conversations.getUserCompanyId(userId);
+    // The socket may have been torn down during the async lookup.
+    if (client.disconnected) return;
 
-    // Hand the newcomer the full online set; tell everyone else only
-    // about the transition (avoids rebroadcasting the whole set on
-    // every connect).
-    client.emit('presence:state', { online: [...this.online.keys()] });
+    client.data.userId = userId;
+    client.data.companyId = companyId;
+    const room = this.presenceRoom(companyId, userId);
+    await client.join(room);
+
+    let entry = this.online.get(userId);
+    const wasOffline = !entry || entry.sockets.size === 0;
+    if (!entry) {
+      entry = { sockets: new Set(), companyId };
+      this.online.set(userId, entry);
+    }
+    entry.sockets.add(client.id);
+
+    // Initial state: only userIds in the same tenant (personal → self).
+    const scopedOnline = companyId
+      ? [...this.online.entries()]
+          .filter(([, v]) => v.companyId === companyId)
+          .map(([uid]) => uid)
+      : [userId];
+    client.emit('presence:state', { online: scopedOnline });
+
+    // Notify same-tenant peers only on the offline→online transition.
     if (wasOffline) {
-      client.broadcast.emit('presence:online', { userId });
+      client.to(room).emit('presence:online', { userId });
     }
   }
 
   handleDisconnect(client: Socket): void {
     const userId = client.data.userId as string | undefined;
     if (!userId) return;
-    const sockets = this.online.get(userId);
-    if (!sockets) return;
-    sockets.delete(client.id);
-    if (sockets.size === 0) {
+    const entry = this.online.get(userId);
+    if (!entry) return;
+    entry.sockets.delete(client.id);
+    if (entry.sockets.size === 0) {
       this.online.delete(userId);
-      this.server.emit('presence:offline', { userId });
+      const companyId = client.data.companyId as string | null;
+      this.server
+        .to(this.presenceRoom(companyId, userId))
+        .emit('presence:offline', { userId });
     }
   }
 
   @SubscribeMessage('conversation:join')
-  async onJoin(
+  async onJoinConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { conversationId?: string },
   ): Promise<void> {
     const userId = client.data.userId as string | undefined;
     const conversationId = body?.conversationId;
     if (!userId || !conversationId) return;
-    try {
-      // Reuse the REST access gate: throws unless the user can read the
-      // conversation (via project / team / direct membership).
-      await this.conversations.findOne(conversationId, userId);
+    if (
+      await this.conversations.canAccessConversation(conversationId, userId)
+    ) {
       await client.join(`conversation:${conversationId}`);
-    } catch {
-      // No access (or gone) — silently ignore; the socket just won't
-      // receive that room's events.
     }
   }
 
   @SubscribeMessage('conversation:leave')
-  onLeave(
+  onLeaveConversation(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { conversationId?: string },
   ): void {
@@ -141,16 +161,48 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
+  @SubscribeMessage('project:join')
+  async onJoinProject(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { projectId?: string },
+  ): Promise<void> {
+    const userId = client.data.userId as string | undefined;
+    const projectId = body?.projectId;
+    if (!userId || !projectId) return;
+    if (await this.conversations.canAccessProject(projectId, userId)) {
+      await client.join(`project:${projectId}`);
+    }
+  }
+
+  @SubscribeMessage('project:leave')
+  onLeaveProject(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { projectId?: string },
+  ): void {
+    if (body?.projectId) {
+      void client.leave(`project:${body.projectId}`);
+    }
+  }
+
   /**
    * Broadcast a newly-persisted message to the conversation room.
-   * Called by the chat controller after a user / assistant message is
-   * saved. `senderId` lets the FE skip a redundant refetch for the
-   * author (who already has the message optimistically).
+   * `senderId` lets the FE skip a redundant refetch for the author.
    */
   emitMessage(conversationId: string, senderId: string | null): void {
     if (!this.server) return;
     this.server
       .to(`conversation:${conversationId}`)
       .emit('message:new', { conversationId, senderId });
+  }
+
+  /**
+   * Signal that a project's conversation list changed (new message or
+   * new conversation) so members viewing the sidebar refetch it.
+   */
+  emitProjectActivity(projectId: string): void {
+    if (!this.server) return;
+    this.server
+      .to(`project:${projectId}`)
+      .emit('project:activity', { projectId });
   }
 }

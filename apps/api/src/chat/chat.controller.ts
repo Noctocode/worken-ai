@@ -128,6 +128,9 @@ export class ChatController {
     // landed (senderId = author, so the author's own client skips the
     // redundant refetch — it already shows the message optimistically).
     this.chatGateway.emitMessage(body.conversationId, user.id);
+    // Refresh the project's sidebar for members viewing it (new
+    // conversation / latest-message ordering).
+    this.chatGateway.emitProjectActivity(conversation.projectId);
     const conversationAfterPersist = await this.conversationsService.findOne(
       body.conversationId,
       user.id,
@@ -668,6 +671,7 @@ export class ChatController {
     // triggering user so their own client (which streamed the reply)
     // skips the refetch; everyone else in the room refetches to see it.
     this.chatGateway.emitMessage(body.conversationId, user.id);
+    this.chatGateway.emitProjectActivity(conversation.projectId);
 
     void this.observabilityService.recordLLMCall({
       userId: user.id,

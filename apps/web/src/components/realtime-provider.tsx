@@ -120,3 +120,31 @@ export function useConversationLiveSync(
     };
   }, [socket, conversationId, currentUserId, onRemoteMessage]);
 }
+
+/**
+ * Join a project's realtime room and run `onActivity` whenever a
+ * conversation in it changes (new message / new conversation), so the
+ * sidebar list refreshes live — even for conversations the user hasn't
+ * opened. Pass a stable callback (useCallback).
+ */
+export function useProjectActivity(
+  projectId: string | null,
+  onActivity: () => void,
+) {
+  const { socket } = useRealtime();
+
+  useEffect(() => {
+    if (!socket || !projectId) return;
+    socket.emit("project:join", { projectId });
+
+    const handler = (d: { projectId: string }) => {
+      if (d.projectId === projectId) onActivity();
+    };
+    socket.on("project:activity", handler);
+
+    return () => {
+      socket.emit("project:leave", { projectId });
+      socket.off("project:activity", handler);
+    };
+  }, [socket, projectId, onActivity]);
+}

@@ -94,6 +94,40 @@ export class ConversationsService {
     return conversation;
   }
 
+  /**
+   * Lightweight access checks for the realtime gateway — boolean,
+   * no message loading. Reuse the same gates as the REST endpoints.
+   */
+  async canAccessConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<boolean> {
+    try {
+      await this.verifyConversationAccess(conversationId, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async canAccessProject(projectId: string, userId: string): Promise<boolean> {
+    try {
+      await this.verifyProjectAccess(projectId, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Tenant of the user, for scoping realtime presence. Null = personal. */
+  async getUserCompanyId(userId: string): Promise<string | null> {
+    const [u] = await this.db
+      .select({ companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId));
+    return u?.companyId ?? null;
+  }
+
   async findByProject(projectId: string, userId: string, query?: string) {
     await this.verifyProjectAccess(projectId, userId);
 

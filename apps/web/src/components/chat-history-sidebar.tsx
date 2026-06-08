@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Plus, MessageSquare, Loader2, Trash2, Search, Users } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/providers";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { useProjectActivity } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -116,6 +117,13 @@ export function ChatHistorySidebar({
       return true;
     });
   }, [conversations, effectiveTab, user?.id]);
+
+  // Live sidebar: refetch the list when another member adds a message or
+  // a new conversation in this project (FA4 project room).
+  const onProjectActivity = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["conversations", projectId] });
+  }, [queryClient, projectId]);
+  useProjectActivity(projectId, onProjectActivity);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
