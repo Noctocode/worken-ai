@@ -14,6 +14,7 @@ import {
 } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -73,6 +74,11 @@ export function ChatHistorySidebar({
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
   const { user } = useAuth();
+  // Personal profiles have no teammates, so every conversation is
+  // "personal" — the All/Personal/Team split is meaningless for them
+  // (mirrors main's dashboard, which forces personal profiles to the
+  // Personal view). Hide the tabs and show the full list instead.
+  const isPersonal = useIsPersonal();
   const getRelativeTime = makeGetRelativeTime(t);
   const queryClient = useQueryClient();
 
@@ -99,15 +105,17 @@ export function ChatHistorySidebar({
 
   // Tab filter stays client-side — it's a cheap partition over the
   // already-fetched (and possibly already-searched) list.
+  // Personal profiles never see the filter, so collapse to "all".
+  const effectiveTab: FilterTab = isPersonal ? "all" : tab;
   const filtered = useMemo(() => {
     if (!conversations) return [];
     return conversations.filter((convo) => {
       const isTeam = isTeamConversation(convo, user?.id);
-      if (tab === "team" && !isTeam) return false;
-      if (tab === "personal" && isTeam) return false;
+      if (effectiveTab === "team" && !isTeam) return false;
+      if (effectiveTab === "personal" && isTeam) return false;
       return true;
     });
-  }, [conversations, tab, user?.id]);
+  }, [conversations, effectiveTab, user?.id]);
 
   const handleDelete = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -156,23 +164,26 @@ export function ChatHistorySidebar({
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 px-3 pb-2">
-        {tabs.map((tabItem) => (
-          <button
-            key={tabItem.key}
-            type="button"
-            onClick={() => setTab(tabItem.key)}
-            className={`flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${
-              tab === tabItem.key
-                ? "bg-primary-6 text-white"
-                : "bg-slate-100/60 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
-            }`}
-          >
-            {tabItem.label}
-          </button>
-        ))}
-      </div>
+      {/* Filter tabs — hidden for personal profiles (no team
+          conversations exist, so the split is meaningless). */}
+      {!isPersonal && (
+        <div className="flex gap-1 px-3 pb-2">
+          {tabs.map((tabItem) => (
+            <button
+              key={tabItem.key}
+              type="button"
+              onClick={() => setTab(tabItem.key)}
+              className={`flex-1 cursor-pointer rounded-lg px-2 py-1.5 text-[12px] font-medium transition-colors ${
+                tab === tabItem.key
+                  ? "bg-primary-6 text-white"
+                  : "bg-slate-100/60 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              }`}
+            >
+              {tabItem.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <ScrollArea className="flex-1">
         <div className="space-y-0.5 px-2 pb-4">

@@ -34,7 +34,7 @@ import {
   type NameConflictAction,
   type ProjectKnowledgeFile,
 } from "@/lib/api";
-import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useLanguage } from "@/lib/i18n";
 
 /** Accept attribute for the picker. Restricted to the formats the
@@ -71,13 +71,13 @@ export function AttachFileDialog({
   projectId: string;
 }) {
   const { t } = useLanguage();
-  const { user } = useAuth();
   // Company profiles attach with 'project' visibility (the file is
   // project-scoped within the org). Personal profiles have no company
   // visibility tiers — their files are owner-only by scope — so we
   // omit visibility and just link the file to the project, which the
   // RAG layer surfaces as owner-only (see searchProjectAttachedChunks).
-  const isCompany = user?.profileType === "company";
+  // Uses the shared profile helper (single source of truth from main).
+  const isCompany = !useIsPersonal();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
