@@ -3,21 +3,10 @@ import OpenAI from 'openai';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
-/** An inline image attached to a user turn. `data` is base64 WITHOUT
- *  the `data:` URL prefix; `mediaType` is the MIME type (e.g.
- *  "image/png"). Both transports build their provider-specific image
- *  block from this shape. */
-export interface ChatImage {
-  mediaType: string;
-  data: string;
-}
-
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   reasoning_details?: unknown;
-  /** Inline images — only ever set on the latest user turn. */
-  images?: ChatImage[];
 }
 
 // OpenRouter returns a `cost` field on usage that the OpenAI types don't
@@ -119,11 +108,7 @@ export class ChatService {
       // event shape (content_block_delta, message_delta, …) and maps
       // each to our ChatStreamEvent union before yielding.
       yield* this.anthropic.sendMessageStream(
-        messages.map((m) => ({
-          role: m.role,
-          content: m.content,
-          images: m.images,
-        })),
+        messages.map((m) => ({ role: m.role, content: m.content })),
         model,
         apiKey,
         context,
@@ -146,41 +131,21 @@ export class ChatService {
       });
     }
 
-    // Build the messages array, expanding a user turn that carries
-    // images into OpenAI's multimodal content-part form (text part +
-    // one image_url part per image, sent as a base64 data URL). Text-
-    // only turns keep the plain-string content shape.
-    type OAIMessage = OpenAI.Chat.Completions.ChatCompletionMessageParam;
-    const chatMessages: OAIMessage[] = messages.map((msg): OAIMessage => {
-      if (msg.role === 'user' && msg.images && msg.images.length > 0) {
-        return {
-          role: 'user',
-          content: [
-            ...(msg.content
-              ? [{ type: 'text' as const, text: msg.content }]
-              : []),
-            ...msg.images.map((img) => ({
-              type: 'image_url' as const,
-              image_url: { url: `data:${img.mediaType};base64,${img.data}` },
-            })),
-          ],
-        };
-      }
-      return {
-        role: msg.role,
-        content: msg.content,
-        ...(msg.reasoning_details
-          ? { reasoning_details: msg.reasoning_details }
-          : {}),
-      } as OAIMessage;
-    });
-
     let stream;
     try {
       stream = await this.makeClient(baseURL, apiKey).chat.completions.create(
         {
           model,
-          messages: [...systemMessages, ...chatMessages],
+          messages: [
+            ...systemMessages,
+            ...messages.map((msg) => ({
+              role: msg.role,
+              content: msg.content,
+              ...(msg.reasoning_details
+                ? { reasoning_details: msg.reasoning_details }
+                : {}),
+            })),
+          ],
           stream: true,
           stream_options: { include_usage: true },
           ...(enableReasoning && { reasoning: { enabled: true } }),

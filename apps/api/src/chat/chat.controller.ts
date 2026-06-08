@@ -29,69 +29,12 @@ import { ProjectKnowledgeService } from '../projects/project-knowledge.service.j
 import { ChatService } from './chat.service.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 
-/** An inline image attachment on the user's message. `data` is base64
- *  WITHOUT the `data:` URL prefix. */
-interface ChatRequestImage {
-  mediaType: string;
-  data: string;
-}
-
 interface ChatRequestBody {
   conversationId: string;
   content: string;
   model?: string;
   enableReasoning?: boolean;
   projectId?: string;
-  images?: ChatRequestImage[];
-}
-
-/** Multimodal limits. base64 inflates ~33%, so the length cap below is
- *  ~5 MB decoded per image. Images are persisted inline in the user
- *  message metadata (jsonb) so they survive reload — keep the caps
- *  modest to avoid bloating the messages table. */
-const MAX_IMAGES_PER_MESSAGE = 4;
-const ALLOWED_IMAGE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-  'image/gif',
-]);
-const MAX_IMAGE_BASE64_LEN = 7_000_000;
-
-/** Validate + normalise the request's image attachments. Runs in
- *  pre-flight (before SSE headers) so a bad payload comes back as a
- *  regular JSON 4xx the FE humanizer can route. Returns the cleaned
- *  list (empty when none). */
-function validateImages(raw: unknown): ChatRequestImage[] {
-  if (raw == null) return [];
-  if (!Array.isArray(raw)) {
-    throw new HttpException('images must be an array', 400);
-  }
-  if (raw.length > MAX_IMAGES_PER_MESSAGE) {
-    throw new HttpException(
-      `At most ${MAX_IMAGES_PER_MESSAGE} images per message`,
-      400,
-    );
-  }
-  return raw.map((img: unknown) => {
-    if (
-      !img ||
-      typeof img !== 'object' ||
-      typeof (img as ChatRequestImage).mediaType !== 'string' ||
-      typeof (img as ChatRequestImage).data !== 'string' ||
-      (img as ChatRequestImage).data.length === 0
-    ) {
-      throw new HttpException('Invalid image attachment', 400);
-    }
-    const { mediaType, data } = img as ChatRequestImage;
-    if (!ALLOWED_IMAGE_TYPES.has(mediaType)) {
-      throw new HttpException(`Unsupported image type: ${mediaType}`, 400);
-    }
-    if (data.length > MAX_IMAGE_BASE64_LEN) {
-      throw new HttpException('Image too large (max ~5 MB each)', 400);
-    }
-    return { mediaType, data };
-  });
 }
 
 @Controller('chat')
@@ -173,17 +116,11 @@ export class ChatController {
     }
     const safePrompt = inputDecision.text;
 
-    // Validate inline image attachments before persisting. Images are
-    // stored on the user message metadata so they reload, and attached
-    // to the latest user turn for the model below.
-    const images = validateImages(body.images);
-
     await this.conversationsService.addMessage(
       body.conversationId,
       'user',
       safePrompt,
       user.id,
-      images.length > 0 ? { images } : undefined,
     );
     const conversationAfterPersist = await this.conversationsService.findOne(
       body.conversationId,
@@ -247,26 +184,10 @@ export class ChatController {
       callerUserId: user.id,
     });
 
-    const apiMessages: {
-      role: 'user' | 'assistant';
-      content: string;
-      images?: ChatRequestImage[];
-    }[] = conversationAfterPersist.messages.map((m) => ({
+    const apiMessages = conversationAfterPersist.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.content,
     }));
-    // Attach this turn's images to the latest user message so the model
-    // sees them. Only the current turn carries images — historical
-    // images are shown on the FE (from metadata) but not re-sent, to
-    // keep token usage and payload size bounded.
-    if (images.length > 0) {
-      for (let i = apiMessages.length - 1; i >= 0; i--) {
-        if (apiMessages[i].role === 'user') {
-          apiMessages[i].images = images;
-          break;
-        }
-      }
-    }
 
     const contextChunks: string[] = [];
     if (body.projectId) {
