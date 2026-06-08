@@ -44,6 +44,7 @@ import { AGENTS } from "@/lib/agents";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { TeamMembersPopover } from "@/components/team-members-popover";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import {
   fetchProjects,
   deleteProject,
@@ -518,11 +519,17 @@ export default function WorkenDashboard() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
+  // Personal profiles have no team or company projects — only the
+  // Personal view applies. The All / Team tabs are disabled (with a
+  // reason) and the active tab is forced to Personal regardless of any
+  // stale ?filter in the URL.
+  const isPersonal = useIsPersonal();
   const VALID_FILTERS = ["all", "personal", "team"] as const;
   const filterParam = searchParams.get("filter");
-  const activeTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
+  const derivedTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])
     ? (filterParam as typeof VALID_FILTERS[number])
     : "all";
+  const activeTab = isPersonal ? "personal" : derivedTab;
 
   const DASHBOARD_TABS = [
     { value: "all", label: t("common.all") },
@@ -534,6 +541,7 @@ export default function WorkenDashboard() {
   // owned here so the mobile in-page segmented control can drive it
   // directly without rounding through a custom event.
   const setMobileTab = (tab: string) => {
+    if (isPersonal && tab !== "personal") return;
     const params = new URLSearchParams(searchParams.toString());
     if (tab === "all") params.delete("filter");
     else params.set("filter", tab);
@@ -593,18 +601,32 @@ export default function WorkenDashboard() {
           </div>
         </div>
         <div className="flex items-stretch overflow-hidden rounded-[4px] border border-border-2">
-          {DASHBOARD_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => setMobileTab(tab.value)}
-              className={`flex-1 px-4 py-2.5 text-[14px] font-normal text-text-1 cursor-pointer transition-colors ${
-                activeTab === tab.value ? "bg-bg-3" : "bg-bg-white hover:bg-bg-1"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {DASHBOARD_TABS.map((tab) => {
+            const disabled = isPersonal && tab.value !== "personal";
+            return (
+              <DisabledReasonTooltip
+                key={tab.value}
+                disabled={disabled}
+                reason={t("common.personalViewsDisabled")}
+                className="flex-1"
+              >
+                <button
+                  type="button"
+                  onClick={() => setMobileTab(tab.value)}
+                  disabled={disabled}
+                  className={`w-full px-4 py-2.5 text-[14px] font-normal transition-colors ${
+                    disabled
+                      ? "cursor-not-allowed bg-bg-white text-text-3 opacity-50"
+                      : activeTab === tab.value
+                        ? "bg-bg-3 text-text-1 cursor-pointer"
+                        : "bg-bg-white text-text-1 hover:bg-bg-1 cursor-pointer"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              </DisabledReasonTooltip>
+            );
+          })}
         </div>
       </div>
 

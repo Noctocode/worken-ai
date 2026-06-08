@@ -3,6 +3,8 @@ import type { teams as teamsEn } from "../en/teams";
 export const teams: Record<keyof typeof teamsEn, string> = {
   'teams.title': 'Ekipe',
   'teams.createTeam': 'Ustvari ekipo',
+  'teams.personalNoCreate': 'Osebni profili ne morejo ustvarjati ekip. Obiščite Moj račun za preklop na profil podjetja.',
+  'teams.personalNoInvite': 'Osebni profili ne morejo vabiti uporabnikov. Obiščite Moj račun za preklop na profil podjetja.',
   'teams.searchTeams': 'Išči ekipe...',
   'teams.monthlyBudget': 'Mesečni proračun',
   'teams.spentRemaining': 'Porabljeno / Preostalo',

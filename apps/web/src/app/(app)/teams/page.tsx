@@ -31,6 +31,8 @@ import { ModelRow } from "@/components/management/model-row";
 import { ModelCard } from "@/components/management/model-card";
 import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
+import { PersonalProfileNotice } from "@/components/personal-profile-notice";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
@@ -47,10 +49,19 @@ export default function TeamsPage() {
   // are individually disabled by their components (Add New Model,
   // Generate API Link, integration add/remove, etc.).
   const isAdmin = user?.role === "admin";
+  // A personal profile is a sole account with no company tenant — no
+  // teams, no other users to invite. Team/Users tabs swap to a notice
+  // and their create/invite CTAs are disabled (the BE profileType-gates
+  // these too). Nothing is removed; the user can switch profile type
+  // from My Account.
+  const isPersonal = useIsPersonal();
   const rawTab = searchParams.get("tab");
+  // Personal profiles land on My Account by default — the Teams tab is
+  // just a "no teams" notice for them, so it's a poor first screen.
+  const defaultTab = isPersonal ? "my-account" : "teams";
   const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
     ? rawTab!
-    : "teams";
+    : defaultTab;
   const setActiveTab = (tab: string) => {
     router.replace(`/teams?tab=${encodeURIComponent(tab)}`, { scroll: false });
   };
@@ -61,6 +72,8 @@ export default function TeamsPage() {
   // table narrows to just those rows so the admin can quickly action them.
   const [showPendingOnly, setShowPendingOnly] = useState(false);
 
+  // Personal profiles see a notice on the Teams/Users tabs, never the
+  // tables — so skip the list fetches entirely for them.
   const {
     data: teams = [],
     isLoading: teamsLoading,
@@ -68,6 +81,7 @@ export default function TeamsPage() {
   } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
+    enabled: !isPersonal,
   });
 
   const {
@@ -77,6 +91,7 @@ export default function TeamsPage() {
   } = useQuery({
     queryKey: ["org-users"],
     queryFn: fetchOrgUsers,
+    enabled: !isPersonal,
   });
 
   const filteredTeams = teams.filter((t) =>
@@ -172,21 +187,25 @@ export default function TeamsPage() {
         {/* Filter bar per Figma 4719:31181. Mobile: row 1 = Teams +
             Create Team, row 2 = full-width search. Desktop: original
             single-row layout. */}
-        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-4">
+        <div className="flex flex-col gap-2.5 py-3 lg:flex-row lg:items-center lg:gap-6 lg:py-5">
           <div className="flex items-center justify-between gap-3 lg:contents">
             <span className="text-[16px] font-semibold text-black-900 whitespace-nowrap lg:text-[18px] lg:font-bold">
               {t("teams.title")}
             </span>
             <DisabledReasonTooltip
-              disabled={!user?.canCreateProject}
-              reason={t("sidebar.noCreateTooltip")}
+              disabled={!user?.canCreateProject || isPersonal}
+              reason={
+                isPersonal
+                  ? t("teams.personalNoCreate")
+                  : t("sidebar.noCreateTooltip")
+              }
               className="lg:order-last lg:w-auto"
             >
               <CreateTeamDialog>
                 <Button
                   variant="plusAction"
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!user?.canCreateProject}
+                  disabled={!user?.canCreateProject || isPersonal}
                 >
                   <Plus className="h-4 w-4 text-white" />
                   {t("teams.createTeam")}
@@ -194,14 +213,25 @@ export default function TeamsPage() {
               </CreateTeamDialog>
             </DisabledReasonTooltip>
           </div>
-          <SearchInput
-            className="flex-1"
-            placeholder={t("teams.searchTeams")}
-            value={teamSearch}
-            onChange={(e) => setTeamSearch(e.target.value)}
-          />
+          {isPersonal ? (
+            // Spacer fills the flex-1 slot the search normally occupies
+            // so the Create Team button stays right-aligned on the lg
+            // single-row layout.
+            <div className="hidden lg:block lg:flex-1" aria-hidden />
+          ) : (
+            <SearchInput
+              className="flex-1"
+              placeholder={t("teams.searchTeams")}
+              value={teamSearch}
+              onChange={(e) => setTeamSearch(e.target.value)}
+            />
+          )}
         </div>
 
+        {isPersonal ? (
+          <PersonalProfileNotice message={t("mgmt.teams.personalOnly")} />
+        ) : (
+        <>
         {/* Mobile card list (<lg) — 7-col table doesn't survive on a
             375px viewport. Figma 4720:31166 spec: each team is a
             white card with name + kebab, description, divider, then
@@ -308,6 +338,8 @@ export default function TeamsPage() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </PageTabsContent>
 
       {/* ── Users ────────────────────────────────────────────────────────────── */}
@@ -321,15 +353,19 @@ export default function TeamsPage() {
               {t("teams.users")}
             </span>
             <DisabledReasonTooltip
-              disabled={!user?.canCreateProject}
-              reason={t("sidebar.noCreateTooltip")}
+              disabled={!user?.canCreateProject || isPersonal}
+              reason={
+                isPersonal
+                  ? t("teams.personalNoInvite")
+                  : t("sidebar.noCreateTooltip")
+              }
               className="lg:order-last lg:w-auto"
             >
               <InviteUserDialog>
                 <Button
                   variant="plusAction"
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!user?.canCreateProject}
+                  disabled={!user?.canCreateProject || isPersonal}
                 >
                   <Plus className="h-4 w-4 text-white" />
                   {t("teams.inviteUser")}
@@ -337,12 +373,19 @@ export default function TeamsPage() {
               </InviteUserDialog>
             </DisabledReasonTooltip>
           </div>
-          <SearchInput
-            className="flex-1"
-            placeholder={t("teams.searchUsers")}
-            value={userSearch}
-            onChange={(e) => setUserSearch(e.target.value)}
-          />
+          {isPersonal ? (
+            // Spacer fills the flex-1 slot the search normally occupies
+            // so the Invite User button stays right-aligned on the lg
+            // single-row layout.
+            <div className="hidden lg:block lg:flex-1" aria-hidden />
+          ) : (
+            <SearchInput
+              className="flex-1"
+              placeholder={t("teams.searchUsers")}
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+            />
+          )}
         </div>
         {/* Pending-budget-approval banner. Surfaces users who finished
             Managed-Cloud onboarding but still have monthlyBudgetCents = 0
@@ -374,6 +417,10 @@ export default function TeamsPage() {
           </div>
         )}
 
+        {isPersonal ? (
+          <PersonalProfileNotice message={t("mgmt.users.personalOnly")} />
+        ) : (
+        <>
         {/* Mobile card list (<lg) — 9-col table doesn't fit on a
             375px viewport. Each user becomes a stacked card per
             UserCard. */}
@@ -472,6 +519,8 @@ export default function TeamsPage() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </PageTabsContent>
 
       {/* ── Models ───────────────────────────────────────────────────────────── */}

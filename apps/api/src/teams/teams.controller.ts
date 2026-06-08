@@ -81,12 +81,23 @@ export class TeamsController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const [callerUser] = await this.db
-      .select({ role: users.role })
+      .select({ role: users.role, companyId: users.companyId })
       .from(users)
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role === 'basic') {
       throw new ForbiddenException(
         'Only admin or advanced users can create teams.',
+      );
+    }
+    // Personal profiles are sole accounts with no company tenant —
+    // teams are a company-tenant feature. Gate on `companyId` (the
+    // authoritative tenant pointer) rather than `profileType`, so a
+    // company member whose profileType is briefly null mid-onboarding
+    // isn't wrongly 403'd. One query, same layer as the role gate
+    // (mirrors users.controller.inviteUser).
+    if (!callerUser.companyId) {
+      throw new ForbiddenException(
+        'Personal profiles cannot create teams. Switch to a company profile to manage teams.',
       );
     }
 
