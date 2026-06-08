@@ -145,6 +145,44 @@ function ProviderSettingsDialog({
       .filter((d) => d.deploymentName),
   });
 
+  // Client-side Azure validation — mirrors the BE `validateAzureConfig`
+  // so a complete config saves and an incomplete one shows exactly
+  // what's missing inline (instead of a silent BE 400 that reads as
+  // "nothing happened, fields empty on reopen"). The endpoint must be
+  // an Azure resource host or the BE rejects it (SSRF guard).
+  const azureEndpointTrim = azureEndpoint.trim();
+  const azureHostOk = (() => {
+    try {
+      const u = new URL(azureEndpointTrim);
+      return (
+        u.protocol === "https:" &&
+        /\.openai\.azure\.(com|us|cn)$/i.test(u.hostname)
+      );
+    } catch {
+      return false;
+    }
+  })();
+  const azureHasDeployment = deployments.some(
+    (d) => d.deploymentName.trim() !== "",
+  );
+  const azureApiVersionOk = azureApiVersion.trim() !== "";
+  const azureComplete =
+    azureEndpointTrim !== "" &&
+    azureHostOk &&
+    azureApiVersionOk &&
+    azureHasDeployment;
+  const azureError = !isAzure
+    ? null
+    : azureEndpointTrim === ""
+      ? t("mgmt.integ.azureNeedEndpoint")
+      : !azureHostOk
+        ? t("mgmt.integ.azureBadHost")
+        : !azureApiVersionOk
+          ? t("mgmt.integ.azureNeedApiVersion")
+          : !azureHasDeployment
+            ? t("mgmt.integ.azureNeedDeployment")
+            : null;
+
   const saveMutation = useMutation({
     mutationFn: async () => {
       const config = isAzure ? buildAzureConfig() : undefined;
@@ -199,6 +237,9 @@ function ProviderSettingsDialog({
       onApply={() => saveMutation.mutate()}
       applyLabel={saveMutation.isPending ? t("mgmt.integ.applySaving") : t("mgmt.integ.apply")}
       applyPending={saveMutation.isPending}
+      // Azure can't be saved with an incomplete/invalid config — the BE
+      // would 400. Block Apply and surface the reason inline instead.
+      applyDisabled={isAzure && !azureComplete}
       title={card.displayName}
       description={t("mgmt.integ.settingsTitle").replace("{name}", card.displayName)}
       headerIcon={iconForHint(card.iconHint)}
@@ -451,6 +492,11 @@ function ProviderSettingsDialog({
             <p className="text-[12px] leading-snug text-text-3">
               {t("mgmt.integ.azureHint")}
             </p>
+            {azureError && (
+              <p className="text-[12px] font-medium leading-snug text-danger-6">
+                {azureError}
+              </p>
+            )}
           </div>
         )}
 

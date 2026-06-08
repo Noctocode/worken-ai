@@ -301,6 +301,11 @@ export const management = {
   'mgmt.integ.azureRemoveDeployment': 'Remove deployment',
   'mgmt.integ.azureHint':
     'Each deployment becomes a selectable model. The deployment name must match the one in your Azure resource.',
+  'mgmt.integ.azureNeedEndpoint': 'Enter your Azure resource endpoint to save.',
+  'mgmt.integ.azureBadHost':
+    'Endpoint must be your Azure resource URL (https://{resource}.openai.azure.com).',
+  'mgmt.integ.azureNeedApiVersion': 'Enter an api-version to save.',
+  'mgmt.integ.azureNeedDeployment': 'Add at least one deployment to save.',
   'mgmt.integ.keySavedToast': 'key saved.',
   'mgmt.integ.settingsSavedToast': 'settings saved.',
   'mgmt.integ.couldntSave': "Couldn't save settings.",

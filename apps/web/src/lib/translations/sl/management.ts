@@ -303,6 +303,11 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.integ.azureRemoveDeployment': 'Odstrani deployment',
   'mgmt.integ.azureHint':
     'Vsak deployment postane izbirni model. Ime deploymenta se mora ujemati s tistim v vašem Azure viru.',
+  'mgmt.integ.azureNeedEndpoint': 'Za shranjevanje vnesite endpoint vašega Azure vira.',
+  'mgmt.integ.azureBadHost':
+    'Endpoint mora biti URL vašega Azure vira (https://{resource}.openai.azure.com).',
+  'mgmt.integ.azureNeedApiVersion': 'Za shranjevanje vnesite api-version.',
+  'mgmt.integ.azureNeedDeployment': 'Za shranjevanje dodajte vsaj en deployment.',
   'mgmt.integ.keySavedToast': 'ključ shranjen.',
   'mgmt.integ.settingsSavedToast': 'nastavitve shranjene.',
   'mgmt.integ.couldntSave': 'Shranjevanje nastavitev ni uspelo.',
