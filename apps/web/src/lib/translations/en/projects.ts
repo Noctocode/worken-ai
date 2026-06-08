@@ -5,6 +5,7 @@ export const projects = {
   'projectCreate.selectType': 'Select Project Type',
   'projectCreate.personalTooltip': 'A private workspace only you can access. Spend counts against your personal monthly budget.',
   'projectCreate.teamTooltip': "A shared workspace for a team. Spend counts against the chosen team's monthly budget and members can collaborate on prompts and chatbots.",
+  'projectCreate.teamPersonalDisabled': 'Team projects need a company profile. Visit My Account to update your profile type.',
   'projectCreate.personalDesc': 'A dedicated space to create and test your own AI chatbots. Design conversations, craft prompts, and iterate privately at your own pace.',
   'projectCreate.teamDesc': 'A shared workspace for building AI chat experiences together. Collaborate on chatbot design, manage shared prompts, and coordinate updates in one place.',
   'projectCreate.noTeams': "You don't own or co-manage any teams yet.",

@@ -62,6 +62,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'common.type': 'Vrsta',
   'common.team': 'Ekipa',
   'common.personal': 'Osebni',
+  'common.visitMyAccount': 'Obiščite Moj račun za posodobitev vrste profila.',
   'common.all': 'Vse',
   'common.failedToLoad': 'Nalaganje ni uspelo. Ali API teče?',
   'dashboard.teamProjects': 'Projekti ekipe',

@@ -99,6 +99,15 @@ export class UsersController {
         'Only admin or advanced users can invite users.',
       );
     }
+    // Personal profiles are sole accounts — inviting would create a
+    // company-less dangling user. The capability isn't removed; the
+    // user must switch to a company profile (My Account) first. Mirrors
+    // the FE gate on the Users tab.
+    if (callerUser.profileType !== 'company') {
+      throw new ForbiddenException(
+        'Personal profiles cannot invite users. Switch to a company profile to manage users.',
+      );
+    }
 
     const validRoles = ['basic', 'advanced', 'admin'];
     if (!validRoles.includes(body.role)) {

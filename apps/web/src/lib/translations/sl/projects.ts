@@ -7,6 +7,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projectCreate.selectType': 'Izberi vrsto projekta',
   'projectCreate.personalTooltip': 'Zasebno delovno okolje samo za vas. Poraba se šteje k vašemu osebnemu mesečnemu proračunu.',
   'projectCreate.teamTooltip': 'Skupno delovno okolje za ekipo. Poraba se šteje k mesečnemu proračunu izbrane ekipe.',
+  'projectCreate.teamPersonalDisabled': 'Ekipni projekti potrebujejo profil podjetja. Obiščite Moj račun za posodobitev vrste profila.',
   'projectCreate.personalDesc': 'Namenjen prostor za ustvarjanje in testiranje vaših AI klepetalnikov. Zasebno oblikujte pogovore in izpopolnjujte prompte.',
   'projectCreate.teamDesc': 'Skupno delovno okolje za razvoj AI pogovornih izkušenj. Sodelujte pri oblikovanju klepetalnikov in upravljajte skupne prompte.',
   'projectCreate.noTeams': 'Nimate lastnih ekip ali ekip, ki jih soupravljate.',

@@ -31,6 +31,7 @@ import { ModelRow } from "@/components/management/model-row";
 import { ModelCard } from "@/components/management/model-card";
 import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
+import { PersonalProfileNotice } from "@/components/personal-profile-notice";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
@@ -47,6 +48,12 @@ export default function TeamsPage() {
   // are individually disabled by their components (Add New Model,
   // Generate API Link, integration add/remove, etc.).
   const isAdmin = user?.role === "admin";
+  // A personal profile is a sole account with no company tenant — no
+  // teams, no other users to invite. Team/Users tabs swap to a notice
+  // and their create/invite CTAs are disabled (the BE profileType-gates
+  // these too). Nothing is removed; the user can switch profile type
+  // from My Account.
+  const isPersonal = user?.profileType !== "company";
   const rawTab = searchParams.get("tab");
   const activeTab = VALID_TABS.includes(rawTab as (typeof VALID_TABS)[number])
     ? rawTab!
@@ -178,15 +185,19 @@ export default function TeamsPage() {
               {t("teams.title")}
             </span>
             <DisabledReasonTooltip
-              disabled={!user?.canCreateProject}
-              reason={t("sidebar.noCreateTooltip")}
+              disabled={!user?.canCreateProject || isPersonal}
+              reason={
+                isPersonal
+                  ? t("teams.personalNoCreate")
+                  : t("sidebar.noCreateTooltip")
+              }
               className="lg:order-last lg:w-auto"
             >
               <CreateTeamDialog>
                 <Button
                   variant="plusAction"
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!user?.canCreateProject}
+                  disabled={!user?.canCreateProject || isPersonal}
                 >
                   <Plus className="h-4 w-4 text-white" />
                   {t("teams.createTeam")}
@@ -194,14 +205,20 @@ export default function TeamsPage() {
               </CreateTeamDialog>
             </DisabledReasonTooltip>
           </div>
-          <SearchInput
-            className="flex-1"
-            placeholder={t("teams.searchTeams")}
-            value={teamSearch}
-            onChange={(e) => setTeamSearch(e.target.value)}
-          />
+          {!isPersonal && (
+            <SearchInput
+              className="flex-1"
+              placeholder={t("teams.searchTeams")}
+              value={teamSearch}
+              onChange={(e) => setTeamSearch(e.target.value)}
+            />
+          )}
         </div>
 
+        {isPersonal ? (
+          <PersonalProfileNotice message={t("mgmt.teams.personalOnly")} />
+        ) : (
+        <>
         {/* Mobile card list (<lg) — 7-col table doesn't survive on a
             375px viewport. Figma 4720:31166 spec: each team is a
             white card with name + kebab, description, divider, then
@@ -308,6 +325,8 @@ export default function TeamsPage() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </PageTabsContent>
 
       {/* ── Users ────────────────────────────────────────────────────────────── */}
@@ -321,15 +340,19 @@ export default function TeamsPage() {
               {t("teams.users")}
             </span>
             <DisabledReasonTooltip
-              disabled={!user?.canCreateProject}
-              reason={t("sidebar.noCreateTooltip")}
+              disabled={!user?.canCreateProject || isPersonal}
+              reason={
+                isPersonal
+                  ? t("teams.personalNoInvite")
+                  : t("sidebar.noCreateTooltip")
+              }
               className="lg:order-last lg:w-auto"
             >
               <InviteUserDialog>
                 <Button
                   variant="plusAction"
                   className="disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!user?.canCreateProject}
+                  disabled={!user?.canCreateProject || isPersonal}
                 >
                   <Plus className="h-4 w-4 text-white" />
                   {t("teams.inviteUser")}
@@ -337,12 +360,14 @@ export default function TeamsPage() {
               </InviteUserDialog>
             </DisabledReasonTooltip>
           </div>
-          <SearchInput
-            className="flex-1"
-            placeholder={t("teams.searchUsers")}
-            value={userSearch}
-            onChange={(e) => setUserSearch(e.target.value)}
-          />
+          {!isPersonal && (
+            <SearchInput
+              className="flex-1"
+              placeholder={t("teams.searchUsers")}
+              value={userSearch}
+              onChange={(e) => setUserSearch(e.target.value)}
+            />
+          )}
         </div>
         {/* Pending-budget-approval banner. Surfaces users who finished
             Managed-Cloud onboarding but still have monthlyBudgetCents = 0
@@ -374,6 +399,10 @@ export default function TeamsPage() {
           </div>
         )}
 
+        {isPersonal ? (
+          <PersonalProfileNotice message={t("mgmt.users.personalOnly")} />
+        ) : (
+        <>
         {/* Mobile card list (<lg) — 9-col table doesn't fit on a
             375px viewport. Each user becomes a stacked card per
             UserCard. */}
@@ -472,6 +501,8 @@ export default function TeamsPage() {
             </tbody>
           </table>
         </div>
+        </>
+        )}
       </PageTabsContent>
 
       {/* ── Models ───────────────────────────────────────────────────────────── */}

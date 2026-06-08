@@ -60,6 +60,7 @@ export const common = {
   'common.type': 'Type',
   'common.team': 'Team',
   'common.personal': 'Personal',
+  'common.visitMyAccount': 'Visit My Account to update your profile type.',
   'common.all': 'All',
   'common.failedToLoad': 'Failed to load. Is the API running?',
   'dashboard.teamProjects': 'Team Projects',

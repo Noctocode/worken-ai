@@ -134,6 +134,8 @@ export const management = {
   'mgmt.billing.statusPaid': 'Paid',
   'mgmt.company.failedLoad': 'Failed to load company profile.',
   'mgmt.company.personalOnly': "This workspace is registered as a personal profile, so there's no company information to show. Visit My Account to update your profile type.",
+  'mgmt.teams.personalOnly': "This workspace is registered as a personal profile, so there are no teams to manage.",
+  'mgmt.users.personalOnly': "This workspace is registered as a personal profile — it's a single account, so there are no other users to manage.",
   'mgmt.company.companyNameEmpty': 'Company name cannot be empty.',
   'mgmt.company.budgetNonNegative': 'Budget must be a non-negative number.',
   'mgmt.company.couldntUpdateProfile': "Couldn't update company profile.",
