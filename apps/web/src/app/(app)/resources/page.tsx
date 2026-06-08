@@ -14,6 +14,7 @@ import {
   Check,
   ChevronRight,
   Info,
+  Network,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 
@@ -91,6 +92,18 @@ export default function ResourcesPage() {
       ],
       href: "/resources/shortcuts",
     },
+    {
+      titleKey: "resources.howItWorks",
+      descriptionKey: "",
+      icon: Network,
+      bullets: [
+        "On-premise deployment",
+        "Hybrid deployment",
+        "Cloud / managed",
+        "Visual architecture diagrams",
+      ],
+      href: "/resources/how-it-works",
+    },
   ];
 
   const CARD_DESCRIPTIONS: Record<string, string> = {
@@ -104,6 +117,8 @@ export default function ResourcesPage() {
       "Master prompt engineering with curated lessons and enterprise best practices.",
     "resources.shortcuts":
       "Save short text snippets and macros to drop into the composer in one click.",
+    "resources.howItWorks":
+      "See the platform architecture and the three ways WorkenAI can be deployed.",
   };
 
   const QUICK_STEPS: Array<{ titleKey: string; description: string }> = [
