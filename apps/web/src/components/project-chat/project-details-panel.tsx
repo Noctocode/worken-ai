@@ -28,6 +28,7 @@ import {
   type ConversationWithMessages,
   type ProjectMember,
 } from "@/lib/api";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -139,6 +140,11 @@ export function ProjectDetailsPanel({
 }: Props) {
   const { t } = useLanguage();
   const qc = useQueryClient();
+  // Personal profiles have no team — `fetchProjectMembers` returns no
+  // rows (it excludes the owner), so the Team Members section would
+  // just show an empty "no members" state. Hide it (and skip the
+  // fetch) for them, consistent with main's personal-account model.
+  const isPersonal = useIsPersonal();
 
   /* Chat Context edit state */
   const [editing, setEditing] = useState(false);
@@ -183,7 +189,7 @@ export function ProjectDetailsPanel({
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["project-members", projectId],
     queryFn: () => fetchProjectMembers(projectId),
-    enabled: open,
+    enabled: open && !isPersonal,
   });
 
   const AI_TOOLS = [
@@ -375,6 +381,9 @@ export function ProjectDetailsPanel({
         </Section>
 
         {/* ── Team Members ──────────────────────────────────────── */}
+        {/* Hidden for personal profiles — they have no team, so the
+            list is always empty. */}
+        {!isPersonal && (
         <Section icon={Users} title={t("projDetails.teamMembers")} defaultOpen>
           {membersLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-3" />
@@ -416,6 +425,7 @@ export function ProjectDetailsPanel({
             </ul>
           )}
         </Section>
+        )}
       </div>
     </div>
   );
