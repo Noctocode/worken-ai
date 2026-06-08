@@ -34,6 +34,7 @@ import {
   type NameConflictAction,
   type ProjectKnowledgeFile,
 } from "@/lib/api";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 
 /** Accept attribute for the picker. Restricted to the formats the
@@ -70,6 +71,13 @@ export function AttachFileDialog({
   projectId: string;
 }) {
   const { t } = useLanguage();
+  const { user } = useAuth();
+  // Company profiles attach with 'project' visibility (the file is
+  // project-scoped within the org). Personal profiles have no company
+  // visibility tiers — their files are owner-only by scope — so we
+  // omit visibility and just link the file to the project, which the
+  // RAG layer surfaces as owner-only (see searchProjectAttachedChunks).
+  const isCompany = user?.profileType === "company";
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -115,11 +123,11 @@ export function AttachFileDialog({
       nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
       uploadProjectKnowledgeFiles(projectId, files, {
-        // Scope the upload to THIS project: visibility='project'
-        // linked to projectId — not the wider 'all' / 'teams'
-        // default. Matches the Manage Context dialog. Folder is
-        // still deferred to the BE smart-default ("Projects").
-        visibility: "project",
+        // Attach to THIS project. Company profiles tag the file with
+        // 'project' visibility; personal profiles omit visibility
+        // (owner-only by scope) and rely on the project link alone.
+        // Folder is deferred to the BE smart-default ("Projects").
+        ...(isCompany ? { visibility: "project" as const } : {}),
         projectIds: [projectId],
         nameConflictActions,
       }),

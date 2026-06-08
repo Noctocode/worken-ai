@@ -546,7 +546,10 @@ export async function uploadProjectKnowledgeFiles(
   if (options.visibility === "teams" && options.teamIds) {
     options.teamIds.forEach((id) => form.append("teamIds", id));
   }
-  if (options.visibility === "project" && options.projectIds) {
+  // projectIds are sent whenever provided — the project attach (RAG
+  // grant) is independent of the visibility tier, so a personal-scope
+  // upload can still be linked to its project.
+  if (options.projectIds && options.projectIds.length > 0) {
     options.projectIds.forEach((id) => form.append("projectIds", id));
   }
   if (
