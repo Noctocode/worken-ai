@@ -112,6 +112,17 @@ export default function TeamsPage() {
     (u) => u.pendingBudgetApproval,
   ).length;
 
+  // Once nothing is pending, drop the "show pending only" filter.
+  // The banner that hosts the toggle hides when pendingApprovalCount
+  // reaches 0, so after approving the last pending user the list would
+  // otherwise be stuck on an empty filtered view (showing "no users")
+  // with no way to clear it short of a reload. Adjusting state during
+  // render (React's documented pattern) re-runs the body before commit,
+  // so the full list shows immediately without an empty flash.
+  if (showPendingOnly && pendingApprovalCount === 0) {
+    setShowPendingOnly(false);
+  }
+
   // Share the org-settings query with CompanyTab via React Query's
   // cache (same query key) so we don't fetch it twice. We only need
   // the result to decide whether the Company tab trigger should show
