@@ -33,7 +33,7 @@ import {
   // fetchOrgUsers,
   // type OrgUser,
 } from "@/lib/api";
-import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { AGENTS } from "@/lib/agents";
@@ -142,12 +142,11 @@ export default function CreateProjectPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { t } = useLanguage();
-  const { user } = useAuth();
   // Team projects are a company-tenant feature — a personal profile is
   // a sole account with no teammates to share with. The Team type is
   // disabled (not removed) with a hover reason; switching profile type
   // in My Account re-enables it.
-  const isPersonal = user?.profileType !== "company";
+  const isPersonal = useIsPersonal();
 
   const [projectName, setProjectName] = useState("");
   const [nameError, setNameError] = useState(false);

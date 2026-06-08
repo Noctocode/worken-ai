@@ -44,6 +44,7 @@ import { AGENTS } from "@/lib/agents";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { TeamMembersPopover } from "@/components/team-members-popover";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import {
   fetchProjects,
   deleteProject,
@@ -522,7 +523,7 @@ export default function WorkenDashboard() {
   // Personal view applies. The All / Team tabs are disabled (with a
   // reason) and the active tab is forced to Personal regardless of any
   // stale ?filter in the URL.
-  const isPersonal = user?.profileType !== "company";
+  const isPersonal = useIsPersonal();
   const VALID_FILTERS = ["all", "personal", "team"] as const;
   const filterParam = searchParams.get("filter");
   const derivedTab = VALID_FILTERS.includes(filterParam as typeof VALID_FILTERS[number])

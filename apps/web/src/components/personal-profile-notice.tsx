@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { MY_ACCOUNT_ROUTE } from "@/lib/routes";
 import { useLanguage } from "@/lib/i18n";
 
 /**
@@ -16,7 +17,7 @@ export function PersonalProfileNotice({ message }: { message: string }) {
     <div className="flex flex-col items-center gap-2 py-12 text-center">
       <p className="max-w-[460px] text-[14px] text-text-3">{message}</p>
       <Link
-        href="/teams?tab=my-account"
+        href={MY_ACCOUNT_ROUTE}
         className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
       >
         {t("common.visitMyAccount")}

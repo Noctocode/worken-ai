@@ -58,6 +58,7 @@ import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useAuth } from "@/components/providers";
+import { isPersonalProfile } from "@/lib/hooks/use-is-personal";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -203,6 +204,7 @@ export const Appbar = () => {
     enabled: isTeamDetail && !!teamDetailId,
   });
   const { user: currentUser } = useAuth();
+  const isPersonal = isPersonalProfile(currentUser);
   const canManageCurrentTeam = (() => {
     if (!teamDetailData || !currentUser) return false;
     if (currentUser.id === teamDetailData.ownerId) return true;
@@ -366,7 +368,7 @@ export const Appbar = () => {
   if (config.appbarType === "aiChat") {
     // Personal profiles only have the Personal view — All / Team are
     // disabled with a reason and the active tab is forced to Personal.
-    const isPersonal = currentUser?.profileType !== "company";
+    // `isPersonal` is computed at the component top (shared helper).
     const activeTab = isPersonal
       ? "personal"
       : (searchParams.get("filter") ?? "all");

@@ -81,12 +81,22 @@ export class TeamsController {
     @CurrentUser() caller: AuthenticatedUser,
   ) {
     const [callerUser] = await this.db
-      .select({ role: users.role })
+      .select({ role: users.role, profileType: users.profileType })
       .from(users)
       .where(eq(users.id, caller.id));
     if (!callerUser || callerUser.role === 'basic') {
       throw new ForbiddenException(
         'Only admin or advanced users can create teams.',
+      );
+    }
+    // Personal profiles are sole accounts with no company tenant —
+    // teams are a company-tenant feature. Gated here (one query, same
+    // layer as the role gate, mirroring users.controller.inviteUser);
+    // the capability isn't removed, the user switches profile type
+    // from My Account first.
+    if (callerUser.profileType !== 'company') {
+      throw new ForbiddenException(
+        'Personal profiles cannot create teams. Switch to a company profile to manage teams.',
       );
     }
 

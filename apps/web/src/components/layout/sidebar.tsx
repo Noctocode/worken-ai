@@ -25,6 +25,7 @@ import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "@/components/providers";
+import { MY_ACCOUNT_ROUTE } from "@/lib/routes";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -401,7 +402,7 @@ export const SidebarContent = ({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="center" side="top" className="w-56">
               <DropdownMenuItem asChild>
-                <Link href="/teams?tab=my-account" className="cursor-pointer">
+                <Link href={MY_ACCOUNT_ROUTE} className="cursor-pointer">
                   <UserIcon className="mr-2 h-4 w-4" />
                   {t("sidebar.myAccount")}
                 </Link>

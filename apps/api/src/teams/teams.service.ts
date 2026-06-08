@@ -68,22 +68,10 @@ export class TeamsService {
     monthlyBudgetCents?: number,
     parentTeamId?: string,
   ) {
-    // Personal profiles are sole accounts with no company tenant —
-    // teams are a company-tenant feature. The capability isn't removed;
-    // the user must switch to a company profile (My Account) first.
-    // Mirrors the FE gate on the Teams tab + New Project.
-    const [caller] = await this.db
-      .select({ profileType: users.profileType })
-      .from(users)
-      .where(eq(users.id, userId));
-    if (caller?.profileType !== 'company') {
-      throw new ForbiddenException(
-        'Personal profiles cannot create teams. Switch to a company profile to manage teams.',
-      );
-    }
-
-    // Subteams inherit the parent's management gate: only owners or
-    // editors of the parent can create children.
+    // Personal-profile callers are rejected at the controller (one
+    // query alongside the role gate). Subteams inherit the parent's
+    // management gate: only owners or editors of the parent can create
+    // children.
     if (parentTeamId) {
       const parentRole = await this.getUserTeamRole(parentTeamId, userId);
       if (

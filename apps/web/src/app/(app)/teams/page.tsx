@@ -32,6 +32,7 @@ import { ModelCard } from "@/components/management/model-card";
 import { AccountTab } from "@/components/management/account-tab";
 import { CompanyTab } from "@/components/management/company-tab";
 import { PersonalProfileNotice } from "@/components/personal-profile-notice";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
@@ -53,7 +54,7 @@ export default function TeamsPage() {
   // and their create/invite CTAs are disabled (the BE profileType-gates
   // these too). Nothing is removed; the user can switch profile type
   // from My Account.
-  const isPersonal = user?.profileType !== "company";
+  const isPersonal = useIsPersonal();
   const rawTab = searchParams.get("tab");
   // Personal profiles land on My Account by default — the Teams tab is
   // just a "no teams" notice for them, so it's a poor first screen.
@@ -71,6 +72,8 @@ export default function TeamsPage() {
   // table narrows to just those rows so the admin can quickly action them.
   const [showPendingOnly, setShowPendingOnly] = useState(false);
 
+  // Personal profiles see a notice on the Teams/Users tabs, never the
+  // tables — so skip the list fetches entirely for them.
   const {
     data: teams = [],
     isLoading: teamsLoading,
@@ -78,6 +81,7 @@ export default function TeamsPage() {
   } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
+    enabled: !isPersonal,
   });
 
   const {
@@ -87,6 +91,7 @@ export default function TeamsPage() {
   } = useQuery({
     queryKey: ["org-users"],
     queryFn: fetchOrgUsers,
+    enabled: !isPersonal,
   });
 
   const filteredTeams = teams.filter((t) =>
