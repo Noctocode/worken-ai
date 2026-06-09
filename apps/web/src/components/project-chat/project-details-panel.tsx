@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
@@ -101,16 +101,30 @@ function Section({
   icon: Icon,
   title,
   defaultOpen = false,
+  sectionId,
+  openToken = 0,
   children,
 }: {
   icon: React.ElementType;
   title: string;
   defaultOpen?: boolean;
+  /** Stable id used as the scroll target (`pd-section-<id>`) when the
+   *  collapsed rail jumps here. */
+  sectionId?: string;
+  /** Bumped by the parent to force this section open (rail icon click). */
+  openToken?: number;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // Force-open when the parent targets this section from the rail.
+  useEffect(() => {
+    if (openToken > 0) setOpen(true);
+  }, [openToken]);
   return (
-    <div className="border-b border-border-2">
+    <div
+      id={sectionId ? `pd-section-${sectionId}` : undefined}
+      className="border-b border-border-2"
+    >
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -231,6 +245,29 @@ export function ProjectDetailsPanel({
    *  the same AddDocumentDialog the dashboard uses. */
   const [manageContextOpen, setManageContextOpen] = useState(false);
 
+  /* Collapsed-rail → section jump: clicking a rail icon expands the
+   *  panel, force-opens the target section, and scrolls it into view.
+   *  openToken is bumped on every click so re-clicking the same icon
+   *  (while already expanded) re-triggers the scroll. */
+  const [targetSection, setTargetSection] = useState<string | null>(null);
+  const [openToken, setOpenToken] = useState(0);
+  const jumpToSection = useCallback(
+    (id: string) => {
+      setTargetSection(id);
+      setOpenToken((n) => n + 1);
+      onOpenChange(true);
+    },
+    [onOpenChange],
+  );
+  useEffect(() => {
+    if (!open || !targetSection) return;
+    const el = document.getElementById(`pd-section-${targetSection}`);
+    if (!el) return;
+    requestAnimationFrame(() =>
+      el.scrollIntoView({ block: "start", behavior: "smooth" }),
+    );
+  }, [open, openToken, targetSection]);
+
   /* Section data — fetched only when the panel is open. */
   const { data: documents = [], isLoading: documentsLoading } = useQuery({
     queryKey: ["documents", projectId],
@@ -260,18 +297,50 @@ export function ProjectDetailsPanel({
     t("projDetails.toolTrends"),
   ];
 
-  /* Collapsed rail */
+  /* Collapsed rail — an icon strip mirroring the expanded sections
+   *  (Figma "collapsed sidebar"). The expand button sits on top; each
+   *  section icon expands the panel and scrolls to that section. */
+  const railSections: {
+    id: string;
+    icon: React.ElementType;
+    label: string;
+  }[] = [
+    { id: "projectContext", icon: ScrollText, label: t("projDetails.projectContext") },
+    { id: "dataSources", icon: FileText, label: t("projDetails.dataSources") },
+    { id: "chatContext", icon: Sparkles, label: t("projDetails.chatContext") },
+    { id: "chatFiles", icon: Paperclip, label: t("projDetails.chatFiles") },
+    { id: "promptsLibrary", icon: BookOpen, label: t("projDetails.promptsLibrary") },
+    { id: "aiTools", icon: Wrench, label: t("projDetails.aiTools") },
+    ...(isPersonal
+      ? []
+      : [{ id: "teamMembers", icon: Users, label: t("projDetails.teamMembers") }]),
+  ];
+
   if (!open) {
     return (
-      <div className="hidden w-12 shrink-0 flex-col items-center border-l border-border-2 bg-bg-white py-3 xl:flex">
+      <div className="hidden w-12 shrink-0 flex-col items-center gap-1 border-l border-border-2 bg-bg-white py-3 xl:flex">
         <button
           type="button"
           onClick={() => onOpenChange(true)}
           title={t("projDetails.expand")}
+          aria-label={t("projDetails.expand")}
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
         >
           <PanelRightOpen className="h-5 w-5" />
         </button>
+        <div className="my-1 h-px w-6 bg-border-2" />
+        {railSections.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => jumpToSection(s.id)}
+            title={s.label}
+            aria-label={s.label}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+          >
+            <s.icon className="h-[18px] w-[18px]" />
+          </button>
+        ))}
       </div>
     );
   }
@@ -298,6 +367,8 @@ export function ProjectDetailsPanel({
           icon={ScrollText}
           title={t("projDetails.projectContext")}
           defaultOpen
+          sectionId="projectContext"
+          openToken={targetSection === "projectContext" ? openToken : 0}
         >
           <div className="space-y-2">
             {documentsLoading ? (
@@ -330,7 +401,13 @@ export function ProjectDetailsPanel({
         </Section>
 
         {/* ── Data Sources ──────────────────────────────────────── */}
-        <Section icon={FileText} title={t("projDetails.dataSources")} defaultOpen>
+        <Section
+          icon={FileText}
+          title={t("projDetails.dataSources")}
+          defaultOpen
+          sectionId="dataSources"
+          openToken={targetSection === "dataSources" ? openToken : 0}
+        >
           {filesLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-3" />
           ) : files.length === 0 ? (
@@ -391,7 +468,13 @@ export function ProjectDetailsPanel({
         </Section>
 
         {/* ── Chat Context (per-conversation) ───────────────────── */}
-        <Section icon={Sparkles} title={t("projDetails.chatContext")} defaultOpen>
+        <Section
+          icon={Sparkles}
+          title={t("projDetails.chatContext")}
+          defaultOpen
+          sectionId="chatContext"
+          openToken={targetSection === "chatContext" ? openToken : 0}
+        >
           {!conversationId ? (
             <p className="text-[12px] text-text-3">
               {t("projDetails.contextNeedsChat")}
@@ -464,6 +547,8 @@ export function ProjectDetailsPanel({
           icon={Paperclip}
           title={t("projDetails.chatFiles")}
           defaultOpen={chatFiles.length > 0}
+          sectionId="chatFiles"
+          openToken={targetSection === "chatFiles" ? openToken : 0}
         >
           {chatFiles.length === 0 ? (
             <p className="text-[12px] text-text-3">
@@ -496,7 +581,12 @@ export function ProjectDetailsPanel({
         </Section>
 
         {/* ── Prompts Library ───────────────────────────────────── */}
-        <Section icon={BookOpen} title={t("projDetails.promptsLibrary")}>
+        <Section
+          icon={BookOpen}
+          title={t("projDetails.promptsLibrary")}
+          sectionId="promptsLibrary"
+          openToken={targetSection === "promptsLibrary" ? openToken : 0}
+        >
           {promptsLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-3" />
           ) : prompts.length === 0 ? (
@@ -522,7 +612,12 @@ export function ProjectDetailsPanel({
 
 
         {/* ── AI Tools (coming soon) ────────────────────────────── */}
-        <Section icon={Wrench} title={t("projDetails.aiTools")}>
+        <Section
+          icon={Wrench}
+          title={t("projDetails.aiTools")}
+          sectionId="aiTools"
+          openToken={targetSection === "aiTools" ? openToken : 0}
+        >
           <div className="mb-2">
             <span className="inline-flex items-center rounded-md bg-bg-1 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3">
               {t("projDetails.comingSoon")}
@@ -544,7 +639,13 @@ export function ProjectDetailsPanel({
         {/* Hidden for personal profiles — they have no team, so the
             list is always empty. */}
         {!isPersonal && (
-        <Section icon={Users} title={t("projDetails.teamMembers")} defaultOpen>
+        <Section
+          icon={Users}
+          title={t("projDetails.teamMembers")}
+          defaultOpen
+          sectionId="teamMembers"
+          openToken={targetSection === "teamMembers" ? openToken : 0}
+        >
           {membersLoading ? (
             <Loader2 className="h-4 w-4 animate-spin text-text-3" />
           ) : members.length === 0 ? (
