@@ -91,6 +91,14 @@ export class ConversationsService {
     }
 
     await this.verifyProjectAccess(conversation.projectId, userId);
+
+    // A 'personal' conversation is private to its creator even within a
+    // shared (team) project — project access alone isn't enough. 'team'
+    // conversations stay visible to anyone with project access. Throw
+    // NotFound (not Forbidden) so we don't leak that the id exists.
+    if (conversation.scope === 'personal' && conversation.userId !== userId) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
     return conversation;
   }
 
@@ -131,10 +139,20 @@ export class ConversationsService {
   async findByProject(projectId: string, userId: string, query?: string) {
     await this.verifyProjectAccess(projectId, userId);
 
+    // Visibility: team conversations are shared with everyone who can
+    // access the project; personal ones are private to their creator.
+    const visibleToCaller = and(
+      eq(conversations.projectId, projectId),
+      or(
+        eq(conversations.scope, 'team'),
+        eq(conversations.userId, userId),
+      ),
+    );
+
     let convos = await this.db
       .select()
       .from(conversations)
-      .where(eq(conversations.projectId, projectId))
+      .where(visibleToCaller)
       .orderBy(desc(conversations.updatedAt));
 
     // Optional server-side search: a conversation matches when its
@@ -152,7 +170,7 @@ export class ConversationsService {
         .leftJoin(messages, eq(messages.conversationId, conversations.id))
         .where(
           and(
-            eq(conversations.projectId, projectId),
+            visibleToCaller,
             or(ilike(conversations.title, like), ilike(messages.content, like)),
           ),
         );
@@ -241,8 +259,17 @@ export class ConversationsService {
     };
   }
 
-  async create(projectId: string, userId: string) {
-    await this.verifyProjectAccess(projectId, userId);
+  async create(
+    projectId: string,
+    userId: string,
+    scope: 'personal' | 'team' = 'personal',
+  ) {
+    const project = await this.verifyProjectAccess(projectId, userId);
+
+    // Only a team project can host a 'team' (shared) conversation; a
+    // personal project has no team to share with, so coerce to personal.
+    const effectiveScope: 'personal' | 'team' =
+      project.teamId && scope === 'team' ? 'team' : 'personal';
 
     const [conversation] = await this.db
       .insert(conversations)
@@ -250,6 +277,7 @@ export class ConversationsService {
         projectId,
         userId,
         title: null,
+        scope: effectiveScope,
       })
       .returning();
 

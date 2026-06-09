@@ -23,6 +23,11 @@ export const chat = {
   'chatComp.shiftEnter': 'Shift + Enter for new line',
   'chatEmpty.sendMessage': 'Send a message to begin chatting with your AI assistant.',
   'chatEmpty.promptsHint': 'Here are a few quick prompts to get started',
+  'chatEmpty.scopePersonal': 'Personal',
+  'chatEmpty.scopeTeam': 'Team',
+  'chatEmpty.scopePersonalHint': 'Private to you — only you can see this chat.',
+  'chatEmpty.scopeTeamHint':
+    'Shared with your team — everyone on the project can see it.',
   'chatEmpty.prompt1': 'Summarize the key points from our attached documents.',
   'chatEmpty.prompt2': 'Draft an action plan based on this project’s goals.',
   'chatEmpty.prompt3': 'What questions should we be asking that we haven’t yet?',

@@ -92,6 +92,13 @@
       "when": 1779980000000,
       "tag": "0012_integration_config",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1779990000000,
+      "tag": "0013_conversation_scope",
+      "breakpoints": true
     }
   ]
 }

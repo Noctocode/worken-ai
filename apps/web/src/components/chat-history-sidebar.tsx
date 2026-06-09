@@ -7,13 +7,8 @@ import { Plus, MessageSquare, Loader2, Trash2, Search, Users } from "lucide-reac
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  fetchConversations,
-  deleteConversation,
-  type ConversationListItem,
-} from "@/lib/api";
+import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@/components/providers";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useProjectActivity } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
@@ -53,20 +48,6 @@ function getInitials(name: string | null) {
     .slice(0, 2);
 }
 
-/**
- * A conversation reads as "team" once anyone other than the current
- * user has posted in it (participants come from message authors). This
- * is a client-side heuristic — we have no per-conversation team flag —
- * but it matches the Figma intent: shared chats get the Users marker
- * and surface under the Team filter, solo chats under Personal.
- */
-function isTeamConversation(
-  convo: ConversationListItem,
-  currentUserId: string | undefined,
-) {
-  return convo.participants.some((p) => p.id && p.id !== currentUserId);
-}
-
 export function ChatHistorySidebar({
   projectId,
   activeConversationId,
@@ -74,7 +55,6 @@ export function ChatHistorySidebar({
   onNewChat,
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
-  const { user } = useAuth();
   // Personal profiles have no teammates, so every conversation is
   // "personal" — the All/Personal/Team split is meaningless for them
   // (mirrors main's dashboard, which forces personal profiles to the
@@ -111,12 +91,12 @@ export function ChatHistorySidebar({
   const filtered = useMemo(() => {
     if (!conversations) return [];
     return conversations.filter((convo) => {
-      const isTeam = isTeamConversation(convo, user?.id);
+      const isTeam = convo.scope === "team";
       if (effectiveTab === "team" && !isTeam) return false;
       if (effectiveTab === "personal" && isTeam) return false;
       return true;
     });
-  }, [conversations, effectiveTab, user?.id]);
+  }, [conversations, effectiveTab]);
 
   // Live sidebar: refetch the list when another member adds a message or
   // a new conversation in this project (FA4 project room).
@@ -211,7 +191,7 @@ export function ChatHistorySidebar({
             </div>
           )}
           {filtered.map((convo) => {
-            const isTeam = isTeamConversation(convo, user?.id);
+            const isTeam = convo.scope === "team";
             const rawTitle = convo.title || t("chatHist.newConvo");
             const title =
               rawTitle.length > 28 ? rawTitle.slice(0, 28) + "..." : rawTitle;

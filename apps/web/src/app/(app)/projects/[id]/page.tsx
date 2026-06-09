@@ -165,6 +165,12 @@ export default function ProjectChatPage() {
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
+  // Scope for the NEXT new chat (created lazily on first send). Only
+  // meaningful for team projects; personal projects always create
+  // personal chats (the BE coerces it regardless).
+  const [newChatScope, setNewChatScope] = useState<"personal" | "team">(
+    "personal",
+  );
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -271,6 +277,7 @@ export default function ProjectChatPage() {
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null);
     setMessages([]);
+    setNewChatScope("personal");
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
@@ -392,7 +399,10 @@ export default function ProjectChatPage() {
       // Create conversation if this is a new chat
       let convId = activeConversationId;
       if (!convId) {
-        const newConvo = await createConversation(projectId);
+        // Team projects honor the picked scope; personal projects always
+        // get a personal chat (the BE coerces it too).
+        const scope = project.teamId ? newChatScope : "personal";
+        const newConvo = await createConversation(projectId, scope);
         convId = newConvo.id;
         setActiveConversationId(convId);
       }
@@ -687,7 +697,13 @@ export default function ProjectChatPage() {
                   hero (still rendered below by the regular composer
                   block). */}
               {messages.length === 0 && !isLoadingConversation && (
-                <ChatEmptyState project={project} onPickPrompt={setMessage} />
+                <ChatEmptyState
+                  project={project}
+                  onPickPrompt={setMessage}
+                  scope={newChatScope}
+                  onScopeChange={setNewChatScope}
+                  canChooseScope={!!project.teamId}
+                />
               )}
 
               {isLoadingConversation && (

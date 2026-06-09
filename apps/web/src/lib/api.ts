@@ -867,6 +867,9 @@ export interface ConversationParticipant {
 export interface ConversationListItem {
   id: string;
   title: string | null;
+  /** 'personal' = private to the creator; 'team' = shared with the
+   *  project's team. Drives the Personal/Team sidebar filter. */
+  scope: "personal" | "team";
   createdAt: string;
   updatedAt: string;
   participants: ConversationParticipant[];
@@ -916,9 +919,12 @@ export async function fetchConversation(
 
 export async function createConversation(
   projectId: string,
+  scope: "personal" | "team" = "personal",
 ): Promise<{ id: string }> {
   const res = await apiFetch(`/projects/${projectId}/conversations`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope }),
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();

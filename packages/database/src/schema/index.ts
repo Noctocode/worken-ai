@@ -286,6 +286,13 @@ export const conversations = pgTable("conversations", {
     .references(() => users.id)
     .notNull(),
   title: text("title"),
+  // 'personal' = private to the creator (`userId`); 'team' = shared with
+  // everyone who can access the project. Set at creation (personal
+  // projects force 'personal'); drives the Personal/Team sidebar filter
+  // AND access control — see ConversationsService.verifyConversationAccess.
+  scope: text("scope", { enum: ["personal", "team"] })
+    .notNull()
+    .default("personal"),
   // Free-form "Chat Context" the right-hand Project Details panel
   // (Figma 238:17561 → "Chat Context") shows and lets members edit.
   // Per-conversation: shared task framing / brief that's prepended to

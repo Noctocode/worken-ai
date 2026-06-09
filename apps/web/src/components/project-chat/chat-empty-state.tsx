@@ -20,15 +20,28 @@ import { useLanguage } from "@/lib/i18n";
 export function ChatEmptyState({
   project,
   onPickPrompt,
+  scope,
+  onScopeChange,
+  canChooseScope = false,
 }: {
   project: Project;
   onPickPrompt?: (text: string) => void;
+  /** Selected scope for the chat that this first message will create. */
+  scope?: "personal" | "team";
+  onScopeChange?: (scope: "personal" | "team") => void;
+  /** Only team projects can host a shared chat — hides the toggle for
+   *  personal projects (every chat there is personal anyway). */
+  canChooseScope?: boolean;
 }) {
   const { t } = useLanguage();
   const prompts = [
     t("chatEmpty.prompt1"),
     t("chatEmpty.prompt2"),
     t("chatEmpty.prompt3"),
+  ];
+  const scopeTabs: { key: "personal" | "team"; label: string }[] = [
+    { key: "personal", label: t("chatEmpty.scopePersonal") },
+    { key: "team", label: t("chatEmpty.scopeTeam") },
   ];
   return (
     <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -38,6 +51,35 @@ export function ChatEmptyState({
       <h2 className="text-[24px] font-bold text-text-1 sm:text-[32px]">
         {project.name}
       </h2>
+
+      {/* New-chat scope: a personal chat stays private to you, a team
+          chat is shared with the project's team. Only shown for team
+          projects (and when the parent wires the handler). */}
+      {canChooseScope && onScopeChange && scope && (
+        <div className="mt-1 flex flex-col items-center gap-1.5">
+          <div className="inline-flex rounded-lg border border-border-2 bg-bg-1 p-0.5">
+            {scopeTabs.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => onScopeChange(s.key)}
+                className={`cursor-pointer rounded-md px-3 py-1 text-[12px] font-medium transition-colors ${
+                  scope === s.key
+                    ? "bg-primary-6 text-white"
+                    : "text-text-2 hover:text-text-1"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-text-3">
+            {scope === "team"
+              ? t("chatEmpty.scopeTeamHint")
+              : t("chatEmpty.scopePersonalHint")}
+          </p>
+        </div>
+      )}
       {project.description ? (
         <p className="max-w-[560px] text-[14px] leading-[1.5] text-text-2 sm:text-[16px]">
           {project.description}

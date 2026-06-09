@@ -25,6 +25,11 @@ export const chat: Record<keyof typeof chatEn, string> = {
   'chatComp.shiftEnter': 'Shift + Enter za novo vrstico',
   'chatEmpty.sendMessage': 'Pošljite sporočilo za začetek pogovora z AI asistentom.',
   'chatEmpty.promptsHint': 'Tukaj je nekaj hitrih predlogov za začetek',
+  'chatEmpty.scopePersonal': 'Osebni',
+  'chatEmpty.scopeTeam': 'Ekipni',
+  'chatEmpty.scopePersonalHint': 'Zaseben — ta pogovor vidiš samo ti.',
+  'chatEmpty.scopeTeamHint':
+    'Deljen z ekipo — vidijo ga vsi na projektu.',
   'chatEmpty.prompt1': 'Povzemi ključne točke iz priloženih dokumentov.',
   'chatEmpty.prompt2': 'Pripravi akcijski načrt na podlagi ciljev tega projekta.',
   'chatEmpty.prompt3': 'Katera vprašanja bi morali postaviti, pa jih še nismo?',

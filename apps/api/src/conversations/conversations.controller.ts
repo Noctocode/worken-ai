@@ -34,9 +34,11 @@ export class ConversationsController {
   @Post('projects/:projectId/conversations')
   create(
     @Param('projectId') projectId: string,
+    @Body() body: { scope?: 'personal' | 'team' },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.conversationsService.create(projectId, user.id);
+    const scope = body?.scope === 'team' ? 'team' : 'personal';
+    return this.conversationsService.create(projectId, user.id, scope);
   }
 
   /**
