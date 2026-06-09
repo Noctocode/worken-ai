@@ -869,7 +869,7 @@ export default function ProjectChatPage() {
                                   )
                                 }
                                 title={t("chatComp.downloadAttachment")}
-                                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-lg bg-white/15 px-2 py-1 text-[12px] text-white transition-colors hover:bg-white/25"
+                                className="inline-flex max-w-[220px] cursor-pointer items-center gap-1.5 rounded-lg bg-white/15 px-2 py-1 text-[12px] text-white transition-colors hover:bg-white/25"
                               >
                                 <FileText className="h-3.5 w-3.5 shrink-0" />
                                 <span className="truncate">{a.name}</span>
