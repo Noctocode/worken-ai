@@ -59,6 +59,8 @@ import {
 import { useAuth } from "@/components/providers";
 import { useConversationLiveSync } from "@/components/realtime-provider";
 import { useUserModels } from "@/lib/hooks/use-user-models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { AGENTS } from "@/lib/agents";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useLanguage } from "@/lib/i18n";
 
@@ -129,8 +131,11 @@ export default function ProjectChatPage() {
   const projectId = params.id as string;
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  // Effective model list — powers the phone overflow menu's model picker.
-  const { models: userModels } = useUserModels();
+  // Model data for the phone overflow menu's model picker — mirrors the
+  // appbar: the project's agent pool, labelled + switched the same way.
+  const { effective: effectiveModels, getLabel: getModelLabel } =
+    useUserModels();
+  const { models: availableModels } = useAvailableModels();
 
   const {
     data: project,
@@ -181,6 +186,43 @@ export default function ProjectChatPage() {
         err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
       );
     },
+  });
+
+  // Label a pool entry (agent preset → its name; configured-model id →
+  // its alias name / catalog label). Mirrors the appbar.
+  const labelForModel = (id: string): string => {
+    const alias = effectiveModels.find((m) => m.id === id);
+    return alias ? alias.name : getModelLabel(id);
+  };
+  // Resolve a pool entry to a concrete model slug for persistence.
+  const resolveSelectionModel = (id: string): string => {
+    const preset = AGENTS.find((a) => a.id === id);
+    if (!preset) return id;
+    const inCatalog = availableModels.find((m) => m.id === preset.model);
+    return (
+      inCatalog?.id ??
+      availableModels[0]?.id ??
+      project?.model ??
+      preset.model
+    );
+  };
+  // Switch the project's active agent/model — same contract as the
+  // appbar header dropdown (persists agent + resolved model).
+  const switchAgentMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateProject(projectId, { agent: id, model: resolveSelectionModel(id) }),
+    onSuccess: (updated, id) => {
+      queryClient.setQueryData(["project", projectId], updated);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      const preset = AGENTS.find((a) => a.id === id);
+      toast.success(
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
+      );
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
+      ),
   });
 
   // Per-project web search toggle — mirrors the appbar's, surfaced in the
@@ -845,25 +887,39 @@ export default function ProjectChatPage() {
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-0">
-              {/* Model picker */}
+              {/* Model picker — the project's agent pool (same as the
+                  desktop header dropdown), not every available model. */}
               <div className="border-b border-border-2 px-3 py-2">
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-3">
                   {t("appbar.model")}
                 </p>
                 <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
-                  {userModels.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => updateModelMutation.mutate(m.id)}
-                      className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1"
-                    >
-                      <span className="truncate">{m.name}</span>
-                      {project.model === m.id && (
-                        <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
-                      )}
-                    </button>
-                  ))}
+                  {(project.agents?.length
+                    ? project.agents
+                    : project.agent
+                      ? [project.agent]
+                      : []
+                  ).map((id) => {
+                    const preset = AGENTS.find((a) => a.id === id);
+                    const label = preset?.label ?? labelForModel(id);
+                    const isActive = id === project.agent;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          !isActive && switchAgentMutation.mutate(id)
+                        }
+                        disabled={switchAgentMutation.isPending}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed"
+                      >
+                        <span className="truncate">{label}</span>
+                        {isActive && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
               {/* Web search toggle */}
