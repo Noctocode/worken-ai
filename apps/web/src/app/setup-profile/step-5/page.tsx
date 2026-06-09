@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
 import { useLanguage } from "@/lib/i18n";
+import { isValidAzureEndpoint } from "@/lib/azure";
 
 type ProviderId = "openai" | "azure" | "anthropic" | "private-vpc";
 
@@ -79,12 +80,15 @@ export default function SetupProfileStep5Page() {
   const deployments = azureConfig.azureDeployments ?? [];
 
   // A typed Azure key is only persisted if its config is complete
-  // (endpoint + api-version + ≥1 deployment) — otherwise the BE drops
-  // it silently. Block Continue and surface why, so the user doesn't
-  // finish onboarding thinking Azure is set up when it isn't.
+  // (valid Azure endpoint + api-version + ≥1 deployment) — otherwise the
+  // BE drops it silently. The endpoint must be an Azure host: a non-Azure
+  // URL passes a bare non-empty check but `normalizeAzureConfig` returns
+  // null, so the key vanishes with no feedback. Block Continue and
+  // surface why, so the user doesn't finish onboarding thinking Azure is
+  // set up when it isn't.
   const azureKey = (apiKeys["azure"] ?? "").trim();
   const azureComplete =
-    (azureConfig.azureEndpoint ?? "").trim() !== "" &&
+    isValidAzureEndpoint(azureConfig.azureEndpoint ?? "") &&
     (azureConfig.azureApiVersion ?? "").trim() !== "" &&
     deployments.some((d) => (d.deploymentName ?? "").trim() !== "");
   const azureIncomplete = azureKey !== "" && !azureComplete;

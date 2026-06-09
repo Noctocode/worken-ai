@@ -244,7 +244,11 @@ export class CompareModelsService {
       ).chat.completions.create({
         model,
         messages,
-        ...(enableReasoning && { reasoning: { enabled: true } }),
+        // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
+        // unknown body args, so never send it on the azure-sdk route
+        // (mirrors ChatService.sendMessageStream).
+        ...(enableReasoning &&
+          kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
       });
     } catch (err) {
       // The judge may route through OpenRouter or a BYOK / Custom

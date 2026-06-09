@@ -26,14 +26,6 @@ export interface NativeEndpoint {
    * to a separate transportKind that the chat layer recognises.
    */
   nativeSdkAvailable?: boolean;
-  /**
-   * True when there is no single shared baseURL — each BYOK row carries
-   * its own endpoint in `integrations.config` (Azure OpenAI:
-   * https://{resource}.openai.azure.com). For these, `baseURL` here is
-   * an unused placeholder and the chat layer reads the endpoint +
-   * api-version + deployments from the integration's config instead.
-   */
-  perResourceEndpoint?: boolean;
 }
 
 /** True when we can honour a BYOK key for this provider end-to-end. */
@@ -51,11 +43,11 @@ export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
   // Azure OpenAI: OpenAI wire-format, but the endpoint is per-resource
   // and the "model" is a user-named deployment. baseURL is a placeholder
   // — the real endpoint + api-version + deployment list come from
-  // `integrations.config` and are honored via the AzureOpenAI client.
+  // `integrations.config` and are honored via the AzureOpenAI client
+  // (chat-transport special-cases `provider === 'azure'`).
   azure: {
     baseURL: '',
     openAICompatible: true,
-    perResourceEndpoint: true,
   },
   deepseek: {
     baseURL: 'https://api.deepseek.com/v1',

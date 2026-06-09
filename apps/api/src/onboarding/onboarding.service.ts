@@ -42,10 +42,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { sha256File } from '../knowledge-core/knowledge-core.service.js';
-import {
-  AZURE_DEPLOYMENT_NAME_RE,
-  isAzureEndpointHost,
-} from '../integrations/azure-validation.js';
+import { parseAzureConfig } from '../integrations/azure-validation.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -117,35 +114,13 @@ const SUPPORTED_FOR_INTEGRATION_TABLE: Provider[] = [
  * Returns the cleaned config, or null when it's incomplete — in which
  * case the azure key is dropped rather than persisting a half-set-up
  * integration that would silently fall back to OpenRouter at chat time.
+ * Shares the rule set with the Integration tab via `parseAzureConfig`.
  */
 function normalizeAzureConfig(
   config: IntegrationConfig | undefined,
 ): IntegrationConfig | null {
-  const endpoint = config?.azureEndpoint?.trim();
-  const apiVersion = config?.azureApiVersion?.trim();
-  if (!endpoint || !apiVersion) return null;
-  try {
-    const u = new URL(endpoint);
-    if (u.protocol !== 'https:') return null;
-    if (!isAzureEndpointHost(u.hostname)) return null;
-  } catch {
-    return null;
-  }
-  const deployments = (config?.azureDeployments ?? [])
-    .map((d) => ({
-      deploymentName: d?.deploymentName?.trim() ?? '',
-      label: d?.label?.trim() || d?.deploymentName?.trim() || '',
-    }))
-    .filter(
-      (d) =>
-        d.deploymentName && AZURE_DEPLOYMENT_NAME_RE.test(d.deploymentName),
-    );
-  if (deployments.length === 0) return null;
-  return {
-    azureEndpoint: endpoint.replace(/\/+$/, ''),
-    azureApiVersion: apiVersion,
-    azureDeployments: deployments,
-  };
+  const result = parseAzureConfig(config);
+  return result.ok ? result.config : null;
 }
 
 // Whitelisted enum values for the company-branch dropdowns. Must stay in

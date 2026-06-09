@@ -30,6 +30,7 @@ import {
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
+import { isValidAzureEndpoint } from "@/lib/azure";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────
  *
@@ -152,17 +153,7 @@ function ProviderSettingsDialog({
   // "nothing happened, fields empty on reopen"). The endpoint must be
   // an Azure resource host or the BE rejects it (SSRF guard).
   const azureEndpointTrim = azureEndpoint.trim();
-  const azureHostOk = (() => {
-    try {
-      const u = new URL(azureEndpointTrim);
-      return (
-        u.protocol === "https:" &&
-        /\.openai\.azure\.(com|us|cn)$/i.test(u.hostname)
-      );
-    } catch {
-      return false;
-    }
-  })();
+  const azureHostOk = isValidAzureEndpoint(azureEndpointTrim);
   const azureHasDeployment = deployments.some(
     (d) => d.deploymentName.trim() !== "",
   );

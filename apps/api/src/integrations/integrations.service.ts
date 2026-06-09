@@ -19,10 +19,7 @@ import {
   isPredefinedProvider,
   type PredefinedProvider,
 } from './predefined-providers.js';
-import {
-  AZURE_DEPLOYMENT_NAME_RE,
-  isAzureEndpointHost,
-} from './azure-validation.js';
+import { parseAzureConfig } from './azure-validation.js';
 
 interface IntegrationStats {
   successRate: number; // 0..1 over last 30 days
@@ -77,52 +74,14 @@ export interface IntegrationView {
 
 /** Validate + normalize an Azure OpenAI integration's config. Throws
  *  BadRequestException on anything that would make chat-transport fall
- *  back to OpenRouter (missing endpoint / api-version / deployments). */
+ *  back to OpenRouter (missing endpoint / api-version / deployments).
+ *  Shares the rule set with onboarding via `parseAzureConfig`. */
 function validateAzureConfig(
   config: IntegrationConfig | undefined,
 ): IntegrationConfig {
-  const endpoint = config?.azureEndpoint?.trim();
-  const apiVersion = config?.azureApiVersion?.trim();
-  const deployments = config?.azureDeployments ?? [];
-  if (!endpoint) {
-    throw new BadRequestException('Azure OpenAI requires a resource endpoint');
-  }
-  try {
-    const u = new URL(endpoint);
-    if (u.protocol !== 'https:') throw new Error('not https');
-    if (!isAzureEndpointHost(u.hostname)) throw new Error('not azure host');
-  } catch {
-    throw new BadRequestException(
-      'Azure endpoint must be an https URL on *.openai.azure.com',
-    );
-  }
-  if (!apiVersion) {
-    throw new BadRequestException('Azure OpenAI requires an api-version');
-  }
-  const cleanDeployments = deployments
-    .map((d) => ({
-      deploymentName: d?.deploymentName?.trim() ?? '',
-      label: d?.label?.trim() || d?.deploymentName?.trim() || '',
-    }))
-    .filter((d) => d.deploymentName);
-  if (cleanDeployments.length === 0) {
-    throw new BadRequestException(
-      'Azure OpenAI requires at least one deployment',
-    );
-  }
-  const bad = cleanDeployments.find(
-    (d) => !AZURE_DEPLOYMENT_NAME_RE.test(d.deploymentName),
-  );
-  if (bad) {
-    throw new BadRequestException(
-      `Invalid Azure deployment name "${bad.deploymentName}" — use letters, digits, '-' or '_' only.`,
-    );
-  }
-  return {
-    azureEndpoint: endpoint.replace(/\/+$/, ''),
-    azureApiVersion: apiVersion,
-    azureDeployments: cleanDeployments,
-  };
+  const result = parseAzureConfig(config);
+  if (!result.ok) throw new BadRequestException(result.reason);
+  return result.config;
 }
 
 @Injectable()
