@@ -29,6 +29,7 @@ import {
   type IntegrationConfig,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 
 /* ─── Icons ──────────────────────────────────────────────────────────────
  *
@@ -211,6 +212,11 @@ function ProviderSettingsDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      // Enabling a BYOK provider or saving Azure deployments changes the
+      // effective model list (catalog models unlock; azure/<deployment>
+      // entries appear), so refresh the picker/arena cache. refetchType
+      // 'all' is required — the arena is unmounted while we're here.
+      invalidateModelMutations(queryClient);
       toast.success(
         editingKey && apiKey && useOwnKey
           ? `${card.displayName} ${t("mgmt.integ.keySavedToast")}`
@@ -529,7 +535,9 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       // Models picker reads from /models — invalidate so the auto-
       // created alias shows up immediately without a refresh.
-      queryClient.invalidateQueries({ queryKey: ["models", "effective"] });
+      // refetchType 'all' (via the helper) so the arena refetches even
+      // while unmounted; this dialog opens from the Integration tab too.
+      invalidateModelMutations(queryClient);
       toast.success(`${customName || t("mgmt.integ.customLLMFallback")} ${t("mgmt.integ.addedToast")}`);
       onClose();
     },
@@ -719,6 +727,9 @@ export function IntegrationTab() {
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      // Toggling a provider on/off changes which catalog (and Azure)
+      // models the user can pick — keep the arena/picker list in sync.
+      invalidateModelMutations(queryClient);
     },
   });
 
@@ -727,9 +738,11 @@ export function IntegrationTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       // Aliases that were bound to this integration just had their
-      // integrationId set to null at the DB level — refresh Models tab
-      // so the badge disappears immediately.
-      queryClient.invalidateQueries({ queryKey: ["models"] });
+      // integrationId set to null at the DB level — refresh the Models
+      // tab (badge disappears) and the arena/picker (the alias may drop
+      // out of the effective list). refetchType 'all' covers the arena
+      // being unmounted while we're on the Integration tab.
+      invalidateModelMutations(queryClient);
       toast.success(t("mgmt.integ.customLLMRemoved"));
       setPendingDelete(null);
     },
