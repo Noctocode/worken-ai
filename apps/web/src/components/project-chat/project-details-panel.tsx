@@ -342,22 +342,36 @@ export function ProjectDetailsPanel({
               {files.map((f) => (
                 <li
                   key={f.fileId}
-                  className="group flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2"
+                  className="group flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2 transition-colors hover:border-primary-5"
                 >
-                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-text-1">
-                      {f.name}
-                    </p>
-                    <p className="text-[11px] text-text-3">
-                      {formatBytes(f.sizeBytes)} • {fileExt(f.name, f.fileType)} •{" "}
-                      {new Date(f.attachedAt).toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </p>
-                  </div>
+                  {/* Click the file to download it (same as the chat
+                      attachment chips). */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadKnowledgeFile(f.fileId, f.name).catch(() =>
+                        toast.error(t("projDetails.chatFileDownloadFailed")),
+                      )
+                    }
+                    title={t("projDetails.chatFileDownload")}
+                    className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 text-left"
+                  >
+                    <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[12px] font-medium text-text-1">
+                        {f.name}
+                      </span>
+                      <span className="block text-[11px] text-text-3">
+                        {formatBytes(f.sizeBytes)} • {fileExt(f.name, f.fileType)}{" "}
+                        •{" "}
+                        {new Date(f.attachedAt).toLocaleDateString(undefined, {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                        })}
+                      </span>
+                    </span>
+                  </button>
                   {/* Detach = remove the project link so RAG stops
                       feeding this file. The KC file itself stays. */}
                   <button

@@ -714,7 +714,7 @@ export default function ProjectChatPage() {
 
   if (isLoadingProject) {
     return (
-      <div className="flex min-h-0 flex-1">
+      <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-text-3" />
@@ -725,7 +725,7 @@ export default function ProjectChatPage() {
 
   if (error || !project) {
     return (
-      <div className="flex min-h-0 flex-1">
+      <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <div className="text-center">
@@ -742,9 +742,9 @@ export default function ProjectChatPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
       <ChatHistorySidebar {...sidebarProps} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {/* No in-page header: the global Appbar (projectDetail
             variant) already renders Back / title / team chip / model
             label / search / avatar stack / Invite Member, so a second
