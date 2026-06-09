@@ -8,6 +8,7 @@ import {
   X,
   Users,
   CircleDollarSign,
+  FileCheck2,
   FileWarning,
   FolderOpen,
   Loader2,
@@ -61,6 +62,9 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
     return (
       <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
+  }
+  if (type === "knowledge_import_complete") {
+    return <FileCheck2 className="h-4 w-4 text-success-7" strokeWidth={2} />;
   }
   if (type === "project_created" || type === "project_deleted") {
     return <FolderOpen className="h-4 w-4 text-text-3" strokeWidth={2} />;

@@ -109,6 +109,12 @@ export class KnowledgeIngestionService {
     // files stay 'pending' ("Queued") until their turn.
     const INGESTION_BATCH_SIZE = 5;
 
+    // Tally files that came from a Drive/OneDrive/SharePoint import so we
+    // can fire a single "import complete" notification when the whole
+    // background run finishes — the user may have navigated away.
+    let importAdded = 0;
+    let importFailed = 0;
+
     while (true) {
       // Atomic claim: SELECT … LIMIT N inside the WHERE so only
       // INGESTION_BATCH_SIZE rows transition pending→processing per round.
@@ -145,8 +151,22 @@ export class KnowledgeIngestionService {
       if (claimed.length === 0) break;
 
       for (const file of claimed) {
-        await this.ingestOneFile(userId, file);
+        const status = await this.ingestOneFile(userId, file);
+        if (
+          file.source === 'drive' ||
+          file.source === 'onedrive' ||
+          file.source === 'sharepoint'
+        ) {
+          if (status === 'done') importAdded++;
+          else importFailed++;
+        }
       }
+    }
+
+    // Whole pending queue drained. If any of it was an external import,
+    // tell the user it finished (works even if they left the page).
+    if (importAdded + importFailed > 0) {
+      await this.notifyImportComplete(userId, importAdded, importFailed);
     }
   }
 
@@ -162,7 +182,7 @@ export class KnowledgeIngestionService {
       externalId: string | null;
       externalDriveId: string | null;
     },
-  ): Promise<void> {
+  ): Promise<'done' | 'failed'> {
     try {
       // Drive-source rows arrive with storagePath=null — the import
       // endpoint inserts metadata only, then we download here. We
@@ -263,7 +283,7 @@ export class KnowledgeIngestionService {
           file.name,
           'No extractable text',
         );
-        return;
+        return 'failed';
       }
 
       const embeddings = await this.documentsService.embed(chunks);
@@ -289,6 +309,7 @@ export class KnowledgeIngestionService {
           })
           .where(eq(knowledgeFiles.id, file.id));
       });
+      return 'done';
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -303,6 +324,7 @@ export class KnowledgeIngestionService {
         })
         .where(eq(knowledgeFiles.id, file.id));
       await this.notifyIngestionFailure(userId, file.id, file.name, message);
+      return 'failed';
     }
   }
 
@@ -328,6 +350,34 @@ export class KnowledgeIngestionService {
       });
     } catch {
       // swallow — this is fire-and-forget audit
+    }
+  }
+
+  /**
+   * Notify the user that a Drive / OneDrive / SharePoint import finished
+   * ingesting. Fired once per background run after the whole pending
+   * queue drains, so it lands even if the user navigated away mid-import.
+   * Best-effort — never throws.
+   */
+  private async notifyImportComplete(
+    userId: string,
+    added: number,
+    failed: number,
+  ): Promise<void> {
+    try {
+      const body =
+        failed > 0
+          ? `${added} file${added === 1 ? '' : 's'} added to Knowledge Core, ${failed} couldn't be processed.`
+          : `${added} file${added === 1 ? '' : 's'} added to Knowledge Core.`;
+      await this.notifications.create({
+        userId,
+        type: 'knowledge_import_complete',
+        title: 'Import complete',
+        body,
+        data: { added, failed },
+      });
+    } catch {
+      // swallow — best-effort
     }
   }
 

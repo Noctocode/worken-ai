@@ -34,6 +34,7 @@ export type NotificationType =
   | 'account_budget_changed'
   | 'member_cap_changed'
   | 'file_ingestion_failed'
+  | 'knowledge_import_complete'
   | 'project_created'
   | 'project_deleted'
   | 'project_invite'
