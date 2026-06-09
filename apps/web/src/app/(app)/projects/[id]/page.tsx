@@ -10,7 +10,9 @@ import {
   ArrowLeft,
   Sparkles,
   Bot,
+  Check,
   Download,
+  EllipsisVertical,
   FileText,
   Globe,
   Loader2,
@@ -18,6 +20,7 @@ import {
   PanelRightOpen,
   Plus,
   Square,
+  UserPlus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -47,8 +50,15 @@ import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
 import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
 import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
+import { InviteMembersDialog } from "@/components/project-chat/invite-members-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useAuth } from "@/components/providers";
 import { useConversationLiveSync } from "@/components/realtime-provider";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useLanguage } from "@/lib/i18n";
 
@@ -119,6 +129,8 @@ export default function ProjectChatPage() {
   const projectId = params.id as string;
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // Effective model list — powers the phone overflow menu's model picker.
+  const { models: userModels } = useUserModels();
 
   const {
     data: project,
@@ -169,6 +181,22 @@ export default function ProjectChatPage() {
         err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
       );
     },
+  });
+
+  // Per-project web search toggle — mirrors the appbar's, surfaced in the
+  // phone overflow menu where the appbar is hidden.
+  const webSearchMutation = useMutation({
+    mutationFn: (next: boolean) => updateProject(projectId, { webSearch: next }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["project", projectId], updated);
+      toast.success(
+        updated.webSearch ? t("appbar.webSearchOn") : t("appbar.webSearchOff"),
+      );
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("appbar.webSearchFailed"),
+      ),
   });
 
   // Right-hand "Project Details" panel (Figma 238:17561). Open by
@@ -802,6 +830,82 @@ export default function ProjectChatPage() {
           >
             <PanelRightOpen className="h-5 w-5" />
           </button>
+
+          {/* Phone-only (<md) overflow: the appbar (model / web search /
+              members + invite) is hidden on phones, so surface those here. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title={t("common.actions")}
+                aria-label={t("common.actions")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 md:hidden"
+              >
+                <EllipsisVertical className="h-5 w-5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-0">
+              {/* Model picker */}
+              <div className="border-b border-border-2 px-3 py-2">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                  {t("appbar.model")}
+                </p>
+                <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                  {userModels.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => updateModelMutation.mutate(m.id)}
+                      className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <span className="truncate">{m.name}</span>
+                      {project.model === m.id && (
+                        <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Web search toggle */}
+              <button
+                type="button"
+                onClick={() => webSearchMutation.mutate(!project.webSearch)}
+                disabled={
+                  !(project.webSearchSupported && project.webSearchAllowed) ||
+                  webSearchMutation.isPending
+                }
+                className="flex w-full cursor-pointer items-center justify-between gap-2 border-b border-border-2 px-3 py-2.5 text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-text-3" />
+                  {t("appbar.webSearch")}
+                </span>
+                <span
+                  className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
+                    project.webSearch ? "bg-primary-6" : "bg-border-3"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
+                      project.webSearch ? "left-[14px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+              {/* Invite (team projects only) */}
+              {!isPersonal && project.teamId && (
+                <InviteMembersDialog project={project}>
+                  <button
+                    type="button"
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-[13px] text-text-1 hover:bg-bg-1"
+                  >
+                    <UserPlus className="h-4 w-4 text-text-3" />
+                    {t("appbar.inviteMember")}
+                  </button>
+                </InviteMembersDialog>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
         {/* No in-page header on xl+: the global Appbar (projectDetail
             variant) already renders Back / title / team chip / model
