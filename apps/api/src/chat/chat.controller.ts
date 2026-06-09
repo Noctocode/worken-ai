@@ -257,6 +257,22 @@ export class ChatController {
       safePrompt,
     );
     for (const chunk of userKnowledge) contextChunks.push(chunk.content);
+
+    // Files attached to THIS message get their full text injected
+    // directly (not semantic-gated, and parsed from disk if async
+    // ingestion hasn't finished) so the model always sees what the user
+    // just attached — like ChatGPT. Prepended so it leads the context.
+    if (attachments.length > 0) {
+      const attachedTexts =
+        await this.knowledgeIngestion.getOwnedAttachedFilesText(
+          user.id,
+          attachments.map((a) => a.fileId),
+        );
+      for (let i = attachedTexts.length - 1; i >= 0; i--) {
+        const f = attachedTexts[i];
+        contextChunks.unshift(`Attached file "${f.name}":\n${f.text}`);
+      }
+    }
     const context =
       contextChunks.length > 0 ? contextChunks.join('\n\n---\n\n') : undefined;
 
