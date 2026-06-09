@@ -238,10 +238,13 @@ export class ChatController {
       // apply (the inner service enforces them per chunk), so an
       // 'admins'-only file remains admins-only even when attached.
       // Resolve attached ids first; if none, skip the embedding
-      // round-trip.
-      const attachedFileIds = await this.projectKnowledge.getAttachedFileIds(
-        body.projectId,
-      );
+      // round-trip. Files attached to THIS message are injected in full
+      // below (direct path), so drop them here to avoid the same content
+      // landing in the context twice.
+      const thisMsgAttachmentIds = new Set(attachments.map((a) => a.fileId));
+      const attachedFileIds = (
+        await this.projectKnowledge.getAttachedFileIds(body.projectId)
+      ).filter((id) => !thisMsgAttachmentIds.has(id));
       if (attachedFileIds.length > 0) {
         const attachedChunks =
           await this.knowledgeIngestion.searchProjectAttachedChunks(

@@ -15,6 +15,7 @@ import {
   Pencil,
   ScrollText,
   Sparkles,
+  Unplug,
   Users,
   Wrench,
   X,
@@ -25,6 +26,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import {
+  detachKnowledgeFile,
   downloadKnowledgeFile,
   fetchDocuments,
   fetchPrompts,
@@ -210,6 +212,20 @@ export function ProjectDetailsPanel({
       toast.error(err.message || t("projDetails.contextSaveFailed")),
   });
 
+  /* Detach a file from the project (removes the project_knowledge_files
+   *  link so RAG stops feeding it; the KC file itself is untouched). */
+  const detachMutation = useMutation({
+    mutationFn: (fileId: string) => detachKnowledgeFile(projectId, fileId),
+    onSuccess: () => {
+      qc.invalidateQueries({
+        queryKey: ["project-knowledge-files", projectId],
+      });
+      toast.success(t("projDetails.fileDetached"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("projDetails.detachFailed")),
+  });
+
   /* Project-level context = the pasted-text "Manage Context" documents
    *  (shared across every chat in the project). Opened for editing via
    *  the same AddDocumentDialog the dashboard uses. */
@@ -326,7 +342,7 @@ export function ProjectDetailsPanel({
               {files.map((f) => (
                 <li
                   key={f.fileId}
-                  className="flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2"
+                  className="group flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2"
                 >
                   <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
                   <div className="min-w-0 flex-1">
@@ -342,6 +358,18 @@ export function ProjectDetailsPanel({
                       })}
                     </p>
                   </div>
+                  {/* Detach = remove the project link so RAG stops
+                      feeding this file. The KC file itself stays. */}
+                  <button
+                    type="button"
+                    onClick={() => detachMutation.mutate(f.fileId)}
+                    disabled={detachMutation.isPending}
+                    title={t("projDetails.detachFile")}
+                    aria-label={t("projDetails.detachFile")}
+                    className="mt-0.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 opacity-0 transition-opacity hover:text-danger-6 group-hover:opacity-100 disabled:cursor-not-allowed"
+                  >
+                    <Unplug className="h-3.5 w-3.5" />
+                  </button>
                 </li>
               ))}
             </ul>

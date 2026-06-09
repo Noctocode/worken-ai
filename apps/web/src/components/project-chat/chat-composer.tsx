@@ -50,9 +50,9 @@ interface Props {
  *    AbortController back in page.tsx — exact same plumbing as
  *    before, just wrapped in a tidier shell.
  *
- * Attach File opens the AttachFileDialog. Uploads are restricted to
- * Word / Excel / PDF documents and land in the project's Knowledge
- * Core.
+ * Attach File opens a file picker; picked files upload into the
+ * project's Knowledge Core and ride with the next message as chips.
+ * Restricted to Word / Excel / PDF documents.
  */
 export function ChatComposer({
   message,
