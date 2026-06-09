@@ -875,6 +875,14 @@ export interface ConversationListItem {
   participants: ConversationParticipant[];
 }
 
+/** A Knowledge Core file attached to a chat message (rendered as a
+ *  downloadable chip). Stored in the message's metadata.attachments. */
+export interface ChatAttachment {
+  fileId: string;
+  name: string;
+  fileType?: string | null;
+}
+
 export interface ConversationMessage {
   id: string;
   role: string;
@@ -884,6 +892,28 @@ export interface ConversationMessage {
   userId: string | null;
   userName: string | null;
   userPicture: string | null;
+}
+
+/**
+ * Download a Knowledge Core file by id (the inline chat attachment +
+ * Data Sources panel use this). Fetches through apiFetch so the auth
+ * cookie rides along, then saves the blob client-side.
+ */
+export async function downloadKnowledgeFile(
+  fileId: string,
+  name: string,
+): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/download`);
+  if (!res.ok) throw new Error("Failed to download file");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export interface ConversationWithMessages {
@@ -1172,6 +1202,7 @@ export async function* streamChatMessage(
   model?: string,
   projectId?: string,
   signal?: AbortSignal,
+  attachments?: ChatAttachment[],
 ): AsyncIterable<ChatStreamEvent> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
@@ -1182,6 +1213,7 @@ export async function* streamChatMessage(
       model,
       enableReasoning: true,
       projectId,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     }),
     signal,
   });

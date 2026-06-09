@@ -3,18 +3,24 @@
 import { useRef } from "react";
 import {
   BookOpen,
+  FileText,
   ImagePlus,
   Loader2,
   Paperclip,
   Send,
   Square,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
-import { AttachFileDialog } from "./attach-file-dialog";
 import { PromptLibraryDialog } from "./prompt-library-dialog";
 import { useLanguage } from "@/lib/i18n";
+import type { ChatAttachment } from "@/lib/api";
+
+/** Formats the chat ingestion pipeline can parse (docx / xls / xlsx /
+ *  pdf). Legacy .doc is excluded — the parser is .docx-only. */
+const ACCEPTED_FILE_TYPES = ".pdf,.docx,.xls,.xlsx";
 
 interface Props {
   projectId: string;
@@ -23,6 +29,11 @@ interface Props {
   onSubmit: (e: React.FormEvent) => void;
   onStop: () => void;
   isSending: boolean;
+  /** Files attached to the next message (uploaded to KC already). */
+  pendingAttachments: ChatAttachment[];
+  onAddFiles: (files: FileList) => void;
+  onRemoveAttachment: (fileId: string) => void;
+  attachmentUploading: boolean;
 }
 
 /**
@@ -44,16 +55,21 @@ interface Props {
  * Core.
  */
 export function ChatComposer({
-  projectId,
   message,
   onMessageChange,
   onSubmit,
   onStop,
   isSending,
+  pendingAttachments,
+  onAddFiles,
+  onRemoveAttachment,
+  attachmentUploading,
 }: Props) {
   const { t } = useLanguage();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const canSend = Boolean(message.trim()) || pendingAttachments.length > 0;
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -91,6 +107,51 @@ export function ChatComposer({
         // on the outer wrapper so the card itself can fill it.
         className="flex w-full flex-col gap-0 rounded-2xl border border-border-2 bg-bg-white shadow-[0px_4px_4px_rgba(0,0,0,0.06)]"
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ACCEPTED_FILE_TYPES}
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              onAddFiles(e.target.files);
+            }
+            // Reset so re-picking the same filename fires onChange again.
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
+
+        {/* Pending attachment chips — files already uploaded to KC,
+            waiting to ride with the next message. */}
+        {(pendingAttachments.length > 0 || attachmentUploading) && (
+          <div className="flex flex-wrap items-center gap-2 px-4 pt-3">
+            {pendingAttachments.map((a) => (
+              <span
+                key={a.fileId}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border-2 bg-bg-1 py-1 pl-2 pr-1 text-[12px] text-text-2"
+              >
+                <FileText className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                <span className="max-w-[160px] truncate">{a.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onRemoveAttachment(a.fileId)}
+                  title={t("chatComp.removeAttachment")}
+                  className="flex h-4 w-4 shrink-0 items-center justify-center rounded text-text-3 hover:bg-bg-3 hover:text-danger-6"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+            {attachmentUploading && (
+              <span className="inline-flex items-center gap-1.5 text-[12px] text-text-3">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("chatComp.uploadingAttachment")}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Row 1 — the textarea. Kept exactly as the old composer
             (autoresize, max-height clamp, Enter/Shift+Enter) so the
             streaming + Stop semantics in page.tsx are unaffected. */}
@@ -118,9 +179,13 @@ export function ChatComposer({
             right. Matches Figma `Frame 44 / Text field` row 2. */}
         <div className="flex items-center justify-between gap-2 px-3 pb-3 pt-1">
           <div className="flex flex-wrap items-center gap-2">
-            <AttachFileDialog projectId={projectId}>
-              <ComposerPill icon={Paperclip}>{t("chatComp.attachFile")}</ComposerPill>
-            </AttachFileDialog>
+            <ComposerPill
+              icon={Paperclip}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSending || attachmentUploading}
+            >
+              {t("chatComp.attachFile")}
+            </ComposerPill>
             {/* Image upload is not wired yet — shown disabled with a
                 "coming soon" tag so the affordance is visible without
                 promising functionality. */}
@@ -154,14 +219,10 @@ export function ChatComposer({
               type="submit"
               size="icon"
               className="h-9 w-9 shrink-0 rounded-full bg-primary-6 hover:bg-primary-7"
-              disabled={!message.trim()}
+              disabled={!canSend}
               title={t("chatComp.send")}
             >
-              {message.trim() ? (
-                <Send className="h-4 w-4" />
-              ) : (
-                <Send className="h-4 w-4 opacity-60" />
-              )}
+              <Send className={`h-4 w-4 ${canSend ? "" : "opacity-60"}`} />
             </Button>
           )}
         </div>

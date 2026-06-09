@@ -30,12 +30,24 @@ import { ChatService } from './chat.service.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { ChatGateway } from '../realtime/chat.gateway.js';
 
+/** A Knowledge Core file shown inline on the user's message. The file
+ *  itself lives in KC (uploaded / linked to the project on the FE before
+ *  send); this is just the display + download reference. */
+interface ChatAttachment {
+  fileId: string;
+  name: string;
+  fileType?: string | null;
+}
+
 interface ChatRequestBody {
   conversationId: string;
   content: string;
   model?: string;
   enableReasoning?: boolean;
   projectId?: string;
+  /** KC files attached to THIS message (rendered as chips, downloadable;
+   *  their content is fed to RAG via the project attachment path). */
+  attachments?: ChatAttachment[];
 }
 
 @Controller('chat')
@@ -118,11 +130,24 @@ export class ChatController {
     }
     const safePrompt = inputDecision.text;
 
+    // Attachments (if any) ride in the message metadata so the FE can
+    // render the file chips inline and offer a download — sanitized to
+    // the display fields only (never trust extra client keys).
+    const attachments = Array.isArray(body.attachments)
+      ? body.attachments
+          .filter((a) => a && typeof a.fileId === 'string' && a.fileId)
+          .map((a) => ({
+            fileId: a.fileId,
+            name: typeof a.name === 'string' ? a.name : a.fileId,
+            fileType: a.fileType ?? null,
+          }))
+      : [];
     await this.conversationsService.addMessage(
       body.conversationId,
       'user',
       safePrompt,
       user.id,
+      attachments.length > 0 ? { attachments } : undefined,
     );
     // Live sync: tell other members in this conversation a new message
     // landed (senderId = author, so the author's own client skips the

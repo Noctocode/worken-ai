@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   Sparkles,
   Bot,
+  Download,
+  FileText,
   Globe,
   Loader2,
   Square,
@@ -27,10 +29,14 @@ import {
   streamChatMessage,
   submitMessageFeedback,
   updateProject,
+  uploadProjectKnowledgeFiles,
+  downloadKnowledgeFile,
   type AlternativeModelSuggestion,
+  type ChatAttachment,
   type ConversationMessage,
   type WebCitation,
 } from "@/lib/api";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
 import { ProjectDetailsPanel } from "@/components/project-chat/project-details-panel";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
@@ -81,6 +87,9 @@ interface LocalMessage {
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
+  /** KC files attached to this (user) message — rendered as
+   *  downloadable chips. Hydrated from metadata.attachments on reload. */
+  attachments?: ChatAttachment[];
 }
 
 function getTimestamp() {
@@ -171,6 +180,12 @@ export default function ProjectChatPage() {
   const [newChatScope, setNewChatScope] = useState<"personal" | "team">(
     "personal",
   );
+  // Files attached to the next message — already uploaded to KC (so RAG
+  // ingests them) and held here until the message is sent.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    ChatAttachment[]
+  >([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -252,6 +267,11 @@ export default function ProjectChatPage() {
               ? meta.model
               : undefined,
           partial: meta?.partial === true,
+          attachments: Array.isArray(meta?.attachments)
+            ? (meta.attachments as ChatAttachment[]).filter(
+                (a) => a && typeof a.fileId === "string",
+              )
+            : undefined,
           userId: m.userId,
           userName: m.userName,
           userPicture: m.userPicture,
@@ -274,14 +294,69 @@ export default function ProjectChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
+  // Company profiles tag chat uploads with 'project' visibility;
+  // personal profiles omit it (owner-only by scope) and rely on the
+  // project link — same rule as the project Knowledge dialog.
+  const isPersonal = useIsPersonal();
+
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null);
     setMessages([]);
     setNewChatScope("personal");
+    setPendingAttachments([]);
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
+    setPendingAttachments([]);
+  }, []);
+
+  // Upload picked files into the project's Knowledge Core (so RAG can
+  // use them) and hold them as pending attachments for the next message.
+  const handleAddFiles = useCallback(
+    async (files: FileList) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+      setAttachmentUploading(true);
+      try {
+        const result = await uploadProjectKnowledgeFiles(projectId, list, {
+          ...(isPersonal ? {} : { visibility: "project" as const }),
+          projectIds: [projectId],
+        });
+        // Both freshly-uploaded and already-in-KC (duplicate) files are
+        // valid attachments — collect their ids/names.
+        const added: ChatAttachment[] = [
+          ...result.uploaded.map((u) => ({ fileId: u.id, name: u.name })),
+          ...result.duplicates
+            .filter((d) => d.existing.id)
+            .map((d) => ({ fileId: d.existing.id as string, name: d.name })),
+        ];
+        if (added.length > 0) {
+          setPendingAttachments((prev) => {
+            const seen = new Set(prev.map((a) => a.fileId));
+            return [...prev, ...added.filter((a) => !seen.has(a.fileId))];
+          });
+          // Keep the right-panel "Data Sources" list in sync.
+          queryClient.invalidateQueries({
+            queryKey: ["project-knowledge-files", projectId],
+          });
+        }
+        if (result.nameConflicts.length > 0) {
+          toast.info(t("chatComp.attachConflict"));
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : t("chatComp.attachFailed"),
+        );
+      } finally {
+        setAttachmentUploading(false);
+      }
+    },
+    [projectId, isPersonal, queryClient, t],
+  );
+
+  const handleRemoveAttachment = useCallback((fileId: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.fileId !== fileId));
   }, []);
 
   // Live sync (FA4): when another member posts in the open conversation,
@@ -337,7 +412,15 @@ export default function ProjectChatPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isSending || !project) return;
+    // Allow sending a file-only turn (no text) when attachments are
+    // present — the model answers about the attached files.
+    if (
+      (!message.trim() && pendingAttachments.length === 0) ||
+      isSending ||
+      attachmentUploading ||
+      !project
+    )
+      return;
     // Cooldown after a Stop click — same race as the arena page.
     // React swaps Stop → Send under the cursor while the click is
     // in flight; without this, the just-rendered Send button
@@ -345,7 +428,9 @@ export default function ProjectChatPage() {
     if (Date.now() - lastStopAtRef.current < 200) return;
 
     const content = message.trim();
+    const attachments = pendingAttachments;
     setMessage("");
+    setPendingAttachments([]);
     setIsSending(true);
 
     // Optimistic user message
@@ -357,6 +442,7 @@ export default function ProjectChatPage() {
       userId: user?.id,
       userName: user?.name,
       userPicture: user?.picture,
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     // Placeholder assistant bubble — gets filled token-by-token as
     // SSE deltas arrive. Holding a stable id so we can update only
@@ -413,6 +499,7 @@ export default function ProjectChatPage() {
         project.model,
         projectId,
         controller.signal,
+        attachments,
       )) {
         // Defensive: BE-side bytes already buffered on the wire
         // surface here even after the user pressed Stop. Bail
@@ -762,6 +849,35 @@ export default function ProjectChatPage() {
                           : "rounded-tr-sm bg-primary-6 text-white"
                       }`}
                     >
+                      {/* Attached files (chips) on a user message —
+                          click to download via the KC download endpoint. */}
+                      {msg.role === "user" &&
+                        msg.attachments &&
+                        msg.attachments.length > 0 && (
+                          <div
+                            className={`flex flex-wrap gap-2 ${
+                              msg.content ? "mb-2" : ""
+                            }`}
+                          >
+                            {msg.attachments.map((a) => (
+                              <button
+                                key={a.fileId}
+                                type="button"
+                                onClick={() =>
+                                  downloadKnowledgeFile(a.fileId, a.name).catch(
+                                    () => toast.error(t("chatComp.attachFailed")),
+                                  )
+                                }
+                                title={t("chatComp.downloadAttachment")}
+                                className="inline-flex max-w-[220px] items-center gap-1.5 rounded-lg bg-white/15 px-2 py-1 text-[12px] text-white transition-colors hover:bg-white/25"
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{a.name}</span>
+                                <Download className="h-3 w-3 shrink-0 opacity-80" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       {/* While the stream hasn't produced any text
                           yet (empty assistant bubble + isSending),
                           show an inline "Thinking…" so the user
@@ -1094,6 +1210,10 @@ export default function ProjectChatPage() {
           onSubmit={handleSubmit}
           onStop={handleStop}
           isSending={isSending}
+          pendingAttachments={pendingAttachments}
+          onAddFiles={handleAddFiles}
+          onRemoveAttachment={handleRemoveAttachment}
+          attachmentUploading={attachmentUploading}
         />
       </div>
 
