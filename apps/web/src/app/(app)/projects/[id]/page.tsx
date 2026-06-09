@@ -7,12 +7,16 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
+  ArrowLeft,
   Sparkles,
   Bot,
   Download,
   FileText,
   Globe,
   Loader2,
+  PanelLeftOpen,
+  PanelRightOpen,
+  Plus,
   Square,
 } from "lucide-react";
 
@@ -171,6 +175,10 @@ export default function ProjectChatPage() {
   // default on wide screens; the panel renders a thin collapsed rail
   // when closed.
   const [detailsOpen, setDetailsOpen] = useState(true);
+  // <xl / <lg slide-over drawers (Project Details / conversation history)
+  // for tablet + mobile, where the inline panels are hidden.
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
@@ -710,11 +718,13 @@ export default function ProjectChatPage() {
     activeConversationId,
     onSelectConversation: handleSelectConversation,
     onNewChat: handleNewChat,
+    mobileOpen: historyDrawerOpen,
+    onMobileOpenChange: setHistoryDrawerOpen,
   };
 
   if (isLoadingProject) {
     return (
-      <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
+      <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-text-3" />
@@ -725,7 +735,7 @@ export default function ProjectChatPage() {
 
   if (error || !project) {
     return (
-      <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
+      <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <div className="text-center">
@@ -742,15 +752,60 @@ export default function ProjectChatPage() {
   }
 
   return (
-    <div className="-mx-6 flex h-[calc(100vh-4.5rem)] overflow-hidden">
+    <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
       <ChatHistorySidebar {...sidebarProps} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* No in-page header: the global Appbar (projectDetail
+        {/* Compact header for tablet/mobile (<xl): the inline history
+            (<lg) and Project Details panel (<xl) are hidden, and the
+            global Appbar collapses on phones (<md) — so surface
+            navigation here. md+ still relies on the Appbar for the
+            project title / model / search / members. */}
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-2 bg-bg-white px-3 xl:hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+            <Link
+              href="/"
+              title={t("projDetail.goBack")}
+              aria-label={t("projDetail.goBack")}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <span className="truncate text-[14px] font-semibold text-text-1">
+              {project.name}
+            </span>
+          </div>
+          <div className="hidden flex-1 md:block" />
+          <button
+            type="button"
+            onClick={() => setHistoryDrawerOpen(true)}
+            title={t("chatHist.title")}
+            aria-label={t("chatHist.title")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 lg:hidden"
+          >
+            <PanelLeftOpen className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNewChat}
+            title={t("chatHist.newConvo")}
+            aria-label={t("chatHist.newConvo")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailsDrawerOpen(true)}
+            title={t("projDetails.title")}
+            aria-label={t("projDetails.title")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+          >
+            <PanelRightOpen className="h-5 w-5" />
+          </button>
+        </div>
+        {/* No in-page header on xl+: the global Appbar (projectDetail
             variant) already renders Back / title / team chip / model
-            label / search / avatar stack / Invite Member, so a second
-            row of the same controls inside the page would just
-            duplicate the chrome. updateModelMutation below is still
-            used by the "Try It" suggestion handler. */}
+            label / search / avatar stack / Invite Member. */}
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
@@ -1226,6 +1281,8 @@ export default function ProjectChatPage() {
         conversation={conversationData ?? null}
         open={detailsOpen}
         onOpenChange={setDetailsOpen}
+        mobileOpen={detailsDrawerOpen}
+        onMobileOpenChange={setDetailsDrawerOpen}
         onPickPrompt={setMessage}
       />
     </div>

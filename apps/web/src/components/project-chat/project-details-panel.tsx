@@ -24,6 +24,12 @@ import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import {
   detachKnowledgeFile,
@@ -47,8 +53,12 @@ interface Props {
   /** The currently-open conversation (null on a fresh, unsaved chat).
    *  Drives the Chat Context section's value + edit availability. */
   conversation: ConversationWithMessages | null;
+  /** xl+ inline panel: expanded vs collapsed icon rail. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** <xl: the same panel content in a slide-over drawer. */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
   /** Insert a prompt body into the composer (Prompts Library click). */
   onPickPrompt: (text: string) => void;
 }
@@ -160,6 +170,8 @@ export function ProjectDetailsPanel({
   conversation,
   open,
   onOpenChange,
+  mobileOpen,
+  onMobileOpenChange,
   onPickPrompt,
 }: Props) {
   const { t } = useLanguage();
@@ -316,52 +328,10 @@ export function ProjectDetailsPanel({
       : [{ id: "teamMembers", icon: Users, label: t("projDetails.teamMembers") }]),
   ];
 
-  if (!open) {
-    return (
-      <div className="hidden w-12 shrink-0 flex-col items-center gap-1 border-l border-border-2 bg-bg-white py-3 xl:flex">
-        <button
-          type="button"
-          onClick={() => onOpenChange(true)}
-          title={t("projDetails.expand")}
-          aria-label={t("projDetails.expand")}
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
-        >
-          <PanelRightOpen className="h-5 w-5" />
-        </button>
-        <div className="my-1 h-px w-6 bg-border-2" />
-        {railSections.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => jumpToSection(s.id)}
-            title={s.label}
-            aria-label={s.label}
-            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
-          >
-            <s.icon className="h-[18px] w-[18px]" />
-          </button>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="hidden w-80 shrink-0 flex-col overflow-hidden border-l border-border-2 bg-bg-white xl:flex">
-      <div className="flex h-14 shrink-0 items-center justify-between border-b border-border-2 px-4">
-        <h3 className="text-[14px] font-bold text-text-1">
-          {t("projDetails.title")}
-        </h3>
-        <button
-          type="button"
-          onClick={() => onOpenChange(false)}
-          title={t("projDetails.collapse")}
-          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
-        >
-          <PanelRightClose className="h-5 w-5" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
+  /* Shared scroll body — rendered both in the xl+ inline panel and the
+   *  <xl slide-over drawer. */
+  const sectionsBody = (
+    <div className="flex-1 overflow-y-auto">
         {/* ── Project context (Manage Context) ──────────────────── */}
         <Section
           icon={ScrollText}
@@ -699,7 +669,70 @@ export function ProjectDetailsPanel({
           )}
         </Section>
         )}
-      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* xl+ inline: collapsed icon rail or expanded panel */}
+      {!open ? (
+        <div className="hidden w-12 shrink-0 flex-col items-center gap-1 border-l border-border-2 bg-bg-white py-3 xl:flex">
+          <button
+            type="button"
+            onClick={() => onOpenChange(true)}
+            title={t("projDetails.expand")}
+            aria-label={t("projDetails.expand")}
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+          >
+            <PanelRightOpen className="h-5 w-5" />
+          </button>
+          <div className="my-1 h-px w-6 bg-border-2" />
+          {railSections.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => jumpToSection(s.id)}
+              title={s.label}
+              aria-label={s.label}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+            >
+              <s.icon className="h-[18px] w-[18px]" />
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="hidden w-80 shrink-0 flex-col overflow-hidden border-l border-border-2 bg-bg-white xl:flex">
+          <div className="flex h-14 shrink-0 items-center justify-between border-b border-border-2 px-4">
+            <h3 className="text-[14px] font-bold text-text-1">
+              {t("projDetails.title")}
+            </h3>
+            <button
+              type="button"
+              onClick={() => onOpenChange(false)}
+              title={t("projDetails.collapse")}
+              className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+            >
+              <PanelRightClose className="h-5 w-5" />
+            </button>
+          </div>
+          {sectionsBody}
+        </div>
+      )}
+
+      {/* <xl: same content in a right slide-over drawer */}
+      <Sheet open={!!mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent
+          side="right"
+          className="flex w-[88%] flex-col gap-0 bg-bg-white p-0 sm:max-w-sm xl:hidden"
+        >
+          <SheetHeader className="h-14 flex-row items-center justify-between space-y-0 border-b border-border-2 px-4 py-0">
+            <SheetTitle className="text-[14px] font-bold text-text-1">
+              {t("projDetails.title")}
+            </SheetTitle>
+          </SheetHeader>
+          {sectionsBody}
+        </SheetContent>
+      </Sheet>
 
       {/* Project context editor — same dialog the dashboard uses. */}
       <AddDocumentDialog
@@ -707,6 +740,6 @@ export function ProjectDetailsPanel({
         open={manageContextOpen}
         onOpenChange={setManageContextOpen}
       />
-    </div>
+    </>
   );
 }

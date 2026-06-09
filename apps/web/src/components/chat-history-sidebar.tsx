@@ -7,6 +7,12 @@ import { Plus, MessageSquare, Loader2, Trash2, Search, Users } from "lucide-reac
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
@@ -19,6 +25,9 @@ interface ChatHistorySidebarProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  /** <lg: render the same list inside a left slide-over drawer. */
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
 type FilterTab = "all" | "personal" | "team";
@@ -53,6 +62,8 @@ export function ChatHistorySidebar({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  mobileOpen,
+  onMobileOpenChange,
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
   // Personal profiles have no teammates, so every conversation is
@@ -124,20 +135,36 @@ export function ChatHistorySidebar({
     { key: "team", label: t("chatHist.filterTeam") },
   ];
 
-  return (
-    <div className="hidden w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/60 lg:flex">
-      <div className="flex h-14 shrink-0 items-center justify-between px-4">
-        <h2 className="text-sm font-semibold text-slate-900">{t("chatHist.title")}</h2>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-slate-500 hover:text-slate-900"
-          onClick={onNewChat}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
+  const handleSelect = (id: string) => {
+    onSelectConversation(id);
+    onMobileOpenChange?.(false);
+  };
+  const handleNew = () => {
+    onNewChat();
+    onMobileOpenChange?.(false);
+  };
 
+  // Header (title + New) — rendered above the list in the inline layout.
+  const headerRow = (
+    <div className="flex h-14 shrink-0 items-center justify-between px-4">
+      <h2 className="text-sm font-semibold text-slate-900">
+        {t("chatHist.title")}
+      </h2>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-slate-500 hover:text-slate-900"
+        onClick={handleNew}
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
+    </div>
+  );
+
+  // Search + filter tabs + list — shared by the inline sidebar and the
+  // <lg slide-over drawer.
+  const body = (
+    <>
       {/* Search */}
       <div className="px-3 pb-2">
         <div className="relative">
@@ -200,11 +227,11 @@ export function ChatHistorySidebar({
                 key={convo.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => onSelectConversation(convo.id)}
+                onClick={() => handleSelect(convo.id)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
-                    onSelectConversation(convo.id);
+                    handleSelect(convo.id);
                   }
                 }}
                 className={`group flex w-full cursor-pointer items-start gap-3 overflow-hidden rounded-lg px-3 py-3 text-left transition-colors hover:bg-slate-100/60 ${
@@ -261,6 +288,31 @@ export function ChatHistorySidebar({
           })}
         </div>
       </ScrollArea>
-    </div>
+    </>
+  );
+
+  return (
+    <>
+      {/* lg+ inline sidebar */}
+      <div className="hidden w-72 min-w-0 shrink-0 flex-col overflow-hidden border-r border-slate-200/60 lg:flex">
+        {headerRow}
+        {body}
+      </div>
+
+      {/* <lg: same list in a left slide-over drawer */}
+      <Sheet open={!!mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent
+          side="left"
+          className="flex w-[85%] flex-col gap-0 bg-white p-0 sm:max-w-xs lg:hidden"
+        >
+          <SheetHeader className="h-14 flex-row items-center space-y-0 border-b border-slate-200/60 px-4 py-0">
+            <SheetTitle className="text-sm font-semibold text-slate-900">
+              {t("chatHist.title")}
+            </SheetTitle>
+          </SheetHeader>
+          {body}
+        </SheetContent>
+      </Sheet>
+    </>
   );
 }
