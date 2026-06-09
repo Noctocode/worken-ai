@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { useOnboarding } from "../layout";
 import { OnboardingExit } from "../onboarding-exit";
 import { useLanguage } from "@/lib/i18n";
+import { isValidAzureEndpoint } from "@/lib/azure";
 
 type ProviderId = "openai" | "azure" | "anthropic" | "private-vpc";
 
@@ -39,8 +40,8 @@ const PROVIDERS: Array<{
     id: "azure",
     name: "Azure OpenAI",
     models: "Enterprise GPT-4",
-    placeholder: "Azure deployment key (32-char hex)",
-    available: false,
+    placeholder: "Azure API key",
+    available: true,
   },
   {
     id: "anthropic",
@@ -60,10 +61,37 @@ const PROVIDERS: Array<{
 
 export default function SetupProfileStep5Page() {
   const router = useRouter();
-  const { state, setApiKey } = useOnboarding();
+  const { state, setApiKey, update } = useOnboarding();
   const { t } = useLanguage();
   const [expanded, setExpanded] = useState<ProviderId | null>("openai");
+  const [azureError, setAzureError] = useState(false);
   const apiKeys = state.apiKeys;
+
+  // Azure carries extra config alongside its key (endpoint / api-version
+  // / deployments). Defaults: empty endpoint, a current api-version, and
+  // one blank deployment row so the field is visible.
+  const azureConfig = state.azureConfig ?? {
+    azureEndpoint: "",
+    azureApiVersion: "2024-10-21",
+    azureDeployments: [{ deploymentName: "", label: "" }],
+  };
+  const patchAzure = (patch: Partial<typeof azureConfig>) =>
+    update({ azureConfig: { ...azureConfig, ...patch } });
+  const deployments = azureConfig.azureDeployments ?? [];
+
+  // A typed Azure key is only persisted if its config is complete
+  // (valid Azure endpoint + api-version + ≥1 deployment) — otherwise the
+  // BE drops it silently. The endpoint must be an Azure host: a non-Azure
+  // URL passes a bare non-empty check but `normalizeAzureConfig` returns
+  // null, so the key vanishes with no feedback. Block Continue and
+  // surface why, so the user doesn't finish onboarding thinking Azure is
+  // set up when it isn't.
+  const azureKey = (apiKeys["azure"] ?? "").trim();
+  const azureComplete =
+    isValidAzureEndpoint(azureConfig.azureEndpoint ?? "") &&
+    (azureConfig.azureApiVersion ?? "").trim() !== "" &&
+    deployments.some((d) => (d.deploymentName ?? "").trim() !== "");
+  const azureIncomplete = azureKey !== "" && !azureComplete;
 
   return (
     <div className="flex min-h-screen w-full flex-col items-center justify-center gap-2.5 bg-bg-1 bg-[url('/login-bg.png')] bg-cover bg-center bg-no-repeat px-4 py-8">
@@ -149,6 +177,123 @@ export default function SetupProfileStep5Page() {
                           {t("onboarding.step5.comingSoonDesc").replace("{name}", name)}
                         </p>
                       )}
+
+                      {/* Azure needs more than a key: the per-resource
+                          endpoint, an api-version, and at least one
+                          deployment (each becomes a selectable model). */}
+                      {id === "azure" && (
+                        <div className="mt-2 flex flex-col gap-3 rounded-md border border-border-2 p-3">
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[13px] text-text-2">
+                              {t("onboarding.step5.azureEndpoint")}
+                            </label>
+                            <Input
+                              type="text"
+                              placeholder="https://my-resource.openai.azure.com"
+                              value={azureConfig.azureEndpoint ?? ""}
+                              onChange={(e) =>
+                                patchAzure({ azureEndpoint: e.target.value })
+                              }
+                              className="h-10 rounded-md border-border-3 font-mono text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[13px] text-text-2">
+                              {t("onboarding.step5.azureApiVersion")}
+                            </label>
+                            <Input
+                              type="text"
+                              placeholder="2024-10-21"
+                              value={azureConfig.azureApiVersion ?? ""}
+                              onChange={(e) =>
+                                patchAzure({ azureApiVersion: e.target.value })
+                              }
+                              className="h-10 rounded-md border-border-3 font-mono text-sm"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-2">
+                            <label className="text-[13px] text-text-2">
+                              {t("onboarding.step5.azureDeployments")}
+                            </label>
+                            {deployments.map((d, i) => (
+                              <div key={i} className="flex items-center gap-2">
+                                <Input
+                                  type="text"
+                                  placeholder={t(
+                                    "onboarding.step5.azureDeploymentName",
+                                  )}
+                                  value={d.deploymentName}
+                                  onChange={(e) =>
+                                    patchAzure({
+                                      azureDeployments: deployments.map((x, j) =>
+                                        j === i
+                                          ? {
+                                              ...x,
+                                              deploymentName: e.target.value,
+                                            }
+                                          : x,
+                                      ),
+                                    })
+                                  }
+                                  className="h-10 flex-1 rounded-md border-border-3 font-mono text-sm"
+                                />
+                                <Input
+                                  type="text"
+                                  placeholder={t(
+                                    "onboarding.step5.azureDeploymentLabel",
+                                  )}
+                                  value={d.label}
+                                  onChange={(e) =>
+                                    patchAzure({
+                                      azureDeployments: deployments.map((x, j) =>
+                                        j === i
+                                          ? { ...x, label: e.target.value }
+                                          : x,
+                                      ),
+                                    })
+                                  }
+                                  className="h-10 flex-1 rounded-md border-border-3 text-sm"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    patchAzure({
+                                      azureDeployments: deployments.filter(
+                                        (_, j) => j !== i,
+                                      ),
+                                    })
+                                  }
+                                  disabled={deployments.length === 1}
+                                  title={t("onboarding.step5.removeDeployment")}
+                                  aria-label={t("onboarding.step5.removeDeployment")}
+                                  className="shrink-0 px-2 text-text-3 hover:text-danger-6 disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                patchAzure({
+                                  azureDeployments: [
+                                    ...deployments,
+                                    { deploymentName: "", label: "" },
+                                  ],
+                                })
+                              }
+                              className="self-start text-[13px] font-medium text-primary-6 hover:underline"
+                            >
+                              + {t("onboarding.step5.azureAddDeployment")}
+                            </button>
+                          </div>
+                          {azureError && azureIncomplete && (
+                            <p className="text-[12px] font-medium text-danger-6 leading-snug">
+                              {t("onboarding.step5.azureIncomplete")}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -166,7 +311,17 @@ export default function SetupProfileStep5Page() {
             </Button>
             <Button
               className="h-12 w-[127px] rounded-lg bg-primary-6 hover:bg-primary-7 text-text-white"
-              onClick={() => router.push("/setup-profile/step-6")}
+              onClick={() => {
+                // Don't advance with a half-configured Azure key — the BE
+                // would silently drop it. Surface the inline error and
+                // expand the Azure section instead.
+                if (azureIncomplete) {
+                  setAzureError(true);
+                  setExpanded("azure");
+                  return;
+                }
+                router.push("/setup-profile/step-6");
+              }}
             >
               {t("common.continue")}
             </Button>

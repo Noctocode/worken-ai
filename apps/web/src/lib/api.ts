@@ -2954,6 +2954,9 @@ export interface CompleteOnboardingPayload {
   apiKeys?: Partial<
     Record<"openai" | "azure" | "anthropic" | "private-vpc", string>
   >;
+  /** Azure-only companion to apiKeys.azure: endpoint + api-version +
+   *  deployments. The BE drops the azure key if this is incomplete. */
+  azureConfig?: IntegrationConfig;
   /** Visibility for the knowledge files uploaded in step 6. Only
    *  honoured for `profileType: "company"` — personal uploads are
    *  owner-only via the scope filter regardless. Defaults to 'all'. */
@@ -3224,6 +3227,19 @@ export interface PredefinedProvider {
   defaultRateLimit: number;
 }
 
+/** One Azure OpenAI deployment (Azure-side name + picker label). */
+export interface AzureDeployment {
+  deploymentName: string;
+  label: string;
+}
+
+/** Provider-specific config. `{}` for everything except Azure OpenAI. */
+export interface IntegrationConfig {
+  azureEndpoint?: string;
+  azureApiVersion?: string;
+  azureDeployments?: AzureDeployment[];
+}
+
 export interface IntegrationCard {
   id: string | null; // null when no DB row exists yet (untouched predefined)
   providerId: string;
@@ -3234,6 +3250,8 @@ export interface IntegrationCard {
   hasApiKey: boolean;
   isEnabled: boolean;
   isCustom: boolean;
+  /** Provider-specific config. `{}` except for Azure OpenAI. */
+  config: IntegrationConfig;
   /** Whether the provider's native API speaks OpenAI Chat Completions. */
   openAICompatible: boolean;
   /**
@@ -3276,6 +3294,9 @@ export async function upsertIntegration(input: {
    *  in the model picker. The BE auto-creates a bound model_configs
    *  alias so adding a Custom LLM lands in one step. */
   customName?: string;
+  /** Required when providerId === "azure": endpoint + api-version +
+   *  deployments. */
+  config?: IntegrationConfig;
 }): Promise<IntegrationCard> {
   const res = await apiFetch("/integrations", {
     method: "POST",
@@ -3291,7 +3312,11 @@ export async function upsertIntegration(input: {
 
 export async function updateIntegration(
   id: string,
-  input: { isEnabled?: boolean; apiKey?: string | null },
+  input: {
+    isEnabled?: boolean;
+    apiKey?: string | null;
+    config?: IntegrationConfig;
+  },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {
     method: "PATCH",

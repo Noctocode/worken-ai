@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import OpenAI from 'openai';
+import OpenAI, { AzureOpenAI } from 'openai';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
@@ -64,22 +64,46 @@ export interface StreamOptions {
    *  live web. OpenRouter (openai-sdk) path only; ignored for native
    *  Anthropic BYOK. */
   webSearch?: boolean;
+  /** Azure OpenAI ('azure-sdk') only: per-resource endpoint
+   *  (https://{resource}.openai.azure.com). Carried here so the call
+   *  signature stays stable. */
+  azureEndpoint?: string;
+  /** Azure OpenAI ('azure-sdk') only: api-version query param. */
+  azureApiVersion?: string;
 }
 
 @Injectable()
 export class ChatService {
   constructor(private readonly anthropic: AnthropicClientService) {}
 
-  private makeClient(baseURL: string, apiKey: string): OpenAI {
+  private makeClient(
+    baseURL: string,
+    apiKey: string,
+    azure?: { endpoint: string; apiVersion: string; deployment: string },
+  ): OpenAI {
+    const defaultHeaders = {
+      'HTTP-Referer': process.env['SITE_URL'] || '',
+      'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
+    };
+    // Azure OpenAI: same chat.completions wire format, but the SDK needs
+    // the per-resource endpoint, api-version, and deployment (which it
+    // uses as the path segment). AzureOpenAI extends OpenAI, so callers
+    // keep using `.chat.completions.create` unchanged.
+    if (azure) {
+      return new AzureOpenAI({
+        endpoint: azure.endpoint,
+        apiVersion: azure.apiVersion,
+        deployment: azure.deployment,
+        apiKey: apiKey || 'no-auth',
+        defaultHeaders,
+      });
+    }
     return new OpenAI({
       baseURL,
       // OpenAI SDK rejects empty apiKey; pass a placeholder for endpoints
       // that don't need auth (rare — local Ollama, internal vLLM, …).
       apiKey: apiKey || 'no-auth',
-      defaultHeaders: {
-        'HTTP-Referer': process.env['SITE_URL'] || '',
-        'X-Title': process.env['SITE_NAME'] || 'WorkenAI',
-      },
+      defaultHeaders,
     });
   }
 
@@ -131,9 +155,25 @@ export class ChatService {
       });
     }
 
+    // Azure routes through the AzureOpenAI client; `model` is the
+    // deployment name (already resolved by chat-transport). All other
+    // OpenAI-compatible routes keep the plain baseURL client.
+    const azure =
+      kind === 'azure-sdk' && options.azureEndpoint && options.azureApiVersion
+        ? {
+            endpoint: options.azureEndpoint,
+            apiVersion: options.azureApiVersion,
+            deployment: model,
+          }
+        : undefined;
+
     let stream;
     try {
-      stream = await this.makeClient(baseURL, apiKey).chat.completions.create(
+      stream = await this.makeClient(
+        baseURL,
+        apiKey,
+        azure,
+      ).chat.completions.create(
         {
           model,
           messages: [
@@ -148,7 +188,10 @@ export class ChatService {
           ],
           stream: true,
           stream_options: { include_usage: true },
-          ...(enableReasoning && { reasoning: { enabled: true } }),
+          // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
+          // unknown body args, so never send it on the azure-sdk route.
+          ...(enableReasoning &&
+            kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
           // OpenRouter web search plugin — lets the model browse the live
           // web. Kept off the model id (no `:online` suffix) so catalog
           // pricing / observability lookups still match the base model.

@@ -85,6 +85,13 @@
       "when": 1779970000000,
       "tag": "0011_conversation_context",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1779980000000,
+      "tag": "0012_integration_config",
+      "breakpoints": true
     }
   ]
 }

@@ -194,6 +194,11 @@ export default function SetupProfileStep6Page() {
           teamSize: state.teamSize,
           infraChoice: state.infraChoice,
           apiKeys: state.apiKeys,
+          // Azure-only companion to apiKeys.azure (endpoint /
+          // api-version / deployments). The BE drops the azure key if
+          // this is incomplete, so chat never routes to a half-set-up
+          // resource.
+          azureConfig: state.azureConfig,
           // Only meaningful for company branch — BE forces 'all' for
           // personal profile anyway, but we mirror that here so the
           // payload stays clean.
