@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
 } from '@nestjs/common';
+import type { IntegrationConfig } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { IntegrationsService } from './integrations.service.js';
@@ -41,6 +42,8 @@ export class IntegrationsController {
       apiUrl?: string;
       apiKey?: string;
       isEnabled?: boolean;
+      /** Azure only: endpoint + api-version + deployments. */
+      config?: IntegrationConfig;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -52,14 +55,20 @@ export class IntegrationsController {
       apiUrl: body.apiUrl,
       apiKey: body.apiKey,
       isEnabled: body.isEnabled,
+      config: body.config,
     });
   }
 
-  /** Toggle is_enabled and/or update the BYOK key. */
+  /** Toggle is_enabled and/or update the BYOK key (or Azure config). */
   @Patch(':id')
   update(
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: { isEnabled?: boolean; apiKey?: string | null },
+    @Body()
+    body: {
+      isEnabled?: boolean;
+      apiKey?: string | null;
+      config?: IntegrationConfig;
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.integrationsService.update(user.id, id, body);

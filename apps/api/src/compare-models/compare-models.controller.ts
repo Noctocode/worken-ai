@@ -254,7 +254,9 @@ export class CompareModelsController {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Judge transport resolve failed for user ${user.id}: ${msg}`);
+      this.logger.error(
+        `Judge transport resolve failed for user ${user.id}: ${msg}`,
+      );
       throw new ServiceUnavailableException(
         `AI gateway key unavailable: ${msg}`,
       );
@@ -456,7 +458,11 @@ export class CompareModelsController {
               t.apiKey,
               t.baseURL,
               t.kind,
-              { signal },
+              {
+                signal,
+                azureEndpoint: t.azureEndpoint,
+                azureApiVersion: t.azureApiVersion,
+              },
             )) {
               if (event.type === 'error') {
                 attemptError = { message: event.message, status: event.status };
@@ -672,6 +678,8 @@ export class CompareModelsController {
               judgeTransport.apiKey,
               judgeTransport.baseURL,
               judgeTransport.kind,
+              judgeTransport.azureEndpoint,
+              judgeTransport.azureApiVersion,
             );
           // OpenRouter returns cost inline; BYOK / Custom don't, so
           // estimate from the catalog. Either way the judge call's

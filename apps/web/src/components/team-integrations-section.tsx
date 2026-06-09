@@ -22,6 +22,7 @@ import {
   type TeamIntegrationLink,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 
 /* ─── Icons ──────────────────────────────────────────────────────────── */
 
@@ -190,6 +191,9 @@ export function TeamIntegrationsSection({
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: linkableKey });
       queryClient.invalidateQueries({ queryKey: linksKey });
+      // Linking/unlinking a team BYOK provider changes the effective
+      // model list for every member — refresh the arena/picker cache.
+      invalidateModelMutations(queryClient);
     },
   });
 
@@ -223,6 +227,9 @@ export function TeamIntegrationsSection({
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: linksKey });
+      // Enabling/disabling a team link flips whether its provider's
+      // models appear in the effective list — keep the arena in sync.
+      invalidateModelMutations(queryClient);
     },
   });
 

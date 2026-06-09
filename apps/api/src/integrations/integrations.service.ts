@@ -10,6 +10,7 @@ import {
   integrations,
   modelConfigs,
   observabilityEvents,
+  type IntegrationConfig,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
@@ -18,6 +19,7 @@ import {
   isPredefinedProvider,
   type PredefinedProvider,
 } from './predefined-providers.js';
+import { parseAzureConfig } from './azure-validation.js';
 
 interface IntegrationStats {
   successRate: number; // 0..1 over last 30 days
@@ -59,9 +61,27 @@ export interface IntegrationView {
    * integration. Drives the "delete will unlink N aliases" warning.
    */
   boundAliasCount: number;
+  /**
+   * Provider-specific config. `{}` for everything except Azure OpenAI,
+   * where it carries the endpoint / api-version / deployments the
+   * Settings dialog edits. Never holds secrets.
+   */
+  config: IntegrationConfig;
   stats: IntegrationStats;
   createdAt: string | null;
   updatedAt: string | null;
+}
+
+/** Validate + normalize an Azure OpenAI integration's config. Throws
+ *  BadRequestException on anything that would make chat-transport fall
+ *  back to OpenRouter (missing endpoint / api-version / deployments).
+ *  Shares the rule set with onboarding via `parseAzureConfig`. */
+function validateAzureConfig(
+  config: IntegrationConfig | undefined,
+): IntegrationConfig {
+  const result = parseAzureConfig(config);
+  if (!result.ok) throw new BadRequestException(result.reason);
+  return result.config;
 }
 
 @Injectable()
@@ -238,6 +258,7 @@ export class IntegrationsService {
         openAICompatible: p.openAICompatible,
         byokSupported: p.byokSupported,
         boundAliasCount: 0,
+        config: row?.config ?? {},
         stats: buildStats(p.id),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
@@ -270,6 +291,7 @@ export class IntegrationsService {
         openAICompatible: true,
         byokSupported: true,
         boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
+        config: r.config ?? {},
         stats: buildStats('custom'),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
@@ -297,12 +319,19 @@ export class IntegrationsService {
        *  auto-creates a bound `model_configs` alias so the user
        *  doesn't have to take a second trip through /catalog. */
       customName?: string | null;
+      /** Provider-specific config. Required (and validated) when
+       *  providerId === "azure": endpoint + api-version + deployments. */
+      config?: IntegrationConfig;
     },
   ): Promise<IntegrationView> {
     const isCustom = input.providerId === 'custom';
+    const isAzure = input.providerId === 'azure';
     if (!isCustom && !isPredefinedProvider(input.providerId)) {
       throw new BadRequestException(`Unknown provider: ${input.providerId}`);
     }
+    // Azure needs a complete config (endpoint / api-version /
+    // deployments) or chat would silently fall back to OpenRouter.
+    const azureConfig = isAzure ? validateAzureConfig(input.config) : {};
     if (isCustom) {
       if (!input.apiUrl?.trim()) {
         throw new BadRequestException('Custom LLM requires apiUrl');
@@ -398,6 +427,12 @@ export class IntegrationsService {
       if (input.apiKey !== undefined) {
         conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
       }
+      // Azure config is validated above; persist it on conflict too so
+      // re-saving from the Settings dialog updates the endpoint /
+      // deployments. Non-azure providers never carry a config.
+      if (isAzure) {
+        conflictUpdates.config = azureConfig;
+      }
 
       await this.db
         .insert(integrations)
@@ -408,6 +443,7 @@ export class IntegrationsService {
           apiUrl: null,
           apiKeyEncrypted,
           isEnabled: input.isEnabled ?? true,
+          config: azureConfig,
         })
         .onConflictDoUpdate({
           target: [integrations.ownerId, integrations.providerId],
@@ -426,7 +462,11 @@ export class IntegrationsService {
   async update(
     userId: string,
     id: string,
-    input: { isEnabled?: boolean; apiKey?: string | null },
+    input: {
+      isEnabled?: boolean;
+      apiKey?: string | null;
+      config?: IntegrationConfig;
+    },
   ): Promise<IntegrationView> {
     const [row] = await this.db
       .select()
@@ -455,6 +495,13 @@ export class IntegrationsService {
       updates.apiKeyEncrypted = input.apiKey
         ? this.encryptionService.encrypt(input.apiKey)
         : null;
+    }
+    // Azure config edits (endpoint / api-version / deployments) come
+    // through here when the Settings dialog patches an existing row.
+    // Validated against the same rules as upsert; ignored for providers
+    // that don't carry a config.
+    if (input.config !== undefined && row.providerId === 'azure') {
+      updates.config = validateAzureConfig(input.config);
     }
     await this.db
       .update(integrations)

@@ -40,6 +40,15 @@ export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
     baseURL: 'https://api.openai.com/v1',
     openAICompatible: true,
   },
+  // Azure OpenAI: OpenAI wire-format, but the endpoint is per-resource
+  // and the "model" is a user-named deployment. baseURL is a placeholder
+  // — the real endpoint + api-version + deployment list come from
+  // `integrations.config` and are honored via the AzureOpenAI client
+  // (chat-transport special-cases `provider === 'azure'`).
+  azure: {
+    baseURL: '',
+    openAICompatible: true,
+  },
   deepseek: {
     baseURL: 'https://api.deepseek.com/v1',
     openAICompatible: true,

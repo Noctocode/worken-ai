@@ -947,6 +947,23 @@ export const apiKeys = pgTable(
   ],
 );
 
+/** One Azure OpenAI deployment the user has created in their resource.
+ *  `deploymentName` is the Azure-side name (used as the `model` arg on
+ *  the wire); `label` is what we show in the model picker. */
+export type AzureDeployment = { deploymentName: string; label: string };
+
+/** Provider-specific config that doesn't fit the flat columns. Empty
+ *  `{}` for every provider except Azure OpenAI, which needs a
+ *  per-resource endpoint, an api-version, and the list of deployments
+ *  to surface as selectable models. Not secret (all visible in the
+ *  Azure portal), so stored as plaintext JSON — only the API key in
+ *  `apiKeyEncrypted` is encrypted. */
+export type IntegrationConfig = {
+  azureEndpoint?: string;
+  azureApiVersion?: string;
+  azureDeployments?: AzureDeployment[];
+};
+
 export const integrations = pgTable(
   "integrations",
   {
@@ -965,6 +982,11 @@ export const integrations = pgTable(
     apiUrl: text("api_url"),
     apiKeyEncrypted: text("api_key_encrypted"),
     isEnabled: boolean("is_enabled").notNull().default(true),
+    // Provider-specific extras (Azure endpoint / api-version /
+    // deployments). `{}` for every other provider. Azure keeps
+    // `apiUrl` NULL so it stays covered by the predefined unique
+    // indexes below — its endpoint lives here, not in `apiUrl`.
+    config: jsonb("config").$type<IntegrationConfig>().notNull().default({}),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

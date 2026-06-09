@@ -54,6 +54,12 @@ const PROVIDERS_RAW: Omit<
     iconHint: 'chatgpt',
   },
   {
+    id: 'azure',
+    displayName: 'Azure OpenAI',
+    description: 'OpenAI models on your own Azure resource + deployments.',
+    iconHint: 'azure',
+  },
+  {
     id: 'deepseek',
     displayName: 'Deepseek',
     description: 'Deepseek V4 family — fast and inexpensive.',

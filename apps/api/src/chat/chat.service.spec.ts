@@ -1,5 +1,29 @@
 import { ChatService, type ChatStreamEvent } from './chat.service.js';
 
+// Mock the `openai` package so the Azure-path tests can assert how the
+// AzureOpenAI client is constructed (endpoint / api-version / deployment
+// → request URL, apiKey → `api-key` header) without a real SDK or
+// network. The non-azure tests below override `makeClient` directly, so
+// they never touch this mock. `mock`-prefixed names are referenced from
+// the (hoisted) factory, which jest permits.
+const mockAzureCtor = jest.fn();
+const mockAzureCreate = jest.fn();
+jest.mock('openai', () => ({
+  __esModule: true,
+  default: class MockOpenAI {
+    chat = { completions: { create: jest.fn() } };
+    constructor(_opts: unknown) {
+      void _opts;
+    }
+  },
+  AzureOpenAI: class MockAzureOpenAI {
+    chat = { completions: { create: mockAzureCreate } };
+    constructor(opts: unknown) {
+      mockAzureCtor(opts);
+    }
+  },
+}));
+
 /**
  * Stream tests focus on `sendMessageStream` — the seam where SDK
  * chunk shapes are mapped onto our transport-neutral
@@ -380,5 +404,82 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       .join('');
     expect(visible).toBe('prepost');
     expect(thinking).toBe('secret');
+  });
+});
+
+/**
+ * Azure BYOK path. Locks the per-resource routing contract: the
+ * AzureOpenAI client must be built from the integration's endpoint +
+ * api-version + deployment (which the SDK turns into
+ * `{endpoint}/openai/deployments/{deployment}/chat/completions?api-version=…`
+ * with an `api-key` header — NOT `Authorization: Bearer`), and the
+ * OpenRouter-only `reasoning` param must never reach Azure.
+ */
+describe('ChatService.sendMessageStream (azure-sdk path)', () => {
+  const ENDPOINT = 'https://workenai-aoai.openai.azure.com/';
+  const API_VERSION = '2024-10-21';
+  const DEPLOYMENT = 'gpt-4o';
+  const KEY = 'azure-secret-key';
+
+  beforeEach(() => {
+    mockAzureCtor.mockClear();
+    mockAzureCreate.mockClear();
+    mockAzureCreate.mockResolvedValue({
+      // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub
+      [Symbol.asyncIterator]: async function* () {
+        yield { choices: [{ delta: { content: 'hi' } }] };
+      },
+    });
+  });
+
+  const runAzure = (enableReasoning: boolean) =>
+    collect(
+      new ChatService({
+        sendMessage: jest.fn(),
+        sendMessageStream: jest.fn(),
+      } as never).sendMessageStream(
+        [{ role: 'user', content: 'hi' }],
+        DEPLOYMENT, // model === deployment (transport resolved bareModel)
+        enableReasoning,
+        undefined, // context
+        KEY, // apiKey
+        '', // baseURL (unused on the azure route)
+        'azure-sdk',
+        { azureEndpoint: ENDPOINT, azureApiVersion: API_VERSION },
+      ),
+    );
+
+  it('builds the AzureOpenAI client from endpoint + api-version + deployment + apiKey', async () => {
+    const events = await runAzure(false);
+
+    expect(mockAzureCtor).toHaveBeenCalledTimes(1);
+    expect(mockAzureCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        endpoint: ENDPOINT,
+        apiVersion: API_VERSION,
+        // becomes the `…/deployments/{deployment}/…` URL path segment
+        deployment: DEPLOYMENT,
+        // passing apiKey (not azureADTokenProvider) makes the SDK send
+        // the `api-key` header rather than `Authorization: Bearer`
+        apiKey: KEY,
+      }),
+    );
+
+    // The request body's model is the deployment too.
+    expect(mockAzureCreate).toHaveBeenCalledTimes(1);
+    const body = mockAzureCreate.mock.calls[0][0] as { model: string };
+    expect(body.model).toBe(DEPLOYMENT);
+
+    expect(events).toEqual([{ type: 'content', delta: 'hi' }]);
+  });
+
+  it('never sends the OpenRouter-only `reasoning` param to Azure', async () => {
+    await runAzure(true); // enableReasoning on — must still be stripped for azure
+    const body = mockAzureCreate.mock.calls[0][0] as {
+      reasoning?: unknown;
+      plugins?: unknown;
+    };
+    expect(body.reasoning).toBeUndefined();
+    expect(body.plugins).toBeUndefined();
   });
 });
