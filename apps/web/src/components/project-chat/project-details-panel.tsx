@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BookOpen,
   Check,
   ChevronDown,
+  Download,
   FileText,
   Loader2,
   PanelRightClose,
   PanelRightOpen,
+  Paperclip,
   Pencil,
   Sparkles,
   Users,
@@ -21,10 +23,12 @@ import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
+  downloadKnowledgeFile,
   fetchPrompts,
   fetchProjectKnowledgeFiles,
   fetchProjectMembers,
   updateConversationContext,
+  type ChatAttachment,
   type ConversationWithMessages,
   type ProjectMember,
 } from "@/lib/api";
@@ -153,6 +157,32 @@ export function ProjectDetailsPanel({
   const [draft, setDraft] = useState("");
   const conversationId = conversation?.id ?? null;
   const context = conversation?.context ?? null;
+
+  // Files in THIS chat's context — the unique attachments across all of
+  // the conversation's messages (metadata.attachments). These are the
+  // documents the model actually reads for this chat (test.docx etc.),
+  // distinct from the project-wide Data Sources below.
+  const chatFiles = useMemo<ChatAttachment[]>(() => {
+    const msgs = conversation?.messages ?? [];
+    const seen = new Set<string>();
+    const out: ChatAttachment[] = [];
+    for (const m of msgs) {
+      const meta =
+        m.metadata && typeof m.metadata === "object"
+          ? (m.metadata as Record<string, unknown>)
+          : null;
+      const atts = Array.isArray(meta?.attachments)
+        ? (meta.attachments as ChatAttachment[])
+        : [];
+      for (const a of atts) {
+        if (a && typeof a.fileId === "string" && !seen.has(a.fileId)) {
+          seen.add(a.fileId);
+          out.push({ fileId: a.fileId, name: a.name, fileType: a.fileType });
+        }
+      }
+    }
+    return out;
+  }, [conversation?.messages]);
 
   // Leave edit mode whenever the active conversation changes so a
   // half-typed draft can't bleed across chats. Adjusting state during
@@ -300,6 +330,42 @@ export function ProjectDetailsPanel({
                 {t("projDetails.editContext")}
               </button>
             </div>
+          )}
+        </Section>
+
+        {/* ── Files in this chat ────────────────────────────────── */}
+        <Section
+          icon={Paperclip}
+          title={t("projDetails.chatFiles")}
+          defaultOpen={chatFiles.length > 0}
+        >
+          {chatFiles.length === 0 ? (
+            <p className="text-[12px] text-text-3">
+              {t("projDetails.noChatFiles")}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1.5">
+              {chatFiles.map((f) => (
+                <li key={f.fileId}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      downloadKnowledgeFile(f.fileId, f.name).catch(() =>
+                        toast.error(t("projDetails.chatFileDownloadFailed")),
+                      )
+                    }
+                    title={t("projDetails.chatFileDownload")}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2 text-left transition-colors hover:border-primary-5"
+                  >
+                    <FileText className="h-4 w-4 shrink-0 text-text-3" />
+                    <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-text-1">
+                      {f.name}
+                    </span>
+                    <Download className="h-3.5 w-3.5 shrink-0 text-text-3" />
+                  </button>
+                </li>
+              ))}
+            </ul>
           )}
         </Section>
 
