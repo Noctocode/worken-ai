@@ -13,6 +13,7 @@ import {
   PanelRightOpen,
   Paperclip,
   Pencil,
+  ScrollText,
   Sparkles,
   Users,
   Wrench,
@@ -22,8 +23,10 @@ import { toast } from "sonner";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { AddDocumentDialog } from "@/components/add-document-dialog";
 import {
   downloadKnowledgeFile,
+  fetchDocuments,
   fetchPrompts,
   fetchProjectKnowledgeFiles,
   fetchProjectMembers,
@@ -207,7 +210,17 @@ export function ProjectDetailsPanel({
       toast.error(err.message || t("projDetails.contextSaveFailed")),
   });
 
+  /* Project-level context = the pasted-text "Manage Context" documents
+   *  (shared across every chat in the project). Opened for editing via
+   *  the same AddDocumentDialog the dashboard uses. */
+  const [manageContextOpen, setManageContextOpen] = useState(false);
+
   /* Section data — fetched only when the panel is open. */
+  const { data: documents = [], isLoading: documentsLoading } = useQuery({
+    queryKey: ["documents", projectId],
+    queryFn: () => fetchDocuments(projectId),
+    enabled: open,
+  });
   const { data: prompts = [], isLoading: promptsLoading } = useQuery({
     queryKey: ["prompts"],
     queryFn: fetchPrompts,
@@ -264,7 +277,43 @@ export function ProjectDetailsPanel({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {/* ── Chat Context ──────────────────────────────────────── */}
+        {/* ── Project context (Manage Context) ──────────────────── */}
+        <Section
+          icon={ScrollText}
+          title={t("projDetails.projectContext")}
+          defaultOpen
+        >
+          <div className="space-y-2">
+            {documentsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin text-text-3" />
+            ) : documents.length === 0 ? (
+              <p className="text-[12px] text-text-3">
+                {t("projDetails.noProjectContext")}
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {documents.map((d) => (
+                  <p
+                    key={d.id}
+                    className="whitespace-pre-wrap rounded-lg border border-border-2 bg-bg-1 p-2.5 text-[12px] leading-relaxed text-text-2"
+                  >
+                    {d.content}
+                  </p>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setManageContextOpen(true)}
+              className="inline-flex cursor-pointer items-center gap-1.5 text-[12px] font-medium text-primary-6 hover:text-primary-7"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+              {t("projDetails.manageContext")}
+            </button>
+          </div>
+        </Section>
+
+        {/* ── Chat Context (per-conversation) ───────────────────── */}
         <Section icon={Sparkles} title={t("projDetails.chatContext")} defaultOpen>
           {!conversationId ? (
             <p className="text-[12px] text-text-3">
@@ -507,6 +556,13 @@ export function ProjectDetailsPanel({
         </Section>
         )}
       </div>
+
+      {/* Project context editor — same dialog the dashboard uses. */}
+      <AddDocumentDialog
+        projectId={projectId}
+        open={manageContextOpen}
+        onOpenChange={setManageContextOpen}
+      />
     </div>
   );
 }
