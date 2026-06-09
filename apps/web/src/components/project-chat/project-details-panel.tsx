@@ -9,8 +9,8 @@ import {
   Download,
   FileText,
   Loader2,
-  PanelRightClose,
-  PanelRightOpen,
+  ChevronsLeft,
+  ChevronsRight,
   Paperclip,
   Pencil,
   ScrollText,
@@ -280,26 +280,28 @@ export function ProjectDetailsPanel({
     );
   }, [open, openToken, targetSection]);
 
-  /* Section data — fetched only when the panel is open. */
+  /* Section data — fetched when the panel is visible in either layout
+   *  (xl inline expanded OR the <xl slide-over drawer). */
+  const panelVisible = open || !!mobileOpen;
   const { data: documents = [], isLoading: documentsLoading } = useQuery({
     queryKey: ["documents", projectId],
     queryFn: () => fetchDocuments(projectId),
-    enabled: open,
+    enabled: panelVisible,
   });
   const { data: prompts = [], isLoading: promptsLoading } = useQuery({
     queryKey: ["prompts"],
     queryFn: fetchPrompts,
-    enabled: open,
+    enabled: panelVisible,
   });
   const { data: files = [], isLoading: filesLoading } = useQuery({
     queryKey: ["project-knowledge-files", projectId],
     queryFn: () => fetchProjectKnowledgeFiles(projectId),
-    enabled: open,
+    enabled: panelVisible,
   });
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["project-members", projectId],
     queryFn: () => fetchProjectMembers(projectId),
-    enabled: open && !isPersonal,
+    enabled: panelVisible && !isPersonal,
   });
 
   const AI_TOOLS = [
@@ -684,7 +686,7 @@ export function ProjectDetailsPanel({
             aria-label={t("projDetails.expand")}
             className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
           >
-            <PanelRightOpen className="h-5 w-5" />
+            <ChevronsLeft className="h-5 w-5" />
           </button>
           <div className="my-1 h-px w-6 bg-border-2" />
           {railSections.map((s) => (
@@ -712,7 +714,7 @@ export function ProjectDetailsPanel({
               title={t("projDetails.collapse")}
               className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
             >
-              <PanelRightClose className="h-5 w-5" />
+              <ChevronsRight className="h-5 w-5" />
             </button>
           </div>
           {sectionsBody}

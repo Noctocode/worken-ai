@@ -16,8 +16,8 @@ import {
   FileText,
   Globe,
   Loader2,
-  PanelLeftOpen,
-  PanelRightOpen,
+  PanelLeft,
+  PanelRight,
   Plus,
   Square,
   UserPlus,
@@ -852,14 +852,14 @@ export default function ProjectChatPage() {
             aria-label={t("chatHist.title")}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 lg:hidden"
           >
-            <PanelLeftOpen className="h-5 w-5" />
+            <PanelLeft className="h-5 w-5" />
           </button>
           <button
             type="button"
             onClick={handleNewChat}
             title={t("chatHist.newConvo")}
             aria-label={t("chatHist.newConvo")}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 lg:hidden"
           >
             <Plus className="h-5 w-5" />
           </button>
@@ -870,7 +870,7 @@ export default function ProjectChatPage() {
             aria-label={t("projDetails.title")}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
           >
-            <PanelRightOpen className="h-5 w-5" />
+            <PanelRight className="h-5 w-5" />
           </button>
 
           {/* Phone-only (<md) overflow: the appbar (model / web search /
