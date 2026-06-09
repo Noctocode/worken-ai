@@ -313,6 +313,41 @@ export function ProjectDetailsPanel({
           </div>
         </Section>
 
+        {/* ── Data Sources ──────────────────────────────────────── */}
+        <Section icon={FileText} title={t("projDetails.dataSources")} defaultOpen>
+          {filesLoading ? (
+            <Loader2 className="h-4 w-4 animate-spin text-text-3" />
+          ) : files.length === 0 ? (
+            <p className="text-[12px] text-text-3">
+              {t("projDetails.noDataSources")}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-2">
+              {files.map((f) => (
+                <li
+                  key={f.fileId}
+                  className="flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2"
+                >
+                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-medium text-text-1">
+                      {f.name}
+                    </p>
+                    <p className="text-[11px] text-text-3">
+                      {formatBytes(f.sizeBytes)} • {fileExt(f.name, f.fileType)} •{" "}
+                      {new Date(f.attachedAt).toLocaleDateString(undefined, {
+                        year: "numeric",
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
         {/* ── Chat Context (per-conversation) ───────────────────── */}
         <Section icon={Sparkles} title={t("projDetails.chatContext")} defaultOpen>
           {!conversationId ? (
@@ -443,40 +478,6 @@ export function ProjectDetailsPanel({
           )}
         </Section>
 
-        {/* ── Data Sources ──────────────────────────────────────── */}
-        <Section icon={FileText} title={t("projDetails.dataSources")}>
-          {filesLoading ? (
-            <Loader2 className="h-4 w-4 animate-spin text-text-3" />
-          ) : files.length === 0 ? (
-            <p className="text-[12px] text-text-3">
-              {t("projDetails.noDataSources")}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {files.map((f) => (
-                <li
-                  key={f.fileId}
-                  className="flex items-start gap-2 rounded-lg border border-border-2 bg-bg-white px-2.5 py-2"
-                >
-                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-3" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[12px] font-medium text-text-1">
-                      {f.name}
-                    </p>
-                    <p className="text-[11px] text-text-3">
-                      {formatBytes(f.sizeBytes)} • {fileExt(f.name, f.fileType)} •{" "}
-                      {new Date(f.attachedAt).toLocaleDateString(undefined, {
-                        year: "numeric",
-                        month: "short",
-                        day: "numeric",
-                      })}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
 
         {/* ── AI Tools (coming soon) ────────────────────────────── */}
         <Section icon={Wrench} title={t("projDetails.aiTools")}>
