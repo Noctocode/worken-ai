@@ -195,7 +195,10 @@ export class ModelsService {
    * the user's custom name and (if present) Custom LLM binding take
    * precedence.
    */
-  async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
+  async listEffectiveForUser(
+    userId: string,
+    scope?: { teamId: string | null },
+  ): Promise<EffectiveModel[]> {
     // Aliases the user can pick from. Scope rules (see
     // `resolveAliasScopeFilter` for the full breakdown):
     //   - company profile → org-wide `teamId IS NULL` pool +
@@ -204,11 +207,22 @@ export class ModelsService {
     //     team-scoped rows
     // The team-scope branch is what makes Custom LLMs that admin
     // shared with TEAM_X show up in a member's picker.
-    const scopeFilter = await this.resolveAliasScopeFilter(userId);
+    //
+    // When an explicit `scope` is passed (the Create Project picker),
+    // narrow to exactly that scope so a personal project shows only the
+    // caller's personal keys and a team project shows only what's
+    // enabled at THAT team — and a Custom LLM that's both personal AND
+    // team-linked doesn't appear twice. No scope = the full union used
+    // by the arena / chat pickers (unchanged).
+    const aliasScopeFilter = scope
+      ? scope.teamId === null
+        ? and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
+        : eq(modelConfigs.teamId, scope.teamId)
+      : await this.resolveAliasScopeFilter(userId);
     const aliasRows = await this.db
       .select()
       .from(modelConfigs)
-      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
+      .where(and(eq(modelConfigs.isActive, true), aliasScopeFilter));
 
     // Team list still needed below for the BYOK branch — pull it
     // here rather than reaching into the helper internals.
@@ -222,12 +236,30 @@ export class ModelsService {
       .select({ id: teams.id })
       .from(teams)
       .where(eq(teams.ownerId, userId));
-    const teamIds = Array.from(
+    const allTeamIds = Array.from(
       new Set([
         ...teamMemberships.map((r) => r.teamId),
         ...ownedTeams.map((t) => t.id),
       ]),
     );
+    // Defensive authz: a team scope for a team the caller isn't a member
+    // of (or owner) returns nothing rather than leaking that team's pool.
+    // The aliasRows query above already filtered by teamId, but we drop
+    // its result here so nothing reaches the client.
+    if (scope?.teamId && !allTeamIds.includes(scope.teamId)) {
+      return [];
+    }
+    // Which teams' linked BYOK/Azure keys to surface for THIS scope, and
+    // whether to include the caller's personal keys:
+    //   - no scope     → every team + personal (union)
+    //   - personal     → personal only, no team-linked keys
+    //   - team X        → team X only, no personal keys
+    const teamIds = scope
+      ? scope.teamId
+        ? [scope.teamId]
+        : []
+      : allTeamIds;
+    const includePersonalProviders = !scope || scope.teamId === null;
 
     // Every predefined provider that's enabled either personally OR
     // at the scope of any team the user is in. Without the team
@@ -275,7 +307,10 @@ export class ModelsService {
             )
         : [];
     const enabledProviders = new Set(
-      [...personalEnabledRows, ...teamEnabledRows]
+      [
+        ...(includePersonalProviders ? personalEnabledRows : []),
+        ...teamEnabledRows,
+      ]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -319,7 +354,9 @@ export class ModelsService {
               )
           : [];
       azureConfigs.push(
-        ...personalAzure.map((r) => r.config),
+        ...(includePersonalProviders
+          ? personalAzure.map((r) => r.config)
+          : []),
         ...teamAzure.map((r) => r.config),
       );
     }

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ModelsService } from './models.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -30,10 +31,24 @@ export class ModelsController {
    * Per-user effective model list for FE pickers (arena / project chat).
    * Combines the user's own model_configs aliases with any catalog
    * model for a provider where the user has an enabled BYOK key.
+   *
+   * Optional `scope` narrows the pool for the Create Project picker:
+   *   - "personal"  → only the caller's personal keys/aliases
+   *   - "<teamId>"  → only what's enabled at that team
+   *   - omitted     → the full union (arena / chat behaviour)
    */
   @Get('effective')
-  effective(@CurrentUser() user: AuthenticatedUser) {
-    return this.modelsService.listEffectiveForUser(user.id);
+  effective(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('scope') scope?: string,
+  ) {
+    const resolvedScope =
+      !scope
+        ? undefined
+        : scope === 'personal'
+          ? { teamId: null }
+          : { teamId: scope };
+    return this.modelsService.listEffectiveForUser(user.id, resolvedScope);
   }
 
   @Post()

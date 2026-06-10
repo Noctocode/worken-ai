@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   createProject,
+  fetchEffectiveModels,
   fetchTeams,
   // Kept for the (commented-out) "invite members on project create" flow.
   // The current flow attaches the project to an existing team instead, so
@@ -35,7 +36,6 @@ import {
 } from "@/lib/api";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
-import { useUserModels } from "@/lib/hooks/use-user-models";
 import { AGENTS } from "@/lib/agents";
 import { AgentGrid } from "@/components/agent-grid";
 import { useLanguage } from "@/lib/i18n";
@@ -179,9 +179,19 @@ export default function CreateProjectPage() {
   });
 
   const { models: availableModels } = useAvailableModels();
-  // Admin-configured models (aliases from Team → Models). Source for the
-  // "Custom" tab. Routing marker tells the user whose key bills the call.
-  const { effective: configuredModels } = useUserModels();
+  // Models for the "Custom" tab, scoped to the project type the user is
+  // creating: a personal project shows only the caller's personal keys/
+  // aliases; a team project shows only what's enabled at THAT team. This
+  // is what keeps a Custom LLM that's both personal and team-linked from
+  // appearing twice, and hides personal-only keys from team projects.
+  const customScope =
+    projectType === "team" ? selectedTeamId : "personal";
+  const { data: configuredModels = [] } = useQuery({
+    queryKey: ["models", "effective", customScope || "none"],
+    queryFn: () => fetchEffectiveModels(customScope),
+    // A team project with no team picked yet has nothing to scope to.
+    enabled: projectType === "personal" || !!selectedTeamId,
+  });
   const routingSuffix = (routing: string): string =>
     routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
 

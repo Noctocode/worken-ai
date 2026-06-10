@@ -47,8 +47,10 @@ export function useUserModels(): {
   getLabel: (id: string) => string;
 } {
   const { data, isLoading, isFetching, error } = useQuery({
+    // Unscoped (full union) — the arena / chat pickers. Wrapped so React
+    // Query's context arg isn't passed as the optional `scope`.
     queryKey: ["models", "effective"],
-    queryFn: fetchEffectiveModels,
+    queryFn: () => fetchEffectiveModels(),
     staleTime: STALE_TIME_MS,
   });
 
