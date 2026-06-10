@@ -251,7 +251,7 @@ export class OneDriveImportService {
     await this.oauth.markSynced(userId);
 
     if (result.added > 0) {
-      this.ingestion.ingestPendingFilesForUser(userId);
+      this.ingestion.ingestPendingFilesForUser(userId, { fromImport: true });
     }
 
     return result;
@@ -653,7 +653,7 @@ export class OneDriveImportService {
       await this.oauth.markSynced(userId);
 
       if (totalInserted > 0) {
-        this.ingestion.ingestPendingFilesForUser(userId);
+        this.ingestion.ingestPendingFilesForUser(userId, { fromImport: true });
       }
 
       job.progress.phase = 'done';

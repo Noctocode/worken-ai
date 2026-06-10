@@ -8,6 +8,7 @@ import {
   X,
   Users,
   CircleDollarSign,
+  FileCheck2,
   FileWarning,
   FolderOpen,
   Loader2,
@@ -61,6 +62,9 @@ function NotificationIcon({ type }: { type: Notification["type"] }) {
     return (
       <FileWarning className="h-4 w-4 text-warning-7" strokeWidth={2} />
     );
+  }
+  if (type === "knowledge_import_complete") {
+    return <FileCheck2 className="h-4 w-4 text-success-7" strokeWidth={2} />;
   }
   if (type === "project_created" || type === "project_deleted") {
     return <FolderOpen className="h-4 w-4 text-text-3" strokeWidth={2} />;
@@ -171,13 +175,22 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
   // Bell badge — sourced from a dedicated unread-count endpoint
   // (SELECT count → indexed cheap). Polled aggressively at 5s so
   // server-generated notifications (budget alerts, account changes,
-  // file ingestion failures, etc.) surface on the badge within a
-  // few seconds of being created. refetchOnWindowFocus catches the
-  // common "alt-tab back into the app" case immediately.
+  // background imports finishing, etc.) surface on the badge within a
+  // few seconds of being created. `refetchIntervalInBackground` keeps
+  // it polling even when the tab is hidden — without it react-query
+  // pauses the timer, so a long Drive/OneDrive import that finishes
+  // while the user is on another tab wouldn't light the badge until
+  // they came back (felt like a multi-minute delay). refetchOnWindowFocus
+  // still catches the alt-tab-back case instantly.
   const { data: unread } = useQuery({
     queryKey: ["notifications", "unread"],
     queryFn: fetchNotificationsUnreadCount,
-    refetchInterval: 5_000,
+    // Foreground: snappy 5s. Background (tab hidden): back off to 30s so
+    // idle tabs aren't pinging /unread every 5s forever — still catches a
+    // background import finishing within ~30s, and refetchOnWindowFocus
+    // makes it instant the moment the user returns to the tab.
+    refetchInterval: () => (document.hidden ? 30_000 : 5_000),
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
   });
   const unreadCount = unread?.count ?? 0;
