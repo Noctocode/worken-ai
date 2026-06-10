@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import type { Pool } from 'pg';
 import * as fs from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -36,6 +37,11 @@ const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 /** File sources that come from an external "import" flow (vs. a manual
  *  upload or a single re-ingest). Drives the import-complete notify. */
 const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
+
+/** Namespace (classid) for the per-user ingestion Postgres advisory lock.
+ *  Arbitrary, just has to be stable + not collide with other advisory
+ *  locks in the app. Paired with hashtext(userId) as the objid. */
+const INGESTION_LOCK_NAMESPACE = 4271;
 
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
@@ -137,7 +143,51 @@ export class KnowledgeIngestionService {
       });
   }
 
+  /**
+   * Serialize ingestion across processes with a per-user Postgres
+   * advisory lock (held on a dedicated pooled connection so the unlock
+   * runs on the same session). The in-memory `ingesting` Set already
+   * dedupes within this process; this guards multi-instance deploys
+   * where two API instances could otherwise each drain the same user's
+   * queue and fire duplicate / split completion notifications. If the
+   * lock is held elsewhere we skip — the holder polls `pending` and will
+   * drain the rows we just added too.
+   */
   private async runUserFileIngestion(userId: string): Promise<void> {
+    // drizzle's node-postgres driver exposes the underlying pool on
+    // `$client`; the typed Database alias doesn't surface it, hence the cast.
+    const pool = (this.db as unknown as { $client: Pool }).$client;
+    const lockClient = await pool.connect();
+    let locked = false;
+    try {
+      const res = await lockClient.query<{ locked: boolean }>(
+        'SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked',
+        [INGESTION_LOCK_NAMESPACE, userId],
+      );
+      locked = res.rows[0]?.locked === true;
+      if (!locked) {
+        this.logger.log(
+          `Ingestion already running for user ${userId} on another instance; skipping (holder will drain the queue).`,
+        );
+        return;
+      }
+      await this.drainUserQueue(userId);
+    } finally {
+      if (locked) {
+        try {
+          await lockClient.query(
+            'SELECT pg_advisory_unlock($1, hashtext($2))',
+            [INGESTION_LOCK_NAMESPACE, userId],
+          );
+        } catch {
+          // best-effort — the lock also releases when the session ends
+        }
+      }
+      lockClient.release();
+    }
+  }
+
+  private async drainUserQueue(userId: string): Promise<void> {
     // Process pending files in small batches so the FE shows a clear
     // queue progression ("Queued" → "Adding" → "In context") instead
     // of flipping every file to "Adding" at once. Each iteration claims
