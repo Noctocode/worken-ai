@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, asc, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import type { Pool } from 'pg';
 import * as fs from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -33,6 +34,15 @@ const ONBOARDING_FOLDER_NAME = 'Onboarding';
  */
 const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
+/** File sources that come from an external "import" flow (vs. a manual
+ *  upload or a single re-ingest). Drives the import-complete notify. */
+const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
+
+/** Namespace (classid) for the per-user ingestion Postgres advisory lock.
+ *  Arbitrary, just has to be stable + not collide with other advisory
+ *  locks in the app. Paired with hashtext(userId) as the objid. */
+const INGESTION_LOCK_NAMESPACE = 4271;
+
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
@@ -64,6 +74,15 @@ export interface IngestionAggregate {
 @Injectable()
 export class KnowledgeIngestionService {
   private readonly logger = new Logger(KnowledgeIngestionService.name);
+  // Per-user ingestion concurrency control. Only one background run per
+  // user at a time; overlapping triggers set `rerunRequested` so the
+  // active run re-scans instead of starting a second loop (which would
+  // split tallies + fire duplicate notifications). `importNotifyPending`
+  // marks runs that an external import fed, so re-ingests / manual
+  // uploads don't masquerade as "Import complete".
+  private readonly ingesting = new Set<string>();
+  private readonly rerunRequested = new Set<string>();
+  private readonly importNotifyPending = new Set<string>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -91,16 +110,84 @@ export class KnowledgeIngestionService {
    * caught and persisted on the row (`ingestion_status='failed'`,
    * `ingestion_error=...`) so a bad PDF doesn't block the rest.
    */
-  ingestPendingFilesForUser(userId: string): void {
-    void this.runUserFileIngestion(userId).catch((err) => {
-      this.logger.error(
-        `Background file ingestion crashed for user ${userId}`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    });
+  ingestPendingFilesForUser(
+    userId: string,
+    opts?: { fromImport?: boolean },
+  ): void {
+    // Mark this user's run as import-fed so it notifies on completion.
+    if (opts?.fromImport) this.importNotifyPending.add(userId);
+
+    // One run per user: if a run is already draining, just ask it to
+    // re-scan for the rows we added (its loop polls until empty) rather
+    // than starting a concurrent loop.
+    if (this.ingesting.has(userId)) {
+      this.rerunRequested.add(userId);
+      return;
+    }
+
+    this.ingesting.add(userId);
+    void this.runUserFileIngestion(userId)
+      .catch((err) => {
+        this.logger.error(
+          `Background file ingestion crashed for user ${userId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      })
+      .finally(() => {
+        this.ingesting.delete(userId);
+        // A trigger that landed in the gap after the run's final re-scan
+        // check would otherwise be stranded — start a fresh run for it.
+        if (this.rerunRequested.delete(userId)) {
+          this.ingestPendingFilesForUser(userId);
+        }
+      });
   }
 
+  /**
+   * Serialize ingestion across processes with a per-user Postgres
+   * advisory lock (held on a dedicated pooled connection so the unlock
+   * runs on the same session). The in-memory `ingesting` Set already
+   * dedupes within this process; this guards multi-instance deploys
+   * where two API instances could otherwise each drain the same user's
+   * queue and fire duplicate / split completion notifications. If the
+   * lock is held elsewhere we skip — the holder polls `pending` and will
+   * drain the rows we just added too.
+   */
   private async runUserFileIngestion(userId: string): Promise<void> {
+    // drizzle's node-postgres driver exposes the underlying pool on
+    // `$client`; the typed Database alias doesn't surface it, hence the cast.
+    const pool = (this.db as unknown as { $client: Pool }).$client;
+    const lockClient = await pool.connect();
+    let locked = false;
+    try {
+      const res = await lockClient.query<{ locked: boolean }>(
+        'SELECT pg_try_advisory_lock($1, hashtext($2)) AS locked',
+        [INGESTION_LOCK_NAMESPACE, userId],
+      );
+      locked = res.rows[0]?.locked === true;
+      if (!locked) {
+        this.logger.log(
+          `Ingestion already running for user ${userId} on another instance; skipping (holder will drain the queue).`,
+        );
+        return;
+      }
+      await this.drainUserQueue(userId);
+    } finally {
+      if (locked) {
+        try {
+          await lockClient.query(
+            'SELECT pg_advisory_unlock($1, hashtext($2))',
+            [INGESTION_LOCK_NAMESPACE, userId],
+          );
+        } catch {
+          // best-effort — the lock also releases when the session ends
+        }
+      }
+      lockClient.release();
+    }
+  }
+
+  private async drainUserQueue(userId: string): Promise<void> {
     // Process pending files in small batches so the FE shows a clear
     // queue progression ("Queued" → "Adding" → "In context") instead
     // of flipping every file to "Adding" at once. Each iteration claims
@@ -109,44 +196,69 @@ export class KnowledgeIngestionService {
     // files stay 'pending' ("Queued") until their turn.
     const INGESTION_BATCH_SIZE = 5;
 
-    while (true) {
-      // Atomic claim: SELECT … LIMIT N inside the WHERE so only
-      // INGESTION_BATCH_SIZE rows transition pending→processing per round.
-      const claimed = await this.db
-        .update(knowledgeFiles)
-        .set({ ingestionStatus: 'processing' })
-        .where(
-          inArray(
-            knowledgeFiles.id,
-            this.db
-              .select({ id: knowledgeFiles.id })
-              .from(knowledgeFiles)
-              .where(
-                and(
-                  eq(knowledgeFiles.uploadedById, userId),
-                  eq(knowledgeFiles.ingestionStatus, 'pending'),
-                ),
-              )
-              .orderBy(desc(knowledgeFiles.createdAt))
-              .limit(INGESTION_BATCH_SIZE),
-          ),
-        )
-        .returning({
-          id: knowledgeFiles.id,
-          storagePath: knowledgeFiles.storagePath,
-          name: knowledgeFiles.name,
-          scope: knowledgeFiles.scope,
-          visibility: knowledgeFiles.visibility,
-          source: knowledgeFiles.source,
-          externalId: knowledgeFiles.externalId,
-          externalDriveId: knowledgeFiles.externalDriveId,
-        });
+    // Tally files that came from a Drive/OneDrive/SharePoint import so we
+    // can fire a single "import complete" notification when the whole
+    // background run finishes — the user may have navigated away.
+    let importAdded = 0;
+    let importFailed = 0;
 
-      if (claimed.length === 0) break;
+    // Outer loop absorbs concurrent triggers: a trigger that lands while
+    // this run is active sets `rerunRequested` instead of starting a
+    // second loop, so all rows go through ONE run with ONE notification.
+    do {
+      this.rerunRequested.delete(userId);
 
-      for (const file of claimed) {
-        await this.ingestOneFile(userId, file);
+      while (true) {
+        // Atomic claim: SELECT … LIMIT N inside the WHERE so only
+        // INGESTION_BATCH_SIZE rows transition pending→processing per round.
+        const claimed = await this.db
+          .update(knowledgeFiles)
+          .set({ ingestionStatus: 'processing' })
+          .where(
+            inArray(
+              knowledgeFiles.id,
+              this.db
+                .select({ id: knowledgeFiles.id })
+                .from(knowledgeFiles)
+                .where(
+                  and(
+                    eq(knowledgeFiles.uploadedById, userId),
+                    eq(knowledgeFiles.ingestionStatus, 'pending'),
+                  ),
+                )
+                .orderBy(desc(knowledgeFiles.createdAt))
+                .limit(INGESTION_BATCH_SIZE),
+            ),
+          )
+          .returning({
+            id: knowledgeFiles.id,
+            storagePath: knowledgeFiles.storagePath,
+            name: knowledgeFiles.name,
+            scope: knowledgeFiles.scope,
+            visibility: knowledgeFiles.visibility,
+            source: knowledgeFiles.source,
+            externalId: knowledgeFiles.externalId,
+            externalDriveId: knowledgeFiles.externalDriveId,
+          });
+
+        if (claimed.length === 0) break;
+
+        for (const file of claimed) {
+          const status = await this.ingestOneFile(userId, file);
+          if (IMPORT_SOURCES.has(file.source)) {
+            if (status === 'done') importAdded++;
+            else importFailed++;
+          }
+        }
       }
+    } while (this.rerunRequested.has(userId));
+
+    // Whole pending queue drained. Notify only when an external import
+    // (not a manual upload / single re-ingest) fed this run and something
+    // was processed — fires even if the user left the page.
+    const wasImport = this.importNotifyPending.delete(userId);
+    if (wasImport && importAdded + importFailed > 0) {
+      await this.notifyImportComplete(userId, importAdded, importFailed);
     }
   }
 
@@ -162,7 +274,7 @@ export class KnowledgeIngestionService {
       externalId: string | null;
       externalDriveId: string | null;
     },
-  ): Promise<void> {
+  ): Promise<'done' | 'failed'> {
     try {
       // Drive-source rows arrive with storagePath=null — the import
       // endpoint inserts metadata only, then we download here. We
@@ -263,7 +375,7 @@ export class KnowledgeIngestionService {
           file.name,
           'No extractable text',
         );
-        return;
+        return 'failed';
       }
 
       const embeddings = await this.documentsService.embed(chunks);
@@ -289,6 +401,7 @@ export class KnowledgeIngestionService {
           })
           .where(eq(knowledgeFiles.id, file.id));
       });
+      return 'done';
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(
@@ -303,6 +416,7 @@ export class KnowledgeIngestionService {
         })
         .where(eq(knowledgeFiles.id, file.id));
       await this.notifyIngestionFailure(userId, file.id, file.name, message);
+      return 'failed';
     }
   }
 
@@ -328,6 +442,34 @@ export class KnowledgeIngestionService {
       });
     } catch {
       // swallow — this is fire-and-forget audit
+    }
+  }
+
+  /**
+   * Notify the user that a Drive / OneDrive / SharePoint import finished
+   * ingesting. Fired once per background run after the whole pending
+   * queue drains, so it lands even if the user navigated away mid-import.
+   * Best-effort — never throws.
+   */
+  private async notifyImportComplete(
+    userId: string,
+    added: number,
+    failed: number,
+  ): Promise<void> {
+    try {
+      const body =
+        failed > 0
+          ? `${added} file${added === 1 ? '' : 's'} added to Knowledge Core, ${failed} couldn't be processed.`
+          : `${added} file${added === 1 ? '' : 's'} added to Knowledge Core.`;
+      await this.notifications.create({
+        userId,
+        type: 'knowledge_import_complete',
+        title: 'Import complete',
+        body,
+        data: { added, failed },
+      });
+    } catch {
+      // swallow — best-effort
     }
   }
 
