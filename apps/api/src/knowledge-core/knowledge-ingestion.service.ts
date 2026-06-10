@@ -1,5 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  cosineDistance,
+  desc,
+  eq,
+  inArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { Pool } from 'pg';
 import * as fs from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -817,9 +826,7 @@ export class KnowledgeIngestionService {
           fileId: f.id,
           name: f.name,
           text:
-            text.length > perFileCharCap
-              ? text.slice(0, perFileCharCap)
-              : text,
+            text.length > perFileCharCap ? text.slice(0, perFileCharCap) : text,
         });
       }
     }

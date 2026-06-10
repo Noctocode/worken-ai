@@ -143,10 +143,7 @@ export class ConversationsService {
     // access the project; personal ones are private to their creator.
     const visibleToCaller = and(
       eq(conversations.projectId, projectId),
-      or(
-        eq(conversations.scope, 'team'),
-        eq(conversations.userId, userId),
-      ),
+      or(eq(conversations.scope, 'team'), eq(conversations.userId, userId)),
     );
 
     let convos = await this.db
