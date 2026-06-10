@@ -2100,6 +2100,38 @@ export class TeamsService {
    * Read-gated on team membership: any member sees the list. Writes
    * are gated separately in the mutation methods below.
    */
+  /**
+   * Friendly display name for each Custom LLM integration: the bound
+   * alias's `customName` (what the owner typed in the Add Custom LLM
+   * dialog — e.g. "Qwen3.6 (Perception)"). Prefers the personal
+   * (teamId null) alias; only falls back to a team-scoped alias if no
+   * personal one exists. Integrations with no alias at all aren't in
+   * the map — callers fall back to the URL-derived host name.
+   */
+  private async customAliasNamesByIntegration(
+    integrationIds: string[],
+  ): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (integrationIds.length === 0) return map;
+    const rows = await this.db
+      .select({
+        integrationId: modelConfigs.integrationId,
+        customName: modelConfigs.customName,
+        teamId: modelConfigs.teamId,
+      })
+      .from(modelConfigs)
+      .where(inArray(modelConfigs.integrationId, integrationIds));
+    for (const r of rows) {
+      if (!r.integrationId) continue;
+      // teamId null (personal alias) always wins; a team-scoped alias
+      // only fills the slot when no personal alias has claimed it.
+      if (r.teamId === null || !map.has(r.integrationId)) {
+        map.set(r.integrationId, r.customName);
+      }
+    }
+    return map;
+  }
+
   async listIntegrationLinks(teamId: string, callerId: string) {
     const role = await this.getUserTeamRole(teamId, callerId);
     if (!role) {
@@ -2127,6 +2159,10 @@ export class TeamsService {
       .where(eq(teamIntegrationLinks.teamId, teamId))
       .orderBy(teamIntegrationLinks.linkedAt);
 
+    const aliasNames = await this.customAliasNamesByIntegration(
+      rows.filter((r) => r.providerId === 'custom').map((r) => r.integrationId),
+    );
+
     return rows.map((r) => ({
       integrationId: r.integrationId,
       // Owner identity is surfaced so the FE picker can distinguish
@@ -2139,7 +2175,8 @@ export class TeamsService {
       isCustom: r.providerId === 'custom',
       displayName:
         r.providerId === 'custom'
-          ? deriveCustomDisplayName(r.apiUrl ?? '')
+          ? (aliasNames.get(r.integrationId) ??
+            deriveCustomDisplayName(r.apiUrl ?? ''))
           : (PREDEFINED_PROVIDERS.find((p) => p.id === r.providerId)
               ?.displayName ?? r.providerId),
       apiUrl: r.apiUrl,
@@ -2216,13 +2253,19 @@ export class TeamsService {
         .map((r) => r.providerId),
     );
 
+    const aliasNames = await this.customAliasNamesByIntegration(
+      myIntegrations
+        .filter((r) => r.providerId === 'custom')
+        .map((r) => r.id),
+    );
+
     return myIntegrations.map((r) => ({
       integrationId: r.id,
       providerId: r.providerId,
       isCustom: r.providerId === 'custom',
       displayName:
         r.providerId === 'custom'
-          ? deriveCustomDisplayName(r.apiUrl ?? '')
+          ? (aliasNames.get(r.id) ?? deriveCustomDisplayName(r.apiUrl ?? ''))
           : (PREDEFINED_PROVIDERS.find((p) => p.id === r.providerId)
               ?.displayName ?? r.providerId),
       apiUrl: r.apiUrl,
