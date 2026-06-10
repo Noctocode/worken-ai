@@ -42,12 +42,12 @@ export class ModelsController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('scope') scope?: string,
   ) {
-    const resolvedScope =
-      !scope
-        ? undefined
-        : scope === 'personal'
-          ? { teamId: null }
-          : { teamId: scope };
+    const trimmed = scope?.trim();
+    const resolvedScope = !trimmed
+      ? undefined
+      : trimmed === 'personal'
+        ? { teamId: null }
+        : { teamId: trimmed };
     return this.modelsService.listEffectiveForUser(user.id, resolvedScope);
   }
 

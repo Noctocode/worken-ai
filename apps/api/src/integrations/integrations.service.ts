@@ -20,6 +20,7 @@ import {
   type PredefinedProvider,
 } from './predefined-providers.js';
 import { parseAzureConfig } from './azure-validation.js';
+import { deriveCustomDisplayName } from './custom-display-name.js';
 
 interface IntegrationStats {
   successRate: number; // 0..1 over last 30 days
@@ -570,13 +571,6 @@ export class IntegrationsService {
  * required a customName (and as a defensive fallback if the bound
  * alias somehow goes missing).
  */
-function deriveCustomDisplayName(url: string): string {
-  try {
-    return new URL(url).hostname || 'Custom LLM';
-  } catch {
-    return 'Custom LLM';
-  }
-}
 
 /**
  * Build a stable, namespaced model identifier for a personal Custom

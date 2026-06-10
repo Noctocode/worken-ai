@@ -44,6 +44,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { OpenRouterProvisioningService } from '../openrouter/openrouter-provisioning.service.js';
 import { PREDEFINED_PROVIDERS } from '../integrations/predefined-providers.js';
+import { deriveCustomDisplayName } from '../integrations/custom-display-name.js';
 
 @Injectable()
 export class TeamsService {
@@ -2605,10 +2606,3 @@ function teamCustomModelIdentifier(teamId: string, customName: string): string {
 }
 
 /** Same fallback the personal Integration tab uses for naming. */
-function deriveCustomDisplayName(url: string): string {
-  try {
-    return new URL(url).hostname || 'Custom LLM';
-  } catch {
-    return 'Custom LLM';
-  }
-}
