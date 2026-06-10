@@ -185,7 +185,11 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
   const { data: unread } = useQuery({
     queryKey: ["notifications", "unread"],
     queryFn: fetchNotificationsUnreadCount,
-    refetchInterval: 5_000,
+    // Foreground: snappy 5s. Background (tab hidden): back off to 30s so
+    // idle tabs aren't pinging /unread every 5s forever — still catches a
+    // background import finishing within ~30s, and refetchOnWindowFocus
+    // makes it instant the moment the user returns to the tab.
+    refetchInterval: () => (document.hidden ? 30_000 : 5_000),
     refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
   });
