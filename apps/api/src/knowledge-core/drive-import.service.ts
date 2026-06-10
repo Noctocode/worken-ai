@@ -339,7 +339,7 @@ export class DriveImportService {
     // ingestion_status='pending' for this user — Drive-source rows
     // will hit the new download branch in KnowledgeIngestionService.
     if (result.added > 0) {
-      this.ingestion.ingestPendingFilesForUser(userId);
+      this.ingestion.ingestPendingFilesForUser(userId, { fromImport: true });
     }
 
     return result;
@@ -807,7 +807,7 @@ export class DriveImportService {
       await this.oauth.markSynced(userId);
 
       if (totalInserted > 0) {
-        this.ingestion.ingestPendingFilesForUser(userId);
+        this.ingestion.ingestPendingFilesForUser(userId, { fromImport: true });
       }
 
       job.progress.phase = 'done';

@@ -33,6 +33,10 @@ const ONBOARDING_FOLDER_NAME = 'Onboarding';
  */
 const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
+/** File sources that come from an external "import" flow (vs. a manual
+ *  upload or a single re-ingest). Drives the import-complete notify. */
+const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
+
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
@@ -64,6 +68,15 @@ export interface IngestionAggregate {
 @Injectable()
 export class KnowledgeIngestionService {
   private readonly logger = new Logger(KnowledgeIngestionService.name);
+  // Per-user ingestion concurrency control. Only one background run per
+  // user at a time; overlapping triggers set `rerunRequested` so the
+  // active run re-scans instead of starting a second loop (which would
+  // split tallies + fire duplicate notifications). `importNotifyPending`
+  // marks runs that an external import fed, so re-ingests / manual
+  // uploads don't masquerade as "Import complete".
+  private readonly ingesting = new Set<string>();
+  private readonly rerunRequested = new Set<string>();
+  private readonly importNotifyPending = new Set<string>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -91,13 +104,37 @@ export class KnowledgeIngestionService {
    * caught and persisted on the row (`ingestion_status='failed'`,
    * `ingestion_error=...`) so a bad PDF doesn't block the rest.
    */
-  ingestPendingFilesForUser(userId: string): void {
-    void this.runUserFileIngestion(userId).catch((err) => {
-      this.logger.error(
-        `Background file ingestion crashed for user ${userId}`,
-        err instanceof Error ? err.stack : String(err),
-      );
-    });
+  ingestPendingFilesForUser(
+    userId: string,
+    opts?: { fromImport?: boolean },
+  ): void {
+    // Mark this user's run as import-fed so it notifies on completion.
+    if (opts?.fromImport) this.importNotifyPending.add(userId);
+
+    // One run per user: if a run is already draining, just ask it to
+    // re-scan for the rows we added (its loop polls until empty) rather
+    // than starting a concurrent loop.
+    if (this.ingesting.has(userId)) {
+      this.rerunRequested.add(userId);
+      return;
+    }
+
+    this.ingesting.add(userId);
+    void this.runUserFileIngestion(userId)
+      .catch((err) => {
+        this.logger.error(
+          `Background file ingestion crashed for user ${userId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      })
+      .finally(() => {
+        this.ingesting.delete(userId);
+        // A trigger that landed in the gap after the run's final re-scan
+        // check would otherwise be stranded — start a fresh run for it.
+        if (this.rerunRequested.delete(userId)) {
+          this.ingestPendingFilesForUser(userId);
+        }
+      });
   }
 
   private async runUserFileIngestion(userId: string): Promise<void> {
@@ -115,57 +152,62 @@ export class KnowledgeIngestionService {
     let importAdded = 0;
     let importFailed = 0;
 
-    while (true) {
-      // Atomic claim: SELECT … LIMIT N inside the WHERE so only
-      // INGESTION_BATCH_SIZE rows transition pending→processing per round.
-      const claimed = await this.db
-        .update(knowledgeFiles)
-        .set({ ingestionStatus: 'processing' })
-        .where(
-          inArray(
-            knowledgeFiles.id,
-            this.db
-              .select({ id: knowledgeFiles.id })
-              .from(knowledgeFiles)
-              .where(
-                and(
-                  eq(knowledgeFiles.uploadedById, userId),
-                  eq(knowledgeFiles.ingestionStatus, 'pending'),
-                ),
-              )
-              .orderBy(desc(knowledgeFiles.createdAt))
-              .limit(INGESTION_BATCH_SIZE),
-          ),
-        )
-        .returning({
-          id: knowledgeFiles.id,
-          storagePath: knowledgeFiles.storagePath,
-          name: knowledgeFiles.name,
-          scope: knowledgeFiles.scope,
-          visibility: knowledgeFiles.visibility,
-          source: knowledgeFiles.source,
-          externalId: knowledgeFiles.externalId,
-          externalDriveId: knowledgeFiles.externalDriveId,
-        });
+    // Outer loop absorbs concurrent triggers: a trigger that lands while
+    // this run is active sets `rerunRequested` instead of starting a
+    // second loop, so all rows go through ONE run with ONE notification.
+    do {
+      this.rerunRequested.delete(userId);
 
-      if (claimed.length === 0) break;
+      while (true) {
+        // Atomic claim: SELECT … LIMIT N inside the WHERE so only
+        // INGESTION_BATCH_SIZE rows transition pending→processing per round.
+        const claimed = await this.db
+          .update(knowledgeFiles)
+          .set({ ingestionStatus: 'processing' })
+          .where(
+            inArray(
+              knowledgeFiles.id,
+              this.db
+                .select({ id: knowledgeFiles.id })
+                .from(knowledgeFiles)
+                .where(
+                  and(
+                    eq(knowledgeFiles.uploadedById, userId),
+                    eq(knowledgeFiles.ingestionStatus, 'pending'),
+                  ),
+                )
+                .orderBy(desc(knowledgeFiles.createdAt))
+                .limit(INGESTION_BATCH_SIZE),
+            ),
+          )
+          .returning({
+            id: knowledgeFiles.id,
+            storagePath: knowledgeFiles.storagePath,
+            name: knowledgeFiles.name,
+            scope: knowledgeFiles.scope,
+            visibility: knowledgeFiles.visibility,
+            source: knowledgeFiles.source,
+            externalId: knowledgeFiles.externalId,
+            externalDriveId: knowledgeFiles.externalDriveId,
+          });
 
-      for (const file of claimed) {
-        const status = await this.ingestOneFile(userId, file);
-        if (
-          file.source === 'drive' ||
-          file.source === 'onedrive' ||
-          file.source === 'sharepoint'
-        ) {
-          if (status === 'done') importAdded++;
-          else importFailed++;
+        if (claimed.length === 0) break;
+
+        for (const file of claimed) {
+          const status = await this.ingestOneFile(userId, file);
+          if (IMPORT_SOURCES.has(file.source)) {
+            if (status === 'done') importAdded++;
+            else importFailed++;
+          }
         }
       }
-    }
+    } while (this.rerunRequested.has(userId));
 
-    // Whole pending queue drained. If any of it was an external import,
-    // tell the user it finished (works even if they left the page).
-    if (importAdded + importFailed > 0) {
+    // Whole pending queue drained. Notify only when an external import
+    // (not a manual upload / single re-ingest) fed this run and something
+    // was processed — fires even if the user left the page.
+    const wasImport = this.importNotifyPending.delete(userId);
+    if (wasImport && importAdded + importFailed > 0) {
       await this.notifyImportComplete(userId, importAdded, importFailed);
     }
   }
