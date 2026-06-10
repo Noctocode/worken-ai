@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import {
   createModel,
-  fetchIntegrations,
   updateModel,
   type ModelConfig,
 } from "@/lib/api";
@@ -179,7 +178,6 @@ export function AddModelDialog({
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
-  const [integrationId, setIntegrationId] = useState<string>("");
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
     useAvailableModels();
@@ -193,7 +191,6 @@ export function AddModelDialog({
     setCustomNameTouched(true);
     setModelId(existingModel.modelIdentifier);
     setFallbacks(existingModel.fallbackModels ?? []);
-    setIntegrationId(existingModel.integrationId ?? "");
   }, [open, existingModel]);
 
   // Auto-fill the alias as soon as a model is picked, unless the
@@ -206,17 +203,6 @@ export function AddModelDialog({
       setCustomName(getModelLabel(modelId));
     }
   }, [modelId, customNameTouched, getModelLabel]);
-
-  // Custom LLMs the user has registered in Management → Integration.
-  // Listed as an optional binding so an alias can route to a self-hosted
-  // or BYOK endpoint instead of OpenRouter.
-  const { data: integrations } = useQuery({
-    queryKey: ["integrations"],
-    queryFn: fetchIntegrations,
-    enabled: open,
-  });
-  const customIntegrations =
-    integrations?.filter((i) => i.isCustom && i.isEnabled) ?? [];
 
   const mutation = useMutation({
     mutationFn: (payload: {
@@ -234,7 +220,6 @@ export function AddModelDialog({
       setCustomNameTouched(false);
       setModelId("");
       setFallbacks([]);
-      setIntegrationId("");
       setOpen(false);
     },
   });
@@ -288,7 +273,13 @@ export function AddModelDialog({
       customName: customName.trim(),
       modelIdentifier: modelId,
       fallbackModels: fallbacks,
-      integrationId: integrationId || null,
+      // Custom LLM endpoints are managed solely on the Integration tab
+      // (adding one there auto-creates its bound alias). This dialog no
+      // longer binds endpoints, so new aliases always route via the
+      // default path. On edit, preserve whatever binding the row already
+      // had so editing an integration-created alias here doesn't unbind
+      // it from its endpoint.
+      integrationId: existingModel?.integrationId ?? null,
     });
   };
 
@@ -300,7 +291,6 @@ export function AddModelDialog({
     setCustomNameTouched(false);
     setModelId("");
     setFallbacks([]);
-    setIntegrationId("");
     setOpen(false);
   };
 
@@ -386,46 +376,6 @@ export function AddModelDialog({
                 className={`${inputClass} outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
               />
             </div>
-
-            {/* Optional: bind to a Custom LLM endpoint registered in
-                Management → Integration. Hidden when the user has none —
-                it's an opt-in advanced setting that only matters for
-                self-hosted / BYOK endpoints. */}
-            {customIntegrations.length > 0 && (
-              <div>
-                <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
-                  {t("addModel.customLLMEndpoint")}{" "}
-                  <span className="text-text-3">{t("addModel.optional")}</span>
-                </p>
-                <Select
-                  value={integrationId || "__none__"}
-                  onValueChange={(v) =>
-                    setIntegrationId(v === "__none__" ? "" : v)
-                  }
-                >
-                  <SelectTrigger className={modelSelectClass}>
-                    <SelectValue placeholder={t("addModel.workenaiDefault")} />
-                  </SelectTrigger>
-                  <SelectContent className="p-0">
-                    <SelectItem value="__none__" className={selectItemClass}>
-                      {t("addModel.workenaiDefault")}
-                    </SelectItem>
-                    {customIntegrations.map((i) => (
-                      <SelectItem
-                        key={i.id ?? i.providerId}
-                        value={i.id ?? ""}
-                        className={selectItemClass}
-                      >
-                        {i.displayName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="mt-1 text-[12px] text-text-3">
-                  {t("addModel.endpointHint")}
-                </p>
-              </div>
-            )}
 
             {/* Fallback models */}
             <div>
