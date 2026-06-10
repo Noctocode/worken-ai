@@ -16,9 +16,14 @@
 //   2. No table is created by migrations but missing from the schema
 //      (orphans like the old `enabled_models` we just dropped in 0004).
 //   3. Every numbered `.sql` file under migrations/ has a journal
-//      entry in meta/_journal.json — drizzle-kit migrate refuses to
-//      run unlisted files and silently skipping a migration is the
-//      same class of bug as omitting it entirely.
+//      entry in meta/_journal.json (and vice versa) — drizzle-kit
+//      migrate refuses to run unlisted files and silently skipping a
+//      migration is the same class of bug as omitting it entirely.
+//   4. Journal `when` timestamps are unique + strictly increasing and
+//      `idx` is sequential. Drizzle applies only entries newer than the
+//      last-applied one, so a colliding/out-of-order `when` (e.g. after
+//      a renumber) silently skips a migration on already-migrated
+//      environments — the production incident behind #199.
 //
 // What it does NOT check (out of scope for now):
 //   - Per-column nullability / default / type drift. The spot-check
@@ -147,6 +152,45 @@ for (const tag of journalTags) {
       `Journal entry "${tag}" has no matching .sql file under ` +
         `packages/database/migrations/. Either add the file or remove ` +
         `the entry.`,
+    );
+  }
+}
+
+// 5. Journal `when` timestamps must be UNIQUE and STRICTLY INCREASING in
+//    entry order, and `idx` must be sequential. Drizzle's migrator
+//    applies only journal entries whose `when` is strictly greater than
+//    the last-applied migration's timestamp (it tracks a single
+//    high-water mark, not per-file hashes). So a duplicate or
+//    out-of-order `when` makes a migration silently skipped on any
+//    environment that already applied one with an equal/greater
+//    timestamp — no error, no re-run. That's the prod incident in #199:
+//    after `0011_integration_config` was renumbered to 0012 (commit
+//    9bcccef), the new `0011_conversation_context` kept the same `when`
+//    (1779970000000) as the already-applied original 0011, so it was
+//    skipped on prod and `conversations.context` never got created.
+const orderedEntries = [...(journal.entries ?? [])].sort(
+  (a, b) => a.idx - b.idx,
+);
+for (let i = 0; i < orderedEntries.length; i++) {
+  const cur = orderedEntries[i];
+  if (cur.idx !== i) {
+    errors.push(
+      `Journal idx is not sequential: entry "${cur.tag}" has idx ${cur.idx} ` +
+        `but should be ${i} (entries sorted by idx). Renumber so idx runs ` +
+        `0,1,2,… without gaps.`,
+    );
+  }
+  if (i === 0) continue;
+  const prev = orderedEntries[i - 1];
+  if (!(cur.when > prev.when)) {
+    errors.push(
+      `Journal "when" is not strictly increasing: "${cur.tag}" ` +
+        `(when=${cur.when}) is not greater than the previous entry ` +
+        `"${prev.tag}" (when=${prev.when}). Drizzle skips any migration ` +
+        `whose "when" isn't strictly greater than the last-applied one, so ` +
+        `"${cur.tag}" would be silently skipped on environments that already ` +
+        `applied "${prev.tag}". Bump "${cur.tag}"'s "when" to a unique value ` +
+        `greater than every earlier entry.`,
     );
   }
 }
