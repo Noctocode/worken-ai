@@ -195,7 +195,10 @@ export class ModelsService {
    * the user's custom name and (if present) Custom LLM binding take
    * precedence.
    */
-  async listEffectiveForUser(userId: string): Promise<EffectiveModel[]> {
+  async listEffectiveForUser(
+    userId: string,
+    scope?: { teamId: string | null },
+  ): Promise<EffectiveModel[]> {
     // Aliases the user can pick from. Scope rules (see
     // `resolveAliasScopeFilter` for the full breakdown):
     //   - company profile → org-wide `teamId IS NULL` pool +
@@ -204,14 +207,16 @@ export class ModelsService {
     //     team-scoped rows
     // The team-scope branch is what makes Custom LLMs that admin
     // shared with TEAM_X show up in a member's picker.
-    const scopeFilter = await this.resolveAliasScopeFilter(userId);
-    const aliasRows = await this.db
-      .select()
-      .from(modelConfigs)
-      .where(and(eq(modelConfigs.isActive, true), scopeFilter));
-
-    // Team list still needed below for the BYOK branch — pull it
-    // here rather than reaching into the helper internals.
+    //
+    // When an explicit `scope` is passed (the Create Project picker),
+    // narrow to exactly that scope so a personal project shows only the
+    // caller's personal keys and a team project shows only what's
+    // enabled at THAT team — and a Custom LLM that's both personal AND
+    // team-linked doesn't appear twice. No scope = the full union used
+    // by the arena / chat pickers (unchanged).
+    // Resolve team membership up-front — it's needed both for the BYOK
+    // branch and to authorize a team scope BEFORE running any alias /
+    // provider queries, so an unauthorized scope costs nothing.
     const teamMemberships = await this.db
       .select({ teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -222,12 +227,46 @@ export class ModelsService {
       .select({ id: teams.id })
       .from(teams)
       .where(eq(teams.ownerId, userId));
-    const teamIds = Array.from(
+    const allTeamIds = Array.from(
       new Set([
         ...teamMemberships.map((r) => r.teamId),
         ...ownedTeams.map((t) => t.id),
       ]),
     );
+    // Defensive authz: an explicit team scope the caller isn't a member of
+    // (or owner) — including a blank / malformed team id — returns nothing
+    // rather than leaking another team's pool. Checked before any pool
+    // query runs.
+    if (
+      scope &&
+      scope.teamId !== null &&
+      !allTeamIds.includes(scope.teamId)
+    ) {
+      return [];
+    }
+    // Which teams' linked BYOK/Azure keys to surface for THIS scope, and
+    // whether to include the caller's personal keys:
+    //   - no scope     → every team + personal (union)
+    //   - personal     → personal only, no team-linked keys
+    //   - team X        → team X only, no personal keys
+    const teamIds = scope
+      ? scope.teamId
+        ? [scope.teamId]
+        : []
+      : allTeamIds;
+    const includePersonalProviders = !scope || scope.teamId === null;
+
+    // Aliases the user can pick from, narrowed to `scope` when given
+    // (see the doc comment above). No scope = the full union.
+    const aliasScopeFilter = scope
+      ? scope.teamId === null
+        ? and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
+        : eq(modelConfigs.teamId, scope.teamId)
+      : await this.resolveAliasScopeFilter(userId);
+    const aliasRows = await this.db
+      .select()
+      .from(modelConfigs)
+      .where(and(eq(modelConfigs.isActive, true), aliasScopeFilter));
 
     // Every predefined provider that's enabled either personally OR
     // at the scope of any team the user is in. Without the team
@@ -241,16 +280,18 @@ export class ModelsService {
     // first-class option the user opted into via the "Use WORKENAI
     // API" path. chat-transport picks the right key per call based
     // on the chat's team scope.
-    const personalEnabledRows = await this.db
-      .select({ providerId: integrations.providerId })
-      .from(integrations)
-      .where(
-        and(
-          eq(integrations.ownerId, userId),
-          isNull(integrations.teamId),
-          eq(integrations.isEnabled, true),
-        ),
-      );
+    const personalEnabledRows = includePersonalProviders
+      ? await this.db
+          .select({ providerId: integrations.providerId })
+          .from(integrations)
+          .where(
+            and(
+              eq(integrations.ownerId, userId),
+              isNull(integrations.teamId),
+              eq(integrations.isEnabled, true),
+            ),
+          )
+      : [];
     // Team enabled providers come through the link table now: an
     // admin's personal integration linked to one of the caller's
     // teams counts only if both the link's is_enabled and the
@@ -275,6 +316,7 @@ export class ModelsService {
             )
         : [];
     const enabledProviders = new Set(
+      // personalEnabledRows is already empty unless includePersonalProviders.
       [...personalEnabledRows, ...teamEnabledRows]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
@@ -289,17 +331,19 @@ export class ModelsService {
       azureDeployments?: { deploymentName: string; label: string }[];
     }[] = [];
     if (enabledProviders.has('azure')) {
-      const personalAzure = await this.db
-        .select({ config: integrations.config })
-        .from(integrations)
-        .where(
-          and(
-            eq(integrations.ownerId, userId),
-            isNull(integrations.teamId),
-            eq(integrations.providerId, 'azure'),
-            eq(integrations.isEnabled, true),
-          ),
-        );
+      const personalAzure = includePersonalProviders
+        ? await this.db
+            .select({ config: integrations.config })
+            .from(integrations)
+            .where(
+              and(
+                eq(integrations.ownerId, userId),
+                isNull(integrations.teamId),
+                eq(integrations.providerId, 'azure'),
+                eq(integrations.isEnabled, true),
+              ),
+            )
+        : [];
       const teamAzure =
         teamIds.length > 0
           ? await this.db
@@ -318,6 +362,7 @@ export class ModelsService {
                 ),
               )
           : [];
+      // personalAzure is already empty unless includePersonalProviders.
       azureConfigs.push(
         ...personalAzure.map((r) => r.config),
         ...teamAzure.map((r) => r.config),

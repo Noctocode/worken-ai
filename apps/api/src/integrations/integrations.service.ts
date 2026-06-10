@@ -20,6 +20,7 @@ import {
   type PredefinedProvider,
 } from './predefined-providers.js';
 import { parseAzureConfig } from './azure-validation.js';
+import { deriveCustomDisplayName } from './custom-display-name.js';
 
 interface IntegrationStats {
   successRate: number; // 0..1 over last 30 days
@@ -319,6 +320,12 @@ export class IntegrationsService {
        *  auto-creates a bound `model_configs` alias so the user
        *  doesn't have to take a second trip through /catalog. */
       customName?: string | null;
+      /** Required when providerId === "custom": the real model id the
+       *  upstream OpenAI-compatible endpoint expects (e.g.
+       *  "Qwen3.6-35B-A3B-FP8"). Stored on the bound alias as
+       *  `upstreamModel` and sent as the `model` in the chat call —
+       *  the synthetic `modelIdentifier` is only the picker id. */
+      customModel?: string | null;
       /** Provider-specific config. Required (and validated) when
        *  providerId === "azure": endpoint + api-version + deployments. */
       config?: IntegrationConfig;
@@ -344,6 +351,11 @@ export class IntegrationsService {
       if (!input.customName?.trim()) {
         throw new BadRequestException(
           'Custom LLM requires a name shown in the model picker',
+        );
+      }
+      if (!input.customModel?.trim()) {
+        throw new BadRequestException(
+          'Custom LLM requires the model id its endpoint expects',
         );
       }
     }
@@ -395,6 +407,7 @@ export class IntegrationsService {
         teamId: null,
         customName,
         modelIdentifier,
+        upstreamModel: input.customModel!.trim(),
         integrationId: integration.id,
         isActive: true,
       });
@@ -558,13 +571,6 @@ export class IntegrationsService {
  * required a customName (and as a defensive fallback if the bound
  * alias somehow goes missing).
  */
-function deriveCustomDisplayName(url: string): string {
-  try {
-    return new URL(url).hostname || 'Custom LLM';
-  } catch {
-    return 'Custom LLM';
-  }
-}
 
 /**
  * Build a stable, namespaced model identifier for a personal Custom

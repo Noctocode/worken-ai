@@ -244,10 +244,15 @@ export class ChatTransportService {
     //    team-scoped alias when the chat is in team context, then fall
     //    back to user-personal. Without the team-scope branch, an admin
     //    could not share a Custom LLM endpoint with team members.
-    let alias: { integrationId: string | null } | undefined;
+    let alias:
+      | { integrationId: string | null; upstreamModel: string | null }
+      | undefined;
     if (teamScopeId) {
       const [teamAlias] = await this.db
-        .select({ integrationId: modelConfigs.integrationId })
+        .select({
+          integrationId: modelConfigs.integrationId,
+          upstreamModel: modelConfigs.upstreamModel,
+        })
         .from(modelConfigs)
         .where(
           and(
@@ -260,7 +265,10 @@ export class ChatTransportService {
     }
     if (!alias) {
       const [userAlias] = await this.db
-        .select({ integrationId: modelConfigs.integrationId })
+        .select({
+          integrationId: modelConfigs.integrationId,
+          upstreamModel: modelConfigs.upstreamModel,
+        })
         .from(modelConfigs)
         .where(
           and(
@@ -287,7 +295,11 @@ export class ChatTransportService {
         return {
           baseURL: integration.apiUrl,
           apiKey,
-          model: modelIdentifier,
+          // Send the real upstream model id the endpoint expects. Older
+          // aliases created before the upstream_model column existed have
+          // it null — fall back to the (synthetic) modelIdentifier so they
+          // keep behaving exactly as before rather than sending null.
+          model: alias.upstreamModel?.trim() || modelIdentifier,
           provider: 'custom',
           source: 'custom',
           kind: 'openai-sdk',

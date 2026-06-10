@@ -321,6 +321,10 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.integ.displayNameHint': 'Kar boste videli v izbirniku modelov.',
   'mgmt.integ.apiUrl': 'API URL',
   'mgmt.integ.apiUrlPlaceholder': 'https://vas-endpoint/v1',
+  'mgmt.integ.model': 'Model',
+  'mgmt.integ.modelPlaceholder': 'npr. Qwen3.6-35B-A3B-FP8',
+  'mgmt.integ.modelHint':
+    'Točen id modela, ki ga pričakuje vaš endpoint; pošlje se z vsako zahtevo.',
   'mgmt.integ.apiKeyOptional': 'API ključ (neobvezno)',
   'mgmt.integ.anonymousPlaceholder': 'Pustite prazno, če endpoint sprejema anonimne klice',
   'mgmt.integ.integDocs': 'Dokumentacija integracije',

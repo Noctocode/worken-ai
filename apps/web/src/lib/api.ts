@@ -1565,8 +1565,14 @@ export interface EffectiveModel extends AvailableModel {
  * and project chat. Includes the user's model aliases (Models tab) plus
  * any catalog model for a provider where the user has BYOK enabled.
  */
-export async function fetchEffectiveModels(): Promise<EffectiveModel[]> {
-  const res = await apiFetch("/models/effective");
+export async function fetchEffectiveModels(
+  /** Narrow the pool for the Create Project picker: "personal" for the
+   *  caller's own keys, a team id for that team's enabled keys, or
+   *  omitted for the full union (arena / chat). */
+  scope?: string,
+): Promise<EffectiveModel[]> {
+  const qs = scope ? `?scope=${encodeURIComponent(scope)}` : "";
+  const res = await apiFetch(`/models/effective${qs}`);
   if (!res.ok) throw new Error("Failed to fetch effective models");
   return res.json();
 }
@@ -3332,6 +3338,10 @@ export async function upsertIntegration(input: {
    *  in the model picker. The BE auto-creates a bound model_configs
    *  alias so adding a Custom LLM lands in one step. */
   customName?: string;
+  /** Required when providerId === "custom": the real model id the
+   *  endpoint expects (e.g. "Qwen3.6-35B-A3B-FP8"), sent as `model`
+   *  in the upstream chat call. */
+  customModel?: string;
   /** Required when providerId === "azure": endpoint + api-version +
    *  deployments. */
   config?: IntegrationConfig;

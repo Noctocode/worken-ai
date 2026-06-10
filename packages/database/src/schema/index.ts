@@ -890,6 +890,12 @@ export const modelConfigs = pgTable("model_configs", {
   teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
   customName: text("custom_name").notNull(),
   modelIdentifier: text("model_identifier").notNull(),
+  // The real model id sent to the upstream endpoint's OpenAI-compatible
+  // `chat/completions` call. Only set for Custom LLM aliases (where
+  // `modelIdentifier` is a synthetic `user:…`/picker id that the endpoint
+  // wouldn't recognise). NULL for predefined/catalog aliases, where
+  // `modelIdentifier` IS already the upstream model id.
+  upstreamModel: text("upstream_model"),
   isActive: boolean("is_active").notNull().default(true),
   fallbackModels: jsonb("fallback_models").notNull().default([]),
   // When set, chat calls for this alias route through the linked
