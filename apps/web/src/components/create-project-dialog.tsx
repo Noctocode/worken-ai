@@ -21,9 +21,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
-import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cloneElement, isValidElement, useMemo, useState } from "react";
+import { cloneElement, isValidElement, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
 export function CreateProjectDialog({
@@ -39,29 +38,7 @@ export function CreateProjectDialog({
   const [teamId, setTeamId] = useState<string>("personal");
 
   const queryClient = useQueryClient();
-  // Full OpenRouter catalog (WorkenAI-routed default). Drives the bulk
-  // of the picker for users without their own keys.
-  const { models: catalogModels, isLoading: modelsLoading } =
-    useAvailableModels();
-  // The user's own model_configs aliases — Custom LLM endpoints and BYOK
-  // aliases. These live ONLY in /models/effective, never in the catalog,
-  // so without merging them in a Custom LLM the user just registered
-  // would be unpickable here and every project would fall back to an
-  // OpenRouter model (which fails outright when the server has no
-  // gateway key — the whole point of a self-hosted Custom LLM).
-  const { effective } = useUserModels();
-  const models = useMemo(() => {
-    const aliases = effective.filter(
-      (m) => m.source === "custom" || m.source === "alias",
-    );
-    const aliasIds = new Set(aliases.map((m) => m.id));
-    // Aliases first (the user's own endpoints), then the catalog minus
-    // any id an alias already covers.
-    return [
-      ...aliases.map((m) => ({ id: m.id, name: m.name })),
-      ...catalogModels.filter((m) => !aliasIds.has(m.id)),
-    ];
-  }, [effective, catalogModels]);
+  const { models, isLoading: modelsLoading } = useAvailableModels();
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],

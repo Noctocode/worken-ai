@@ -2489,11 +2489,15 @@ export class TeamsService {
           (r) => toInsert.includes(r.id) && r.providerId === 'custom',
         );
         if (insertedCustoms.length > 0) {
-          const personalAliasByIntegration = new Map<string, string>();
+          const personalAliasByIntegration = new Map<
+            string,
+            { customName: string; upstreamModel: string | null }
+          >();
           const aliasRows = await tx
             .select({
               integrationId: modelConfigs.integrationId,
               customName: modelConfigs.customName,
+              upstreamModel: modelConfigs.upstreamModel,
             })
             .from(modelConfigs)
             .where(
@@ -2508,19 +2512,27 @@ export class TeamsService {
             );
           for (const a of aliasRows) {
             if (a.integrationId) {
-              personalAliasByIntegration.set(a.integrationId, a.customName);
+              personalAliasByIntegration.set(a.integrationId, {
+                customName: a.customName,
+                upstreamModel: a.upstreamModel,
+              });
             }
           }
           for (const c of insertedCustoms) {
+            const personal = personalAliasByIntegration.get(c.id);
             const customName =
-              personalAliasByIntegration.get(c.id) ??
-              deriveCustomDisplayName(c.apiUrl ?? '');
+              personal?.customName ?? deriveCustomDisplayName(c.apiUrl ?? '');
             await tx.insert(modelConfigs).values({
               ownerId: callerId,
               teamId,
               integrationId: c.id,
               customName,
               modelIdentifier: teamCustomModelIdentifier(teamId, customName),
+              // Carry the personal alias's upstream model id so the team
+              // alias sends the real model name to the endpoint, not the
+              // synthetic team:<id>:<slug> picker id. Without it, team
+              // chats through a linked Custom LLM are rejected upstream.
+              upstreamModel: personal?.upstreamModel ?? null,
               isActive: true,
             });
           }
