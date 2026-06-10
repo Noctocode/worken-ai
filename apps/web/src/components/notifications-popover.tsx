@@ -175,13 +175,18 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
   // Bell badge — sourced from a dedicated unread-count endpoint
   // (SELECT count → indexed cheap). Polled aggressively at 5s so
   // server-generated notifications (budget alerts, account changes,
-  // file ingestion failures, etc.) surface on the badge within a
-  // few seconds of being created. refetchOnWindowFocus catches the
-  // common "alt-tab back into the app" case immediately.
+  // background imports finishing, etc.) surface on the badge within a
+  // few seconds of being created. `refetchIntervalInBackground` keeps
+  // it polling even when the tab is hidden — without it react-query
+  // pauses the timer, so a long Drive/OneDrive import that finishes
+  // while the user is on another tab wouldn't light the badge until
+  // they came back (felt like a multi-minute delay). refetchOnWindowFocus
+  // still catches the alt-tab-back case instantly.
   const { data: unread } = useQuery({
     queryKey: ["notifications", "unread"],
     queryFn: fetchNotificationsUnreadCount,
     refetchInterval: 5_000,
+    refetchIntervalInBackground: true,
     refetchOnWindowFocus: true,
   });
   const unreadCount = unread?.count ?? 0;
