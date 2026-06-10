@@ -1,5 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, cosineDistance, desc, eq, inArray, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  cosineDistance,
+  desc,
+  eq,
+  inArray,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { Pool } from 'pg';
 import * as fs from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -749,6 +758,79 @@ export class KnowledgeIngestionService {
       )
       .orderBy(desc(similarity))
       .limit(limit);
+  }
+
+  /**
+   * Full text of files attached to the *current message*, for DIRECT
+   * injection into the chat context (ChatGPT-style "the model sees the
+   * file you just attached"). Differs from searchProjectAttachedChunks:
+   *   - NOT gated on a semantic query — the whole file is included so a
+   *     bare "summarize this" prompt still works.
+   *   - NOT gated on ingestion finishing — if the async pipeline hasn't
+   *     produced chunks yet, we parse the file from disk on the spot.
+   * Restricted to files the caller OWNS (uploadedById === userId); any
+   * non-owned file simply yields nothing here and still flows through
+   * the access-checked semantic path.
+   */
+  async getOwnedAttachedFilesText(
+    userId: string,
+    fileIds: string[],
+    perFileCharCap = 12000,
+  ): Promise<{ fileId: string; name: string; text: string }[]> {
+    if (fileIds.length === 0) return [];
+    const files = await this.db
+      .select({
+        id: knowledgeFiles.id,
+        name: knowledgeFiles.name,
+        storagePath: knowledgeFiles.storagePath,
+      })
+      .from(knowledgeFiles)
+      .where(
+        and(
+          inArray(knowledgeFiles.id, fileIds),
+          eq(knowledgeFiles.uploadedById, userId),
+        ),
+      );
+
+    const out: { fileId: string; name: string; text: string }[] = [];
+    for (const f of files) {
+      let text = '';
+      // Prefer already-ingested chunks (no disk read).
+      const chunks = await this.db
+        .select({ content: knowledgeChunks.content })
+        .from(knowledgeChunks)
+        .where(eq(knowledgeChunks.fileId, f.id))
+        .orderBy(asc(knowledgeChunks.chunkIndex));
+      if (chunks.length > 0) {
+        text = chunks.map((c) => c.content).join('\n');
+      } else if (f.storagePath) {
+        // Not ingested yet — parse synchronously so the model sees the
+        // file on the very first message after attaching.
+        try {
+          const buffer = await readFile(resolve(process.cwd(), f.storagePath));
+          text = await this.documentsService.parseFile(
+            buffer,
+            this.inferMimeFromName(f.name),
+          );
+        } catch (err) {
+          this.logger.warn(
+            `Attached file ${f.id} (${f.name}) could not be read for direct injection: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+      text = text.trim();
+      if (text) {
+        out.push({
+          fileId: f.id,
+          name: f.name,
+          text:
+            text.length > perFileCharCap ? text.slice(0, perFileCharCap) : text,
+        });
+      }
+    }
+    return out;
   }
 
   /**

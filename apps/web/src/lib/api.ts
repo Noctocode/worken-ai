@@ -546,7 +546,10 @@ export async function uploadProjectKnowledgeFiles(
   if (options.visibility === "teams" && options.teamIds) {
     options.teamIds.forEach((id) => form.append("teamIds", id));
   }
-  if (options.visibility === "project" && options.projectIds) {
+  // projectIds are sent whenever provided — the project attach (RAG
+  // grant) is independent of the visibility tier, so a personal-scope
+  // upload can still be linked to its project.
+  if (options.projectIds && options.projectIds.length > 0) {
     options.projectIds.forEach((id) => form.append("projectIds", id));
   }
   if (
@@ -864,9 +867,20 @@ export interface ConversationParticipant {
 export interface ConversationListItem {
   id: string;
   title: string | null;
+  /** 'personal' = private to the creator; 'team' = shared with the
+   *  project's team. Drives the Personal/Team sidebar filter. */
+  scope: "personal" | "team";
   createdAt: string;
   updatedAt: string;
   participants: ConversationParticipant[];
+}
+
+/** A Knowledge Core file attached to a chat message (rendered as a
+ *  downloadable chip). Stored in the message's metadata.attachments. */
+export interface ChatAttachment {
+  fileId: string;
+  name: string;
+  fileType?: string | null;
 }
 
 export interface ConversationMessage {
@@ -880,11 +894,36 @@ export interface ConversationMessage {
   userPicture: string | null;
 }
 
+/**
+ * Download a Knowledge Core file by id (the inline chat attachment +
+ * Data Sources panel use this). Fetches through apiFetch so the auth
+ * cookie rides along, then saves the blob client-side.
+ */
+export async function downloadKnowledgeFile(
+  fileId: string,
+  name: string,
+): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/files/${fileId}/download`);
+  if (!res.ok) throw new Error("Failed to download file");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export interface ConversationWithMessages {
   id: string;
   projectId: string;
   userId: string;
   title: string | null;
+  /** Free-form Chat Context shown/edited in the right Project Details
+   *  panel (Figma 238:17561). Null when unset. */
+  context: string | null;
   createdAt: string;
   updatedAt: string;
   messages: ConversationMessage[];
@@ -892,8 +931,10 @@ export interface ConversationWithMessages {
 
 export async function fetchConversations(
   projectId: string,
+  query?: string,
 ): Promise<ConversationListItem[]> {
-  const res = await apiFetch(`/projects/${projectId}/conversations`);
+  const qs = query?.trim() ? `?q=${encodeURIComponent(query.trim())}` : "";
+  const res = await apiFetch(`/projects/${projectId}/conversations${qs}`);
   if (!res.ok) throw new Error("Failed to fetch conversations");
   return res.json();
 }
@@ -908,9 +949,12 @@ export async function fetchConversation(
 
 export async function createConversation(
   projectId: string,
+  scope: "personal" | "team" = "personal",
 ): Promise<{ id: string }> {
   const res = await apiFetch(`/projects/${projectId}/conversations`, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scope }),
   });
   if (!res.ok) throw new Error("Failed to create conversation");
   return res.json();
@@ -919,6 +963,24 @@ export async function createConversation(
 export async function deleteConversation(id: string): Promise<void> {
   const res = await apiFetch(`/conversations/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete conversation");
+}
+
+/**
+ * Update a conversation's free-form Chat Context (right Project
+ * Details panel "Edit Context"). Pass null/empty to clear it. Returns
+ * the normalised stored value.
+ */
+export async function updateConversationContext(
+  id: string,
+  context: string | null,
+): Promise<{ context: string | null }> {
+  const res = await apiFetch(`/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ context }),
+  });
+  if (!res.ok) throw new Error("Failed to update chat context");
+  return res.json();
 }
 
 /**
@@ -1140,6 +1202,7 @@ export async function* streamChatMessage(
   model?: string,
   projectId?: string,
   signal?: AbortSignal,
+  attachments?: ChatAttachment[],
 ): AsyncIterable<ChatStreamEvent> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
@@ -1150,6 +1213,7 @@ export async function* streamChatMessage(
       model,
       enableReasoning: true,
       projectId,
+      ...(attachments && attachments.length > 0 ? { attachments } : {}),
     }),
     signal,
   });

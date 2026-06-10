@@ -59,6 +59,7 @@ import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useAuth } from "@/components/providers";
 import { isPersonalProfile } from "@/lib/hooks/use-is-personal";
+import { useOnlineUsers } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -205,6 +206,7 @@ export const Appbar = () => {
   });
   const { user: currentUser, isLoading: authLoading } = useAuth();
   const isPersonal = isPersonalProfile(currentUser, authLoading);
+  const onlineUserIds = useOnlineUsers();
   const canManageCurrentTeam = (() => {
     if (!teamDetailData || !currentUser) return false;
     if (currentUser.id === teamDetailData.ownerId) return true;
@@ -626,14 +628,22 @@ export const Appbar = () => {
                 <div className="flex flex-col gap-3 max-h-[300px] overflow-auto">
                   {members.map((m) => (
                     <div key={m.id} className="flex items-center gap-3">
+                      <div className="relative shrink-0">
                       {m.userPicture ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={m.userPicture} alt={m.userName ?? ""} className="h-8 w-8 shrink-0 rounded-full object-cover" />
+                        <img src={m.userPicture} alt={m.userName ?? ""} className="h-8 w-8 rounded-full object-cover" />
                       ) : (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-6 text-[12px] font-medium text-white">
                           {(m.userName ?? m.email)?.[0]?.toUpperCase() ?? "?"}
                         </div>
                       )}
+                      {m.userId && onlineUserIds.has(m.userId) && (
+                        <span
+                          title={t("appbar.online")}
+                          className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg-white bg-success-7"
+                        />
+                      )}
+                      </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium text-text-1 truncate">{m.userName ?? m.email}</p>
                         <div className="flex items-center gap-1">

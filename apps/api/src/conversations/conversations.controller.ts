@@ -5,7 +5,9 @@ import {
   Get,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ConversationsService } from './conversations.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
@@ -19,8 +21,9 @@ export class ConversationsController {
   findByProject(
     @Param('projectId') projectId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('q') q?: string,
   ) {
-    return this.conversationsService.findByProject(projectId, user.id);
+    return this.conversationsService.findByProject(projectId, user.id, q);
   }
 
   @Get('conversations/:id')
@@ -31,9 +34,29 @@ export class ConversationsController {
   @Post('projects/:projectId/conversations')
   create(
     @Param('projectId') projectId: string,
+    @Body() body: { scope?: 'personal' | 'team' },
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.conversationsService.create(projectId, user.id);
+    const scope = body?.scope === 'team' ? 'team' : 'personal';
+    return this.conversationsService.create(projectId, user.id, scope);
+  }
+
+  /**
+   * Update the conversation's free-form Chat Context (right-panel
+   * "Edit Context", Figma 238:17561). Any project member who can read
+   * the conversation can edit its shared context.
+   */
+  @Patch('conversations/:id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { context?: string | null },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversationsService.updateContext(
+      id,
+      user.id,
+      body.context ?? null,
+    );
   }
 
   @Delete('conversations/:id')

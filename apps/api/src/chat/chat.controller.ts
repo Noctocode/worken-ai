@@ -28,6 +28,16 @@ import { ObservabilityService } from '../observability/observability.service.js'
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { ChatService } from './chat.service.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
+import { ChatGateway } from '../realtime/chat.gateway.js';
+
+/** A Knowledge Core file shown inline on the user's message. The file
+ *  itself lives in KC (uploaded / linked to the project on the FE before
+ *  send); this is just the display + download reference. */
+interface ChatAttachment {
+  fileId: string;
+  name: string;
+  fileType?: string | null;
+}
 
 interface ChatRequestBody {
   conversationId: string;
@@ -35,6 +45,9 @@ interface ChatRequestBody {
   model?: string;
   enableReasoning?: boolean;
   projectId?: string;
+  /** KC files attached to THIS message (rendered as chips, downloadable;
+   *  their content is fed to RAG via the project attachment path). */
+  attachments?: ChatAttachment[];
 }
 
 @Controller('chat')
@@ -50,6 +63,7 @@ export class ChatController {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly projectKnowledge: ProjectKnowledgeService,
     private readonly modelSuggestions: ModelSuggestionService,
+    private readonly chatGateway: ChatGateway,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -116,12 +130,32 @@ export class ChatController {
     }
     const safePrompt = inputDecision.text;
 
+    // Attachments (if any) ride in the message metadata so the FE can
+    // render the file chips inline and offer a download — sanitized to
+    // the display fields only (never trust extra client keys).
+    const attachments = Array.isArray(body.attachments)
+      ? body.attachments
+          .filter((a) => a && typeof a.fileId === 'string' && a.fileId)
+          .map((a) => ({
+            fileId: a.fileId,
+            name: typeof a.name === 'string' ? a.name : a.fileId,
+            fileType: a.fileType ?? null,
+          }))
+      : [];
     await this.conversationsService.addMessage(
       body.conversationId,
       'user',
       safePrompt,
       user.id,
+      attachments.length > 0 ? { attachments } : undefined,
     );
+    // Live sync: tell other members in this conversation a new message
+    // landed (senderId = author, so the author's own client skips the
+    // redundant refetch — it already shows the message optimistically).
+    this.chatGateway.emitMessage(body.conversationId, user.id);
+    // Refresh the project's sidebar for members viewing it (new
+    // conversation / latest-message ordering).
+    this.chatGateway.emitProjectActivity(conversation.projectId);
     const conversationAfterPersist = await this.conversationsService.findOne(
       body.conversationId,
       user.id,
@@ -204,10 +238,13 @@ export class ChatController {
       // apply (the inner service enforces them per chunk), so an
       // 'admins'-only file remains admins-only even when attached.
       // Resolve attached ids first; if none, skip the embedding
-      // round-trip.
-      const attachedFileIds = await this.projectKnowledge.getAttachedFileIds(
-        body.projectId,
-      );
+      // round-trip. Files attached to THIS message are injected in full
+      // below (direct path), so drop them here to avoid the same content
+      // landing in the context twice.
+      const thisMsgAttachmentIds = new Set(attachments.map((a) => a.fileId));
+      const attachedFileIds = (
+        await this.projectKnowledge.getAttachedFileIds(body.projectId)
+      ).filter((id) => !thisMsgAttachmentIds.has(id));
       if (attachedFileIds.length > 0) {
         const attachedChunks =
           await this.knowledgeIngestion.searchProjectAttachedChunks(
@@ -223,6 +260,22 @@ export class ChatController {
       safePrompt,
     );
     for (const chunk of userKnowledge) contextChunks.push(chunk.content);
+
+    // Files attached to THIS message get their full text injected
+    // directly (not semantic-gated, and parsed from disk if async
+    // ingestion hasn't finished) so the model always sees what the user
+    // just attached — like ChatGPT. Prepended so it leads the context.
+    if (attachments.length > 0) {
+      const attachedTexts =
+        await this.knowledgeIngestion.getOwnedAttachedFilesText(
+          user.id,
+          attachments.map((a) => a.fileId),
+        );
+      for (let i = attachedTexts.length - 1; i >= 0; i--) {
+        const f = attachedTexts[i];
+        contextChunks.unshift(`Attached file "${f.name}":\n${f.text}`);
+      }
+    }
     const context =
       contextChunks.length > 0 ? contextChunks.join('\n\n---\n\n') : undefined;
 
@@ -663,6 +716,11 @@ export class ChatController {
       null,
       Object.keys(metadata).length > 0 ? metadata : undefined,
     );
+    // Live sync the assistant reply to other members. senderId is the
+    // triggering user so their own client (which streamed the reply)
+    // skips the refetch; everyone else in the room refetches to see it.
+    this.chatGateway.emitMessage(body.conversationId, user.id);
+    this.chatGateway.emitProjectActivity(conversation.projectId);
 
     void this.observabilityService.recordLLMCall({
       userId: user.id,

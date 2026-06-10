@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, asc } from 'drizzle-orm';
+import { and, desc, eq, asc, ilike, or } from 'drizzle-orm';
 import {
   conversations,
   messageFeedback,
@@ -91,17 +91,89 @@ export class ConversationsService {
     }
 
     await this.verifyProjectAccess(conversation.projectId, userId);
+
+    // A 'personal' conversation is private to its creator even within a
+    // shared (team) project — project access alone isn't enough. 'team'
+    // conversations stay visible to anyone with project access. Throw
+    // NotFound (not Forbidden) so we don't leak that the id exists.
+    if (conversation.scope === 'personal' && conversation.userId !== userId) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
     return conversation;
   }
 
-  async findByProject(projectId: string, userId: string) {
+  /**
+   * Lightweight access checks for the realtime gateway — boolean,
+   * no message loading. Reuse the same gates as the REST endpoints.
+   */
+  async canAccessConversation(
+    conversationId: string,
+    userId: string,
+  ): Promise<boolean> {
+    try {
+      await this.verifyConversationAccess(conversationId, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async canAccessProject(projectId: string, userId: string): Promise<boolean> {
+    try {
+      await this.verifyProjectAccess(projectId, userId);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Tenant of the user, for scoping realtime presence. Null = personal. */
+  async getUserCompanyId(userId: string): Promise<string | null> {
+    const [u] = await this.db
+      .select({ companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId));
+    return u?.companyId ?? null;
+  }
+
+  async findByProject(projectId: string, userId: string, query?: string) {
     await this.verifyProjectAccess(projectId, userId);
 
-    const convos = await this.db
+    // Visibility: team conversations are shared with everyone who can
+    // access the project; personal ones are private to their creator.
+    const visibleToCaller = and(
+      eq(conversations.projectId, projectId),
+      or(eq(conversations.scope, 'team'), eq(conversations.userId, userId)),
+    );
+
+    let convos = await this.db
       .select()
       .from(conversations)
-      .where(eq(conversations.projectId, projectId))
+      .where(visibleToCaller)
       .orderBy(desc(conversations.updatedAt));
+
+    // Optional server-side search: a conversation matches when its
+    // title OR any of its messages' content contains the term (case-
+    // insensitive). We resolve the matching ids in one ILIKE query
+    // and filter the already-ordered list in memory, preserving the
+    // updatedAt ordering. LIKE wildcards in the user term are escaped
+    // so a literal `%`/`_` can't widen the match.
+    const term = query?.trim();
+    if (term) {
+      const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+      const matches = await this.db
+        .selectDistinct({ id: conversations.id })
+        .from(conversations)
+        .leftJoin(messages, eq(messages.conversationId, conversations.id))
+        .where(
+          and(
+            visibleToCaller,
+            or(ilike(conversations.title, like), ilike(messages.content, like)),
+          ),
+        );
+      const matchedIds = new Set(matches.map((m) => m.id));
+      convos = convos.filter((c) => matchedIds.has(c.id));
+    }
 
     // For each conversation, get distinct participants from messages
     const result = await Promise.all(
@@ -143,6 +215,7 @@ export class ConversationsService {
     projectId: string;
     userId: string;
     title: string | null;
+    context: string | null;
     createdAt: Date;
     updatedAt: Date;
     messages: {
@@ -183,8 +256,17 @@ export class ConversationsService {
     };
   }
 
-  async create(projectId: string, userId: string) {
-    await this.verifyProjectAccess(projectId, userId);
+  async create(
+    projectId: string,
+    userId: string,
+    scope: 'personal' | 'team' = 'personal',
+  ) {
+    const project = await this.verifyProjectAccess(projectId, userId);
+
+    // Only a team project can host a 'team' (shared) conversation; a
+    // personal project has no team to share with, so coerce to personal.
+    const effectiveScope: 'personal' | 'team' =
+      project.teamId && scope === 'team' ? 'team' : 'personal';
 
     const [conversation] = await this.db
       .insert(conversations)
@@ -192,6 +274,7 @@ export class ConversationsService {
         projectId,
         userId,
         title: null,
+        scope: effectiveScope,
       })
       .returning();
 
@@ -249,6 +332,33 @@ export class ConversationsService {
     }
 
     return msg;
+  }
+
+  /**
+   * Update a conversation's free-form Chat Context (right-panel "Edit
+   * Context"). Access is gated on project membership — any member who
+   * can read the conversation can edit its shared context. Trims and
+   * normalises empty/whitespace-only input to null so the panel can
+   * fall back to its empty state. Returns the new value.
+   */
+  async updateContext(
+    conversationId: string,
+    userId: string,
+    context: string | null,
+  ) {
+    await this.verifyConversationAccess(conversationId, userId);
+
+    const trimmed =
+      typeof context === 'string' && context.trim().length > 0
+        ? context.trim()
+        : null;
+
+    await this.db
+      .update(conversations)
+      .set({ context: trimmed, updatedAt: new Date() })
+      .where(eq(conversations.id, conversationId));
+
+    return { context: trimmed };
   }
 
   async remove(conversationId: string, userId: string) {

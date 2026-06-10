@@ -7,11 +7,20 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   AlertTriangle,
+  ArrowLeft,
   Sparkles,
   Bot,
+  Check,
+  Download,
+  EllipsisVertical,
+  FileText,
   Globe,
   Loader2,
+  PanelLeft,
+  PanelRight,
+  Plus,
   Square,
+  UserPlus,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,16 +36,31 @@ import {
   streamChatMessage,
   submitMessageFeedback,
   updateProject,
+  uploadProjectKnowledgeFiles,
+  downloadKnowledgeFile,
   type AlternativeModelSuggestion,
+  type ChatAttachment,
   type ConversationMessage,
   type WebCitation,
 } from "@/lib/api";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { ChatHistorySidebar } from "@/components/chat-history-sidebar";
+import { ProjectDetailsPanel } from "@/components/project-chat/project-details-panel";
 import { ChatEmptyState } from "@/components/project-chat/chat-empty-state";
 import { ChatComposer } from "@/components/project-chat/chat-composer";
 import { MessageActions } from "@/components/project-chat/message-actions";
 import { ModelSuggestionBubble } from "@/components/project-chat/model-suggestion-bubble";
+import { InviteMembersDialog } from "@/components/project-chat/invite-members-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useAuth } from "@/components/providers";
+import { useConversationLiveSync } from "@/components/realtime-provider";
+import { useUserModels } from "@/lib/hooks/use-user-models";
+import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { AGENTS } from "@/lib/agents";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useLanguage } from "@/lib/i18n";
 
@@ -79,6 +103,9 @@ interface LocalMessage {
   userId?: string | null;
   userName?: string | null;
   userPicture?: string | null;
+  /** KC files attached to this (user) message — rendered as
+   *  downloadable chips. Hydrated from metadata.attachments on reload. */
+  attachments?: ChatAttachment[];
 }
 
 function getTimestamp() {
@@ -104,6 +131,11 @@ export default function ProjectChatPage() {
   const projectId = params.id as string;
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  // Model data for the phone overflow menu's model picker — mirrors the
+  // appbar: the project's agent pool, labelled + switched the same way.
+  const { effective: effectiveModels, getLabel: getModelLabel } =
+    useUserModels();
+  const { models: availableModels } = useAvailableModels();
 
   const {
     data: project,
@@ -156,9 +188,82 @@ export default function ProjectChatPage() {
     },
   });
 
+  // Label a pool entry (agent preset → its name; configured-model id →
+  // its alias name / catalog label). Mirrors the appbar.
+  const labelForModel = (id: string): string => {
+    const alias = effectiveModels.find((m) => m.id === id);
+    return alias ? alias.name : getModelLabel(id);
+  };
+  // Resolve a pool entry to a concrete model slug for persistence.
+  const resolveSelectionModel = (id: string): string => {
+    const preset = AGENTS.find((a) => a.id === id);
+    if (!preset) return id;
+    const inCatalog = availableModels.find((m) => m.id === preset.model);
+    return (
+      inCatalog?.id ??
+      availableModels[0]?.id ??
+      project?.model ??
+      preset.model
+    );
+  };
+  // Switch the project's active agent/model — same contract as the
+  // appbar header dropdown (persists agent + resolved model).
+  const switchAgentMutation = useMutation({
+    mutationFn: (id: string) =>
+      updateProject(projectId, { agent: id, model: resolveSelectionModel(id) }),
+    onSuccess: (updated, id) => {
+      queryClient.setQueryData(["project", projectId], updated);
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      const preset = AGENTS.find((a) => a.id === id);
+      toast.success(
+        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
+      );
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
+      ),
+  });
+
+  // Per-project web search toggle — mirrors the appbar's, surfaced in the
+  // phone overflow menu where the appbar is hidden.
+  const webSearchMutation = useMutation({
+    mutationFn: (next: boolean) => updateProject(projectId, { webSearch: next }),
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["project", projectId], updated);
+      toast.success(
+        updated.webSearch ? t("appbar.webSearchOn") : t("appbar.webSearchOff"),
+      );
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof Error ? err.message : t("appbar.webSearchFailed"),
+      ),
+  });
+
+  // Right-hand "Project Details" panel (Figma 238:17561). Open by
+  // default on wide screens; the panel renders a thin collapsed rail
+  // when closed.
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  // <xl / <lg slide-over drawers (Project Details / conversation history)
+  // for tablet + mobile, where the inline panels are hidden.
+  const [detailsDrawerOpen, setDetailsDrawerOpen] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
+  // Scope for the NEXT new chat (created lazily on first send). Only
+  // meaningful for team projects; personal projects always create
+  // personal chats (the BE coerces it regardless).
+  const [newChatScope, setNewChatScope] = useState<"personal" | "team">(
+    "personal",
+  );
+  // Files attached to the next message — already uploaded to KC (so RAG
+  // ingests them) and held here until the message is sent.
+  const [pendingAttachments, setPendingAttachments] = useState<
+    ChatAttachment[]
+  >([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -240,6 +345,11 @@ export default function ProjectChatPage() {
               ? meta.model
               : undefined,
           partial: meta?.partial === true,
+          attachments: Array.isArray(meta?.attachments)
+            ? (meta.attachments as ChatAttachment[]).filter(
+                (a) => a && typeof a.fileId === "string",
+              )
+            : undefined,
           userId: m.userId,
           userName: m.userName,
           userPicture: m.userPicture,
@@ -262,14 +372,84 @@ export default function ProjectChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isSending]);
 
+  // Company profiles tag chat uploads with 'project' visibility;
+  // personal profiles omit it (owner-only by scope) and rely on the
+  // project link — same rule as the project Knowledge dialog.
+  const isPersonal = useIsPersonal();
+
   const handleNewChat = useCallback(() => {
     setActiveConversationId(null);
     setMessages([]);
+    setNewChatScope("personal");
+    setPendingAttachments([]);
   }, []);
 
   const handleSelectConversation = useCallback((id: string) => {
     setActiveConversationId(id);
+    setPendingAttachments([]);
   }, []);
+
+  // Upload picked files into the project's Knowledge Core (so RAG can
+  // use them) and hold them as pending attachments for the next message.
+  const handleAddFiles = useCallback(
+    async (files: FileList) => {
+      const list = Array.from(files);
+      if (list.length === 0) return;
+      setAttachmentUploading(true);
+      try {
+        const result = await uploadProjectKnowledgeFiles(projectId, list, {
+          ...(isPersonal ? {} : { visibility: "project" as const }),
+          projectIds: [projectId],
+        });
+        // Both freshly-uploaded and already-in-KC (duplicate) files are
+        // valid attachments — collect their ids/names.
+        const added: ChatAttachment[] = [
+          ...result.uploaded.map((u) => ({ fileId: u.id, name: u.name })),
+          ...result.duplicates
+            .filter((d) => d.existing.id)
+            .map((d) => ({ fileId: d.existing.id as string, name: d.name })),
+        ];
+        if (added.length > 0) {
+          setPendingAttachments((prev) => {
+            const seen = new Set(prev.map((a) => a.fileId));
+            return [...prev, ...added.filter((a) => !seen.has(a.fileId))];
+          });
+          // Keep the right-panel "Data Sources" list in sync.
+          queryClient.invalidateQueries({
+            queryKey: ["project-knowledge-files", projectId],
+          });
+        }
+        if (result.nameConflicts.length > 0) {
+          toast.info(t("chatComp.attachConflict"));
+        }
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : t("chatComp.attachFailed"),
+        );
+      } finally {
+        setAttachmentUploading(false);
+      }
+    },
+    [projectId, isPersonal, queryClient, t],
+  );
+
+  const handleRemoveAttachment = useCallback((fileId: string) => {
+    setPendingAttachments((prev) => prev.filter((a) => a.fileId !== fileId));
+  }, []);
+
+  // Live sync (FA4): when another member posts in the open conversation,
+  // pull the canonical view. The conversation query is gated on
+  // `!isSending`, so this no-ops mid-stream and refetches once our own
+  // send settles — own messages are skipped server-side via senderId.
+  const handleRemoteMessage = useCallback(() => {
+    if (activeConversationId) {
+      queryClient.invalidateQueries({
+        queryKey: ["conversation", activeConversationId],
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ["conversations", projectId] });
+  }, [queryClient, activeConversationId, projectId]);
+  useConversationLiveSync(activeConversationId, user?.id, handleRemoteMessage);
 
   const handleStop = () => {
     lastStopAtRef.current = Date.now();
@@ -310,7 +490,15 @@ export default function ProjectChatPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isSending || !project) return;
+    // Allow sending a file-only turn (no text) when attachments are
+    // present — the model answers about the attached files.
+    if (
+      (!message.trim() && pendingAttachments.length === 0) ||
+      isSending ||
+      attachmentUploading ||
+      !project
+    )
+      return;
     // Cooldown after a Stop click — same race as the arena page.
     // React swaps Stop → Send under the cursor while the click is
     // in flight; without this, the just-rendered Send button
@@ -318,7 +506,9 @@ export default function ProjectChatPage() {
     if (Date.now() - lastStopAtRef.current < 200) return;
 
     const content = message.trim();
+    const attachments = pendingAttachments;
     setMessage("");
+    setPendingAttachments([]);
     setIsSending(true);
 
     // Optimistic user message
@@ -330,6 +520,7 @@ export default function ProjectChatPage() {
       userId: user?.id,
       userName: user?.name,
       userPicture: user?.picture,
+      ...(attachments.length > 0 ? { attachments } : {}),
     };
     // Placeholder assistant bubble — gets filled token-by-token as
     // SSE deltas arrive. Holding a stable id so we can update only
@@ -372,7 +563,10 @@ export default function ProjectChatPage() {
       // Create conversation if this is a new chat
       let convId = activeConversationId;
       if (!convId) {
-        const newConvo = await createConversation(projectId);
+        // Team projects honor the picked scope; personal projects always
+        // get a personal chat (the BE coerces it too).
+        const scope = project.teamId ? newChatScope : "personal";
+        const newConvo = await createConversation(projectId, scope);
         convId = newConvo.id;
         setActiveConversationId(convId);
       }
@@ -383,6 +577,7 @@ export default function ProjectChatPage() {
         project.model,
         projectId,
         controller.signal,
+        attachments,
       )) {
         // Defensive: BE-side bytes already buffered on the wire
         // surface here even after the user pressed Stop. Bail
@@ -593,11 +788,13 @@ export default function ProjectChatPage() {
     activeConversationId,
     onSelectConversation: handleSelectConversation,
     onNewChat: handleNewChat,
+    mobileOpen: historyDrawerOpen,
+    onMobileOpenChange: setHistoryDrawerOpen,
   };
 
   if (isLoadingProject) {
     return (
-      <div className="flex min-h-0 flex-1">
+      <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-text-3" />
@@ -608,7 +805,7 @@ export default function ProjectChatPage() {
 
   if (error || !project) {
     return (
-      <div className="flex min-h-0 flex-1">
+      <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
         <ChatHistorySidebar {...sidebarProps} />
         <div className="flex min-w-0 flex-1 items-center justify-center">
           <div className="text-center">
@@ -625,15 +822,150 @@ export default function ProjectChatPage() {
   }
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="-mx-6 flex h-[calc(100vh-3.5rem)] overflow-hidden md:h-[calc(100vh-4.5rem)]">
       <ChatHistorySidebar {...sidebarProps} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        {/* No in-page header: the global Appbar (projectDetail
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* Compact header for tablet/mobile (<xl): the inline history
+            (<lg) and Project Details panel (<xl) are hidden, and the
+            global Appbar collapses on phones (<md) — so surface
+            navigation here. md+ still relies on the Appbar for the
+            project title / model / search / members. */}
+        <div className="flex h-12 shrink-0 items-center gap-1 border-b border-border-2 bg-bg-white px-3 xl:hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2 md:hidden">
+            <Link
+              href="/"
+              title={t("projDetail.goBack")}
+              aria-label={t("projDetail.goBack")}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Link>
+            <span className="truncate text-[14px] font-semibold text-text-1">
+              {project.name}
+            </span>
+          </div>
+          <div className="hidden flex-1 md:block" />
+          <button
+            type="button"
+            onClick={() => setHistoryDrawerOpen(true)}
+            title={t("chatHist.title")}
+            aria-label={t("chatHist.title")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 lg:hidden"
+          >
+            <PanelLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={handleNewChat}
+            title={t("chatHist.newConvo")}
+            aria-label={t("chatHist.newConvo")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 lg:hidden"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailsDrawerOpen(true)}
+            title={t("projDetails.title")}
+            aria-label={t("projDetails.title")}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1"
+          >
+            <PanelRight className="h-5 w-5" />
+          </button>
+
+          {/* Phone-only (<md) overflow: the appbar (model / web search /
+              members + invite) is hidden on phones, so surface those here. */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                title={t("common.actions")}
+                aria-label={t("common.actions")}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-text-3 hover:bg-bg-1 hover:text-text-1 md:hidden"
+              >
+                <EllipsisVertical className="h-5 w-5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-64 p-0">
+              {/* Model picker — the project's agent pool (same as the
+                  desktop header dropdown), not every available model. */}
+              <div className="border-b border-border-2 px-3 py-2">
+                <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                  {t("appbar.model")}
+                </p>
+                <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
+                  {(project.agents?.length
+                    ? project.agents
+                    : project.agent
+                      ? [project.agent]
+                      : []
+                  ).map((id) => {
+                    const preset = AGENTS.find((a) => a.id === id);
+                    const label = preset?.label ?? labelForModel(id);
+                    const isActive = id === project.agent;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() =>
+                          !isActive && switchAgentMutation.mutate(id)
+                        }
+                        disabled={switchAgentMutation.isPending}
+                        className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed"
+                      >
+                        <span className="truncate">{label}</span>
+                        {isActive && (
+                          <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Web search toggle */}
+              <button
+                type="button"
+                onClick={() => webSearchMutation.mutate(!project.webSearch)}
+                disabled={
+                  !(project.webSearchSupported && project.webSearchAllowed) ||
+                  webSearchMutation.isPending
+                }
+                className="flex w-full cursor-pointer items-center justify-between gap-2 border-b border-border-2 px-3 py-2.5 text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-text-3" />
+                  {t("appbar.webSearch")}
+                </span>
+                <span
+                  className={`relative h-4 w-7 shrink-0 rounded-full transition-colors ${
+                    project.webSearch ? "bg-primary-6" : "bg-border-3"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${
+                      project.webSearch ? "left-[14px]" : "left-0.5"
+                    }`}
+                  />
+                </span>
+              </button>
+              {/* Invite (team projects only) */}
+              {!isPersonal && project.teamId && (
+                <InviteMembersDialog project={project}>
+                  <button
+                    type="button"
+                    className="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-[13px] text-text-1 hover:bg-bg-1"
+                  >
+                    <UserPlus className="h-4 w-4 text-text-3" />
+                    {t("appbar.inviteMember")}
+                  </button>
+                </InviteMembersDialog>
+              )}
+            </PopoverContent>
+          </Popover>
+        </div>
+        {/* No in-page header on xl+: the global Appbar (projectDetail
             variant) already renders Back / title / team chip / model
-            label / search / avatar stack / Invite Member, so a second
-            row of the same controls inside the page would just
-            duplicate the chrome. updateModelMutation below is still
-            used by the "Try It" suggestion handler. */}
+            label / search / avatar stack / Invite Member. */}
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto">
@@ -667,7 +999,13 @@ export default function ProjectChatPage() {
                   hero (still rendered below by the regular composer
                   block). */}
               {messages.length === 0 && !isLoadingConversation && (
-                <ChatEmptyState project={project} />
+                <ChatEmptyState
+                  project={project}
+                  onPickPrompt={setMessage}
+                  scope={newChatScope}
+                  onScopeChange={setNewChatScope}
+                  canChooseScope={!!project.teamId}
+                />
               )}
 
               {isLoadingConversation && (
@@ -726,6 +1064,35 @@ export default function ProjectChatPage() {
                           : "rounded-tr-sm bg-primary-6 text-white"
                       }`}
                     >
+                      {/* Attached files (chips) on a user message —
+                          click to download via the KC download endpoint. */}
+                      {msg.role === "user" &&
+                        msg.attachments &&
+                        msg.attachments.length > 0 && (
+                          <div
+                            className={`flex flex-wrap gap-2 ${
+                              msg.content ? "mb-2" : ""
+                            }`}
+                          >
+                            {msg.attachments.map((a) => (
+                              <button
+                                key={a.fileId}
+                                type="button"
+                                onClick={() =>
+                                  downloadKnowledgeFile(a.fileId, a.name).catch(
+                                    () => toast.error(t("chatComp.attachFailed")),
+                                  )
+                                }
+                                title={t("chatComp.downloadAttachment")}
+                                className="inline-flex max-w-[220px] cursor-pointer items-center gap-1.5 rounded-lg bg-white/15 px-2 py-1 text-[12px] text-white transition-colors hover:bg-white/25"
+                              >
+                                <FileText className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate">{a.name}</span>
+                                <Download className="h-3 w-3 shrink-0 opacity-80" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       {/* While the stream hasn't produced any text
                           yet (empty assistant bubble + isSending),
                           show an inline "Thinking…" so the user
@@ -1058,8 +1425,26 @@ export default function ProjectChatPage() {
           onSubmit={handleSubmit}
           onStop={handleStop}
           isSending={isSending}
+          pendingAttachments={pendingAttachments}
+          onAddFiles={handleAddFiles}
+          onRemoveAttachment={handleRemoveAttachment}
+          attachmentUploading={attachmentUploading}
         />
       </div>
+
+      {/* Right "Project Details" panel (Figma 238:17561). conversationData
+          is gated on !isSending, so on a fresh chat it's briefly null —
+          the panel's Chat Context section handles that with its
+          "start a conversation" empty state. */}
+      <ProjectDetailsPanel
+        projectId={projectId}
+        conversation={conversationData ?? null}
+        open={detailsOpen}
+        onOpenChange={setDetailsOpen}
+        mobileOpen={detailsDrawerOpen}
+        onMobileOpenChange={setDetailsDrawerOpen}
+        onPickPrompt={setMessage}
+      />
     </div>
   );
 }

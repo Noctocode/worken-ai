@@ -122,6 +122,7 @@ export const common = {
   'appbar.webSearchFailed': 'Failed to update web search',
   'appbar.teamMembers': 'Team Members',
   'appbar.pending': 'Pending',
+  'appbar.online': 'Online',
   'appbar.inviteMember': 'Invite Member',
   'appbar.createProject': 'Create Project',
   'appbar.backToDashboard': 'Back to Dashboard',

@@ -733,14 +733,26 @@ export class KnowledgeCoreService {
           )
         : [];
 
-    // For 'project' visibility: same shape as teams but for projects.
-    // The project link rows in project_knowledge_files double as the
-    // access grant — chat-time RAG only surfaces these chunks inside
-    // the linked project, never via the org-wide search.
+    // Attach the upload to one or more projects. The link rows in
+    // project_knowledge_files double as the chat-time RAG grant —
+    // chunks only surface inside the linked project. This is decoupled
+    // from the KC `visibility` tier on purpose: a personal-profile
+    // user can attach an owner-only file to their own project's chat
+    // (scope stays 'personal', so the chunk is still owner-only — see
+    // searchProjectAttachedChunks), and a company user attaching with
+    // 'project' visibility behaves exactly as before. 'project'
+    // visibility still REQUIRES at least one project id (the link is
+    // its only access grant; without it the file would be unreadable).
+    const projectIdsToLink = projectIdsInput ?? [];
+    if (visibility === 'project' && projectIdsToLink.length === 0) {
+      throw new BadRequestException(
+        'Pick at least one project for "Project" visibility.',
+      );
+    }
     const allowedProjectIds =
-      visibility === 'project'
+      projectIdsToLink.length > 0
         ? await this.resolveAssignableProjectIds(
-            projectIdsInput ?? [],
+            projectIdsToLink,
             userId,
             uploader?.role === 'admin',
           )
@@ -1020,16 +1032,14 @@ export class KnowledgeCoreService {
         );
       }
 
-      // 'project' visibility reuses project_knowledge_files for the
-      // access grant — same table Manage Context populates when the
-      // user attaches a KC file to a project. Inserting here both
-      // pins the file to the chosen project's chat and surfaces it
-      // in the project's Manage Context list automatically.
-      if (
-        visibility === 'project' &&
-        inserted.length > 0 &&
-        allowedProjectIds.length > 0
-      ) {
+      // project_knowledge_files is the project attach + access grant —
+      // same table Manage Context populates. Inserting here both pins
+      // the file to the chosen project's chat and surfaces it in the
+      // project's Manage Context list. Created whenever the upload
+      // resolved one or more assignable projects, regardless of the
+      // KC visibility tier (so personal-scope owner-only files attach
+      // too — see the allowedProjectIds comment above).
+      if (inserted.length > 0 && allowedProjectIds.length > 0) {
         await this.db.insert(projectKnowledgeFiles).values(
           inserted.flatMap((row) =>
             allowedProjectIds.map((projectId) => ({

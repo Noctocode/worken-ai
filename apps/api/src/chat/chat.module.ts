@@ -11,12 +11,14 @@ import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js'
 import { ModelsModule } from '../models/models.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 
 @Module({
   imports: [
     ConfigModule,
     DocumentsModule,
     ConversationsModule,
+    RealtimeModule, // ChatGateway for presence + live message sync
     GuardrailsSectionModule, // GuardrailEvaluatorService for input/output gate
     IntegrationsModule,
     KnowledgeCoreModule, // KnowledgeIngestionService for user-scoped RAG

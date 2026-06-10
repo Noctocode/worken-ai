@@ -30,7 +30,9 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.26",
     "@nestjs/throttler": "^6.5.0",
+    "@nestjs/websockets": "^11.1.26",
     "@openrouter/sdk": "^0.8.0",
     "@worken/database": "workspace:*",
     "argon2": "^0.44.0",
@@ -49,6 +51,7 @@
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
