@@ -42,6 +42,15 @@ export class IntegrationsController {
       apiUrl?: string;
       apiKey?: string;
       isEnabled?: boolean;
+      /** Custom LLM only: the friendly name shown in the model picker.
+       *  Forwarded to upsert(), which requires it for providerId="custom"
+       *  and auto-creates the bound model_configs alias from it. */
+      customName?: string;
+      /** Custom LLM only: the real model id sent to the upstream
+       *  endpoint (e.g. "Qwen3.6-35B-A3B-FP8"). Required for
+       *  providerId="custom" — stored on the bound alias and passed as
+       *  the `model` in the upstream chat call. */
+      customModel?: string;
       /** Azure only: endpoint + api-version + deployments. */
       config?: IntegrationConfig;
     },
@@ -55,6 +64,8 @@ export class IntegrationsController {
       apiUrl: body.apiUrl,
       apiKey: body.apiKey,
       isEnabled: body.isEnabled,
+      customName: body.customName,
+      customModel: body.customModel,
       config: body.config,
     });
   }

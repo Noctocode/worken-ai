@@ -319,6 +319,10 @@ export const management = {
   'mgmt.integ.displayNameHint': "What you'll see in the model dropdown.",
   'mgmt.integ.apiUrl': 'API URL',
   'mgmt.integ.apiUrlPlaceholder': 'https://your-endpoint/v1',
+  'mgmt.integ.model': 'Model',
+  'mgmt.integ.modelPlaceholder': 'e.g. Qwen3.6-35B-A3B-FP8',
+  'mgmt.integ.modelHint':
+    'The exact model id your endpoint expects, sent with every request.',
   'mgmt.integ.apiKeyOptional': 'API key (optional)',
   'mgmt.integ.anonymousPlaceholder': 'Leave blank if the endpoint accepts anonymous',
   'mgmt.integ.integDocs': 'Integration documentation',

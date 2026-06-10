@@ -3332,6 +3332,10 @@ export async function upsertIntegration(input: {
    *  in the model picker. The BE auto-creates a bound model_configs
    *  alias so adding a Custom LLM lands in one step. */
   customName?: string;
+  /** Required when providerId === "custom": the real model id the
+   *  endpoint expects (e.g. "Qwen3.6-35B-A3B-FP8"), sent as `model`
+   *  in the upstream chat call. */
+  customModel?: string;
   /** Required when providerId === "azure": endpoint + api-version +
    *  deployments. */
   config?: IntegrationConfig;

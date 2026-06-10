@@ -510,6 +510,7 @@ function ProviderSettingsDialog({
 function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   const { t } = useLanguage();
   const [customName, setCustomName] = useState("");
+  const [customModel, setCustomModel] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const queryClient = useQueryClient();
@@ -521,6 +522,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
         apiUrl: apiUrl.trim(),
         apiKey: apiKey.trim() || undefined,
         customName: customName.trim(),
+        customModel: customModel.trim(),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
@@ -538,7 +540,9 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   });
 
   const canSubmit =
-    customName.trim().length > 0 && apiUrl.trim().length > 0;
+    customName.trim().length > 0 &&
+    customModel.trim().length > 0 &&
+    apiUrl.trim().length > 0;
 
   return (
     <SettingsDialog
@@ -578,6 +582,21 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
             placeholder={t("mgmt.integ.apiUrlPlaceholder")}
             className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
           />
+        </div>
+        <div>
+          <p className="text-[14px] font-normal text-text-2 mb-1.5">
+            {t("mgmt.integ.model")}
+          </p>
+          <input
+            type="text"
+            value={customModel}
+            onChange={(e) => setCustomModel(e.target.value)}
+            placeholder={t("mgmt.integ.modelPlaceholder")}
+            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 placeholder:text-[13px] placeholder:font-normal outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+          />
+          <p className="text-[12px] text-text-3 mt-1">
+            {t("mgmt.integ.modelHint")}
+          </p>
         </div>
         <div>
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
