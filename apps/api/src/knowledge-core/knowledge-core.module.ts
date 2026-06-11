@@ -5,11 +5,13 @@ import { KnowledgeIngestionService } from './knowledge-ingestion.service.js';
 import { DriveImportService } from './drive-import.service.js';
 import { OneDriveImportService } from './onedrive-import.service.js';
 import { SharePointImportService } from './sharepoint-import.service.js';
+import { ConfluenceImportService } from './confluence-import.service.js';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { GoogleDriveModule } from '../google-drive/google-drive.module.js';
 import { MicrosoftModule } from '../microsoft/microsoft.module.js';
 import { OneDriveModule } from '../onedrive/onedrive.module.js';
 import { SharePointModule } from '../sharepoint/sharepoint.module.js';
+import { ConfluenceModule } from '../confluence/confluence.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 
 @Module({
@@ -31,6 +33,11 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     // OneDrive-specific Graph wrapper for /me/drive folder browsing;
     // shares the same MicrosoftModule OAuth as SharePoint.
     OneDriveModule,
+    // Provides ConfluenceOAuthService + ConfluenceClientService.
+    // KnowledgeIngestionService uses the client to download + convert page
+    // bodies at ingestion time; ConfluenceImportService uses OAuth + client
+    // for space/page listing + import orchestration.
+    ConfluenceModule,
     // Used by the ingestion path to drop a 'file_ingestion_failed'
     // notification when a file can't be chunked / embedded.
     NotificationsModule,
@@ -42,6 +49,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
     DriveImportService,
     SharePointImportService,
     OneDriveImportService,
+    ConfluenceImportService,
   ],
   exports: [KnowledgeCoreService, KnowledgeIngestionService],
 })

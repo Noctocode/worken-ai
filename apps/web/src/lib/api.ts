@@ -3897,6 +3897,208 @@ export async function cancelDriveImport(): Promise<{ cancelled: true }> {
 }
 
 // ──────────────────────────────────────────────────────────────────
+// Confluence (Atlassian) — Knowledge Core integration
+// ──────────────────────────────────────────────────────────────────
+
+export interface ConfluenceStatus {
+  connected: boolean;
+  accountEmail?: string;
+  status?: "active" | "reauth_required";
+  scope?: string;
+  lastSyncedAt?: string;
+}
+
+export interface ConfluenceSpace {
+  id: string;
+  key: string;
+  name: string;
+}
+
+export interface ConfluencePage {
+  id: string;
+  title: string;
+  parentId: string | null;
+  hasChildren: boolean;
+  webUrl: string | null;
+}
+
+export interface ConfluenceSource {
+  id: string;
+  scope: "space" | "page";
+  spaceId: string;
+  spaceKey: string;
+  spaceName: string;
+  pageId: string | null;
+  pageTitle: string | null;
+  lastSyncedAt: string;
+  fileCountAtLastSync: number;
+  createdAt: string;
+}
+
+export interface ConfluenceImportResult {
+  added: number;
+  skippedDuplicates: number;
+  sources: { id: string; spaceName: string }[];
+}
+
+export type ConfluenceImportScope = (
+  | { kind: "space"; spaceId: string }
+  | { kind: "pages"; spaceId: string; pageIds: string[] }
+) & {
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+};
+
+export interface ConfluenceImportProgress {
+  phase: "scanning" | "importing" | "done" | "cancelled" | "error";
+  scanned: number;
+  total: number;
+  imported: number;
+  error?: string;
+}
+
+export async function fetchConfluenceStatus(): Promise<ConfluenceStatus> {
+  const res = await apiFetch("/confluence/status");
+  if (!res.ok) throw new Error("Failed to fetch Confluence status");
+  return res.json();
+}
+
+/**
+ * Kick off the Atlassian OAuth flow. Hard-redirects the browser to the API's
+ * connect endpoint, which 302s on to Atlassian's consent screen. The API
+ * redirects back to `/knowledge-core?confluence=connected | =error=...`.
+ * Uses BASE_URL (with the same localhost:3001 dev fallback) so this routes
+ * to the API even when NEXT_PUBLIC_API_URL isn't set.
+ */
+export function connectConfluence(): void {
+  window.location.href = `${BASE_URL}/confluence/connect`;
+}
+
+export async function disconnectConfluence(): Promise<void> {
+  const res = await apiFetch("/confluence/connection", { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to disconnect Confluence");
+}
+
+export async function fetchConfluenceSpaces(): Promise<ConfluenceSpace[]> {
+  const res = await apiFetch("/confluence/spaces");
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list Confluence spaces");
+  }
+  return res.json();
+}
+
+export async function fetchConfluencePages(
+  spaceId: string,
+): Promise<ConfluencePage[]> {
+  const res = await apiFetch(
+    `/confluence/spaces/${encodeURIComponent(spaceId)}/pages`,
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to list Confluence pages");
+  }
+  return res.json();
+}
+
+export async function importFromConfluence(
+  scope: ConfluenceImportScope,
+): Promise<ConfluenceImportResult> {
+  const res = await apiFetch("/knowledge-core/confluence/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to import from Confluence");
+  }
+  return res.json();
+}
+
+export async function fetchConfluenceSources(): Promise<ConfluenceSource[]> {
+  const res = await apiFetch("/knowledge-core/confluence/sources");
+  if (!res.ok) throw new Error("Failed to list Confluence sources");
+  return res.json();
+}
+
+export async function resyncConfluenceSource(
+  sourceId: string,
+): Promise<ConfluenceImportResult> {
+  const res = await apiFetch(
+    `/knowledge-core/confluence/sources/${sourceId}/resync`,
+    { method: "POST" },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to re-sync Confluence source");
+  }
+  return res.json();
+}
+
+export async function deleteConfluenceSource(sourceId: string): Promise<void> {
+  const res = await apiFetch(`/knowledge-core/confluence/sources/${sourceId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete Confluence source");
+}
+
+/**
+ * Page-count estimate for a space — powers the "Entire space" warning banner.
+ * `hasMore: true` means the space exceeds the import cap.
+ */
+export async function fetchConfluenceSpaceFileCount(
+  spaceId: string,
+): Promise<{ count: number; hasMore: boolean }> {
+  const res = await apiFetch(
+    `/knowledge-core/confluence/spaces/${encodeURIComponent(spaceId)}/file-count`,
+  );
+  if (!res.ok) throw new Error("Failed to estimate Confluence page count");
+  return res.json();
+}
+
+/**
+ * Kick off a background whole-space import. Returns immediately with
+ * `{ started: true }`; poll `fetchConfluenceImportProgress` to track it.
+ */
+export async function startConfluenceImportAsync(scope: {
+  kind: "space";
+  spaceId: string;
+  visibility?: KnowledgeFileVisibility;
+  teamIds?: string[];
+  projectIds?: string[];
+}): Promise<{ started: true }> {
+  const res = await apiFetch("/knowledge-core/confluence/import/async", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(scope),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || "Failed to start Confluence import");
+  }
+  return res.json();
+}
+
+export async function fetchConfluenceImportProgress(): Promise<ConfluenceImportProgress | null> {
+  const res = await apiFetch("/knowledge-core/confluence/import/progress");
+  if (!res.ok) throw new Error("Failed to fetch import progress");
+  const body = (await res.json()) as {
+    progress: ConfluenceImportProgress | null;
+  };
+  return body.progress;
+}
+
+export async function cancelConfluenceImport(): Promise<{ cancelled: true }> {
+  const res = await apiFetch("/knowledge-core/confluence/import/active", {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to cancel Confluence import");
+  return res.json();
+}
+
+// ──────────────────────────────────────────────────────────────────
 // SharePoint (Microsoft Graph) — Knowledge Core integration
 // ──────────────────────────────────────────────────────────────────
 

@@ -1425,3 +1425,67 @@ export const onedriveImportSources = pgTable(
       .where(sql`${table.scope} = 'all'`),
   ],
 );
+
+/**
+ * Per-space / per-page record of what's been imported from a connected
+ * Confluence (Atlassian) site. Parallels `driveImportSources` but the
+ * hierarchy is space → page (pages form a tree), so a row carries spaceId
+ * plus an optional pageId:
+ *
+ *   - `scope = 'space'`: whole-space import (every current page in the
+ *     space). One row per (owner, spaceId) via the partial unique index.
+ *   - `scope = 'page'` : a specific page and its descendant pages. One row
+ *     per (owner, spaceId, pageId).
+ *
+ * Re-sync semantics match Drive: only NEW pages are added (dedup by
+ * `knowledge_files.external_id` = Confluence page id, which is unique within
+ * a site; external_drive_id stays NULL so Confluence rows share the
+ * Drive/OneDrive `knowledge_files_owner_external_unique` index). Existing
+ * rows stay put even if the Confluence page changed.
+ */
+export const confluenceImportSources = pgTable(
+  "confluence_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'space' for a whole-space import, 'page' for a specific page subtree.
+    scope: text("scope").notNull(),
+    // Confluence v2 space id. Always set — every import is anchored to a space.
+    spaceId: text("space_id").notNull(),
+    // Space key (e.g. "ENG"). Display + web-link cache.
+    spaceKey: text("space_key").notNull(),
+    // Display cache of the space name; also used as the KC child-folder name.
+    spaceName: text("space_name").notNull(),
+    // Confluence page id of the imported page. NULL when scope='space'.
+    pageId: text("page_id"),
+    // Display cache of the page title. NULL when scope='space'.
+    pageTitle: text("page_title"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    visibility: text("visibility").notNull().default("all"),
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one whole-space source per (owner, space).
+    uniqueIndex("confluence_import_sources_owner_space_unique")
+      .on(table.ownerId, table.spaceId)
+      .where(sql`${table.scope} = 'space'`),
+    // At most one page source per (owner, space, page).
+    uniqueIndex("confluence_import_sources_owner_page_unique")
+      .on(table.ownerId, table.spaceId, table.pageId)
+      .where(sql`${table.scope} = 'page'`),
+  ],
+);

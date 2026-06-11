@@ -48,6 +48,7 @@ import { useAuth } from "@/components/providers";
 import { DriveSection } from "@/components/drive-section";
 import { OneDriveSection } from "@/components/onedrive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
+import { ConfluenceSection } from "@/components/confluence-section";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { Button } from "@/components/ui/button";
@@ -750,6 +751,9 @@ export default function KnowledgeCorePage() {
 
       {/* OneDrive — shares the SharePoint Microsoft connection. */}
       <OneDriveSection />
+
+      {/* Confluence — same shape as Drive but for Atlassian Confluence. */}
+      <ConfluenceSection />
 
       {/* Folders */}
       <section>

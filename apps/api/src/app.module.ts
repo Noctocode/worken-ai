@@ -11,6 +11,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtOrApiKeyGuard } from './auth/jwt-or-api-key.guard';
 import { ChatModule } from './chat/chat.module';
 import { CompareModelsModule } from './compare-models/compare-models.module';
+import { ConfluenceModule } from './confluence/confluence.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -52,6 +53,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     AuthModule,
     ChatModule,
     CompareModelsModule,
+    ConfluenceModule,
     ConversationsModule,
     DocumentsModule,
     GoogleDriveModule,
