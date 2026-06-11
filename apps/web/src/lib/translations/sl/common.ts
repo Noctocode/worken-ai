@@ -79,7 +79,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'dashboard.createNewProjectDesc': 'Začnite novo nit, primerjajte modele ali analizirajte dokumente.',
   'dashboard.manageContext': 'Upravljaj kontekst',
   'dashboard.changeModel': 'Zamenjaj model',
-  'dashboard.renameProject': 'Spremeni ime',
+  'dashboard.renameProject': 'Spremeni ime projekta',
   'dashboard.renameTitle': 'Preimenuj projekt',
   'dashboard.renameDesc': 'Vnesi novo ime za',
   'dashboard.deleteProject': 'Izbriši projekt',

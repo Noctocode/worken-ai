@@ -77,7 +77,7 @@ export const common = {
   'dashboard.createNewProjectDesc': 'Start a new thread, compare models, or analyze documents.',
   'dashboard.manageContext': 'Manage Context',
   'dashboard.changeModel': 'Change model',
-  'dashboard.renameProject': 'Change name',
+  'dashboard.renameProject': 'Change project name',
   'dashboard.renameTitle': 'Rename project',
   'dashboard.renameDesc': 'Enter a new name for',
   'dashboard.deleteProject': 'Delete Project',
