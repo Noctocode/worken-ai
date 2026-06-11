@@ -425,6 +425,22 @@ export class ProjectsService {
     }
   }
 
+  /**
+   * The DB-level backstop for {@link assertNameAvailable}: a unique-violation
+   * (Postgres 23505) on one of the scoped project-name indexes. Two concurrent
+   * inserts can both pass the SELECT pre-check, but only one survives the
+   * index — translate the loser's error into the same friendly 409 instead of
+   * a 500. Scoped to our two indexes so an unrelated unique clash isn't masked.
+   */
+  private static isProjectNameConflict(error: unknown): boolean {
+    const e = error as { code?: string; constraint?: string } | null;
+    return (
+      e?.code === '23505' &&
+      (e.constraint === 'projects_personal_name_unique' ||
+        e.constraint === 'projects_team_name_unique')
+    );
+  }
+
   async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
@@ -464,18 +480,28 @@ export class ProjectsService {
       dto.agent ?? dto.agents?.[0] ?? 'general-assistant',
       dto.agents ?? [],
     );
-    const [project] = await this.db
-      .insert(projects)
-      .values({
-        name: dto.name,
-        description: dto.description,
-        model: dto.model,
-        agent,
-        agents,
-        userId,
-        teamId: dto.teamId ?? null,
-      })
-      .returning();
+    let project;
+    try {
+      [project] = await this.db
+        .insert(projects)
+        .values({
+          name: dto.name,
+          description: dto.description,
+          model: dto.model,
+          agent,
+          agents,
+          userId,
+          teamId: dto.teamId ?? null,
+        })
+        .returning();
+    } catch (error) {
+      // Race-safe backstop: a concurrent create slipped past the pre-check
+      // and the unique index rejected this one. Same friendly 409.
+      if (ProjectsService.isProjectNameConflict(error)) {
+        throw new ConflictException('A project with this name already exists');
+      }
+      throw error;
+    }
 
     // Team transparency: tell every other team member a new project
     // landed in their workspace. Personal projects have no audience
@@ -574,11 +600,20 @@ export class ProjectsService {
     if (Object.keys(updates).length === 0) return project;
     updates.updatedAt = new Date();
 
-    const [updated] = await this.db
-      .update(projects)
-      .set(updates)
-      .where(eq(projects.id, id))
-      .returning();
+    let updated;
+    try {
+      [updated] = await this.db
+        .update(projects)
+        .set(updates)
+        .where(eq(projects.id, id))
+        .returning();
+    } catch (error) {
+      // Race-safe backstop for a concurrent rename — see create().
+      if (ProjectsService.isProjectNameConflict(error)) {
+        throw new ConflictException('A project with this name already exists');
+      }
+      throw error;
+    }
 
     return updated;
   }
