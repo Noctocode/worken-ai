@@ -410,7 +410,7 @@ export class ProjectsService {
             eq(projects.userId, scope.userId),
             isNull(projects.teamId),
           ) as SQL),
-      sql`lower(${projects.name}) = lower(${name.trim()})`,
+      sql`lower(trim(${projects.name})) = lower(${name.trim()})`,
     ];
     if (excludeId) conditions.push(ne(projects.id, excludeId));
 
@@ -433,11 +433,17 @@ export class ProjectsService {
    * a 500. Scoped to our two indexes so an unrelated unique clash isn't masked.
    */
   private static isProjectNameConflict(error: unknown): boolean {
-    const e = error as { code?: string; constraint?: string } | null;
-    return (
-      e?.code === '23505' &&
-      (e.constraint === 'projects_personal_name_unique' ||
-        e.constraint === 'projects_team_name_unique')
+    // node-postgres throws the pg DatabaseError directly (code + constraint
+    // on the error itself); also check `.cause` in case a layer wraps it.
+    const candidates = [
+      error,
+      (error as { cause?: unknown } | null)?.cause,
+    ] as Array<{ code?: string; constraint?: string } | null | undefined>;
+    return candidates.some(
+      (e) =>
+        e?.code === '23505' &&
+        (e.constraint === 'projects_personal_name_unique' ||
+          e.constraint === 'projects_team_name_unique'),
     );
   }
 

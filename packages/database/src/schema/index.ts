@@ -223,10 +223,10 @@ export const projects = pgTable(
     // back into the same 409. Partial + lower() so the two scopes don't
     // interfere and "Foo" / " foo " collide.
     uniqueIndex("projects_personal_name_unique")
-      .on(table.userId, sql`lower(${table.name})`)
+      .on(table.userId, sql`lower(trim(${table.name}))`)
       .where(sql`${table.teamId} IS NULL`),
     uniqueIndex("projects_team_name_unique")
-      .on(table.teamId, sql`lower(${table.name})`)
+      .on(table.teamId, sql`lower(trim(${table.name}))`)
       .where(sql`${table.teamId} IS NOT NULL`),
   ],
 );

@@ -15,12 +15,15 @@
 -- per row, so the suffixed names can't re-collide within their scope). The
 -- oldest row in each colliding group (rn = 1) keeps its original name.
 
--- Personal scope: (user_id, lower(name)) where team_id IS NULL.
+-- Uniqueness is on lower(trim(name)) so " Foo " and "foo" collide — matches
+-- ProjectsService.assertNameAvailable. The dedup must partition the same way.
+
+-- Personal scope: (user_id, lower(trim(name))) where team_id IS NULL.
 WITH ranked AS (
   SELECT
     id,
     row_number() OVER (
-      PARTITION BY user_id, lower(name)
+      PARTITION BY user_id, lower(trim(name))
       ORDER BY created_at, id
     ) AS rn
   FROM projects
@@ -31,12 +34,12 @@ SET name = p.name || ' (' || p.id::text || ')'
 FROM ranked r
 WHERE p.id = r.id AND r.rn > 1;
 
--- Team scope: (team_id, lower(name)) where team_id IS NOT NULL.
+-- Team scope: (team_id, lower(trim(name))) where team_id IS NOT NULL.
 WITH ranked AS (
   SELECT
     id,
     row_number() OVER (
-      PARTITION BY team_id, lower(name)
+      PARTITION BY team_id, lower(trim(name))
       ORDER BY created_at, id
     ) AS rn
   FROM projects
@@ -48,9 +51,9 @@ FROM ranked r
 WHERE p.id = r.id AND r.rn > 1;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "projects_personal_name_unique"
-  ON "projects" ("user_id", lower("name"))
+  ON "projects" ("user_id", lower(trim("name")))
   WHERE "team_id" IS NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS "projects_team_name_unique"
-  ON "projects" ("team_id", lower("name"))
+  ON "projects" ("team_id", lower(trim("name")))
   WHERE "team_id" IS NOT NULL;
