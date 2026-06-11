@@ -526,7 +526,11 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
   // ── Normal (config) view ──────────────────────────────────────────
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[560px]">
+      {/* [&>*]:min-w-0 lets the grid children shrink below their content
+          width — without it a long space label (personal-space keys are
+          ~40-char ids) forces the grid column wider than the dialog and the
+          form fields overflow the right edge. */}
+      <DialogContent className="max-w-[560px] [&>*]:min-w-0">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <BookOpen className="h-4 w-4 text-primary-6" />
@@ -566,15 +570,19 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
                   setEntireSpaceConfirmed(false);
                 }}
               >
-                <SelectTrigger className="h-10 w-full cursor-pointer">
+                <SelectTrigger className="h-10 w-full min-w-0 cursor-pointer">
                   <SelectValue placeholder={t("confluenceDlg.selectSpace")} />
                 </SelectTrigger>
                 <SelectContent>
                   {spaces.map((s) => (
                     <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                      {s.key ? (
-                        <span className="ml-1 text-text-3">· {s.key}</span>
+                      <span className="truncate">{s.name}</span>
+                      {/* Personal-space keys are opaque ~user-id strings —
+                          only show a key worth reading (e.g. "ENG"). */}
+                      {s.key && !s.key.startsWith("~") ? (
+                        <span className="ml-1 shrink-0 text-text-3">
+                          · {s.key}
+                        </span>
                       ) : null}
                     </SelectItem>
                   ))}
