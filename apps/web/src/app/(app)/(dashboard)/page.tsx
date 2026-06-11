@@ -119,6 +119,10 @@ function ProjectCard({ project }: { project: Project }) {
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [renameTaken, setRenameTaken] = useState(false);
+  // Permission gates from the list endpoint. Disable (don't hide) actions
+  // the caller can't perform; undefined → allowed (the BE still enforces).
+  const canManage = project.canManage !== false;
+  const canDelete = project.canDelete !== false;
   // Dialog-local agent pool — multi-select, re-seeded on each open from the
   // project's saved `agents` pool so every previously-picked agent shows
   // highlighted (not just the active one). Committed only on Save so
@@ -263,6 +267,7 @@ function ProjectCard({ project }: { project: Project }) {
                     {t("dashboard.manageContext")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!canManage}
                     onSelect={() => {
                       // Re-seed the picker each open so a previous
                       // cancelled change doesn't linger. Seed from the
@@ -283,6 +288,7 @@ function ProjectCard({ project }: { project: Project }) {
                     {t("dashboard.changeModel")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!canManage}
                     onSelect={() => {
                       setRenameValue(project.name);
                       setRenameTaken(false);
@@ -293,6 +299,7 @@ function ProjectCard({ project }: { project: Project }) {
                     {t("dashboard.renameProject")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!canDelete}
                     className="text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteDialogOpen(true)}
                   >

@@ -152,7 +152,8 @@ export class ProjectsService {
       }
     }
 
-    return this.enrichWithTeamMembers(rows);
+    const withMembers = await this.enrichWithTeamMembers(rows);
+    return this.enrichWithPermissions(withMembers, userId);
   }
 
   /**
@@ -172,7 +173,7 @@ export class ProjectsService {
    * back to email-derived initials on the FE when null.
    */
   private async enrichWithTeamMembers<
-    T extends { id: string; teamId: string | null },
+    T extends { id: string; teamId: string | null; userId: string },
   >(
     rows: T[],
   ): Promise<
@@ -236,6 +237,64 @@ export class ProjectsService {
         teamMembersCount: entry.count,
       };
     });
+  }
+
+  /**
+   * Attach `canManage` (may edit: rename, change model, web search) and
+   * `canDelete` (owner-only) to every row, so the FE can disable actions
+   * the caller can't perform instead of letting them fail with a 403.
+   * Mirrors the gates in `update()` / `remove()`:
+   *   - personal project → manage & delete both require ownership
+   *   - team project → manage requires owner|admin|manager|editor in the
+   *     team; delete still requires being the project's owner row.
+   * Batched: one query for owned teams + one for the caller's memberships
+   * across every distinct team in the result (no per-project round-trip).
+   */
+  private async enrichWithPermissions<
+    T extends { id: string; teamId: string | null; userId: string },
+  >(
+    rows: T[],
+    userId: string,
+  ): Promise<Array<T & { canManage: boolean; canDelete: boolean }>> {
+    const distinctTeamIds = Array.from(
+      new Set(
+        rows.map((r) => r.teamId).filter((id): id is string => id != null),
+      ),
+    );
+
+    const manageableTeamIds = new Set<string>();
+    if (distinctTeamIds.length > 0) {
+      const owned = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(inArray(teams.id, distinctTeamIds), eq(teams.ownerId, userId)));
+      owned.forEach((t) => manageableTeamIds.add(t.id));
+
+      // Owner-equivalent + editor roles may manage projects; viewers (and
+      // legacy `basic`) may not. `advanced` is the legacy editor label.
+      const MANAGE_ROLES = ['owner', 'admin', 'manager', 'editor', 'advanced'];
+      const memberRows = await this.db
+        .select({ teamId: teamMembers.teamId, role: teamMembers.role })
+        .from(teamMembers)
+        .where(
+          and(
+            inArray(teamMembers.teamId, distinctTeamIds),
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.status, 'accepted'),
+          ),
+        );
+      for (const m of memberRows) {
+        if (MANAGE_ROLES.includes(m.role)) manageableTeamIds.add(m.teamId);
+      }
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      canManage: r.teamId
+        ? manageableTeamIds.has(r.teamId)
+        : r.userId === userId,
+      canDelete: r.userId === userId,
+    }));
   }
 
   async findOne(id: string, userId: string) {

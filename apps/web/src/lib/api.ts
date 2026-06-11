@@ -293,6 +293,13 @@ export interface Project {
   teamName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Whether the caller may edit this project (rename, change model,
+   *  web search). Populated by the list endpoint; mirrors the BE update
+   *  gate. Undefined on payloads that don't compute it (treat as allowed). */
+  canManage?: boolean;
+  /** Whether the caller may delete this project (owner-only). Populated
+   *  by the list endpoint. Undefined → treat as allowed (BE still gates). */
+  canDelete?: boolean;
   /** Populated only when `teamId` is set. Capped at 4 entries on the
    *  BE; full team list lives at /teams/:id. */
   teamMembers?: ProjectMemberPreview[];
