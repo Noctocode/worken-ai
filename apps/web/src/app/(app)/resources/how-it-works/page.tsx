@@ -126,7 +126,7 @@ export default function HowItWorksPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      <p className="max-w-[720px] text-[15px] leading-[1.6] text-text-2">
+      <p className="text-[15px] leading-[1.6] text-text-2">
         {t("resources.how.intro")}
       </p>
 
