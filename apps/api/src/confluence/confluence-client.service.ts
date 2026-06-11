@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 
 import {
   ConfluenceOAuthService,
@@ -211,9 +211,18 @@ export class ConfluenceClientService {
 
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
-      throw new Error(
-        `Confluence API ${res.status} on ${path}. ${detail.slice(0, 200)}`,
-      );
+      const message = `Confluence API ${res.status} on ${path}. ${detail.slice(0, 300)}`;
+      this.logger.error(message);
+      // Surface the upstream status + detail to the FE instead of letting it
+      // collapse into a generic 500 (which the import dialog can't tell apart
+      // from an empty result). 401/403 stay as-is so the FE can prompt a
+      // reconnect; everything else is reported as a 502 (upstream failure).
+      const status =
+        res.status === HttpStatus.UNAUTHORIZED ||
+        res.status === HttpStatus.FORBIDDEN
+          ? res.status
+          : HttpStatus.BAD_GATEWAY;
+      throw new HttpException(message, status);
     }
     return (await res.json()) as T;
   }

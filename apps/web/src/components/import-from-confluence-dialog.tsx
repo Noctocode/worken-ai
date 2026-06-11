@@ -158,7 +158,12 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
   const [asyncJobActive, setAsyncJobActive] = useState(false);
   const handledPhaseRef = useRef<string | null>(null);
 
-  const { data: spaces = [], isLoading: spacesLoading } = useQuery({
+  const {
+    data: spaces = [],
+    isLoading: spacesLoading,
+    isError: spacesIsError,
+    error: spacesError,
+  } = useQuery({
     queryKey: ["confluence", "spaces"],
     queryFn: fetchConfluenceSpaces,
     enabled: open,
@@ -541,6 +546,12 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 {t("confluenceDlg.loadingSpaces")}
               </div>
+            ) : spacesIsError ? (
+              <p className="px-1 py-2 text-[13px] text-danger-6">
+                {spacesError instanceof Error
+                  ? spacesError.message
+                  : t("confluenceDlg.noSpaces")}
+              </p>
             ) : spaces.length === 0 ? (
               <p className="px-1 py-2 text-[13px] text-text-3">
                 {t("confluenceDlg.noSpaces")}
