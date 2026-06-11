@@ -476,6 +476,69 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
   });
 });
 
+describe('ChatTransportService.resolve (Custom LLM team link)', () => {
+  const USER_ID = 'user-id';
+  const TEAM_ID = 'team-id';
+  const MODEL = 'team:abcd1234:my-llm';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as any,
+      { decrypt: (s: string) => `plain:${s}` } as any,
+      {
+        resolveUserKey: () => Promise.resolve('openrouter-key'),
+        resolveTeamKey: () => Promise.resolve('team-openrouter-key'),
+        resolveForProject: () => Promise.resolve('openrouter-key'),
+      } as any,
+      {
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
+      } as any,
+    );
+  }
+
+  it('routes a team-shared Custom LLM when the team link is enabled', async () => {
+    const svc = makeService([
+      [{ integrationId: 'int-1', upstreamModel: 'llama-3.1' }], // team alias
+      [{ isEnabled: true, apiUrl: 'https://llm.local/v1', apiKeyEncrypted: 'enc' }], // integration
+      [{ isEnabled: true }], // team link
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: MODEL,
+      teamId: TEAM_ID,
+    });
+
+    expect(t.source).toBe('custom');
+    expect(t.provider).toBe('custom');
+    expect(t.baseURL).toBe('https://llm.local/v1');
+    expect(t.model).toBe('llama-3.1'); // upstream model, not the synthetic id
+    expect(t.apiKey).toBe('plain:enc');
+  });
+
+  it('falls through to OpenRouter when the team link is paused (is_enabled=false)', async () => {
+    const svc = makeService([
+      [{ integrationId: 'int-1', upstreamModel: 'llama-3.1' }], // team alias
+      [{ isEnabled: true, apiUrl: 'https://llm.local/v1', apiKeyEncrypted: 'enc' }], // integration enabled…
+      [{ isEnabled: false }], // …but the team link is paused
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: MODEL,
+      teamId: TEAM_ID,
+    });
+
+    // No custom route: the paused link must stop routing here.
+    expect(t.source).toBe('openrouter');
+    expect(t.model).toBe(MODEL);
+  });
+});
+
 /* ─── assertTeamBudgetNotExceeded (with mocked db) ────────────────── */
 
 describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
