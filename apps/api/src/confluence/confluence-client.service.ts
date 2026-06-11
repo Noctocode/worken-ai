@@ -65,6 +65,18 @@ const MAX_PAGES_PER_SPACE = 10_000;
 /** TTL for the in-memory cloudId / siteUrl cache (cloud ids are stable). */
 const CLOUD_CACHE_TTL_MS = 60 * 60 * 1000; // 1h
 
+/**
+ * How many times to retry a 429 (rate-limited) response, respecting the
+ * `Retry-After` header each time. A whole-space import issues one request
+ * per page, so Atlassian's rate limiter is a realistic hit on large spaces —
+ * a few bounded retries let the import ride through a throttle window instead
+ * of failing the whole scan.
+ */
+const MAX_RATE_LIMIT_RETRIES = 3;
+
+/** Clamp for the Retry-After wait (seconds) so a hostile header can't hang us. */
+const MAX_RETRY_AFTER_SECONDS = 30;
+
 @Injectable()
 export class ConfluenceClientService {
   private readonly logger = new Logger(ConfluenceClientService.name);
@@ -148,9 +160,15 @@ export class ConfluenceClientService {
 
   /**
    * GET a single v2 endpoint (path relative to the gateway, e.g.
-   * `/wiki/api/v2/spaces`). One automatic retry on 401 — Atlassian
-   * occasionally 401s a token that *just* expired in flight; refreshing
-   * once and retrying is cheaper than padding the refresh margin further.
+   * `/wiki/api/v2/spaces`).
+   *
+   * 401 → one automatic retry: Atlassian occasionally 401s a token that
+   * *just* expired in flight; calling getContext again returns a freshly
+   * refreshed token. This does NOT recover from a revoked grant (that 401s
+   * twice and surfaces as the API error), which is the right outcome.
+   *
+   * 429 → up to MAX_RATE_LIMIT_RETRIES retries honoring `Retry-After`, so a
+   * large import rides through a throttle window instead of failing the scan.
    */
   private async apiGet<T>(userId: string, path: string): Promise<T> {
     const attempt = async (ctx: ConfluenceContext): Promise<Response> =>
@@ -163,11 +181,25 @@ export class ConfluenceClientService {
 
     let ctx = await this.getContext(userId);
     let res = await attempt(ctx);
+
     if (res.status === 401) {
       // Force a token refresh on the next getContext call.
       ctx = await this.getContext(userId);
       res = await attempt(ctx);
     }
+
+    for (let i = 0; res.status === 429 && i < MAX_RATE_LIMIT_RETRIES; i++) {
+      const retryAfter = Number(res.headers.get('retry-after') ?? '2');
+      const waitSeconds = Number.isFinite(retryAfter)
+        ? Math.min(Math.max(retryAfter, 1), MAX_RETRY_AFTER_SECONDS)
+        : 2;
+      this.logger.warn(
+        `Confluence rate-limited on ${path}; retrying in ${waitSeconds}s (attempt ${i + 1}/${MAX_RATE_LIMIT_RETRIES}).`,
+      );
+      await new Promise((r) => setTimeout(r, waitSeconds * 1000));
+      res = await attempt(ctx);
+    }
+
     if (!res.ok) {
       const detail = await res.text().catch(() => '');
       throw new Error(
