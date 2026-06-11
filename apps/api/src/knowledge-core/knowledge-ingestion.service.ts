@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import {
   and,
   asc,
@@ -6,6 +12,8 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
+  lt,
   or,
   sql,
 } from 'drizzle-orm';
@@ -52,6 +60,19 @@ const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
  *  locks in the app. Paired with hashtext(userId) as the objid. */
 const INGESTION_LOCK_NAMESPACE = 4271;
 
+/** How often the stalled-ingestion reaper runs. */
+const REAPER_INTERVAL_MS = 60_000;
+
+/** A `processing` row whose claim is older than this is considered orphaned
+ *  (its worker died). Generous vs. real single-file time so a slow-but-alive
+ *  job is never reclaimed — and the per-user advisory lock means a live run
+ *  holding the lock can't be double-processed even if a reclaim races it. */
+const STALE_INGESTION_MS = 15 * 60 * 1000;
+
+/** After this many reclaim attempts a stuck row goes terminal `failed`
+ *  instead of looping forever on a poison-pill file. */
+const MAX_INGESTION_ATTEMPTS = 3;
+
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
@@ -81,8 +102,12 @@ export interface IngestionAggregate {
  * shape as project documents.
  */
 @Injectable()
-export class KnowledgeIngestionService {
+export class KnowledgeIngestionService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(KnowledgeIngestionService.name);
+  /** Timer for the periodic stalled-ingestion reaper. */
+  private reaperTimer?: ReturnType<typeof setInterval>;
   // Per-user ingestion concurrency control. Only one background run per
   // user at a time; overlapping triggers set `rerunRequested` so the
   // active run re-scans instead of starting a second loop (which would
@@ -108,6 +133,102 @@ export class KnowledgeIngestionService {
     // OneDriveModule via KnowledgeCoreModule.
     private readonly onedriveGraph: OneDriveGraphService,
   ) {}
+
+  onModuleInit(): void {
+    // Periodic (NOT startup-only) reaper that recovers files orphaned in
+    // `processing` by a worker that died mid-ingest. setInterval rather than
+    // @nestjs/schedule to avoid pulling in a new dependency for one job.
+    // unref() so the timer never keeps the process alive on shutdown/tests.
+    this.reaperTimer = setInterval(() => {
+      void this.recoverStalledIngestions().catch((err) => {
+        this.logger.error(
+          'Stalled-ingestion reaper failed',
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }, REAPER_INTERVAL_MS);
+    this.reaperTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.reaperTimer) clearInterval(this.reaperTimer);
+  }
+
+  /**
+   * Reclaim files stuck in `processing` because their worker died mid-job
+   * (the claim only ever takes `pending`, so nothing else re-picks them).
+   * Atomic single UPDATE: a row goes back to `pending` to be retried, or
+   * terminal `failed` once it has burned through MAX_INGESTION_ATTEMPTS.
+   * Only touches genuinely stale claims (`claimed_at` older than the window,
+   * or NULL for rows orphaned before that column existed) so a slow-but-
+   * alive job is never reclaimed. Re-triggers ingestion for the affected
+   * users; import-source files re-arm the import-complete notification so a
+   * recovered import still notifies.
+   */
+  private async recoverStalledIngestions(): Promise<void> {
+    const cutoff = new Date(Date.now() - STALE_INGESTION_MS);
+    const reclaimed = await this.db
+      .update(knowledgeFiles)
+      .set({
+        ingestionStatus: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN 'failed' ELSE 'pending' END`,
+        attempts: sql`${knowledgeFiles.attempts} + 1`,
+        claimedAt: null,
+        ingestionError: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN 'Recovered after a stalled run; gave up after repeated stalls.' ELSE ${knowledgeFiles.ingestionError} END`,
+        ingestionCompletedAt: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN now() ELSE ${knowledgeFiles.ingestionCompletedAt} END`,
+      })
+      .where(
+        and(
+          eq(knowledgeFiles.ingestionStatus, 'processing'),
+          or(
+            isNull(knowledgeFiles.claimedAt),
+            lt(knowledgeFiles.claimedAt, cutoff),
+          ),
+        ),
+      )
+      .returning({
+        id: knowledgeFiles.id,
+        name: knowledgeFiles.name,
+        status: knowledgeFiles.ingestionStatus,
+        userId: knowledgeFiles.uploadedById,
+        source: knowledgeFiles.source,
+      });
+
+    if (reclaimed.length === 0) return;
+    this.logger.warn(
+      `Recovered ${reclaimed.length} stalled ingestion file(s): ${reclaimed
+        .map((r) => `${r.name} → ${r.status}`)
+        .join(', ')}`,
+    );
+
+    // Users whose files went back to `pending` need a fresh drain. Track
+    // whether any reclaimed-to-pending file is import-sourced so the drain
+    // re-arms the import-complete notification. Files that went terminal
+    // `failed` get the per-file failure notice instead.
+    const pendingByUser = new Map<string, boolean>();
+    for (const r of reclaimed) {
+      if (!r.userId) continue;
+      if (r.status === 'pending') {
+        pendingByUser.set(
+          r.userId,
+          (pendingByUser.get(r.userId) ?? false) ||
+            IMPORT_SOURCES.has(r.source),
+        );
+      } else {
+        await this.notifyIngestionFailure(
+          r.userId,
+          r.id,
+          r.name,
+          'Recovered after a stalled run; gave up after repeated stalls.',
+        );
+      }
+    }
+    for (const [userId, fromImport] of pendingByUser) {
+      this.ingestPendingFilesForUser(
+        userId,
+        fromImport ? { fromImport: true } : undefined,
+      );
+    }
+  }
 
   /**
    * Kick off ingestion for `pending` files owned by `userId` (across
@@ -222,7 +343,9 @@ export class KnowledgeIngestionService {
         // INGESTION_BATCH_SIZE rows transition pending→processing per round.
         const claimed = await this.db
           .update(knowledgeFiles)
-          .set({ ingestionStatus: 'processing' })
+          // Stamp the claim so the reaper can tell a live worker (fresh
+          // claimed_at) from a dead one (stale / NULL).
+          .set({ ingestionStatus: 'processing', claimedAt: new Date() })
           .where(
             inArray(
               knowledgeFiles.id,
@@ -390,6 +513,12 @@ export class KnowledgeIngestionService {
       const embeddings = await this.documentsService.embed(chunks);
 
       await this.db.transaction(async (tx) => {
+        // Idempotent (re)ingest: clear any chunks left by a prior partial
+        // run before inserting, so a reaper-reclaimed file — or any
+        // re-process — never duplicates chunks for the same file_id.
+        await tx
+          .delete(knowledgeChunks)
+          .where(eq(knowledgeChunks.fileId, file.id));
         await tx.insert(knowledgeChunks).values(
           chunks.map((content, i) => ({
             userId,
