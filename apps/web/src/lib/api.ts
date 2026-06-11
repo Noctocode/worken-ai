@@ -368,7 +368,10 @@ export async function updateProject(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error("Failed to update project");
+  if (!res.ok) {
+    if (res.status === 409) throw new DuplicateProjectNameError();
+    throw new Error("Failed to update project");
+  }
   return res.json();
 }
 
