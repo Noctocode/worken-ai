@@ -4,6 +4,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projectCreate.title': 'Ustvari projekt',
   'projectCreate.projectNamePlaceholder': 'Ime projekta',
   'projectCreate.nameRequired': 'Ime projekta je obvezno',
+  'projectCreate.nameTaken': 'Projekt s tem imenom že obstaja',
   'projectCreate.selectType': 'Izberi vrsto projekta',
   'projectCreate.personalTooltip': 'Zasebno delovno okolje samo za vas. Poraba se šteje k vašemu osebnemu mesečnemu proračunu.',
   'projectCreate.teamTooltip': 'Skupno delovno okolje za ekipo. Poraba se šteje k mesečnemu proračunu izbrane ekipe.',

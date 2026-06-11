@@ -5,6 +5,7 @@ export const dialogs: Record<keyof typeof dialogsEn, string> = {
   'dlg.createProj.desc': 'Začnite nov AI projekt s svojim izbranim modelom.',
   'dlg.createProj.name': 'Ime',
   'dlg.createProj.namePlaceholder': 'Moj AI projekt',
+  'dlg.createProj.nameTaken': 'Projekt s tem imenom že obstaja',
   'dlg.createProj.description': 'Opis',
   'dlg.createProj.descPlaceholder': 'O čem govori ta projekt?',
   'dlg.createProj.model': 'Model',

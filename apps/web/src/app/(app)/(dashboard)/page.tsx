@@ -18,6 +18,7 @@ import {
   Activity,
   Sparkles,
   Search,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,6 +40,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { AgentGrid } from "@/components/agent-grid";
 import { AGENTS } from "@/lib/agents";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
@@ -50,6 +53,7 @@ import {
   deleteProject,
   updateProject,
   fetchArenaRuns,
+  DuplicateProjectNameError,
   type Project,
   type ArenaRunSummary,
 } from "@/lib/api";
@@ -110,6 +114,15 @@ function ProjectCard({ project }: { project: Project }) {
   const [docDialogOpen, setDocDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [modelDialogOpen, setModelDialogOpen] = useState(false);
+  // Rename dialog — local draft of the name + a flag set when the API
+  // rejects a duplicate (409), cleared as soon as the user edits the field.
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameTaken, setRenameTaken] = useState(false);
+  // Permission gates from the list endpoint. Disable (don't hide) actions
+  // the caller can't perform; undefined → allowed (the BE still enforces).
+  const canManage = project.canManage !== false;
+  const canDelete = project.canDelete !== false;
   // Dialog-local agent pool — multi-select, re-seeded on each open from the
   // project's saved `agents` pool so every previously-picked agent shows
   // highlighted (not just the active one). Committed only on Save so
@@ -162,6 +175,38 @@ function ProjectCard({ project }: { project: Project }) {
       );
     },
   });
+
+  const renameMutation = useMutation({
+    mutationFn: (name: string) => updateProject(project.id, { name }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+      setRenameDialogOpen(false);
+    },
+    onError: (err) => {
+      // A duplicate name becomes a field-level error in the dialog; any
+      // other failure surfaces as a toast.
+      if (err instanceof DuplicateProjectNameError) {
+        setRenameTaken(true);
+      } else {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to rename project",
+        );
+      }
+    },
+  });
+
+  const submitRename = () => {
+    const next = renameValue.trim();
+    if (!next) return;
+    // No-op rename: nothing changed, just close.
+    if (next === project.name.trim()) {
+      setRenameDialogOpen(false);
+      return;
+    }
+    setRenameTaken(false);
+    renameMutation.mutate(next);
+  };
 
   // Resolve a stored project.model slug to the first agent whose
   // preset maps to that model. Used to highlight a card when the
@@ -217,11 +262,15 @@ function ProjectCard({ project }: { project: Project }) {
                   align="end"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
-                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                  <DropdownMenuItem
+                    disabled={!canManage}
+                    onSelect={() => setDocDialogOpen(true)}
+                  >
                     <FileText className="mr-2 h-4 w-4" />
                     {t("dashboard.manageContext")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!canManage}
                     onSelect={() => {
                       // Re-seed the picker each open so a previous
                       // cancelled change doesn't linger. Seed from the
@@ -242,6 +291,18 @@ function ProjectCard({ project }: { project: Project }) {
                     {t("dashboard.changeModel")}
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    disabled={!canManage}
+                    onSelect={() => {
+                      setRenameValue(project.name);
+                      setRenameTaken(false);
+                      setRenameDialogOpen(true);
+                    }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {t("dashboard.renameProject")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    disabled={!canDelete}
                     className="text-danger-6 focus:text-danger-6"
                     onSelect={() => setDeleteDialogOpen(true)}
                   >
@@ -377,6 +438,62 @@ function ProjectCard({ project }: { project: Project }) {
               {deleteMutation.isPending ? t("common.deleting") : t("common.delete")}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("dashboard.renameTitle")}</DialogTitle>
+            <DialogDescription>
+              {t("dashboard.renameDesc")} <strong>{project.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              submitRename();
+            }}
+            className="space-y-2"
+          >
+            <Label htmlFor={`rename-${project.id}`}>
+              {t("dlg.createProj.name")}
+            </Label>
+            <Input
+              id={`rename-${project.id}`}
+              autoFocus
+              placeholder={t("dlg.createProj.namePlaceholder")}
+              value={renameValue}
+              onChange={(e) => {
+                setRenameValue(e.target.value);
+                setRenameTaken(false);
+              }}
+              aria-invalid={renameTaken}
+              className={renameTaken ? "border-danger-5" : undefined}
+            />
+            {renameTaken && (
+              <p className="text-[13px] text-danger-5">
+                {t("projectCreate.nameTaken")}
+              </p>
+            )}
+            <DialogFooter className="gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRenameDialogOpen(false)}
+                disabled={renameMutation.isPending}
+              >
+                {t("common.cancel")}
+              </Button>
+              <Button
+                type="submit"
+                disabled={renameMutation.isPending || !renameValue.trim()}
+              >
+                {renameMutation.isPending
+                  ? t("dashboard.saving")
+                  : t("common.save")}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
       <Dialog open={modelDialogOpen} onOpenChange={setModelDialogOpen}>

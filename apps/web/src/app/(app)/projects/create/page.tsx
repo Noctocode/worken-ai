@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Info,
-  X,
-  ChevronDown,
-} from "lucide-react";
+import { Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +20,7 @@ import {
 } from "@/components/ui/tooltip";
 import {
   createProject,
+  DuplicateProjectNameError,
   fetchEffectiveModels,
   fetchTeams,
   // Kept for the (commented-out) "invite members on project create" flow.
@@ -150,6 +147,9 @@ export default function CreateProjectPage() {
 
   const [projectName, setProjectName] = useState("");
   const [nameError, setNameError] = useState(false);
+  // Set when the API rejects a duplicate name (409) on submit; cleared as
+  // soon as the user edits the name.
+  const [nameTaken, setNameTaken] = useState(false);
   const [teamError, setTeamError] = useState(false);
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
   // Multi-select pool of agent presets. The first picked agent becomes
@@ -206,8 +206,12 @@ export default function CreateProjectPage() {
     );
 
   // Only teams the user can actually create a project in. Mirrors the BE
-  // gate in projects.service.create() (owner|editor required).
-  const manageableTeams = teams?.filter((team) => team.canManage) ?? [];
+  // gate in projects.service.create() (owner|editor required). Memoized so
+  // the auto-select effect below doesn't re-run on every render.
+  const manageableTeams = useMemo(
+    () => teams?.filter((team) => team.canManage) ?? [],
+    [teams],
+  );
 
   // Auto-select the first manageable team once they load.
   useEffect(() => {
@@ -222,6 +226,9 @@ export default function CreateProjectPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
       router.push(`/projects/${project.id}`);
     },
+    onError: (err) => {
+      if (err instanceof DuplicateProjectNameError) setNameTaken(true);
+    },
   });
 
   const handleSubmit = () => {
@@ -232,6 +239,7 @@ export default function CreateProjectPage() {
       if (needsTeam) setTeamError(true);
       return;
     }
+    setNameTaken(false);
     const teamId =
       projectType === "team" && selectedTeamId ? selectedTeamId : undefined;
 
@@ -301,12 +309,15 @@ export default function CreateProjectPage() {
           <input
             type="text"
             value={projectName}
-            onChange={(e) => { setProjectName(e.target.value); setNameError(false); }}
+            onChange={(e) => { setProjectName(e.target.value); setNameError(false); setNameTaken(false); }}
             placeholder={t("projectCreate.projectNamePlaceholder")}
-            className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError ? "border-danger-5" : "border-border-3"}`}
+            className={`w-full rounded-[6px] border bg-bg-white px-[13px] py-[9px] text-[16px] text-text-1 outline-none placeholder:text-text-3 focus:border-primary-6 focus:ring-[1px] focus:ring-primary-6/30 ${nameError || nameTaken ? "border-danger-5" : "border-border-3"}`}
           />
           {nameError && (
             <span className="mt-1 text-[13px] text-danger-5">{t("projectCreate.nameRequired")}</span>
+          )}
+          {nameTaken && (
+            <span className="mt-1 text-[13px] text-danger-5">{t("projectCreate.nameTaken")}</span>
           )}
         </div>
 

@@ -1,10 +1,22 @@
 import {
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, inArray, or, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  isNull,
+  inArray,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import {
   projectMembers,
   projects,
@@ -140,7 +152,8 @@ export class ProjectsService {
       }
     }
 
-    return this.enrichWithTeamMembers(rows);
+    const withMembers = await this.enrichWithTeamMembers(rows);
+    return this.enrichWithPermissions(withMembers, userId);
   }
 
   /**
@@ -160,7 +173,7 @@ export class ProjectsService {
    * back to email-derived initials on the FE when null.
    */
   private async enrichWithTeamMembers<
-    T extends { id: string; teamId: string | null },
+    T extends { id: string; teamId: string | null; userId: string },
   >(
     rows: T[],
   ): Promise<
@@ -224,6 +237,64 @@ export class ProjectsService {
         teamMembersCount: entry.count,
       };
     });
+  }
+
+  /**
+   * Attach `canManage` (may edit: rename, change model, web search) and
+   * `canDelete` (owner-only) to every row, so the FE can disable actions
+   * the caller can't perform instead of letting them fail with a 403.
+   * Mirrors the gates in `update()` / `remove()`:
+   *   - personal project → manage & delete both require ownership
+   *   - team project → manage requires owner|admin|manager|editor in the
+   *     team; delete still requires being the project's owner row.
+   * Batched: one query for owned teams + one for the caller's memberships
+   * across every distinct team in the result (no per-project round-trip).
+   */
+  private async enrichWithPermissions<
+    T extends { id: string; teamId: string | null; userId: string },
+  >(
+    rows: T[],
+    userId: string,
+  ): Promise<Array<T & { canManage: boolean; canDelete: boolean }>> {
+    const distinctTeamIds = Array.from(
+      new Set(
+        rows.map((r) => r.teamId).filter((id): id is string => id != null),
+      ),
+    );
+
+    const manageableTeamIds = new Set<string>();
+    if (distinctTeamIds.length > 0) {
+      const owned = await this.db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(inArray(teams.id, distinctTeamIds), eq(teams.ownerId, userId)));
+      owned.forEach((t) => manageableTeamIds.add(t.id));
+
+      // Owner-equivalent + editor roles may manage projects; viewers (and
+      // legacy `basic`) may not. `advanced` is the legacy editor label.
+      const MANAGE_ROLES = ['owner', 'admin', 'manager', 'editor', 'advanced'];
+      const memberRows = await this.db
+        .select({ teamId: teamMembers.teamId, role: teamMembers.role })
+        .from(teamMembers)
+        .where(
+          and(
+            inArray(teamMembers.teamId, distinctTeamIds),
+            eq(teamMembers.userId, userId),
+            eq(teamMembers.status, 'accepted'),
+          ),
+        );
+      for (const m of memberRows) {
+        if (MANAGE_ROLES.includes(m.role)) manageableTeamIds.add(m.teamId);
+      }
+    }
+
+    return rows.map((r) => ({
+      ...r,
+      canManage: r.teamId
+        ? manageableTeamIds.has(r.teamId)
+        : r.userId === userId,
+      canDelete: r.userId === userId,
+    }));
   }
 
   async findOne(id: string, userId: string) {
@@ -321,6 +392,61 @@ export class ProjectsService {
     return { agent, agents: pool };
   }
 
+  /**
+   * Project names must be unique within their scope: personal projects are
+   * scoped to the owner (their non-team projects), team projects to the team.
+   * The compare is trimmed and case-insensitive so " Foo " and "foo" collide.
+   * `excludeId` lets a rename skip the row being updated. Throws 409 on clash.
+   */
+  private async assertNameAvailable(
+    name: string,
+    scope: { userId: string; teamId: string | null },
+    excludeId?: string,
+  ) {
+    const conditions: SQL[] = [
+      scope.teamId
+        ? eq(projects.teamId, scope.teamId)
+        : (and(
+            eq(projects.userId, scope.userId),
+            isNull(projects.teamId),
+          ) as SQL),
+      sql`lower(trim(${projects.name})) = lower(${name.trim()})`,
+    ];
+    if (excludeId) conditions.push(ne(projects.id, excludeId));
+
+    const [existing] = await this.db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (existing) {
+      throw new ConflictException('A project with this name already exists');
+    }
+  }
+
+  /**
+   * The DB-level backstop for {@link assertNameAvailable}: a unique-violation
+   * (Postgres 23505) on one of the scoped project-name indexes. Two concurrent
+   * inserts can both pass the SELECT pre-check, but only one survives the
+   * index — translate the loser's error into the same friendly 409 instead of
+   * a 500. Scoped to our two indexes so an unrelated unique clash isn't masked.
+   */
+  private static isProjectNameConflict(error: unknown): boolean {
+    // node-postgres throws the pg DatabaseError directly (code + constraint
+    // on the error itself); also check `.cause` in case a layer wraps it.
+    const candidates = [
+      error,
+      (error as { cause?: unknown } | null)?.cause,
+    ] as Array<{ code?: string; constraint?: string } | null | undefined>;
+    return candidates.some(
+      (e) =>
+        e?.code === '23505' &&
+        (e.constraint === 'projects_personal_name_unique' ||
+          e.constraint === 'projects_team_name_unique'),
+    );
+  }
+
   async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
@@ -346,6 +472,13 @@ export class ProjectsService {
       }
     }
 
+    // Reject a duplicate name in the same scope before inserting, so the
+    // FE can surface a clear "name already taken" form error.
+    await this.assertNameAvailable(dto.name, {
+      userId,
+      teamId: dto.teamId ?? null,
+    });
+
     // Active agent + the picked pool, normalized so the pool is never
     // empty and always contains the active agent. Default the active agent
     // to the general assistant (also the active when only a pool is given).
@@ -353,18 +486,28 @@ export class ProjectsService {
       dto.agent ?? dto.agents?.[0] ?? 'general-assistant',
       dto.agents ?? [],
     );
-    const [project] = await this.db
-      .insert(projects)
-      .values({
-        name: dto.name,
-        description: dto.description,
-        model: dto.model,
-        agent,
-        agents,
-        userId,
-        teamId: dto.teamId ?? null,
-      })
-      .returning();
+    let project;
+    try {
+      [project] = await this.db
+        .insert(projects)
+        .values({
+          name: dto.name,
+          description: dto.description,
+          model: dto.model,
+          agent,
+          agents,
+          userId,
+          teamId: dto.teamId ?? null,
+        })
+        .returning();
+    } catch (error) {
+      // Race-safe backstop: a concurrent create slipped past the pre-check
+      // and the unique index rejected this one. Same friendly 409.
+      if (ProjectsService.isProjectNameConflict(error)) {
+        throw new ConflictException('A project with this name already exists');
+      }
+      throw error;
+    }
 
     // Team transparency: tell every other team member a new project
     // landed in their workspace. Personal projects have no audience
@@ -413,6 +556,19 @@ export class ProjectsService {
       throw new ForbiddenException('Only the project owner can edit it');
     }
 
+    // A rename must not collide with another project in the same scope.
+    // Skip the check when the name is unchanged (ignoring case/whitespace).
+    if (
+      dto.name !== undefined &&
+      dto.name.trim().toLowerCase() !== project.name.trim().toLowerCase()
+    ) {
+      await this.assertNameAvailable(
+        dto.name,
+        { userId: project.userId, teamId: project.teamId },
+        project.id,
+      );
+    }
+
     const updates: Record<string, unknown> = {};
     if (dto.name !== undefined) updates.name = dto.name;
     if (dto.description !== undefined) updates.description = dto.description;
@@ -450,11 +606,20 @@ export class ProjectsService {
     if (Object.keys(updates).length === 0) return project;
     updates.updatedAt = new Date();
 
-    const [updated] = await this.db
-      .update(projects)
-      .set(updates)
-      .where(eq(projects.id, id))
-      .returning();
+    let updated;
+    try {
+      [updated] = await this.db
+        .update(projects)
+        .set(updates)
+        .where(eq(projects.id, id))
+        .returning();
+    } catch (error) {
+      // Race-safe backstop for a concurrent rename — see create().
+      if (ProjectsService.isProjectNameConflict(error)) {
+        throw new ConflictException('A project with this name already exists');
+      }
+      throw error;
+    }
 
     return updated;
   }

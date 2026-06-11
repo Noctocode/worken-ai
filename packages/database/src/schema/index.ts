@@ -185,32 +185,51 @@ export const teamMembers = pgTable(
   ],
 );
 
-export const projects = pgTable("projects", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  userId: uuid("user_id")
-    .references(() => users.id)
-    .notNull(),
-  teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
-  name: text("name").notNull(),
-  description: text("description"),
-  model: text("model").notNull(),
-  // Active agent preset the project currently chats as. Its preset maps
-  // to `model` above; switching the active agent from the project header
-  // updates both. Defaults to the general assistant for legacy rows.
-  agent: text("agent").notNull().default("general-assistant"),
-  // The pool of agent presets picked for this project at create time.
-  // The active `agent` is one of these; the header dropdown switches
-  // among them. Empty for legacy projects created before multi-agent
-  // support — callers fall back to `[agent]` in that case.
-  agents: jsonb("agents").$type<string[]>().notNull().default([]),
-  // Per-project web search switch. Effective only when the resolved
-  // capability (team ?? company) is enabled; the chat path then adds
-  // `plugins: [{ id: "web" }]`.
-  webSearch: boolean("web_search").notNull().default(false),
-  status: text("status").notNull().default("active"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+export const projects = pgTable(
+  "projects",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id)
+      .notNull(),
+    teamId: uuid("team_id").references(() => teams.id, {
+      onDelete: "set null",
+    }),
+    name: text("name").notNull(),
+    description: text("description"),
+    model: text("model").notNull(),
+    // Active agent preset the project currently chats as. Its preset maps
+    // to `model` above; switching the active agent from the project header
+    // updates both. Defaults to the general assistant for legacy rows.
+    agent: text("agent").notNull().default("general-assistant"),
+    // The pool of agent presets picked for this project at create time.
+    // The active `agent` is one of these; the header dropdown switches
+    // among them. Empty for legacy projects created before multi-agent
+    // support — callers fall back to `[agent]` in that case.
+    agents: jsonb("agents").$type<string[]>().notNull().default([]),
+    // Per-project web search switch. Effective only when the resolved
+    // capability (team ?? company) is enabled; the chat path then adds
+    // `plugins: [{ id: "web" }]`.
+    webSearch: boolean("web_search").notNull().default(false),
+    status: text("status").notNull().default("active"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Project names are unique within their scope, case-insensitively.
+    // Personal projects (team_id IS NULL) are scoped to the owner; team
+    // projects to the team. These are the race-safe backstop behind the
+    // friendly pre-check in ProjectsService — a 23505 here is translated
+    // back into the same 409. Partial + lower() so the two scopes don't
+    // interfere and "Foo" / " foo " collide.
+    uniqueIndex("projects_personal_name_unique")
+      .on(table.userId, sql`lower(trim(${table.name}))`)
+      .where(sql`${table.teamId} IS NULL`),
+    uniqueIndex("projects_team_name_unique")
+      .on(table.teamId, sql`lower(trim(${table.name}))`)
+      .where(sql`${table.teamId} IS NOT NULL`),
+  ],
+);
 
 /**
  * Direct, ad-hoc project membership.

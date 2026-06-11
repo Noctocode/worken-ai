@@ -19,7 +19,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createProject, fetchTeams } from "@/lib/api";
+import { createProject, fetchTeams, DuplicateProjectNameError } from "@/lib/api";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
@@ -36,6 +36,9 @@ export function CreateProjectDialog({
   const [description, setDescription] = useState("");
   const [model, setModel] = useState("");
   const [teamId, setTeamId] = useState<string>("personal");
+  // Set when the API rejects a duplicate name (409) on submit, cleared as
+  // soon as the user edits the name again.
+  const [nameTaken, setNameTaken] = useState(false);
 
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading } = useAvailableModels();
@@ -54,13 +57,18 @@ export function CreateProjectDialog({
       setDescription("");
       setModel("");
       setTeamId("personal");
+      setNameTaken(false);
       setOpen(false);
+    },
+    onError: (err) => {
+      if (err instanceof DuplicateProjectNameError) setNameTaken(true);
     },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || !model) return;
+    setNameTaken(false);
     mutation.mutate({
       name: name.trim(),
       description: description.trim() || undefined,
@@ -95,9 +103,19 @@ export function CreateProjectDialog({
                 id="project-name"
                 placeholder={t("dlg.createProj.namePlaceholder")}
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  setNameTaken(false);
+                }}
+                aria-invalid={nameTaken}
+                className={nameTaken ? "border-danger-5" : undefined}
                 required
               />
+              {nameTaken && (
+                <p className="text-[13px] text-danger-5">
+                  {t("dlg.createProj.nameTaken")}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="project-description">{t("dlg.createProj.description")}</Label>

@@ -293,6 +293,13 @@ export interface Project {
   teamName: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Whether the caller may edit this project (rename, change model,
+   *  web search). Populated by the list endpoint; mirrors the BE update
+   *  gate. Undefined on payloads that don't compute it (treat as allowed). */
+  canManage?: boolean;
+  /** Whether the caller may delete this project (owner-only). Populated
+   *  by the list endpoint. Undefined → treat as allowed (BE still gates). */
+  canDelete?: boolean;
   /** Populated only when `teamId` is set. Capped at 4 entries on the
    *  BE; full team list lives at /teams/:id. */
   teamMembers?: ProjectMemberPreview[];
@@ -326,6 +333,15 @@ export async function fetchProject(id: string): Promise<Project> {
   return res.json();
 }
 
+/** Thrown when the API rejects a duplicate project name (HTTP 409).
+ *  Components catch this to show a field-level "name already taken" error. */
+export class DuplicateProjectNameError extends Error {
+  constructor() {
+    super("Project name already exists");
+    this.name = "DuplicateProjectNameError";
+  }
+}
+
 export async function createProject(
   input: CreateProjectInput,
 ): Promise<Project> {
@@ -334,7 +350,10 @@ export async function createProject(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error("Failed to create project");
+  if (!res.ok) {
+    if (res.status === 409) throw new DuplicateProjectNameError();
+    throw new Error("Failed to create project");
+  }
   return res.json();
 }
 
@@ -356,7 +375,10 @@ export async function updateProject(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch),
   });
-  if (!res.ok) throw new Error("Failed to update project");
+  if (!res.ok) {
+    if (res.status === 409) throw new DuplicateProjectNameError();
+    throw new Error("Failed to update project");
+  }
   return res.json();
 }
 
