@@ -262,7 +262,10 @@ function ProjectCard({ project }: { project: Project }) {
                   align="end"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
                 >
-                  <DropdownMenuItem onSelect={() => setDocDialogOpen(true)}>
+                  <DropdownMenuItem
+                    disabled={!canManage}
+                    onSelect={() => setDocDialogOpen(true)}
+                  >
                     <FileText className="mr-2 h-4 w-4" />
                     {t("dashboard.manageContext")}
                   </DropdownMenuItem>
