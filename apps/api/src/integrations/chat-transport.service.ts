@@ -247,6 +247,9 @@ export class ChatTransportService {
     let alias:
       | { integrationId: string | null; upstreamModel: string | null }
       | undefined;
+    // Whether the alias was resolved through the team-scoped row — if so the
+    // per-team link must be enabled for the custom route to fire (below).
+    let aliasViaTeam = false;
     if (teamScopeId) {
       const [teamAlias] = await this.db
         .select({
@@ -261,7 +264,10 @@ export class ChatTransportService {
           ),
         )
         .limit(1);
-      if (teamAlias) alias = teamAlias;
+      if (teamAlias) {
+        alias = teamAlias;
+        aliasViaTeam = true;
+      }
     }
     if (!alias) {
       const [userAlias] = await this.db
@@ -288,7 +294,30 @@ export class ChatTransportService {
         .where(eq(integrations.id, alias.integrationId))
         .limit(1);
 
-      if (integration && integration.isEnabled && integration.apiUrl) {
+      // A team-shared custom LLM must also have its per-team link enabled —
+      // mirrors the team BYOK branch below and the model picker, so pausing
+      // a team's link actually stops routing here (not just hides it).
+      let teamLinkEnabled = true;
+      if (aliasViaTeam && teamScopeId) {
+        const [link] = await this.db
+          .select({ isEnabled: teamIntegrationLinks.isEnabled })
+          .from(teamIntegrationLinks)
+          .where(
+            and(
+              eq(teamIntegrationLinks.teamId, teamScopeId),
+              eq(teamIntegrationLinks.integrationId, alias.integrationId),
+            ),
+          )
+          .limit(1);
+        teamLinkEnabled = link?.isEnabled === true;
+      }
+
+      if (
+        integration &&
+        integration.isEnabled &&
+        integration.apiUrl &&
+        teamLinkEnabled
+      ) {
         const apiKey = integration.apiKeyEncrypted
           ? this.safeDecrypt(integration.apiKeyEncrypted, 'custom integration')
           : '';

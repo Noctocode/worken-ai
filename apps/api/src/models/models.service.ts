@@ -322,6 +322,46 @@ export class ModelsService {
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
 
+    // Custom LLMs route via aliases (not the provider lookup above), so we
+    // gate them the same way BYOK is gated: a custom alias only stays in the
+    // pool if its backing integration is enabled — and for a team scope the
+    // team link must be enabled too. This mirrors chat-transport's custom
+    // route, so a disabled integration / paused team link removes the model
+    // from the picker instead of leaving a dead entry that chat would reject.
+    const enabledCustomIntegrationIds = new Set<string>();
+    if (includePersonalProviders) {
+      const personalCustom = await this.db
+        .select({ id: integrations.id })
+        .from(integrations)
+        .where(
+          and(
+            eq(integrations.ownerId, userId),
+            isNull(integrations.teamId),
+            eq(integrations.providerId, 'custom'),
+            eq(integrations.isEnabled, true),
+          ),
+        );
+      personalCustom.forEach((r) => enabledCustomIntegrationIds.add(r.id));
+    }
+    if (teamIds.length > 0) {
+      const teamCustom = await this.db
+        .select({ id: integrations.id })
+        .from(teamIntegrationLinks)
+        .innerJoin(
+          integrations,
+          eq(integrations.id, teamIntegrationLinks.integrationId),
+        )
+        .where(
+          and(
+            inArray(teamIntegrationLinks.teamId, teamIds),
+            eq(teamIntegrationLinks.isEnabled, true),
+            eq(integrations.providerId, 'custom'),
+            eq(integrations.isEnabled, true),
+          ),
+        );
+      teamCustom.forEach((r) => enabledCustomIntegrationIds.add(r.id));
+    }
+
     // Azure has no OpenRouter catalog (it isn't an OpenRouter slug), so
     // its selectable models are the deployments the user configured on
     // the integration. Collect the configs from every enabled azure
@@ -396,6 +436,13 @@ export class ModelsService {
     const seen = new Set<string>();
 
     for (const a of aliasRows) {
+      // A custom alias (bound to an integration) only shows when that
+      // integration — and, in a team scope, its team link — is enabled.
+      // Predefined aliases (integrationId null) fall back to BYOK/OpenRouter
+      // and are unaffected.
+      if (a.integrationId && !enabledCustomIntegrationIds.has(a.integrationId)) {
+        continue;
+      }
       if (seen.has(a.modelIdentifier)) continue;
       seen.add(a.modelIdentifier);
       out.push({
