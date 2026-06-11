@@ -279,10 +279,15 @@ export class ConfluenceClientService {
    * List every current page in a space with enough parent links to rebuild
    * the tree. `hasChildren` is derived from the full set so the FE picker
    * can render expand carets without per-node round-trips.
+   *
+   * `cap` bounds how many pages we page through. The import path passes
+   * `MAX_SPACE_IMPORT_FILES + 1` so callers can detect an over-cap space and
+   * fail loudly rather than silently truncating (see ConfluenceImportService).
    */
   async listAllPages(
     userId: string,
     spaceId: string,
+    cap: number = MAX_PAGES_PER_SPACE,
   ): Promise<ConfluencePageMeta[]> {
     const { siteUrl } = await this.getContext(userId);
     const raw = await this.apiGetAll<{
@@ -294,6 +299,7 @@ export class ConfluenceClientService {
     }>(
       userId,
       `/wiki/api/v2/spaces/${spaceId}/pages?limit=${PAGE_LIMIT}&status=current`,
+      cap,
     );
 
     const parentIds = new Set<string>();

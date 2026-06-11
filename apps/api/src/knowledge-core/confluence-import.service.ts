@@ -128,7 +128,14 @@ export class ConfluenceImportService {
     const connection = await this.oauth.requireConnection(userId);
 
     const space = await this.client.getSpace(userId, scope.spaceId);
-    const allPages = await this.client.listAllPages(userId, scope.spaceId);
+    // Fetch one page over the whole-space cap so an over-cap space is
+    // detected and rejected loudly (enforceImportCountCap below) instead of
+    // silently importing only the first N pages.
+    const allPages = await this.client.listAllPages(
+      userId,
+      scope.spaceId,
+      MAX_SPACE_IMPORT_FILES + 1,
+    );
     const byId = new Map(allPages.map((p) => [p.id, p]));
 
     const fileScope = await this.resolveFileScope(userId);
@@ -289,10 +296,18 @@ export class ConfluenceImportService {
     userId: string,
     spaceId: string,
   ): Promise<{ count: number; hasMore: boolean }> {
-    const pages = await this.client.listAllPages(userId, spaceId);
+    // Probe one over the cap so `hasMore` reflects a genuinely over-cap space
+    // (the banner then shows "10,000+" and the import itself hard-errors,
+    // matching the Entire-Drive behavior).
+    const pages = await this.client.listAllPages(
+      userId,
+      spaceId,
+      MAX_SPACE_IMPORT_FILES + 1,
+    );
+    const hasMore = pages.length > MAX_SPACE_IMPORT_FILES;
     return {
-      count: pages.length,
-      hasMore: pages.length >= MAX_SPACE_IMPORT_FILES,
+      count: hasMore ? MAX_SPACE_IMPORT_FILES : pages.length,
+      hasMore,
     };
   }
 
@@ -404,11 +419,19 @@ export class ConfluenceImportService {
       // ── Phase 1: scan ────────────────────────────────────────────────
       job.progress.phase = 'scanning';
       const space = await this.client.getSpace(userId, scope.spaceId);
-      const allPages = await this.client.listAllPages(userId, scope.spaceId);
+      const allPages = await this.client.listAllPages(
+        userId,
+        scope.spaceId,
+        MAX_SPACE_IMPORT_FILES + 1,
+      );
       job.progress.scanned = allPages.length;
       if (job.cancelled) return;
 
-      const selected = allPages.slice(0, MAX_SPACE_IMPORT_FILES);
+      // Fail loudly on an over-cap space rather than silently importing only
+      // the first N pages. The throw is caught by startImportSpaceAsync's
+      // .catch, which sets phase='error' so the FE surfaces the message.
+      this.enforceImportCountCap(allPages.length, 'space', MAX_SPACE_IMPORT_FILES);
+      const selected = allPages;
 
       // ── Phase 2: dedup ───────────────────────────────────────────────
       const candidateIds = selected.map((p) => p.id);
