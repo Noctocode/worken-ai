@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Info,
-  X,
-  ChevronDown,
-} from "lucide-react";
+import { Info } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -210,8 +206,12 @@ export default function CreateProjectPage() {
     );
 
   // Only teams the user can actually create a project in. Mirrors the BE
-  // gate in projects.service.create() (owner|editor required).
-  const manageableTeams = teams?.filter((team) => team.canManage) ?? [];
+  // gate in projects.service.create() (owner|editor required). Memoized so
+  // the auto-select effect below doesn't re-run on every render.
+  const manageableTeams = useMemo(
+    () => teams?.filter((team) => team.canManage) ?? [],
+    [teams],
+  );
 
   // Auto-select the first manageable team once they load.
   useEffect(() => {
