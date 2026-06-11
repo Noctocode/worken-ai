@@ -171,8 +171,17 @@ export class ConfluenceClientService {
    * large import rides through a throttle window instead of failing the scan.
    */
   private async apiGet<T>(userId: string, path: string): Promise<T> {
+    // `path` is normally gateway-relative (e.g. `/wiki/api/v2/spaces`), but a
+    // pagination `_links.next` can come back as an absolute URL on some
+    // tenants — pass those through untouched. A relative value missing its
+    // leading slash is defensively normalized so we never produce
+    // `…/{cloudId}wiki/…`.
+    const toUrl = (apiBase: string): string => {
+      if (/^https?:\/\//i.test(path)) return path;
+      return `${apiBase}${path.startsWith('/') ? '' : '/'}${path}`;
+    };
     const attempt = async (ctx: ConfluenceContext): Promise<Response> =>
-      fetch(`${ctx.apiBase}${path}`, {
+      fetch(toUrl(ctx.apiBase), {
         headers: {
           Authorization: `Bearer ${ctx.accessToken}`,
           Accept: 'application/json',
@@ -212,8 +221,12 @@ export class ConfluenceClientService {
   /**
    * Follow v2 cursor pagination, accumulating `results` across pages until
    * there is no `_links.next` (or the safety cap is hit). `firstPath` is the
-   * initial relative path; subsequent pages come straight from `_links.next`
-   * (also relative to the gateway).
+   * initial relative path; subsequent pages come straight from `_links.next`,
+   * which `apiGet` accepts whether it's gateway-relative or an absolute URL.
+   *
+   * A fetch counter guards against a pathological cursor that keeps returning
+   * a `next` link without growing the result set (which would otherwise spin
+   * forever since the cap is checked on item count, not page count).
    */
   private async apiGetAll<T>(
     userId: string,
@@ -222,14 +235,19 @@ export class ConfluenceClientService {
   ): Promise<T[]> {
     const out: T[] = [];
     let path: string | undefined = firstPath;
-    while (path) {
+    // Each page yields up to PAGE_LIMIT items; allow a generous margin over
+    // the theoretical page count so a normal large space still completes.
+    const maxFetches = Math.ceil(cap / PAGE_LIMIT) + 5;
+    let fetches = 0;
+    while (path && fetches < maxFetches) {
+      fetches++;
       const body = await this.apiGet<{
         results?: T[];
         _links?: { next?: string };
       }>(userId, path);
       for (const item of body.results ?? []) out.push(item);
       if (out.length >= cap) break;
-      path = body._links?.next;
+      path = body._links?.next || undefined;
     }
     return out;
   }
