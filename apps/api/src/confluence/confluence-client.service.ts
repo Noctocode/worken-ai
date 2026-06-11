@@ -5,11 +5,18 @@ import {
   ReauthRequiredError,
 } from './confluence-oauth.service.js';
 
-/** A Confluence space as the browse / import path sees it. */
+/**
+ * A Confluence space as the browse / import path sees it.
+ *
+ * NOTE: `id` carries the space KEY (e.g. "ENG" or "~712020…"), not the
+ * numeric id. The v1 REST API addresses a space's content by key, so the key
+ * is the stable handle we thread through the import path and persist as the
+ * source's spaceId.
+ */
 export interface ConfluenceSpace {
-  /** v2 numeric space id (stable, used as the import anchor). */
+  /** Space key — used everywhere as the space handle. */
   id: string;
-  /** Space key (e.g. "ENG") — handy for display + web links. */
+  /** Same value as `id`; kept for display/clarity. */
   key: string;
   name: string;
 }
@@ -52,8 +59,13 @@ interface ConfluenceContext {
 const ACCESSIBLE_RESOURCES_URL =
   'https://api.atlassian.com/oauth/token/accessible-resources';
 
-/** Page size for v2 cursor-paginated list calls (250 is the documented max). */
-const PAGE_LIMIT = 250;
+/**
+ * Page size for v1 offset-paginated list calls. Confluence Cloud v1 caps the
+ * effective limit (commonly at 100/200 depending on the endpoint); the
+ * paginator below terminates on the limit the API actually echoes back, so
+ * this is just the requested value.
+ */
+const V1_PAGE_LIMIT = 100;
 
 /**
  * Safety cap on how many pages we'll page through for a single space. A
@@ -77,6 +89,13 @@ const MAX_RATE_LIMIT_RETRIES = 3;
 /** Clamp for the Retry-After wait (seconds) so a hostile header can't hang us. */
 const MAX_RETRY_AFTER_SECONDS = 30;
 
+/**
+ * Confluence Cloud client. Uses the **v1 REST API** (`/wiki/rest/api/...`),
+ * which is compatible with the *classic* OAuth scopes
+ * (`read:confluence-content.all`, `read:confluence-space.summary`). The v2
+ * API (`/wiki/api/v2/...`) requires *granular* scopes and 401s with
+ * "scope does not match" under classic scopes — hence v1 here.
+ */
 @Injectable()
 export class ConfluenceClientService {
   private readonly logger = new Logger(ConfluenceClientService.name);
@@ -159,23 +178,21 @@ export class ConfluenceClientService {
   }
 
   /**
-   * GET a single v2 endpoint (path relative to the gateway, e.g.
-   * `/wiki/api/v2/spaces`).
+   * GET a REST endpoint (path relative to the gateway, e.g.
+   * `/wiki/rest/api/space`).
    *
    * 401 → one automatic retry: Atlassian occasionally 401s a token that
    * *just* expired in flight; calling getContext again returns a freshly
-   * refreshed token. This does NOT recover from a revoked grant (that 401s
-   * twice and surfaces as the API error), which is the right outcome.
+   * refreshed token. A persistent 401 (revoked grant / wrong scope) surfaces
+   * as the API error below.
    *
    * 429 → up to MAX_RATE_LIMIT_RETRIES retries honoring `Retry-After`, so a
    * large import rides through a throttle window instead of failing the scan.
    */
   private async apiGet<T>(userId: string, path: string): Promise<T> {
-    // `path` is normally gateway-relative (e.g. `/wiki/api/v2/spaces`), but a
-    // pagination `_links.next` can come back as an absolute URL on some
-    // tenants — pass those through untouched. A relative value missing its
-    // leading slash is defensively normalized so we never produce
-    // `…/{cloudId}wiki/…`.
+    // `path` is normally gateway-relative (e.g. `/wiki/rest/api/space`), but a
+    // pagination link can come back as an absolute URL — pass those through.
+    // A relative value missing its leading slash is defensively normalized.
     const toUrl = (apiBase: string): string => {
       if (/^https?:\/\//i.test(path)) return path;
       return `${apiBase}${path.startsWith('/') ? '' : '/'}${path}`;
@@ -228,136 +245,129 @@ export class ConfluenceClientService {
   }
 
   /**
-   * Follow v2 cursor pagination, accumulating `results` across pages until
-   * there is no `_links.next` (or the safety cap is hit). `firstPath` is the
-   * initial relative path; subsequent pages come straight from `_links.next`,
-   * which `apiGet` accepts whether it's gateway-relative or an absolute URL.
-   *
-   * A fetch counter guards against a pathological cursor that keeps returning
-   * a `next` link without growing the result set (which would otherwise spin
-   * forever since the cap is checked on item count, not page count).
+   * Follow v1 offset pagination (`start` / `limit`), accumulating `results`
+   * until a short page or the cap is hit. Terminates on the `limit` the API
+   * actually echoes back (it can cap our requested value), so we never stop a
+   * page early by mistaking a capped page for the last one.
    */
-  private async apiGetAll<T>(
+  private async v1GetAll<T>(
     userId: string,
-    firstPath: string,
+    basePath: string,
     cap = MAX_PAGES_PER_SPACE,
   ): Promise<T[]> {
     const out: T[] = [];
-    let path: string | undefined = firstPath;
-    // Each page yields up to PAGE_LIMIT items; allow a generous margin over
-    // the theoretical page count so a normal large space still completes.
-    const maxFetches = Math.ceil(cap / PAGE_LIMIT) + 5;
-    let fetches = 0;
-    while (path && fetches < maxFetches) {
-      fetches++;
+    let start = 0;
+    const sep = basePath.includes('?') ? '&' : '?';
+    // Hard stop on iterations as a backstop against a misbehaving endpoint.
+    const maxIterations = Math.ceil(cap / V1_PAGE_LIMIT) + 5;
+    for (let i = 0; i < maxIterations && out.length < cap; i++) {
       const body = await this.apiGet<{
         results?: T[];
-        _links?: { next?: string };
-      }>(userId, path);
-      for (const item of body.results ?? []) out.push(item);
-      if (out.length >= cap) break;
-      path = body._links?.next || undefined;
+        limit?: number;
+        size?: number;
+      }>(userId, `${basePath}${sep}start=${start}&limit=${V1_PAGE_LIMIT}`);
+      const batch = body.results ?? [];
+      out.push(...batch);
+      const effectiveLimit = body.limit ?? V1_PAGE_LIMIT;
+      if (batch.length < effectiveLimit) break; // last page
+      start += effectiveLimit;
     }
     return out;
   }
 
   /**
-   * List the `current` spaces the connected account can read. Personal spaces
-   * (key prefixed `~`) are INCLUDED — users frequently keep their own notes
-   * there, so excluding them hides exactly the pages they want to import.
-   * Ordered by name for a stable picker.
+   * List the spaces the connected account can read (current spaces, including
+   * personal spaces — users keep notes there). Ordered by name. `id` carries
+   * the space KEY, which the v1 content endpoints address spaces by.
    */
   async listSpaces(userId: string): Promise<ConfluenceSpace[]> {
-    const spaces = await this.apiGetAll<{
-      id: string;
+    const raw = await this.v1GetAll<{
+      id?: number | string;
       key: string;
       name: string;
       type?: string;
       status?: string;
-    }>(
-      userId,
-      `/wiki/api/v2/spaces?limit=${PAGE_LIMIT}&status=current`,
-      // Spaces are few; one safety cap page-through is plenty.
-      2000,
-    );
-    return spaces
-      .map((s) => ({ id: s.id, key: s.key, name: s.name || s.key || 'Space' }))
+    }>(userId, `/wiki/rest/api/space?status=current`, 2000);
+    return raw
+      .filter((s) => !!s.key)
+      .map((s) => ({ id: s.key, key: s.key, name: s.name || s.key || 'Space' }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**
-   * Resolve a single space's key + name. Used by the import path to label
-   * the source row and name the KC child folder without listing every space.
-   * Falls back to a synthetic name on error so a missing display string never
-   * breaks an import.
+   * Resolve a single space's key + name. Used by the import path to label the
+   * source row and name the KC child folder. Falls back to a synthetic name
+   * on error so a missing display string never breaks an import.
    */
-  async getSpace(userId: string, spaceId: string): Promise<ConfluenceSpace> {
+  async getSpace(userId: string, spaceKey: string): Promise<ConfluenceSpace> {
     try {
-      const s = await this.apiGet<{ id: string; key: string; name: string }>(
+      const s = await this.apiGet<{ key: string; name: string }>(
         userId,
-        `/wiki/api/v2/spaces/${spaceId}`,
+        `/wiki/rest/api/space/${encodeURIComponent(spaceKey)}`,
       );
-      return { id: s.id, key: s.key, name: s.name || s.key || 'Space' };
+      return { id: s.key, key: s.key, name: s.name || s.key || 'Space' };
     } catch {
-      return { id: spaceId, key: '', name: `Space (${spaceId})` };
+      return { id: spaceKey, key: spaceKey, name: `Space (${spaceKey})` };
     }
   }
 
   /**
    * List every current page in a space with enough parent links to rebuild
-   * the tree. `hasChildren` is derived from the full set so the FE picker
-   * can render expand carets without per-node round-trips.
+   * the tree. `parentId` comes from the page's `ancestors` (immediate parent
+   * is the last ancestor); `hasChildren` is derived from the full set so the
+   * FE picker can render expand carets without per-node round-trips.
    *
    * `cap` bounds how many pages we page through. The import path passes
    * `MAX_SPACE_IMPORT_FILES + 1` so callers can detect an over-cap space and
-   * fail loudly rather than silently truncating (see ConfluenceImportService).
+   * fail loudly rather than silently truncating.
    */
   async listAllPages(
     userId: string,
-    spaceId: string,
+    spaceKey: string,
     cap: number = MAX_PAGES_PER_SPACE,
   ): Promise<ConfluencePageMeta[]> {
     const { siteUrl } = await this.getContext(userId);
-    const raw = await this.apiGetAll<{
+    const raw = await this.v1GetAll<{
       id: string;
       title: string;
-      parentId?: string | null;
-      status?: string;
+      ancestors?: { id: string }[];
       _links?: { webui?: string };
     }>(
       userId,
-      `/wiki/api/v2/spaces/${spaceId}/pages?limit=${PAGE_LIMIT}&status=current`,
+      `/wiki/rest/api/content?spaceKey=${encodeURIComponent(spaceKey)}&type=page&status=current&expand=ancestors`,
       cap,
     );
 
-    const parentIds = new Set<string>();
-    for (const p of raw) {
-      if (p.parentId) parentIds.add(p.parentId);
-    }
-
-    return raw.map((p) => ({
+    const metas = raw.map((p) => ({
       id: p.id,
       title: p.title || 'Untitled',
-      parentId: p.parentId ?? null,
-      hasChildren: parentIds.has(p.id),
+      // ancestors are ordered root → immediate parent; the last one is the
+      // direct parent. Empty for top-level pages.
+      parentId:
+        p.ancestors && p.ancestors.length > 0
+          ? p.ancestors[p.ancestors.length - 1].id
+          : null,
+      hasChildren: false,
       webUrl: p._links?.webui ? `${siteUrl}/wiki${p._links.webui}` : null,
     }));
+
+    const parents = new Set<string>();
+    for (const m of metas) if (m.parentId) parents.add(m.parentId);
+    for (const m of metas) m.hasChildren = parents.has(m.id);
+    return metas;
   }
 
   /**
    * Collect a page and all of its descendant pages by walking the
-   * `/pages/{id}/children` endpoint, independent of the full space list.
+   * `/content/{id}/child/page` endpoint, independent of the full space list.
    *
    * Used by the "specific pages" import so a picked page resolves its whole
-   * subtree even in spaces larger than the space-list cap (where the page
-   * might not appear in `listAllPages`). The root's `parentId` is forced to
-   * null — within this subtree it is the top, so its document lands in the
-   * space folder while its descendants nest beneath it.
+   * subtree even in spaces larger than the space-list cap. The root's
+   * `parentId` is forced to null — within this subtree it is the top, so its
+   * document lands in the space folder while its descendants nest beneath it.
    *
    * `cap` bounds the BFS (the import path passes `MAX_PAGE_IMPORT_FILES + 1`
-   * so an over-cap subtree is detected and rejected loudly). One children
-   * call per node, so this is heavier than a flat space list — fine for the
-   * typical "pick a few pages" case.
+   * so an over-cap subtree is detected and rejected loudly).
    */
   async listPageSubtree(
     userId: string,
@@ -365,15 +375,16 @@ export class ConfluenceClientService {
     cap = 1000,
   ): Promise<ConfluencePageMeta[]> {
     const { siteUrl } = await this.getContext(userId);
-    // Key-independent canonical page URL — avoids depending on the space key.
-    const webUrlFor = (id: string) =>
+    const fallbackUrl = (id: string) =>
       `${siteUrl}/wiki/pages/viewpage.action?pageId=${id}`;
+    const linkFor = (webui?: string, id?: string) =>
+      webui ? `${siteUrl}/wiki${webui}` : id ? fallbackUrl(id) : null;
 
-    let root: { id: string; title?: string };
+    let root: { id: string; title?: string; _links?: { webui?: string } };
     try {
-      root = await this.apiGet<{ id: string; title?: string }>(
+      root = await this.apiGet(
         userId,
-        `/wiki/api/v2/pages/${rootPageId}`,
+        `/wiki/rest/api/content/${encodeURIComponent(rootPageId)}`,
       );
     } catch {
       // Picked page is gone / not accessible — skip it.
@@ -382,6 +393,9 @@ export class ConfluenceClientService {
 
     const titleById = new Map<string, string>([
       [rootPageId, root.title || 'Untitled'],
+    ]);
+    const webuiById = new Map<string, string | undefined>([
+      [rootPageId, root._links?.webui],
     ]);
     const parentById = new Map<string, string | null>([[rootPageId, null]]);
 
@@ -398,17 +412,22 @@ export class ConfluenceClientService {
         title: titleById.get(id) ?? 'Untitled',
         parentId: parentById.get(id) ?? null,
         hasChildren: false, // filled in below
-        webUrl: webUrlFor(id),
+        webUrl: linkFor(webuiById.get(id), id),
       });
 
-      const children = await this.apiGetAll<{ id: string; title?: string }>(
+      const children = await this.v1GetAll<{
+        id: string;
+        title?: string;
+        _links?: { webui?: string };
+      }>(
         userId,
-        `/wiki/api/v2/pages/${id}/children?limit=${PAGE_LIMIT}`,
+        `/wiki/rest/api/content/${encodeURIComponent(id)}/child/page`,
         cap,
       );
       for (const c of children) {
         if (!c.id || visited.has(c.id)) continue;
         titleById.set(c.id, c.title || 'Untitled');
+        webuiById.set(c.id, c._links?.webui);
         parentById.set(c.id, id);
         queue.push(c.id);
       }
@@ -433,7 +452,10 @@ export class ConfluenceClientService {
     const page = await this.apiGet<{
       title?: string;
       body?: { export_view?: { value?: string } };
-    }>(userId, `/wiki/api/v2/pages/${pageId}?body-format=export_view`);
+    }>(
+      userId,
+      `/wiki/rest/api/content/${encodeURIComponent(pageId)}?expand=body.export_view`,
+    );
     const title = page.title || 'Untitled';
     const html = page.body?.export_view?.value ?? '';
     const markdown = htmlToMarkdown(html);

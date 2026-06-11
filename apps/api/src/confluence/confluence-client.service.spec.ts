@@ -5,26 +5,23 @@ import {
 import type { ConfluenceOAuthService } from './confluence-oauth.service.js';
 
 /**
- * These tests exercise the bits of the Confluence client that don't need a
- * live Atlassian site: the v2 cursor-pagination loop (including how it
- * normalizes a `_links.next` that comes back either gateway-relative OR as an
- * absolute URL — the case flagged in PR #207 review), and the dependency-free
- * HTML→Markdown converter that every imported page goes through.
+ * Exercises the bits of the Confluence client that don't need a live site:
+ * v1 offset pagination (start/limit, terminating on the echoed limit), the
+ * space/page mapping, the 429 Retry-After retry, and the HTML→Markdown
+ * converter every imported page goes through. The client uses the v1 REST API
+ * because the v2 API requires granular OAuth scopes (it 401s "scope does not
+ * match" under the classic scopes this integration requests).
  */
 
-interface MockResponse {
-  ok: boolean;
-  status: number;
-  json: () => Promise<unknown>;
-  text: () => Promise<string>;
-  headers: { get: (k: string) => string | null };
-}
+const CLOUD_ID = 'cloud-1';
+const SITE_URL = 'https://example.atlassian.net';
+const API_BASE = `https://api.atlassian.com/ex/confluence/${CLOUD_ID}`;
 
 function jsonResponse(
   body: unknown,
   status = 200,
   headers: Record<string, string> = {},
-): MockResponse {
+) {
   return {
     ok: status >= 200 && status < 300,
     status,
@@ -33,10 +30,6 @@ function jsonResponse(
     headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
   };
 }
-
-const CLOUD_ID = 'cloud-1';
-const SITE_URL = 'https://example.atlassian.net';
-const API_BASE = `https://api.atlassian.com/ex/confluence/${CLOUD_ID}`;
 
 function makeService(): {
   service: ConfluenceClientService;
@@ -53,116 +46,104 @@ function makeService(): {
   return { service, fetchMock, urls };
 }
 
-afterEach(() => {
-  jest.restoreAllMocks();
-});
+function resourcesResponse() {
+  return jsonResponse([
+    { id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] },
+  ]);
+}
 
-describe('ConfluenceClientService pagination', () => {
-  it('follows a gateway-relative _links.next across pages and includes personal spaces', async () => {
+afterEach(() => jest.restoreAllMocks());
+
+describe('ConfluenceClientService v1 pagination', () => {
+  it('pages spaces with start/limit and includes personal spaces', async () => {
     const { service, fetchMock, urls } = makeService();
     fetchMock.mockImplementation((url: string) => {
       urls.push(url);
-      if (url.includes('accessible-resources')) {
-        return Promise.resolve(
-          jsonResponse([
-            { id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] },
-          ]),
-        );
-      }
-      if (url.includes('/wiki/api/v2/spaces') && !url.includes('cursor=')) {
-        return Promise.resolve(
-          jsonResponse({
-            results: [
-              { id: '1', key: 'ENG', name: 'Engineering', type: 'global' },
-              { id: '2', key: '~user', name: 'Personal', type: 'personal' },
-            ],
-            // Gateway-relative next (the documented shape).
-            _links: { next: '/wiki/api/v2/spaces?cursor=C2&limit=250' },
-          }),
-        );
-      }
-      if (url.includes('cursor=C2')) {
-        return Promise.resolve(
-          jsonResponse({
-            results: [{ id: '3', key: 'OPS', name: 'Operations', type: 'global' }],
-            _links: {},
-          }),
-        );
+      if (url.includes('accessible-resources')) return resourcesResponse();
+      if (url.includes('/wiki/rest/api/space')) {
+        // The mock echoes limit:2 so the paginator advances; page 1 is full
+        // (2 == limit) so it fetches a second page, which is short → stop.
+        if (url.includes('start=0')) {
+          return Promise.resolve(
+            jsonResponse({
+              results: [
+                { id: 1, key: 'ENG', name: 'Engineering', type: 'global' },
+                { id: 2, key: '~user', name: 'Personal', type: 'personal' },
+              ],
+              limit: 2,
+              size: 2,
+            }),
+          );
+        }
+        if (url.includes('start=2')) {
+          return Promise.resolve(
+            jsonResponse({
+              results: [{ id: 3, key: 'OPS', name: 'Operations', type: 'global' }],
+              limit: 2,
+              size: 1,
+            }),
+          );
+        }
       }
       throw new Error(`unexpected url ${url}`);
     });
 
     const spaces = await service.listSpaces('user-1');
 
-    // Both pages accumulated, personal space INCLUDED, sorted by name
-    // (Engineering, Operations, Personal).
+    // Two pages accumulated, personal INCLUDED, sorted by name, id == key.
     expect(spaces.map((s) => s.key)).toEqual(['ENG', 'OPS', '~user']);
-    // The relative next was resolved against the gateway base.
-    expect(urls).toContain(`${API_BASE}/wiki/api/v2/spaces?cursor=C2&limit=250`);
+    expect(spaces.map((s) => s.id)).toEqual(['ENG', 'OPS', '~user']);
+    expect(urls.some((u) => u.includes('start=2'))).toBe(true);
   });
 
-  it('follows an absolute _links.next URL untouched', async () => {
-    const { service, fetchMock, urls } = makeService();
-    const absoluteNext = `${API_BASE}/wiki/api/v2/spaces/9/pages?cursor=ABS`;
+  it('builds the page tree from ancestors', async () => {
+    const { service, fetchMock } = makeService();
     fetchMock.mockImplementation((url: string) => {
-      urls.push(url);
-      if (url.includes('accessible-resources')) {
-        return Promise.resolve(
-          jsonResponse([{ id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] }]),
-        );
-      }
-      if (url.includes('/spaces/9/pages') && !url.includes('cursor=')) {
-        return Promise.resolve(
-          jsonResponse({
-            results: [{ id: 'p1', title: 'Root', status: 'current' }],
-            _links: { next: absoluteNext }, // absolute URL form
-          }),
-        );
-      }
-      if (url === absoluteNext) {
+      if (url.includes('accessible-resources')) return resourcesResponse();
+      if (url.includes('/wiki/rest/api/content') && url.includes('spaceKey=ENG')) {
         return Promise.resolve(
           jsonResponse({
             results: [
-              { id: 'p2', title: 'Child', parentId: 'p1', status: 'current' },
+              { id: 'p1', title: 'Root', ancestors: [] },
+              { id: 'p2', title: 'Child', ancestors: [{ id: 'p1' }] },
             ],
-            _links: {},
+            limit: 100,
+            size: 2,
           }),
         );
       }
       throw new Error(`unexpected url ${url}`);
     });
 
-    const pages = await service.listAllPages('user-1', '9');
+    const pages = await service.listAllPages('user-1', 'ENG');
 
     expect(pages.map((p) => p.id)).toEqual(['p1', 'p2']);
-    // p1 is the parent of p2 → hasChildren; p2 carries its parentId.
+    expect(pages.find((p) => p.id === 'p1')?.parentId).toBeNull();
     expect(pages.find((p) => p.id === 'p1')?.hasChildren).toBe(true);
     expect(pages.find((p) => p.id === 'p2')?.parentId).toBe('p1');
-    // The absolute next URL was used verbatim (not concatenated onto apiBase).
-    expect(urls).toContain(absoluteNext);
-    expect(urls).not.toContain(`${API_BASE}${absoluteNext}`);
+    expect(pages.find((p) => p.id === 'p2')?.hasChildren).toBe(false);
   });
 
   it('retries a 429 honoring Retry-After then succeeds', async () => {
     const { service, fetchMock } = makeService();
-    let spacesCalls = 0;
+    let spaceCalls = 0;
     jest.spyOn(global, 'setTimeout').mockImplementation((cb: () => void) => {
       cb();
       return 0 as unknown as NodeJS.Timeout;
     });
     fetchMock.mockImplementation((url: string) => {
-      if (url.includes('accessible-resources')) {
-        return Promise.resolve(
-          jsonResponse([{ id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] }]),
-        );
-      }
-      if (url.includes('/wiki/api/v2/spaces')) {
-        spacesCalls++;
-        if (spacesCalls === 1) {
+      if (url.includes('accessible-resources')) return resourcesResponse();
+      if (url.includes('/wiki/rest/api/space')) {
+        spaceCalls++;
+        if (spaceCalls === 1) {
           return Promise.resolve(jsonResponse({}, 429, { 'retry-after': '1' }));
         }
         return Promise.resolve(
-          jsonResponse({ results: [{ id: '1', key: 'ENG', name: 'Eng', type: 'global' }], _links: {} }),
+          jsonResponse({
+            results: [{ id: 1, key: 'ENG', name: 'Eng', type: 'global' }],
+            limit: 100,
+            size: 1,
+          }),
         );
       }
       throw new Error(`unexpected url ${url}`);
@@ -170,7 +151,21 @@ describe('ConfluenceClientService pagination', () => {
 
     const spaces = await service.listSpaces('user-1');
     expect(spaces).toHaveLength(1);
-    expect(spacesCalls).toBe(2); // one 429, one success
+    expect(spaceCalls).toBe(2); // one 429, one success
+  });
+
+  it('surfaces an upstream error (e.g. 401 scope mismatch) as an exception', async () => {
+    const { service, fetchMock } = makeService();
+    fetchMock.mockImplementation((url: string) => {
+      if (url.includes('accessible-resources')) return resourcesResponse();
+      return Promise.resolve(
+        jsonResponse({ message: 'Unauthorized; scope does not match' }, 401),
+      );
+    });
+
+    await expect(service.listSpaces('user-1')).rejects.toThrow(
+      /Confluence API 401/,
+    );
   });
 });
 
