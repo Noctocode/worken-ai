@@ -9,8 +9,24 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import type { Server, Socket } from 'socket.io';
+import type { DefaultEventsMap, Server, Socket } from 'socket.io';
 import { ConversationsService } from '../conversations/conversations.service.js';
+
+/** Per-socket state we attach in `handleConnection`. Typing `socket.data`
+ *  (otherwise `any`) so member reads are checked rather than unsafe. */
+interface ChatSocketData {
+  userId?: string;
+  companyId?: string | null;
+}
+
+/** Socket with our typed `data` payload; event maps stay at socket.io's
+ *  defaults so `emit`/`to` keep working unchanged. */
+type ChatSocket = Socket<
+  DefaultEventsMap,
+  DefaultEventsMap,
+  DefaultEventsMap,
+  ChatSocketData
+>;
 
 /**
  * Realtime chat gateway (FA4). Responsibilities:
@@ -73,7 +89,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return null;
   }
 
-  async handleConnection(client: Socket): Promise<void> {
+  async handleConnection(client: ChatSocket): Promise<void> {
     let userId: string;
     try {
       const token = this.readCookie(
@@ -121,15 +137,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  handleDisconnect(client: Socket): void {
-    const userId = client.data.userId as string | undefined;
+  handleDisconnect(client: ChatSocket): void {
+    const userId = client.data.userId;
     if (!userId) return;
     const entry = this.online.get(userId);
     if (!entry) return;
     entry.sockets.delete(client.id);
     if (entry.sockets.size === 0) {
       this.online.delete(userId);
-      const companyId = client.data.companyId as string | null;
+      const companyId = client.data.companyId ?? null;
       this.server
         .to(this.presenceRoom(companyId, userId))
         .emit('presence:offline', { userId });
@@ -138,10 +154,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('conversation:join')
   async onJoinConversation(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() body: { conversationId?: string },
   ): Promise<void> {
-    const userId = client.data.userId as string | undefined;
+    const userId = client.data.userId;
     const conversationId = body?.conversationId;
     if (!userId || !conversationId) return;
     if (
@@ -153,7 +169,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('conversation:leave')
   onLeaveConversation(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() body: { conversationId?: string },
   ): void {
     if (body?.conversationId) {
@@ -163,10 +179,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('project:join')
   async onJoinProject(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() body: { projectId?: string },
   ): Promise<void> {
-    const userId = client.data.userId as string | undefined;
+    const userId = client.data.userId;
     const projectId = body?.projectId;
     if (!userId || !projectId) return;
     if (await this.conversations.canAccessProject(projectId, userId)) {
@@ -176,7 +192,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @SubscribeMessage('project:leave')
   onLeaveProject(
-    @ConnectedSocket() client: Socket,
+    @ConnectedSocket() client: ChatSocket,
     @MessageBody() body: { projectId?: string },
   ): void {
     if (body?.projectId) {

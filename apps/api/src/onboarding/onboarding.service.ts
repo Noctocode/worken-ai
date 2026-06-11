@@ -261,7 +261,7 @@ export class OnboardingService {
       // case a future flow or a support action created one.
       // Mirrors UsersService.remove so the FK web stays consistent
       // regardless of which path nukes a user.
-      const ownedTeams = await tx
+      const ownedTeams: Array<{ id: string }> = await tx
         .select({ id: teams.id })
         .from(teams)
         .where(eq(teams.ownerId, userId));

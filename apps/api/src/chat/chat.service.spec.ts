@@ -6,8 +6,13 @@ import { ChatService, type ChatStreamEvent } from './chat.service.js';
 // network. The non-azure tests below override `makeClient` directly, so
 // they never touch this mock. `mock`-prefixed names are referenced from
 // the (hoisted) factory, which jest permits.
+type AzureCreateBody = {
+  model: string;
+  reasoning?: unknown;
+  plugins?: unknown;
+};
 const mockAzureCtor = jest.fn();
-const mockAzureCreate = jest.fn();
+const mockAzureCreate = jest.fn<Promise<unknown>, [AzureCreateBody]>();
 jest.mock('openai', () => ({
   __esModule: true,
   default: class MockOpenAI {
@@ -467,7 +472,7 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
 
     // The request body's model is the deployment too.
     expect(mockAzureCreate).toHaveBeenCalledTimes(1);
-    const body = mockAzureCreate.mock.calls[0][0] as { model: string };
+    const body = mockAzureCreate.mock.calls[0][0];
     expect(body.model).toBe(DEPLOYMENT);
 
     expect(events).toEqual([{ type: 'content', delta: 'hi' }]);
@@ -475,10 +480,7 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
 
   it('never sends the OpenRouter-only `reasoning` param to Azure', async () => {
     await runAzure(true); // enableReasoning on — must still be stripped for azure
-    const body = mockAzureCreate.mock.calls[0][0] as {
-      reasoning?: unknown;
-      plugins?: unknown;
-    };
+    const body = mockAzureCreate.mock.calls[0][0];
     expect(body.reasoning).toBeUndefined();
     expect(body.plugins).toBeUndefined();
   });

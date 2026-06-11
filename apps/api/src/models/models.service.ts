@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { type SQL, and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -84,7 +84,9 @@ export class ModelsService {
    * Company users can SEE every model_config in their tenant, but
    * only the owner (or admin in a follow-up PR) can mutate it.
    */
-  private async resolveAliasScopeFilter(callerId: string) {
+  private async resolveAliasScopeFilter(
+    callerId: string,
+  ): Promise<SQL<unknown> | undefined> {
     const [caller] = await this.db
       .select({
         profileType: users.profileType,
@@ -121,7 +123,7 @@ export class ModelsService {
     // caller's company list. Personal / pre-onboarding / mid-
     // onboarding callers (no `companyId`) see only their own
     // teamless rows; their account is isolated by definition.
-    let orgPoolFilter;
+    let orgPoolFilter: SQL<unknown> | undefined;
     const callerCompanyId =
       caller?.profileType === 'company' ? caller.companyId : null;
     if (callerCompanyId) {
@@ -237,11 +239,7 @@ export class ModelsService {
     // (or owner) — including a blank / malformed team id — returns nothing
     // rather than leaking another team's pool. Checked before any pool
     // query runs.
-    if (
-      scope &&
-      scope.teamId !== null &&
-      !allTeamIds.includes(scope.teamId)
-    ) {
+    if (scope && scope.teamId !== null && !allTeamIds.includes(scope.teamId)) {
       return [];
     }
     // Which teams' linked BYOK/Azure keys to surface for THIS scope, and
@@ -249,16 +247,12 @@ export class ModelsService {
     //   - no scope     → every team + personal (union)
     //   - personal     → personal only, no team-linked keys
     //   - team X        → team X only, no personal keys
-    const teamIds = scope
-      ? scope.teamId
-        ? [scope.teamId]
-        : []
-      : allTeamIds;
+    const teamIds = scope ? (scope.teamId ? [scope.teamId] : []) : allTeamIds;
     const includePersonalProviders = !scope || scope.teamId === null;
 
     // Aliases the user can pick from, narrowed to `scope` when given
     // (see the doc comment above). No scope = the full union.
-    const aliasScopeFilter = scope
+    const aliasScopeFilter: SQL<unknown> | undefined = scope
       ? scope.teamId === null
         ? and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
         : eq(modelConfigs.teamId, scope.teamId)
@@ -440,7 +434,10 @@ export class ModelsService {
       // integration — and, in a team scope, its team link — is enabled.
       // Predefined aliases (integrationId null) fall back to BYOK/OpenRouter
       // and are unaffected.
-      if (a.integrationId && !enabledCustomIntegrationIds.has(a.integrationId)) {
+      if (
+        a.integrationId &&
+        !enabledCustomIntegrationIds.has(a.integrationId)
+      ) {
         continue;
       }
       if (seen.has(a.modelIdentifier)) continue;
