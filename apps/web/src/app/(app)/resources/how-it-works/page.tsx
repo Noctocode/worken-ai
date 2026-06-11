@@ -7,7 +7,6 @@ import {
   Database,
   Server,
   ShieldCheck,
-  Wrench,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -127,14 +126,6 @@ export default function HowItWorksPage() {
 
   return (
     <div className="flex flex-col gap-6 py-6">
-      {/* Work-in-progress notice */}
-      <div className="flex items-center gap-2 rounded-lg border border-danger-3 bg-danger-1/40 px-4 py-3">
-        <Wrench className="h-4 w-4 shrink-0 text-danger-6" strokeWidth={2} />
-        <span className="text-[13px] font-medium text-danger-6">
-          {t("resources.how.wip")}
-        </span>
-      </div>
-
       <p className="max-w-[720px] text-[15px] leading-[1.6] text-text-2">
         {t("resources.how.intro")}
       </p>
