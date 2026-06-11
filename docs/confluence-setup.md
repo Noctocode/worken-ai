@@ -16,10 +16,18 @@ fed through the same chunk + embed pipeline as uploaded documents.
    - `read:confluence-space.summary`
    - `read:confluence-content.all`
    - `read:confluence-content.summary`
-   - `read:me`
 
    > `offline_access` is requested automatically by the connect flow so
    > Atlassian returns a refresh token — you don't add it here.
+   >
+   > **Do not** request a scope the app hasn't been granted — Atlassian's
+   > consent screen then fails with a generic "Something went wrong". The app
+   > only needs the three Confluence scopes above.
+   >
+   > **Optional:** to show the connected account's email in the status chip,
+   > also add the **User Identity API** with `read:me`, then add `read:me` to
+   > `CONFLUENCE_SCOPES` in `confluence-oauth.service.ts`. It's purely
+   > cosmetic; the integration works fine without it.
 3. **Authorization** → next to **OAuth 2.0 (3LO)** click **Configure** and set
    the **Callback URL** to:
 
