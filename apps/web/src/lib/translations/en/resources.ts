@@ -18,7 +18,6 @@ export const resources = {
 
   // How WorkenAI works (visual deployment overview)
   'resources.howItWorks': 'How WorkenAI works',
-  'resources.how.wip': 'This page is a work in progress.',
   'resources.how.cardDesc':
     'See the platform architecture and the three ways WorkenAI can be deployed.',
   'resources.how.intro':

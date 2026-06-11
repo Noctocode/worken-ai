@@ -20,7 +20,6 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
 
   // Kako deluje WorkenAI (vizualni pregled postavitve)
   'resources.howItWorks': 'Kako deluje WorkenAI',
-  'resources.how.wip': 'Ta stran je še v izdelavi.',
   'resources.how.cardDesc':
     'Oglejte si arhitekturo platforme in tri načine postavitve WorkenAI.',
   'resources.how.intro':
