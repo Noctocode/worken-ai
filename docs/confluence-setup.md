@@ -12,22 +12,27 @@ fed through the same chunk + embed pipeline as uploaded documents.
 
 1. Go to <https://developer.atlassian.com/console/myapps/> and click
    **Create → OAuth 2.0 integration**. Give it a name (e.g. "WorkenAI").
-2. **Permissions** → add **Confluence API**, then **Add** these scopes:
-   - `read:confluence-space.summary`
-   - `read:confluence-content.all`
-   - `read:confluence-content.summary`
+2. **Permissions** → add **Confluence API**, then add its **granular** scopes
+   (click the scope category and pick these):
+   - `read:space:confluence`
+   - `read:page:confluence`
 
-   > `offline_access` is requested automatically by the connect flow so
-   > Atlassian returns a refresh token — you don't add it here.
+   > The integration uses the Confluence **v2 REST API**, which requires
+   > **granular** scopes. The older **classic** scopes
+   > (`read:confluence-content.all`, `read:confluence-space.summary`, …) 401
+   > with "scope does not match" against v2, and the v1 API they worked with
+   > has been removed by Atlassian (410 Gone). An app can use classic **or**
+   > granular scopes, not both — if you previously added classic ones, remove
+   > them.
    >
-   > **Do not** request a scope the app hasn't been granted — Atlassian's
-   > consent screen then fails with a generic "Something went wrong". The app
-   > only needs the three Confluence scopes above.
+   > `offline_access` is requested automatically by the connect flow so
+   > Atlassian returns a refresh token — you don't add it here. Do not request
+   > a scope the app hasn't been granted, or consent fails with a generic
+   > "Something went wrong".
    >
    > **Optional:** to show the connected account's email in the status chip,
    > also add the **User Identity API** with `read:me`, then add `read:me` to
-   > `CONFLUENCE_SCOPES` in `confluence-oauth.service.ts`. It's purely
-   > cosmetic; the integration works fine without it.
+   > `CONFLUENCE_SCOPES` in `confluence-oauth.service.ts`. Purely cosmetic.
 3. **Authorization** → next to **OAuth 2.0 (3LO)** click **Configure** and set
    the **Callback URL** to:
 

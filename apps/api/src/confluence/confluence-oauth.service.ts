@@ -24,35 +24,35 @@ const ATLASSIAN_TOKEN_URL = 'https://auth.atlassian.com/oauth/token';
 const ATLASSIAN_ME_URL = 'https://api.atlassian.com/me';
 
 /**
- * Scope set we request. `offline_access` is what makes Atlassian return a
+ * Scope set we request. `offline_access` makes Atlassian return a
  * refresh_token (without it the connection dies after one hour with no way
- * to recover but a full reconnect). The `read:confluence-*` scopes cover
- * listing spaces + reading page bodies, which is everything the import path
- * needs.
+ * to recover but a full reconnect).
  *
- * We deliberately do NOT request `read:me` here: that scope belongs to the
- * separate "User Identity API", and requesting a scope the OAuth app hasn't
- * been granted makes Atlassian's consent screen fail with a generic
- * "Something went wrong". The connected-account email is only a display
- * nicety — `handleCallback` still tries `/me` best-effort, so it populates
- * the chip if (and only if) the app owner has additionally added the User
- * Identity API with `read:me`; otherwise the chip falls back to "Connected".
+ * These are GRANULAR scopes (`read:space:confluence`, `read:page:confluence`)
+ * — required because the client uses the Confluence v2 REST API
+ * (`/wiki/api/v2/...`). The older CLASSIC scopes (`read:confluence-content.all`
+ * etc.) 401 with "scope does not match" against v2, AND the v1 REST API they
+ * worked with has been removed by Atlassian (410 Gone). So granular + v2 is
+ * the only working combination. `read:space:confluence` covers listing spaces;
+ * `read:page:confluence` covers listing pages, page bodies, and child pages.
+ *
+ * We deliberately do NOT request `read:me` (it belongs to the separate User
+ * Identity API; requesting an unconfigured scope makes consent fail with a
+ * generic "Something went wrong"). The connected-account email is only a
+ * display nicety — `handleCallback` tries `/me` best-effort, populating the
+ * chip only if the app owner additionally adds the User Identity API.
  *
  * If you change this set, bump REQUIRED_SCOPES below — Atlassian can grant
  * a subset and we want to reject a partial grant up-front rather than
- * 403-ing on every Confluence call later.
+ * 401-ing on every Confluence call later.
  */
 const CONFLUENCE_SCOPES = [
-  'read:confluence-space.summary',
-  'read:confluence-content.all',
-  'read:confluence-content.summary',
+  'read:space:confluence',
+  'read:page:confluence',
   'offline_access',
 ];
 
-const REQUIRED_SCOPES = [
-  'read:confluence-space.summary',
-  'read:confluence-content.all',
-];
+const REQUIRED_SCOPES = ['read:space:confluence', 'read:page:confluence'];
 
 const PROVIDER = 'confluence';
 
