@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI, { AzureOpenAI } from 'openai';
+import type {
+  ChatCompletionChunk,
+  ChatCompletionCreateParamsStreaming,
+} from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
@@ -7,6 +11,29 @@ interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   reasoning_details?: unknown;
+}
+
+/**
+ * OpenRouter accepts a few request-body fields the OpenAI SDK types don't
+ * model (`reasoning` toggle, `plugins`). We extend the SDK's streaming
+ * params with them so the create() call type-checks against the streaming
+ * overload (and returns a typed `Stream<ChatCompletionChunk>`) instead of
+ * collapsing to `any`.
+ */
+interface OpenRouterStreamingParams extends ChatCompletionCreateParamsStreaming {
+  reasoning?: { enabled: boolean };
+  plugins?: { id: string }[];
+}
+
+/** OpenRouter streams a `reasoning` delta + `annotations` the OpenAI chunk
+ *  type doesn't model. Narrowed shape we read those extension fields from. */
+interface OpenRouterDelta {
+  content?: string | null;
+  reasoning?: string;
+  annotations?: {
+    type?: string;
+    url_citation?: { url?: string; title?: string };
+  }[];
 }
 
 // OpenRouter returns a `cost` field on usage that the OpenAI types don't
@@ -167,38 +194,39 @@ export class ChatService {
           }
         : undefined;
 
+    const body: OpenRouterStreamingParams = {
+      model,
+      messages: [
+        ...systemMessages,
+        ...messages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+          ...(msg.reasoning_details
+            ? { reasoning_details: msg.reasoning_details }
+            : {}),
+        })),
+      ],
+      stream: true,
+      stream_options: { include_usage: true },
+      // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
+      // unknown body args, so never send it on the azure-sdk route.
+      ...(enableReasoning &&
+        kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
+      // OpenRouter web search plugin — lets the model browse the live
+      // web. Kept off the model id (no `:online` suffix) so catalog
+      // pricing / observability lookups still match the base model.
+      ...(options.webSearch && { plugins: [{ id: 'web' }] }),
+    };
+
     let stream;
     try {
       stream = await this.makeClient(
         baseURL,
         apiKey,
         azure,
-      ).chat.completions.create(
-        {
-          model,
-          messages: [
-            ...systemMessages,
-            ...messages.map((msg) => ({
-              role: msg.role,
-              content: msg.content,
-              ...(msg.reasoning_details
-                ? { reasoning_details: msg.reasoning_details }
-                : {}),
-            })),
-          ],
-          stream: true,
-          stream_options: { include_usage: true },
-          // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
-          // unknown body args, so never send it on the azure-sdk route.
-          ...(enableReasoning &&
-            kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
-          // OpenRouter web search plugin — lets the model browse the live
-          // web. Kept off the model id (no `:online` suffix) so catalog
-          // pricing / observability lookups still match the base model.
-          ...(options.webSearch && { plugins: [{ id: 'web' }] }),
-        },
-        { signal: options.signal },
-      );
+      ).chat.completions.create(body, {
+        signal: options.signal,
+      });
     } catch (err) {
       // Upstream rejection BEFORE the stream opens (auth, model-not-
       // found, etc.). Surface as a single error event and stop — the
@@ -326,23 +354,14 @@ export class ChatService {
     const citations = new Map<string, string | undefined>();
 
     try {
-      for await (const chunk of stream) {
+      for await (const chunk of stream as AsyncIterable<ChatCompletionChunk>) {
         // OpenRouter emits `reasoning` deltas through a non-standard
         // field on the delta object. The OpenAI types don't model it,
         // so we read through a loose shape and emit a separate event
         // type — FE shows reasoning in a "thinking" pane rather than
         // inlining it into the assistant text.
         const choice = chunk.choices?.[0];
-        const delta = choice?.delta as
-          | {
-              content?: string;
-              reasoning?: string;
-              annotations?: {
-                type?: string;
-                url_citation?: { url?: string; title?: string };
-              }[];
-            }
-          | undefined;
+        const delta: OpenRouterDelta | undefined = choice?.delta;
         if (delta?.reasoning) {
           yield { type: 'reasoning', delta: delta.reasoning };
         }

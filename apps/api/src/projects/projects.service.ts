@@ -38,6 +38,32 @@ export interface ProjectMemberPreview {
   userPicture: string | null;
 }
 
+/** Full persisted project row (insert/update `.returning()` shape). */
+type ProjectRow = typeof projects.$inferSelect;
+
+/**
+ * Row shape produced by {@link ProjectsService.selectWithTeamName}: the
+ * project columns the list/detail surfaces need plus the joined team
+ * display name. Spelled out explicitly so the lossy Drizzle column types
+ * (the self-/forward-FK graph collapses them to `any` for consumers)
+ * don't cascade into `any` through the query-builder result.
+ */
+export interface ProjectWithTeamRow {
+  id: string;
+  name: string;
+  description: string | null;
+  model: string;
+  agent: string;
+  agents: string[];
+  webSearch: boolean;
+  status: string;
+  teamId: string | null;
+  teamName: string | null;
+  userId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** How many accepted members appear in the avatar stack before
  *  collapsing into a "+N" indicator on a team project card. */
 const TEAM_MEMBER_PREVIEW_CAP = 4;
@@ -97,15 +123,15 @@ export class ProjectsService {
   async findAll(userId: string, filter: 'all' | 'personal' | 'team' = 'all') {
     const teamIds = await this.teamsService.getUserTeamIds(userId);
 
-    let rows;
+    let rows: ProjectWithTeamRow[];
     if (filter === 'personal') {
       // Personal projects are owner-only and team-less; direct
       // project_members rows never apply here, so we skip the
       // direct-membership lookup entirely rather than querying for
       // IDs we'd immediately discard.
-      rows = await this.selectWithTeamName()
+      rows = (await this.selectWithTeamName()
         .where(and(eq(projects.userId, userId), isNull(projects.teamId)))
-        .orderBy(desc(projects.createdAt));
+        .orderBy(desc(projects.createdAt))) as ProjectWithTeamRow[];
     } else {
       // Projects the user has *direct* access to via `project_members`
       // (the "Other" group in the invite dialog). These are projects
@@ -132,9 +158,9 @@ export class ProjectsService {
           conditions.push(inArray(projects.id, directProjectIds));
         }
         if (conditions.length === 0) return [];
-        rows = await this.selectWithTeamName()
+        rows = (await this.selectWithTeamName()
           .where(or(...conditions))
-          .orderBy(desc(projects.createdAt));
+          .orderBy(desc(projects.createdAt))) as ProjectWithTeamRow[];
       } else {
         // 'all' — personal + team projects + direct-invite projects.
         const conditions = [
@@ -146,9 +172,9 @@ export class ProjectsService {
         if (directProjectIds.length > 0) {
           conditions.push(inArray(projects.id, directProjectIds));
         }
-        rows = await this.selectWithTeamName()
+        rows = (await this.selectWithTeamName()
           .where(or(...conditions))
-          .orderBy(desc(projects.createdAt));
+          .orderBy(desc(projects.createdAt))) as ProjectWithTeamRow[];
       }
     }
 
@@ -264,10 +290,12 @@ export class ProjectsService {
 
     const manageableTeamIds = new Set<string>();
     if (distinctTeamIds.length > 0) {
-      const owned = await this.db
+      const owned: Array<{ id: string }> = await this.db
         .select({ id: teams.id })
         .from(teams)
-        .where(and(inArray(teams.id, distinctTeamIds), eq(teams.ownerId, userId)));
+        .where(
+          and(inArray(teams.id, distinctTeamIds), eq(teams.ownerId, userId)),
+        );
       owned.forEach((t) => manageableTeamIds.add(t.id));
 
       // Owner-equivalent + editor roles may manage projects; viewers (and
@@ -302,9 +330,8 @@ export class ProjectsService {
     // team's display name. The simpler .select().from(projects) call
     // we used before only returned the FK and the FE then rendered
     // "Team" as a hard-coded fallback in the Invite Members dialog.
-    const [project] = await this.selectWithTeamName().where(
-      eq(projects.id, id),
-    );
+    const [project]: ProjectWithTeamRow[] =
+      await this.selectWithTeamName().where(eq(projects.id, id));
 
     if (!project) {
       throw new NotFoundException(`Project ${id} not found`);
@@ -486,7 +513,7 @@ export class ProjectsService {
       dto.agent ?? dto.agents?.[0] ?? 'general-assistant',
       dto.agents ?? [],
     );
-    let project;
+    let project: ProjectRow;
     try {
       [project] = await this.db
         .insert(projects)
@@ -525,7 +552,7 @@ export class ProjectsService {
   }
 
   async update(id: string, userId: string, dto: UpdateProjectDto) {
-    const [project] = await this.db
+    const [project]: ProjectRow[] = await this.db
       .select()
       .from(projects)
       .where(eq(projects.id, id));
@@ -606,13 +633,13 @@ export class ProjectsService {
     if (Object.keys(updates).length === 0) return project;
     updates.updatedAt = new Date();
 
-    let updated;
+    let updated: ProjectRow;
     try {
-      [updated] = await this.db
+      [updated] = (await this.db
         .update(projects)
         .set(updates)
         .where(eq(projects.id, id))
-        .returning();
+        .returning()) as ProjectRow[];
     } catch (error) {
       // Race-safe backstop for a concurrent rename — see create().
       if (ProjectsService.isProjectNameConflict(error)) {
@@ -625,7 +652,7 @@ export class ProjectsService {
   }
 
   async remove(id: string, userId: string) {
-    const [project] = await this.db
+    const [project]: ProjectRow[] = await this.db
       .select()
       .from(projects)
       .where(eq(projects.id, id));
@@ -662,7 +689,7 @@ export class ProjectsService {
     creatorUserId: string,
   ): Promise<void> {
     try {
-      const [team] = await this.db
+      const [team]: Array<{ name: string }> = await this.db
         .select({ name: teams.name })
         .from(teams)
         .where(eq(teams.id, teamId))
@@ -711,7 +738,7 @@ export class ProjectsService {
     deleterUserId: string,
   ): Promise<void> {
     try {
-      const [team] = await this.db
+      const [team]: Array<{ name: string }> = await this.db
         .select({ name: teams.name })
         .from(teams)
         .where(eq(teams.id, teamId))

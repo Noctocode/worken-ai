@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
+import type { MessageStream } from '@anthropic-ai/sdk/lib/MessageStream';
 import type { ChatStreamEvent, StreamOptions } from '../chat/chat.service.js';
 
 interface ChatMessage {
@@ -183,7 +184,7 @@ export class AnthropicClientService {
       filteredMessages.shift();
     }
 
-    let stream;
+    let stream: MessageStream;
     try {
       stream = client.messages.stream(
         {

@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import OpenAI, { AzureOpenAI } from 'openai';
-import { ChatCompletionMessageParam } from 'openai/resources';
+import type {
+  ChatCompletion,
+  ChatCompletionCreateParamsNonStreaming,
+  ChatCompletionMessageParam,
+} from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
@@ -14,8 +18,25 @@ interface QuestionResponse {
   totalCost?: number;
 }
 
+/**
+ * `reasoning` is an OpenRouter request-body extension the OpenAI SDK params
+ * don't model. Extending the non-streaming params keeps create() resolving
+ * to its typed overload instead of collapsing the result to `any`.
+ */
+interface OpenRouterChatParams extends ChatCompletionCreateParamsNonStreaming {
+  reasoning?: { enabled: boolean };
+}
+
+// OpenRouter returns a `cost` field on usage the OpenAI types don't model.
 interface OpenRouterUsage {
   cost?: number;
+}
+
+/** Response message read shape — `reasoning_details` is an OpenRouter
+ *  extension absent from the OpenAI ChatCompletionMessage type. */
+interface OpenRouterResponseMessage {
+  content: string | null;
+  reasoning_details?: unknown;
 }
 
 // `source` names the upstream in the message. Defaults to OpenRouter
@@ -112,22 +133,23 @@ export class CompareModelsService {
       });
     }
 
-    let completion;
+    const body: OpenRouterChatParams = {
+      model,
+      messages: [...systemMessages, { role: 'user', content: question }],
+      ...(enableReasoning && { reasoning: { enabled: true } }),
+    };
+    let completion: ChatCompletion;
     try {
       completion = await this.makeClient(
         apiKey,
         baseURL,
-      ).chat.completions.create({
-        model,
-        messages: [...systemMessages, { role: 'user', content: question }],
-        ...(enableReasoning && { reasoning: { enabled: true } }),
-      });
+      ).chat.completions.create(body);
     } catch (err) {
       throw describeUpstreamError(model, 'chat.completions.create', err);
     }
 
     // Extract response with reasoning_details
-    const response = completion.choices[0].message;
+    const response = completion.choices[0].message as OpenRouterResponseMessage;
 
     const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {
@@ -235,21 +257,22 @@ export class CompareModelsService {
           }
         : undefined;
 
-    let completion;
+    const body: OpenRouterChatParams = {
+      model,
+      messages,
+      // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
+      // unknown body args, so never send it on the azure-sdk route
+      // (mirrors ChatService.sendMessageStream).
+      ...(enableReasoning &&
+        kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
+    };
+    let completion: ChatCompletion;
     try {
       completion = await this.makeClient(
         apiKey,
         baseURL,
         azure,
-      ).chat.completions.create({
-        model,
-        messages,
-        // `reasoning` is an OpenRouter extension — Azure OpenAI 400s on
-        // unknown body args, so never send it on the azure-sdk route
-        // (mirrors ChatService.sendMessageStream).
-        ...(enableReasoning &&
-          kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
-      });
+      ).chat.completions.create(body);
     } catch (err) {
       // The judge may route through OpenRouter or a BYOK / Custom
       // OpenAI-compatible endpoint — label the message with the actual
@@ -266,7 +289,7 @@ export class CompareModelsService {
     }
 
     // Extract response with reasoning_details
-    const response = completion.choices[0].message;
+    const response = completion.choices[0].message as OpenRouterResponseMessage;
 
     const orCost = (completion.usage as OpenRouterUsage | undefined)?.cost;
     return {

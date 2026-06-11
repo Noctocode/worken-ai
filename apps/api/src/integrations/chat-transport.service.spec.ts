@@ -1,4 +1,8 @@
 import { HttpException } from '@nestjs/common';
+import type { Database } from '../database/database.module.js';
+import type { NotificationsService } from '../notifications/notifications.service.js';
+import type { EncryptionService } from '../openrouter/encryption.service.js';
+import type { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import {
   ChatTransportService,
   MEMBER_CAP_REACHED_MARKER,
@@ -169,11 +173,11 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
     // The ctor needs encryption + key-resolver too; we only exercise
     // the cap gate so stubs are sufficient.
     return new ChatTransportService(
-      db as any,
+      db as unknown as Database,
 
-      {} as any,
+      {} as unknown as EncryptionService,
 
-      {} as any,
+      {} as unknown as KeyResolverService,
 
       // NotificationsService stub — budget-alert fanout is fire-
       // and-forget here, only `getTeamBudgetRecipients` /
@@ -184,7 +188,7 @@ describe('ChatTransportService.assertTeamMemberCapNotExceeded', () => {
         getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
         createIfNotExists: () => Promise.resolve(null),
         create: () => Promise.resolve(null),
-      } as any,
+      } as unknown as NotificationsService,
     );
   }
 
@@ -311,11 +315,11 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
   function makeService(rowSets: unknown[][]) {
     const db = makeChainableDb(rowSets);
     return new ChatTransportService(
-      db as any,
+      db as unknown as Database,
 
-      {} as any,
+      {} as unknown as EncryptionService,
 
-      {} as any,
+      {} as unknown as KeyResolverService,
 
       // NotificationsService stub — budget-alert fanout is fire-
       // and-forget here, only `getTeamBudgetRecipients` /
@@ -326,7 +330,7 @@ describe('ChatTransportService.assertOrgBudgetNotExceeded', () => {
         getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
         createIfNotExists: () => Promise.resolve(null),
         create: () => Promise.resolve(null),
-      } as any,
+      } as unknown as NotificationsService,
     );
   }
 
@@ -415,17 +419,19 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
   function makeService(rowSets: unknown[][]) {
     const db = makeChainableDb(rowSets);
     return new ChatTransportService(
-      db as any,
+      db as unknown as Database,
       // encryption: decrypt returns a deterministic plaintext key
-      { decrypt: (s: string) => `plain:${s}` } as any,
+      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
       // key-resolver: OpenRouter fallback key
-      { resolveUserKey: () => Promise.resolve('openrouter-key') } as any,
+      {
+        resolveUserKey: () => Promise.resolve('openrouter-key'),
+      } as unknown as KeyResolverService,
       {
         getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
         getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
         createIfNotExists: () => Promise.resolve(null),
         create: () => Promise.resolve(null),
-      } as any,
+      } as unknown as NotificationsService,
     );
   }
 
@@ -484,26 +490,32 @@ describe('ChatTransportService.resolve (Custom LLM team link)', () => {
   function makeService(rowSets: unknown[][]) {
     const db = makeChainableDb(rowSets);
     return new ChatTransportService(
-      db as any,
-      { decrypt: (s: string) => `plain:${s}` } as any,
+      db as unknown as Database,
+      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
       {
         resolveUserKey: () => Promise.resolve('openrouter-key'),
         resolveTeamKey: () => Promise.resolve('team-openrouter-key'),
         resolveForProject: () => Promise.resolve('openrouter-key'),
-      } as any,
+      } as unknown as KeyResolverService,
       {
         getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
         getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
         createIfNotExists: () => Promise.resolve(null),
         create: () => Promise.resolve(null),
-      } as any,
+      } as unknown as NotificationsService,
     );
   }
 
   it('routes a team-shared Custom LLM when the team link is enabled', async () => {
     const svc = makeService([
       [{ integrationId: 'int-1', upstreamModel: 'llama-3.1' }], // team alias
-      [{ isEnabled: true, apiUrl: 'https://llm.local/v1', apiKeyEncrypted: 'enc' }], // integration
+      [
+        {
+          isEnabled: true,
+          apiUrl: 'https://llm.local/v1',
+          apiKeyEncrypted: 'enc',
+        },
+      ], // integration
       [{ isEnabled: true }], // team link
     ]);
 
@@ -523,7 +535,13 @@ describe('ChatTransportService.resolve (Custom LLM team link)', () => {
   it('falls through to OpenRouter when the team link is paused (is_enabled=false)', async () => {
     const svc = makeService([
       [{ integrationId: 'int-1', upstreamModel: 'llama-3.1' }], // team alias
-      [{ isEnabled: true, apiUrl: 'https://llm.local/v1', apiKeyEncrypted: 'enc' }], // integration enabled…
+      [
+        {
+          isEnabled: true,
+          apiUrl: 'https://llm.local/v1',
+          apiKeyEncrypted: 'enc',
+        },
+      ], // integration enabled…
       [{ isEnabled: false }], // …but the team link is paused
     ]);
 

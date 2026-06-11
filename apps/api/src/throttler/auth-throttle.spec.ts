@@ -1,3 +1,4 @@
+import type { Server } from 'node:http';
 import { Controller, HttpCode, INestApplication, Post } from '@nestjs/common';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { Test } from '@nestjs/testing';
@@ -67,7 +68,7 @@ describe('auth rate limiting', () => {
 
   it('blocks /auth/login after 5 requests/min from one IP and sets Retry-After', async () => {
     app = await makeApp();
-    const server = app.getHttpServer();
+    const server = app.getHttpServer() as Server;
     const body = { email: 'attacker@example.com', password: 'x' };
 
     for (let i = 0; i < 5; i++) {
@@ -82,7 +83,7 @@ describe('auth rate limiting', () => {
 
   it('lets a legitimate user through each endpoint once', async () => {
     app = await makeApp();
-    const server = app.getHttpServer();
+    const server = app.getHttpServer() as Server;
     const email = 'real.user@example.com';
 
     await request(server).post('/auth/signup').send({ email }).expect(200);
@@ -99,7 +100,7 @@ describe('auth rate limiting', () => {
 
   it('hitting the login limit does not throttle other endpoints', async () => {
     app = await makeApp();
-    const server = app.getHttpServer();
+    const server = app.getHttpServer() as Server;
 
     // Exhaust login (6th would 429)…
     for (let i = 0; i < 6; i++) {
@@ -115,7 +116,7 @@ describe('auth rate limiting', () => {
   it('RATE_LIMIT_DISABLED=true bypasses limits outside production', async () => {
     process.env.RATE_LIMIT_DISABLED = 'true';
     app = await makeApp();
-    const server = app.getHttpServer();
+    const server = app.getHttpServer() as Server;
     const body = { email: 'flood@example.com' };
 
     for (let i = 0; i < 8; i++) {

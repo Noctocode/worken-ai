@@ -107,7 +107,12 @@ export class UsersService {
           .where(eq(users.id, callerId));
 
     // Get team memberships for all users
-    const memberships = await this.db
+    const memberships: Array<{
+      userId: string | null;
+      teamName: string;
+      role: string;
+      status: string;
+    }> = await this.db
       .select({
         userId: teamMembers.userId,
         teamName: teams.name,
@@ -190,7 +195,13 @@ export class UsersService {
     }
 
     // Get team memberships with team info
-    const membershipRows = await this.db
+    const membershipRows: Array<{
+      memberId: string;
+      teamId: string;
+      teamName: string;
+      role: string;
+      status: string;
+    }> = await this.db
       .select({
         memberId: teamMembers.id,
         teamId: teams.id,
@@ -228,7 +239,7 @@ export class UsersService {
     // can manage (owner OR accepted editor). Drives the per-team
     // role select and actions on the user detail page.
     const teamIds = membershipRows.map((m) => m.teamId);
-    const callerOwnedTeams =
+    const callerOwnedTeams: Array<{ id: string }> =
       teamIds.length === 0
         ? []
         : await this.db
@@ -237,7 +248,7 @@ export class UsersService {
             .where(
               and(inArray(teams.id, teamIds), eq(teams.ownerId, callerId)),
             );
-    const callerMemberships =
+    const callerMemberships: Array<{ teamId: string; role: string }> =
       teamIds.length === 0
         ? []
         : await this.db
