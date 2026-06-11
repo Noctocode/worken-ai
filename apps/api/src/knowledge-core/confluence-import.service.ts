@@ -128,16 +128,6 @@ export class ConfluenceImportService {
     const connection = await this.oauth.requireConnection(userId);
 
     const space = await this.client.getSpace(userId, scope.spaceId);
-    // Fetch one page over the whole-space cap so an over-cap space is
-    // detected and rejected loudly (enforceImportCountCap below) instead of
-    // silently importing only the first N pages.
-    const allPages = await this.client.listAllPages(
-      userId,
-      scope.spaceId,
-      MAX_SPACE_IMPORT_FILES + 1,
-    );
-    const byId = new Map(allPages.map((p) => [p.id, p]));
-
     const fileScope = await this.resolveFileScope(userId);
     const confluenceParentId = await this.ensureParentFolder(userId);
     const spaceFolderId = await this.ensureChildFolder(
@@ -152,33 +142,52 @@ export class ConfluenceImportService {
       sources: [],
     };
 
-    // One "source unit" per Re-sync handle: the whole space, or each picked
-    // page's subtree (mirrors the Drive per-folder loop so every picked page
-    // gets its own Re-sync row). Overlapping subtrees are de-duped by
-    // external_id at insert time, so a page picked under two ancestors lands
-    // once.
-    const units: Array<{ pageId: string | null }> =
-      scope.kind === 'space'
-        ? [{ pageId: null }]
-        : scope.pageIds.map((id) => ({ pageId: id }));
+    // Resolve the pages to import as one or more "source units" — each unit
+    // becomes its own Re-sync row (mirrors the Drive per-folder loop).
+    //   - space scope: the whole space, fetched one over the cap so an
+    //     over-cap space is rejected loudly instead of silently truncated.
+    //   - pages scope: each picked page's subtree, fetched directly via the
+    //     children endpoint so it resolves even in spaces larger than the
+    //     space-list cap. Overlapping subtrees de-dupe by external_id at
+    //     insert time.
+    interface Unit {
+      pageId: string | null;
+      pageTitle: string | null;
+      selected: ConfluencePageMeta[];
+    }
+    const units: Unit[] = [];
+    if (scope.kind === 'space') {
+      const allPages = await this.client.listAllPages(
+        userId,
+        scope.spaceId,
+        MAX_SPACE_IMPORT_FILES + 1,
+      );
+      this.enforceImportCountCap(allPages.length, 'space', MAX_SPACE_IMPORT_FILES);
+      units.push({ pageId: null, pageTitle: null, selected: allPages });
+    } else {
+      for (const pageId of scope.pageIds) {
+        const subtree = await this.client.listPageSubtree(
+          userId,
+          pageId,
+          MAX_PAGE_IMPORT_FILES + 1,
+        );
+        if (subtree.length === 0) continue; // picked page gone / inaccessible
+        this.enforceImportCountCap(subtree.length, 'pages', MAX_PAGE_IMPORT_FILES);
+        units.push({
+          pageId,
+          pageTitle: subtree.find((p) => p.id === pageId)?.title ?? null,
+          selected: subtree,
+        });
+      }
+    }
 
     for (const unit of units) {
-      const selected = this.selectPages(
-        scope.kind === 'space'
-          ? { kind: 'space', spaceId: scope.spaceId }
-          : { kind: 'pages', spaceId: scope.spaceId, pageIds: [unit.pageId!] },
-        allPages,
-      );
-      const cap =
-        scope.kind === 'space' ? MAX_SPACE_IMPORT_FILES : MAX_PAGE_IMPORT_FILES;
-      this.enforceImportCountCap(selected.length, scope.kind, cap);
-
       const inserted = await this.upsertSourceUnit(userId, {
         scopeKind: scope.kind === 'space' ? 'space' : 'page',
         pageId: unit.pageId,
-        pageTitle: unit.pageId ? (byId.get(unit.pageId)?.title ?? null) : null,
+        pageTitle: unit.pageTitle,
         space,
-        selected,
+        selected: unit.selected,
         connectionId: connection.id,
         spaceFolderId,
         kcFileScope: fileScope,
@@ -556,40 +565,6 @@ export class ConfluenceImportService {
   // ───────────────────────────────────────────────────────────────────
   // Internals
   // ───────────────────────────────────────────────────────────────────
-
-  /**
-   * Resolve which pages a scope actually imports:
-   *   - 'space': every current page in the space.
-   *   - 'pages': each picked page plus all of its descendant pages (the full
-   *     subtree), so importing a parent brings its children along.
-   */
-  private selectPages(
-    scope: ConfluenceImportScope,
-    allPages: ConfluencePageMeta[],
-  ): ConfluencePageMeta[] {
-    if (scope.kind === 'space') return allPages;
-
-    const byParent = new Map<string, ConfluencePageMeta[]>();
-    for (const p of allPages) {
-      if (!p.parentId) continue;
-      const arr = byParent.get(p.parentId) ?? [];
-      arr.push(p);
-      byParent.set(p.parentId, arr);
-    }
-    const byId = new Map(allPages.map((p) => [p.id, p]));
-
-    const picked = new Map<string, ConfluencePageMeta>();
-    const queue = [...scope.pageIds];
-    while (queue.length > 0) {
-      const id = queue.shift()!;
-      if (picked.has(id)) continue;
-      const page = byId.get(id);
-      if (!page) continue; // picked id not in this space (stale) — skip
-      picked.set(id, page);
-      for (const child of byParent.get(id) ?? []) queue.push(child.id);
-    }
-    return [...picked.values()];
-  }
 
   /**
    * Insert new knowledge_files rows + upsert ONE source record (whole-space

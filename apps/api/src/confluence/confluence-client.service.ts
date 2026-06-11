@@ -317,6 +317,82 @@ export class ConfluenceClientService {
   }
 
   /**
+   * Collect a page and all of its descendant pages by walking the
+   * `/pages/{id}/children` endpoint, independent of the full space list.
+   *
+   * Used by the "specific pages" import so a picked page resolves its whole
+   * subtree even in spaces larger than the space-list cap (where the page
+   * might not appear in `listAllPages`). The root's `parentId` is forced to
+   * null — within this subtree it is the top, so its document lands in the
+   * space folder while its descendants nest beneath it.
+   *
+   * `cap` bounds the BFS (the import path passes `MAX_PAGE_IMPORT_FILES + 1`
+   * so an over-cap subtree is detected and rejected loudly). One children
+   * call per node, so this is heavier than a flat space list — fine for the
+   * typical "pick a few pages" case.
+   */
+  async listPageSubtree(
+    userId: string,
+    rootPageId: string,
+    cap = 1000,
+  ): Promise<ConfluencePageMeta[]> {
+    const { siteUrl } = await this.getContext(userId);
+    // Key-independent canonical page URL — avoids depending on the space key.
+    const webUrlFor = (id: string) =>
+      `${siteUrl}/wiki/pages/viewpage.action?pageId=${id}`;
+
+    let root: { id: string; title?: string };
+    try {
+      root = await this.apiGet<{ id: string; title?: string }>(
+        userId,
+        `/wiki/api/v2/pages/${rootPageId}`,
+      );
+    } catch {
+      // Picked page is gone / not accessible — skip it.
+      return [];
+    }
+
+    const titleById = new Map<string, string>([
+      [rootPageId, root.title || 'Untitled'],
+    ]);
+    const parentById = new Map<string, string | null>([[rootPageId, null]]);
+
+    const out: ConfluencePageMeta[] = [];
+    const visited = new Set<string>();
+    const queue: string[] = [rootPageId];
+
+    while (queue.length > 0 && out.length < cap) {
+      const id = queue.shift()!;
+      if (visited.has(id)) continue;
+      visited.add(id);
+      out.push({
+        id,
+        title: titleById.get(id) ?? 'Untitled',
+        parentId: parentById.get(id) ?? null,
+        hasChildren: false, // filled in below
+        webUrl: webUrlFor(id),
+      });
+
+      const children = await this.apiGetAll<{ id: string; title?: string }>(
+        userId,
+        `/wiki/api/v2/pages/${id}/children?limit=${PAGE_LIMIT}`,
+        cap,
+      );
+      for (const c of children) {
+        if (!c.id || visited.has(c.id)) continue;
+        titleById.set(c.id, c.title || 'Untitled');
+        parentById.set(c.id, id);
+        queue.push(c.id);
+      }
+    }
+
+    const parents = new Set<string>();
+    for (const p of out) if (p.parentId) parents.add(p.parentId);
+    for (const p of out) p.hasChildren = parents.has(p.id);
+    return out;
+  }
+
+  /**
    * Download a page's body rendered to Markdown. Uses the `export_view`
    * representation (fully rendered HTML, macros expanded) and converts it to
    * Markdown so KC's existing `.md` parser can chunk + embed it. The basename
