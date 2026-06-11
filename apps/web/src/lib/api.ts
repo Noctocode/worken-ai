@@ -326,6 +326,15 @@ export async function fetchProject(id: string): Promise<Project> {
   return res.json();
 }
 
+/** Thrown when the API rejects a duplicate project name (HTTP 409).
+ *  Components catch this to show a field-level "name already taken" error. */
+export class DuplicateProjectNameError extends Error {
+  constructor() {
+    super("Project name already exists");
+    this.name = "DuplicateProjectNameError";
+  }
+}
+
 export async function createProject(
   input: CreateProjectInput,
 ): Promise<Project> {
@@ -334,7 +343,10 @@ export async function createProject(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error("Failed to create project");
+  if (!res.ok) {
+    if (res.status === 409) throw new DuplicateProjectNameError();
+    throw new Error("Failed to create project");
+  }
   return res.json();
 }
 

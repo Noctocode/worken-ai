@@ -2,6 +2,7 @@ export const projects = {
   'projectCreate.title': 'Create Project',
   'projectCreate.projectNamePlaceholder': 'Project Name',
   'projectCreate.nameRequired': 'Project name is required',
+  'projectCreate.nameTaken': 'A project with this name already exists',
   'projectCreate.selectType': 'Select Project Type',
   'projectCreate.personalTooltip': 'A private workspace only you can access. Spend counts against your personal monthly budget.',
   'projectCreate.teamTooltip': "A shared workspace for a team. Spend counts against the chosen team's monthly budget and members can collaborate on prompts and chatbots.",

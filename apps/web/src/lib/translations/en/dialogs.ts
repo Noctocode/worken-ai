@@ -3,6 +3,7 @@ export const dialogs = {
   'dlg.createProj.desc': 'Start a new AI project with your preferred model.',
   'dlg.createProj.name': 'Name',
   'dlg.createProj.namePlaceholder': 'My AI Project',
+  'dlg.createProj.nameTaken': 'A project with this name already exists',
   'dlg.createProj.description': 'Description',
   'dlg.createProj.descPlaceholder': 'What is this project about?',
   'dlg.createProj.model': 'Model',

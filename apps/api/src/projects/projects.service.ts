@@ -1,10 +1,22 @@
 import {
+  ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, inArray, or, type SQL } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  isNull,
+  inArray,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from 'drizzle-orm';
 import {
   projectMembers,
   projects,
@@ -321,6 +333,39 @@ export class ProjectsService {
     return { agent, agents: pool };
   }
 
+  /**
+   * Project names must be unique within their scope: personal projects are
+   * scoped to the owner (their non-team projects), team projects to the team.
+   * The compare is trimmed and case-insensitive so " Foo " and "foo" collide.
+   * `excludeId` lets a rename skip the row being updated. Throws 409 on clash.
+   */
+  private async assertNameAvailable(
+    name: string,
+    scope: { userId: string; teamId: string | null },
+    excludeId?: string,
+  ) {
+    const conditions: SQL[] = [
+      scope.teamId
+        ? eq(projects.teamId, scope.teamId)
+        : (and(
+            eq(projects.userId, scope.userId),
+            isNull(projects.teamId),
+          ) as SQL),
+      sql`lower(${projects.name}) = lower(${name.trim()})`,
+    ];
+    if (excludeId) conditions.push(ne(projects.id, excludeId));
+
+    const [existing] = await this.db
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(...conditions))
+      .limit(1);
+
+    if (existing) {
+      throw new ConflictException('A project with this name already exists');
+    }
+  }
+
   async create(dto: CreateProjectDto, userId: string) {
     if (dto.teamId) {
       const role = await this.teamsService.getUserTeamRole(dto.teamId, userId);
@@ -345,6 +390,13 @@ export class ProjectsService {
         );
       }
     }
+
+    // Reject a duplicate name in the same scope before inserting, so the
+    // FE can surface a clear "name already taken" form error.
+    await this.assertNameAvailable(dto.name, {
+      userId,
+      teamId: dto.teamId ?? null,
+    });
 
     // Active agent + the picked pool, normalized so the pool is never
     // empty and always contains the active agent. Default the active agent
@@ -411,6 +463,19 @@ export class ProjectsService {
       }
     } else if (project.userId !== userId) {
       throw new ForbiddenException('Only the project owner can edit it');
+    }
+
+    // A rename must not collide with another project in the same scope.
+    // Skip the check when the name is unchanged (ignoring case/whitespace).
+    if (
+      dto.name !== undefined &&
+      dto.name.trim().toLowerCase() !== project.name.trim().toLowerCase()
+    ) {
+      await this.assertNameAvailable(
+        dto.name,
+        { userId: project.userId, teamId: project.teamId },
+        project.id,
+      );
     }
 
     const updates: Record<string, unknown> = {};
