@@ -1,12 +1,14 @@
 -- Confluence (Atlassian) integration.
 --
 -- Adds the confluence_import_sources table (per-space / per-page imports).
--- No knowledge_files column changes are needed: Confluence rows reuse
--- external_id (the page id, unique within a site) and external_url (the
--- page web link), and leave external_drive_id NULL so they share the
--- Drive/OneDrive `knowledge_files_owner_external_unique` dedup index.
--- OAuth tokens reuse the existing oauth_connections table with
--- provider='confluence'.
+-- Confluence rows reuse knowledge_files.external_id (the page id, unique
+-- within a site) and external_url (the page web link). They set
+-- external_drive_id to the space id so they are EXCLUDED from the
+-- Drive/OneDrive `knowledge_files_owner_external_unique` index (which
+-- requires external_drive_id IS NULL) and instead dedupe through the
+-- Confluence-specific partial unique index added below — so a Confluence
+-- page id that happens to equal a Drive file id for the same user can't
+-- raise a 23505. OAuth tokens reuse oauth_connections (provider='confluence').
 --
 -- All operations are idempotent (IF NOT EXISTS / DO $$ duplicate_object
 -- guards), so re-running this migration on a database that already applied
@@ -45,3 +47,13 @@ CREATE UNIQUE INDEX IF NOT EXISTS "confluence_import_sources_owner_space_unique"
 CREATE UNIQUE INDEX IF NOT EXISTS "confluence_import_sources_owner_page_unique"
 	ON "confluence_import_sources" USING btree ("owner_id","space_id","page_id")
 	WHERE "scope" = 'page';
+--> statement-breakpoint
+
+-- Confluence-specific dedup index. Source-scoped so a Confluence page id
+-- can't collide with a Drive/OneDrive file id of the same string for the
+-- same user (those rows keep external_drive_id NULL and live in
+-- knowledge_files_owner_external_unique; Confluence rows set
+-- external_drive_id to the space id, excluding them from it).
+CREATE UNIQUE INDEX IF NOT EXISTS "knowledge_files_owner_confluence_external_unique"
+	ON "knowledge_files" USING btree ("uploaded_by_id","external_id")
+	WHERE "source" = 'confluence';

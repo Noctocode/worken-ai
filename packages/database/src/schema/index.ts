@@ -723,7 +723,12 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // outside of source='drive'.
   externalUrl: text("external_url"),
   // SharePoint needs a (driveId, itemId) pair to download — itemId
-  // alone is ambiguous across libraries. Drive rows leave this NULL.
+  // alone is ambiguous across libraries. Drive / OneDrive rows leave
+  // this NULL. Confluence rows set it to the space id — not needed for
+  // download, but it keeps Confluence out of the Drive/OneDrive dedup
+  // index below (which requires external_drive_id IS NULL), so a
+  // Confluence page id that happens to equal a Drive file id for the
+  // same user can't collide.
   externalDriveId: text("external_drive_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -760,6 +765,16 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   uniqueIndex("knowledge_files_owner_sp_external_unique")
     .on(table.uploadedById, table.externalDriveId, table.externalId)
     .where(sql`${table.source} = 'sharepoint'`),
+  // De-dupe import of the same Confluence page by the same user.
+  // Confluence page ids are unique within the connected site, so the
+  // key is just (uploaded_by_id, external_id). Source-scoped so it can't
+  // collide with a Drive/OneDrive file id that happens to be the same
+  // string — those rows live in the index above (external_drive_id IS
+  // NULL), while Confluence rows set external_drive_id to the space id,
+  // which excludes them from it. Probed on every Confluence import.
+  uniqueIndex("knowledge_files_owner_confluence_external_unique")
+    .on(table.uploadedById, table.externalId)
+    .where(sql`${table.source} = 'confluence'`),
 ]);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets

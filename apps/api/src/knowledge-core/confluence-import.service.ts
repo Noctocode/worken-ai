@@ -520,6 +520,7 @@ export class ConfluenceImportService {
           batch,
           folderMap,
           spaceFolderId,
+          space.id,
           fileScope,
           visibility,
           scope.teamIds ?? [],
@@ -671,6 +672,7 @@ export class ConfluenceImportService {
       newPages,
       folderMap,
       spaceFolderId,
+      space.id,
       args.kcFileScope,
       args.visibility,
       args.teamIds,
@@ -699,6 +701,7 @@ export class ConfluenceImportService {
     pages: ConfluencePageMeta[],
     folderMap: Map<string, string>,
     spaceFolderId: string,
+    spaceId: string,
     fileScope: string,
     visibility: string,
     teamIds: string[],
@@ -719,6 +722,12 @@ export class ConfluenceImportService {
           source: 'confluence' as const,
           externalId: p.id,
           externalUrl: p.webUrl ?? null,
+          // Set to the space id so Confluence rows fall OUT of the
+          // Drive/OneDrive dedup index (external_drive_id IS NULL) and into
+          // the Confluence-specific one — preventing a 23505 if a page id
+          // ever equals a Drive file id for this user. Not used at download
+          // time (the page id alone is enough).
+          externalDriveId: spaceId,
         })),
       )
       .returning({ id: knowledgeFiles.id });
@@ -796,12 +805,17 @@ export class ConfluenceImportService {
     candidateIds: string[],
   ): Promise<Set<string>> {
     if (candidateIds.length === 0) return new Set();
+    // Scope the probe to source='confluence' so a Drive/OneDrive file id that
+    // happens to equal a Confluence page id isn't mistaken for an already-
+    // imported page (which would silently skip a distinct document). Pairs
+    // with the source-scoped dedup index.
     const rows = await this.db
       .select({ externalId: knowledgeFiles.externalId })
       .from(knowledgeFiles)
       .where(
         and(
           eq(knowledgeFiles.uploadedById, userId),
+          eq(knowledgeFiles.source, 'confluence'),
           inArray(knowledgeFiles.externalId, candidateIds),
         ),
       );
