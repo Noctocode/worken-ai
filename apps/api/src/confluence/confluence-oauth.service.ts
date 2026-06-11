@@ -88,6 +88,14 @@ export class ConfluenceOAuthService {
     private readonly jwt: JwtService,
   ) {}
 
+  /**
+   * Per-user single-flight guard for token resolution. Coalesces concurrent
+   * `getValidAccessToken` calls so only one refresh runs at a time per user —
+   * see the method docstring for why the rotating refresh token makes this
+   * necessary.
+   */
+  private readonly tokenInFlight = new Map<string, Promise<string>>();
+
   private redirectUri(): string {
     return this.config.get<string>(
       'CONFLUENCE_REDIRECT_URI',
@@ -263,15 +271,41 @@ export class ConfluenceOAuthService {
   }
 
   /**
-   * Return a valid access token for the user, refreshing first if the
-   * stored one is within REFRESH_EARLY_MARGIN_SECONDS of expiry. Atlassian
-   * rotates the refresh_token on every refresh, so we persist the new one.
+   * Return a valid access token for the user, refreshing first if the stored
+   * one is within REFRESH_EARLY_MARGIN_SECONDS of expiry. Atlassian rotates —
+   * and immediately invalidates — the refresh_token on every refresh, so we
+   * persist the new one.
    *
-   * On refresh failure flips the connection to `status='reauth_required'`
-   * and throws `ReauthRequiredError`, which the caller surfaces as a 401 →
-   * FE "Reconnect Confluence" prompt.
+   * Concurrent callers for the same user are coalesced through one in-flight
+   * promise (`tokenInFlight`). Without it, two overlapping calls (e.g. a
+   * browse request landing during an import) could both decide to refresh:
+   * the first rotates the token, the second then presents the now-dead one,
+   * fails, and needlessly flips the connection to `reauth_required`. The
+   * map check-and-set is synchronous (no await between get and set), so
+   * exactly one `resolveValidAccessToken` runs per user and everyone shares
+   * its result. This is per-process; a multi-instance deploy would still need
+   * a distributed lock, but the 60s proactive-refresh margin keeps that
+   * cross-instance window tiny.
    */
-  async getValidAccessToken(userId: string): Promise<string> {
+  getValidAccessToken(userId: string): Promise<string> {
+    const existing = this.tokenInFlight.get(userId);
+    if (existing) return existing;
+    const inFlight = this.resolveValidAccessToken(userId).finally(() => {
+      this.tokenInFlight.delete(userId);
+    });
+    this.tokenInFlight.set(userId, inFlight);
+    return inFlight;
+  }
+
+  /**
+   * Actual token resolution (select → check freshness → refresh if needed).
+   * Always invoked through `getValidAccessToken`'s single-flight wrapper, so
+   * at most one of these runs per user at a time. On refresh failure flips
+   * the connection to `status='reauth_required'` and throws
+   * `ReauthRequiredError`, which the caller surfaces as a 401 → FE "Reconnect
+   * Confluence" prompt.
+   */
+  private async resolveValidAccessToken(userId: string): Promise<string> {
     const [row] = await this.db
       .select()
       .from(oauthConnections)
