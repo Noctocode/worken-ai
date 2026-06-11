@@ -2255,9 +2255,7 @@ export class TeamsService {
     );
 
     const aliasNames = await this.customAliasNamesByIntegration(
-      myIntegrations
-        .filter((r) => r.providerId === 'custom')
-        .map((r) => r.id),
+      myIntegrations.filter((r) => r.providerId === 'custom').map((r) => r.id),
     );
 
     return myIntegrations.map((r) => ({

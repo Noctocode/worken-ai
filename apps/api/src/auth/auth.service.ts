@@ -518,7 +518,7 @@ export class AuthService {
     // it for everyone who isn't admin/advanced.
     let canCreateProject = userRole === 'admin' || userRole === 'advanced';
     if (!canCreateProject) {
-      const ownedTeam = await this.db
+      const ownedTeam: Array<{ id: string }> = await this.db
         .select({ id: teams.id })
         .from(teams)
         .where(eq(teams.ownerId, user.id))
@@ -526,7 +526,7 @@ export class AuthService {
       if (ownedTeam.length > 0) {
         canCreateProject = true;
       } else {
-        const managedTeam = await this.db
+        const managedTeam: Array<{ id: string }> = await this.db
           .select({ id: teamMembers.id })
           .from(teamMembers)
           .where(
@@ -624,7 +624,7 @@ export class AuthService {
       .from(users)
       .where(eq(users.id, userId));
     if (user && user.profileType == null) {
-      const acceptedTeamRows = await this.db
+      const acceptedTeamRows: Array<{ ownerId: string }> = await this.db
         .select({ ownerId: teams.ownerId })
         .from(teamMembers)
         .innerJoin(teams, eq(teams.id, teamMembers.teamId))

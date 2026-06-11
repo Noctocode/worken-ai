@@ -148,7 +148,10 @@ export class OneDriveGraphService {
     let next: string | undefined = firstPath;
     let pages = 0;
     while (next && pages < MAX_PAGES) {
-      const page = await this.graphGet<GraphPage<T>>(userId, next);
+      const page: GraphPage<T> = await this.graphGet<GraphPage<T>>(
+        userId,
+        next,
+      );
       for (const v of page.value) {
         items.push(v);
         onProgress?.(items.length);
@@ -235,10 +238,9 @@ export class OneDriveGraphService {
       let pages = 0;
 
       while (next && pages < MAX_PAGES) {
-        const page = await this.graphGet<GraphPage<GraphDriveItem>>(
-          userId,
-          next,
-        );
+        const page: GraphPage<GraphDriveItem> = await this.graphGet<
+          GraphPage<GraphDriveItem>
+        >(userId, next);
         for (const item of page.value) {
           if (item.folder) {
             queue.push(item.id);
@@ -325,10 +327,9 @@ export class OneDriveGraphService {
       let next: string | undefined =
         `/me/drive/${anchor}/children?$select=id,name,size,file,folder&$top=200`;
       while (next && pages < MAX_PAGES) {
-        const page = await this.graphGet<GraphPage<GraphDriveItem>>(
-          userId,
-          next,
-        );
+        const page: GraphPage<GraphDriveItem> = await this.graphGet<
+          GraphPage<GraphDriveItem>
+        >(userId, next);
         for (const item of page.value) {
           if (item.folder) {
             queue.push(item.id);
