@@ -253,9 +253,10 @@ export class ConfluenceClientService {
   }
 
   /**
-   * List the spaces the connected account can read. Only `current`
-   * non-personal spaces are surfaced — archived / personal spaces add noise
-   * to the import picker.
+   * List the `current` spaces the connected account can read. Personal spaces
+   * (key prefixed `~`) are INCLUDED — users frequently keep their own notes
+   * there, so excluding them hides exactly the pages they want to import.
+   * Ordered by name for a stable picker.
    */
   async listSpaces(userId: string): Promise<ConfluenceSpace[]> {
     const spaces = await this.apiGetAll<{
@@ -271,8 +272,8 @@ export class ConfluenceClientService {
       2000,
     );
     return spaces
-      .filter((s) => s.type !== 'personal')
-      .map((s) => ({ id: s.id, key: s.key, name: s.name }));
+      .map((s) => ({ id: s.id, key: s.key, name: s.name || s.key || 'Space' }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /**

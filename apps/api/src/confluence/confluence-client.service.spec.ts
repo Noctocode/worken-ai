@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe('ConfluenceClientService pagination', () => {
-  it('follows a gateway-relative _links.next across pages and filters personal spaces', async () => {
+  it('follows a gateway-relative _links.next across pages and includes personal spaces', async () => {
     const { service, fetchMock, urls } = makeService();
     fetchMock.mockImplementation((url: string) => {
       urls.push(url);
@@ -94,8 +94,9 @@ describe('ConfluenceClientService pagination', () => {
 
     const spaces = await service.listSpaces('user-1');
 
-    // Personal space dropped; both pages accumulated.
-    expect(spaces.map((s) => s.key)).toEqual(['ENG', 'OPS']);
+    // Both pages accumulated, personal space INCLUDED, sorted by name
+    // (Engineering, Operations, Personal).
+    expect(spaces.map((s) => s.key)).toEqual(['ENG', 'OPS', '~user']);
     // The relative next was resolved against the gateway base.
     expect(urls).toContain(`${API_BASE}/wiki/api/v2/spaces?cursor=C2&limit=250`);
   });
