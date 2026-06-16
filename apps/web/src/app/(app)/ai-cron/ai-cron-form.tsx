@@ -75,25 +75,51 @@ function pad(n: number): string {
   return n.toString().padStart(2, "0");
 }
 
+/** Normalise a set of cron weekday numbers (0=Sun..6=Sat) into the field. */
+function dowsToField(dows: number[]): string {
+  const uniq = Array.from(new Set(dows)).sort((a, b) => a - b);
+  return uniq.length ? uniq.join(",") : "1";
+}
+
+/** Parse a cron day-of-week field (`1-5`, `1,3,5`, `3`, …) into day numbers. */
+function parseDows(field: string): number[] | null {
+  const out = new Set<number>();
+  for (const part of field.split(",")) {
+    const range = /^(\d+)-(\d+)$/.exec(part);
+    if (range) {
+      const a = Number(range[1]);
+      const b = Number(range[2]);
+      if (a > b) return null;
+      for (let i = a; i <= b; i++) out.add(i % 7); // cron allows 7 = Sunday
+    } else if (/^\d+$/.test(part)) {
+      out.add(Number(part) % 7);
+    } else {
+      return null;
+    }
+  }
+  const arr = [...out].filter((d) => d >= 0 && d <= 6);
+  return arr.length ? arr : null;
+}
+
 /** Turn the builder state into a 5-field cron expression. */
 function buildCron(
   freq: "daily" | "weekly" | "monthly",
   time: string,
-  dow: number,
+  dows: number[],
   dom: number,
 ): string {
   const [hh, mm] = time.split(":").map((x) => Number(x));
   const h = Number.isFinite(hh) ? hh : 8;
   const m = Number.isFinite(mm) ? mm : 0;
   if (freq === "daily") return `${m} ${h} * * *`;
-  if (freq === "weekly") return `${m} ${h} * * ${dow}`;
+  if (freq === "weekly") return `${m} ${h} * * ${dowsToField(dows)}`;
   return `${m} ${h} ${dom} * *`;
 }
 
 interface ParsedCron {
   freq: Frequency;
   time: string;
-  dow: number;
+  dows: number[];
   dom: number;
   intervalValue: number;
   intervalUnit: IntervalUnit;
@@ -104,7 +130,7 @@ function parseCron(expr: string): ParsedCron {
   const fallback: ParsedCron = {
     freq: "advanced",
     time: "08:00",
-    dow: 1,
+    dows: [1],
     dom: 1,
     intervalValue: 15,
     intervalUnit: "minutes",
@@ -130,8 +156,10 @@ function parseCron(expr: string): ParsedCron {
   if (monF !== "*") return fallback;
   const time = `${pad(hn)}:${pad(mn)}`;
   if (domF === "*" && dowF === "*") return { ...fallback, freq: "daily", time };
-  if (domF === "*" && /^\d+$/.test(dowF))
-    return { ...fallback, freq: "weekly", time, dow: Number(dowF) };
+  if (domF === "*" && dowF !== "*") {
+    const dows = parseDows(dowF);
+    return dows ? { ...fallback, freq: "weekly", time, dows } : fallback;
+  }
   if (dowF === "*" && /^\d+$/.test(domF))
     return { ...fallback, freq: "monthly", time, dom: Number(domF) };
   return fallback;
@@ -168,7 +196,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   );
   const [frequency, setFrequency] = useState<Frequency>(parsed?.freq ?? "daily");
   const [time, setTime] = useState(parsed?.time ?? "08:00");
-  const [dow, setDow] = useState(parsed?.dow ?? 1);
+  const [dows, setDows] = useState<number[]>(parsed?.dows ?? [1]);
   const [dom, setDom] = useState(parsed?.dom ?? 1);
   const [intervalValue, setIntervalValue] = useState(
     parsed?.intervalValue ?? 15,
@@ -210,7 +238,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
         ? intervalUnit === "minutes"
           ? `*/${intervalValue} * * * *`
           : `0 */${intervalValue} * * *`
-        : buildCron(frequency, time, dow, dom);
+        : buildCron(frequency, time, dows, dom);
 
   // Live preview of the schedule (debounced) via the validate-cron endpoint.
   const [preview, setPreview] = useState<CronDescription | null>(null);
@@ -243,6 +271,73 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
     }
     setEmailDraft("");
   };
+
+  // Weekday toggles shown for the Weekly frequency. Ordered Mon→Sun for
+  // readability; values are cron weekday numbers (0 = Sun).
+  const weekOrder: { v: number; label: string }[] = [
+    { v: 1, label: t("aiCron.day.mon") },
+    { v: 2, label: t("aiCron.day.tue") },
+    { v: 3, label: t("aiCron.day.wed") },
+    { v: 4, label: t("aiCron.day.thu") },
+    { v: 5, label: t("aiCron.day.fri") },
+    { v: 6, label: t("aiCron.day.sat") },
+    { v: 0, label: t("aiCron.day.sun") },
+  ];
+  const toggleDay = (v: number) =>
+    setDows((cur) =>
+      cur.includes(v) ? cur.filter((d) => d !== v) : [...cur, v],
+    );
+
+  // One-click common schedules.
+  const presets: { label: string; apply: () => void }[] = [
+    {
+      label: t("aiCron.preset.every15"),
+      apply: () => {
+        setFrequency("interval");
+        setIntervalUnit("minutes");
+        setIntervalValue(15);
+      },
+    },
+    {
+      label: t("aiCron.preset.hourly"),
+      apply: () => {
+        setFrequency("interval");
+        setIntervalUnit("hours");
+        setIntervalValue(1);
+      },
+    },
+    {
+      label: t("aiCron.preset.daily9"),
+      apply: () => {
+        setFrequency("daily");
+        setTime("09:00");
+      },
+    },
+    {
+      label: t("aiCron.preset.weekdays9"),
+      apply: () => {
+        setFrequency("weekly");
+        setTime("09:00");
+        setDows([1, 2, 3, 4, 5]);
+      },
+    },
+    {
+      label: t("aiCron.preset.mondays9"),
+      apply: () => {
+        setFrequency("weekly");
+        setTime("09:00");
+        setDows([1]);
+      },
+    },
+    {
+      label: t("aiCron.preset.monthly1"),
+      apply: () => {
+        setFrequency("monthly");
+        setTime("09:00");
+        setDom(1);
+      },
+    },
+  ];
 
   const isSaving = createMut.isPending || updateMut.isPending;
 
@@ -385,6 +480,22 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.when")}
         </h2>
+
+        {/* Quick presets */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-text-3">{t("aiCron.when.presets")}:</span>
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              className="rounded-full border border-border-1 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
+              onClick={p.apply}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div className="flex flex-col gap-1.5">
             <Label>{t("aiCron.when.frequency")}</Label>
@@ -474,26 +585,6 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             </>
           )}
 
-          {frequency === "weekly" && (
-            <div className="flex flex-col gap-1.5">
-              <Label>{t("aiCron.when.dayOfWeek")}</Label>
-              <Select value={String(dow)} onValueChange={(v) => setDow(Number(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-                    (d, i) => (
-                      <SelectItem key={d} value={String(i)}>
-                        {d}
-                      </SelectItem>
-                    ),
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-
           {frequency === "monthly" && (
             <div className="flex flex-col gap-1.5">
               <Label>{t("aiCron.when.dayOfMonth")}</Label>
@@ -512,6 +603,47 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             </div>
           )}
         </div>
+
+        {frequency === "weekly" && (
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("aiCron.when.days")}</Label>
+            <div className="flex flex-wrap gap-1.5">
+              {weekOrder.map((d) => {
+                const active = dows.includes(d.v);
+                return (
+                  <button
+                    key={d.v}
+                    type="button"
+                    onClick={() => toggleDay(d.v)}
+                    className={`min-w-10 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      active
+                        ? "border-primary-6 bg-primary-6 text-white"
+                        : "border-border-1 text-text-2 hover:bg-bg-2"
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                className="text-xs text-primary-6 hover:underline"
+                onClick={() => setDows([1, 2, 3, 4, 5])}
+              >
+                {t("aiCron.when.weekdays")}
+              </button>
+              <button
+                type="button"
+                className="text-xs text-primary-6 hover:underline"
+                onClick={() => setDows([0, 6])}
+              >
+                {t("aiCron.when.weekend")}
+              </button>
+            </div>
+          </div>
+        )}
 
         {frequency === "advanced" && (
           <div className="flex flex-col gap-1.5">
