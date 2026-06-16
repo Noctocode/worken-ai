@@ -333,6 +333,44 @@ export class MailService {
     });
   }
 
+  /**
+   * AI Cron run result. Plain, readable layout — the body is model output
+   * (often markdown), so it's rendered in a monospace <pre> with preserved
+   * whitespace rather than rich HTML. Sent once per recipient by the caller.
+   */
+  async sendCronRunResult({
+    to,
+    jobName,
+    output,
+  }: {
+    to: string;
+    jobName: string;
+    output: string;
+  }) {
+    const frontendUrl =
+      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
+
+    const html = `
+      <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
+        ${this.brandedHeader(frontendUrl)}
+        <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px;">
+          <h1 style="font-size: 24px; font-weight: 700; color: #1D2129; margin: 0 0 8px; line-height: 1.3;">${escapeHtml(jobName)}</h1>
+          <p style="font-size: 14px; font-weight: 400; color: #86909C; margin: 0 0 24px; line-height: 1.3;">Scheduled AI run result</p>
+          <pre style="white-space: pre-wrap; word-break: break-word; font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; line-height: 1.6; color: #1D2129; background: #F7F8FA; border: 1px solid #E5E6EB; border-radius: 12px; padding: 16px; margin: 0 0 24px;">${escapeHtml(output)}</pre>
+          <p style="font-size: 14px; font-weight: 400; color: #4E5969; margin: 0; line-height: 1.3;">Best,<br/>WorkenAI Team</p>
+        </div>
+        ${this.brandedFooter()}
+      </div>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.config.get<string>('MAIL_FROM'),
+      to,
+      subject: `AI Cron: ${jobName}`,
+      html,
+    });
+  }
+
   async sendTeamInvitationExisting({
     to,
     teamName,
