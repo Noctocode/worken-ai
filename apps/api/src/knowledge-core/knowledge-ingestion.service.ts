@@ -5,6 +5,7 @@ import {
   cosineDistance,
   desc,
   eq,
+  ilike,
   inArray,
   or,
   sql,
@@ -80,6 +81,34 @@ export interface IngestionAggregate {
  * DocumentsService so chunks are searchable with the same vector
  * shape as project documents.
  */
+// Common EN/SL words dropped from the keyword-boost so a generic question
+// ("what is X", "napiši povzetek") matches on its meaningful term, not noise.
+const STOPWORDS = new Set([
+  'what',
+  'which',
+  'this',
+  'that',
+  'with',
+  'from',
+  'your',
+  'please',
+  'about',
+  'summarize',
+  'summary',
+  'write',
+  'tell',
+  'explain',
+  'kako',
+  'kateri',
+  'katera',
+  'zakaj',
+  'prosim',
+  'napiši',
+  'povej',
+  'naredi',
+  'povzetek',
+]);
+
 @Injectable()
 export class KnowledgeIngestionService {
   private readonly logger = new Logger(KnowledgeIngestionService.name);
@@ -629,31 +658,73 @@ export class KnowledgeIngestionService {
           ),
         );
 
-    return this.db
-      .select({
-        id: knowledgeChunks.id,
-        fileId: knowledgeChunks.fileId,
-        content: knowledgeChunks.content,
-        similarity,
-      })
-      .from(knowledgeChunks)
-      .where(
+    // Schedule-scoped files (AI Cron) never surface in the broad search —
+    // they're reachable only as their own schedule's context via
+    // searchScheduleAttachedChunks (parallels how 'project' is excluded).
+    const accessWhere = and(
+      sql`${knowledgeChunks.visibility} <> 'schedule'`,
+      or(
         and(
-          // Schedule-scoped files (AI Cron) never surface in the broad search —
-          // they're reachable only as their own schedule's context via
-          // searchScheduleAttachedChunks (parallels how 'project' is excluded).
-          sql`${knowledgeChunks.visibility} <> 'schedule'`,
-          or(
-            and(
-              eq(knowledgeChunks.userId, userId),
-              eq(knowledgeChunks.scope, 'personal'),
-            ),
-            companyBranch,
-          ),
+          eq(knowledgeChunks.userId, userId),
+          eq(knowledgeChunks.scope, 'personal'),
         ),
-      )
+        companyBranch,
+      ),
+    );
+    const cols = {
+      id: knowledgeChunks.id,
+      fileId: knowledgeChunks.fileId,
+      content: knowledgeChunks.content,
+      similarity,
+    };
+
+    // Semantic (vector) results.
+    const vectorRows = await this.db
+      .select(cols)
+      .from(knowledgeChunks)
+      .where(accessWhere)
       .orderBy(desc(similarity))
       .limit(limit);
+
+    // Keyword boost: a small embedding model often can't rank an exact term
+    // match (a rare word like a name) above generic chunks, so a specific
+    // question ("what is X?") can miss the one chunk that defines X. Pull
+    // chunks that literally contain the query's significant terms and surface
+    // them first — lexical recall on top of semantic recall.
+    const terms = Array.from(
+      new Set(
+        query
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((w) => w.length >= 4 && !STOPWORDS.has(w)),
+      ),
+    ).slice(0, 6);
+
+    let keywordRows: typeof vectorRows = [];
+    if (terms.length > 0) {
+      keywordRows = await this.db
+        .select(cols)
+        .from(knowledgeChunks)
+        .where(
+          and(
+            accessWhere,
+            or(...terms.map((tm) => ilike(knowledgeChunks.content, `%${tm}%`))),
+          ),
+        )
+        .orderBy(desc(similarity))
+        .limit(limit);
+    }
+
+    // Keyword hits first (high-precision), then semantic, de-duped. Headroom
+    // over `limit` so a keyword hit isn't pushed out by the vector matches.
+    const merged: typeof vectorRows = [];
+    const seen = new Set<string>();
+    for (const row of [...keywordRows, ...vectorRows]) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      merged.push(row);
+    }
+    return merged.slice(0, limit + keywordRows.length);
   }
 
   /**
