@@ -10,8 +10,9 @@
 -- is still in the broken `companies` / `enabled_models` state documented in
 -- 0006, so generate prompts interactively and would fold unrelated drift into
 -- this migration (see 0008, 0016 for the same note). The `_journal.json`
--- entry is added alongside this file. Statements are idempotent
--- (IF NOT EXISTS) to match this package's migration style.
+-- entry is added alongside this file. CREATE TABLE / INDEX statements use
+-- IF NOT EXISTS to match this package's migration style (the FK ADDs run once
+-- as drizzle tracks applied migrations).
 
 CREATE TABLE IF NOT EXISTS "scheduled_prompts" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -61,7 +62,7 @@ CREATE TABLE IF NOT EXISTS "scheduled_prompt_runs" (
 ALTER TABLE "scheduled_prompts" ADD CONSTRAINT "scheduled_prompts_owner_id_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "scheduled_prompts" ADD CONSTRAINT "scheduled_prompts_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "scheduled_prompts" ADD CONSTRAINT "scheduled_prompts_knowledge_folder_id_knowledge_folders_id_fk" FOREIGN KEY ("knowledge_folder_id") REFERENCES "knowledge_folders"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "scheduled_prompt_runs" ADD CONSTRAINT "scheduled_prompt_runs_scheduled_prompt_id_scheduled_prompts_id_fk" FOREIGN KEY ("scheduled_prompt_id") REFERENCES "scheduled_prompts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "scheduled_prompt_runs" ADD CONSTRAINT "scheduled_prompt_runs_prompt_fk" FOREIGN KEY ("scheduled_prompt_id") REFERENCES "scheduled_prompts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "scheduled_prompts_enabled_next_run_idx" ON "scheduled_prompts" ("is_enabled","next_run_at");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "scheduled_prompts_owner_idx" ON "scheduled_prompts" ("owner_id");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "scheduled_prompt_runs_prompt_created_idx" ON "scheduled_prompt_runs" ("scheduled_prompt_id","created_at");--> statement-breakpoint
