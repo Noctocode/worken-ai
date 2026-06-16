@@ -59,4 +59,18 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skills.errImport': 'Veščine ni bilo mogoče uvoziti.',
   'skills.errImportEmpty': 'Najprej prilepite vsebino SKILL.md.',
   'skills.badgeImported': 'Uvoženo',
+
+  // Composer "Veščine" dialog (pregled + pripni)
+  'skillsDlg.title': 'Veščine',
+  'skillsDlg.desc':
+    'Veščine se uporabijo samodejno, ko se sporočilo prilega. Pripnite eno, da jo vsilite za ta pogovor.',
+  'skillsDlg.search': 'Iskanje veščin…',
+  'skillsDlg.loading': 'Nalaganje veščin…',
+  'skillsDlg.empty': 'Še ni veščin. Ustvarite eno, da pomočnik uporabi način dela vaše ekipe.',
+  'skillsDlg.manage': 'Upravljaj veščine',
+  'skillsDlg.pin': 'Pripni',
+  'skillsDlg.pinned': 'Pripeto',
+  'skillsDlg.unpin': 'Odpni',
+  'skillsDlg.noMatch': 'Nobena veščina ne ustreza iskanju.',
+  'skillsDlg.autoNote': 'Samodejno izbrano, ko je relevantno',
 };

@@ -32,6 +32,7 @@ export const arena = {
   'arena.judgeDefaultPlain': 'Default (recommended)',
   'arena.attachFile': 'Attach File',
   'arena.promptLibrary': 'Prompt Library',
+  'arena.skills': 'Skills',
   'arena.voiceComingSoon': 'Voice input (coming soon)',
   'arena.askMeAnything': 'Ask me Anything',
   'arena.expectedOutput': 'Expected output (used to score the responses)',

@@ -34,6 +34,7 @@ export const arena: Record<keyof typeof arenaEn, string> = {
   'arena.judgeDefaultPlain': 'Privzeto (priporočeno)',
   'arena.attachFile': 'Priloži datoteko',
   'arena.promptLibrary': 'Knjižnica promptov',
+  'arena.skills': 'Veščine',
   'arena.voiceComingSoon': 'Glasovni vnos (kmalu)',
   'arena.askMeAnything': 'Vprašajte me karkoli',
   'arena.expectedOutput': 'Pričakovani izhod (za ocenjevanje odgovorov)',

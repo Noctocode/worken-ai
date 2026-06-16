@@ -270,6 +270,9 @@ export default function ProjectChatPage() {
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
+  // Skills the user pinned via the composer Skills dialog — sent with each
+  // message so the router force-includes them this conversation.
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   // Holds the AbortController for the in-flight stream so the Stop
   // button can cancel mid-token. Null when no stream is active.
@@ -587,6 +590,7 @@ export default function ProjectChatPage() {
         projectId,
         controller.signal,
         attachments,
+        pinnedSkillIds,
       )) {
         // Defensive: BE-side bytes already buffered on the wire
         // surface here even after the user pressed Stop. Bail
@@ -1458,6 +1462,14 @@ export default function ProjectChatPage() {
           onAddFiles={handleAddFiles}
           onRemoveAttachment={handleRemoveAttachment}
           attachmentUploading={attachmentUploading}
+          pinnedSkillIds={pinnedSkillIds}
+          onTogglePinnedSkill={(id) =>
+            setPinnedSkillIds((prev) =>
+              prev.includes(id)
+                ? prev.filter((x) => x !== id)
+                : [...prev, id],
+            )
+          }
         />
       </div>
 

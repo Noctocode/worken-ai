@@ -1225,6 +1225,7 @@ export async function* streamChatMessage(
   projectId?: string,
   signal?: AbortSignal,
   attachments?: ChatAttachment[],
+  pinnedSkillIds?: string[],
 ): AsyncIterable<ChatStreamEvent> {
   const res = await apiFetch("/chat/stream", {
     method: "POST",
@@ -1236,6 +1237,9 @@ export async function* streamChatMessage(
       enableReasoning: true,
       projectId,
       ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      ...(pinnedSkillIds && pinnedSkillIds.length > 0
+        ? { pinnedSkillIds }
+        : {}),
     }),
     signal,
   });
@@ -1714,6 +1718,8 @@ export async function* streamCompareModels(
   /** Optional judge-model override (UI selector). Omitted → the BE
    *  falls back to ARENA_JUDGE_MODEL env / its default. */
   judgeModel?: string,
+  /** Skills pinned in the arena composer — injected into every panel. */
+  pinnedSkillIds?: string[],
 ): AsyncIterable<CompareModelsStreamEvent> {
   const res = await apiFetch(`/compare-models/stream`, {
     method: "POST",
@@ -1724,6 +1730,9 @@ export async function* streamCompareModels(
       expectedOutput,
       context,
       ...(judgeModel ? { judgeModel } : {}),
+      ...(pinnedSkillIds && pinnedSkillIds.length > 0
+        ? { pinnedSkillIds }
+        : {}),
     }),
     signal,
   });

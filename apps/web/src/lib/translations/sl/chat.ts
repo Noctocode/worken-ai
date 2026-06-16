@@ -24,6 +24,7 @@ export const chat: Record<keyof typeof chatEn, string> = {
   'chatComp.uploadImageSoon': 'Nalaganje slik kmalu na voljo',
   'chatComp.comingSoon': 'Kmalu',
   'chatComp.promptLibrary': 'Knjižnica promptov',
+  'chatComp.skills': 'Veščine',
   'chatComp.stopGenerating': 'Ustavi generiranje',
   'chatComp.send': 'Pošlji',
   'chatComp.generating': 'Generiranje — pritisnite Ustavi za preklic.',

@@ -57,4 +57,18 @@ export const skills = {
   'skills.errImport': 'Failed to import skill.',
   'skills.errImportEmpty': 'Paste SKILL.md content first.',
   'skills.badgeImported': 'Imported',
+
+  // Composer "Skills" dialog (browse + pin)
+  'skillsDlg.title': 'Skills',
+  'skillsDlg.desc':
+    'Skills apply automatically when a message fits them. Pin one to force it on for this conversation.',
+  'skillsDlg.search': 'Search skills…',
+  'skillsDlg.loading': 'Loading skills…',
+  'skillsDlg.empty': 'No skills yet. Create one to have the assistant apply your team’s way of doing a task.',
+  'skillsDlg.manage': 'Manage skills',
+  'skillsDlg.pin': 'Pin',
+  'skillsDlg.pinned': 'Pinned',
+  'skillsDlg.unpin': 'Unpin',
+  'skillsDlg.noMatch': 'No skills match your search.',
+  'skillsDlg.autoNote': 'Auto-selected when relevant',
 } as const;
