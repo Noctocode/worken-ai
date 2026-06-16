@@ -395,7 +395,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 py-4 lg:py-8">
+    <div className="flex w-full flex-col gap-6 py-4 lg:py-8">
       {/* Mobile title — the desktop appbar (aiCronForm variant) owns the
           title + back arrow at md+. */}
       <h1 className="text-[20px] font-bold text-text-1 md:hidden">
