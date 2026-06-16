@@ -25,9 +25,13 @@ describe('parseSkillMd', () => {
 
   it('unwraps quoted frontmatter values', () => {
     const parsed = parseSkillMd(
-      ['---', 'name: "Quoted"', "description: 'Single quoted'", '---', 'Body'].join(
-        '\n',
-      ),
+      [
+        '---',
+        'name: "Quoted"',
+        "description: 'Single quoted'",
+        '---',
+        'Body',
+      ].join('\n'),
     );
     expect(parsed.name).toBe('Quoted');
     expect(parsed.description).toBe('Single quoted');
@@ -89,9 +93,14 @@ describe('parseSkillMd', () => {
 
   it('skips malformed (colon-less) frontmatter lines', () => {
     const parsed = parseSkillMd(
-      ['---', 'name: Ok', 'this line has no colon', 'description: d', '---', 'B'].join(
-        '\n',
-      ),
+      [
+        '---',
+        'name: Ok',
+        'this line has no colon',
+        'description: d',
+        '---',
+        'B',
+      ].join('\n'),
     );
     expect(parsed.name).toBe('Ok');
     expect(parsed.description).toBe('d');
