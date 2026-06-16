@@ -25,6 +25,22 @@ interface UsageTotals {
 }
 
 /**
+ * A pre-content failure worth switching models for — a dead/unavailable model
+ * rather than a genuine prompt error. Mirrors the chat path's classifier so
+ * scheduled runs fall back on the same conditions.
+ */
+function isRetryableModelError(status?: number, message?: string): boolean {
+  const m = (message ?? '').toLowerCase();
+  return (
+    m.includes('no endpoints found') ||
+    m.includes('model not found') ||
+    m.includes('not a valid model') || // OpenRouter 400 for an unknown model id
+    status === 404 ||
+    (status != null && status >= 500)
+  );
+}
+
+/**
  * Executes a single scheduled-prompt run: builds the message + optional RAG
  * context, resolves the transport for the job's model/scope, runs a
  * (non-streaming, accumulated) completion, records usage to observability,
@@ -85,7 +101,7 @@ export class CronRunnerService {
         teamId: prompt.teamId,
       });
 
-      // 1. Optional knowledge-core RAG context.
+      // 1. Optional knowledge-core RAG context (model-independent).
       let context: string | undefined;
       if (prompt.useKnowledgeCore) {
         const chunks = await this.knowledgeIngestion.searchAccessibleChunks(
@@ -98,54 +114,109 @@ export class CronRunnerService {
         }
       }
 
-      // 2. Web search: same three-factor gate as the chat path — the job
-      //    must request it, the route must be OpenRouter (the web plugin is
-      //    OpenRouter-only), and the org/team must permit it.
-      const webSearch =
+      // Web search is an org/team capability (model-independent); the
+      // OpenRouter-route check is applied per candidate below.
+      const webAllowed =
         prompt.useWebSearch &&
-        transport.source === 'openrouter' &&
         (await resolveWebSearchCapability(
           this.db,
           prompt.ownerId,
           prompt.teamId,
         ));
 
-      // 3. Run the completion, accumulating the streamed deltas into one
-      //    output string (the schedule has no live consumer).
+      // 2. Candidates = the chosen model + its configured fallbacks (Models
+      //    tab). On a retryable failure (dead/unavailable model) before any
+      //    content, switch to the next candidate — mirroring the chat path.
+      //    No first-token timeout: a scheduled run has no live consumer, so a
+      //    slow-but-valid model shouldn't be killed.
+      const fallbacks = await this.chatTransport.resolveFallbackModels({
+        userId: prompt.ownerId,
+        modelIdentifier: prompt.modelIdentifier,
+        teamId: prompt.teamId,
+      });
+      const candidates = [
+        prompt.modelIdentifier,
+        ...fallbacks.filter((m) => m !== prompt.modelIdentifier),
+      ];
+
       let output = '';
       let usage: UsageTotals | undefined;
       let citations: { url: string; title?: string }[] | undefined;
-      let streamError: string | undefined;
+      let usedTransport = transport;
+      let produced = false;
+      let lastError: string | undefined;
 
-      for await (const ev of this.chat.sendMessageStream(
-        [{ role: 'user' as const, content: prompt.prompt }],
-        transport.model,
-        false, // no reasoning channel needed for a stored result
-        context,
-        transport.apiKey,
-        transport.baseURL,
-        transport.kind,
-        {
-          webSearch,
-          azureEndpoint: transport.azureEndpoint,
-          azureApiVersion: transport.azureApiVersion,
-        },
-      )) {
-        if (ev.type === 'content') output += ev.delta;
-        else if (ev.type === 'usage') usage = ev;
-        else if (ev.type === 'citations') citations = ev.citations;
-        else if (ev.type === 'error') streamError = ev.message;
+      for (let i = 0; i < candidates.length; i++) {
+        const t =
+          i === 0
+            ? transport
+            : await this.chatTransport.resolve({
+                userId: prompt.ownerId,
+                modelIdentifier: candidates[i],
+                teamId: prompt.teamId,
+              });
+        const webSearch = webAllowed && t.source === 'openrouter';
+
+        let attemptOutput = '';
+        let attemptUsage: UsageTotals | undefined;
+        let attemptCitations: { url: string; title?: string }[] | undefined;
+        let attemptError: string | undefined;
+        let attemptStatus: number | undefined;
+
+        for await (const ev of this.chat.sendMessageStream(
+          [{ role: 'user' as const, content: prompt.prompt }],
+          t.model,
+          false, // no reasoning channel needed for a stored result
+          context,
+          t.apiKey,
+          t.baseURL,
+          t.kind,
+          {
+            webSearch,
+            azureEndpoint: t.azureEndpoint,
+            azureApiVersion: t.azureApiVersion,
+          },
+        )) {
+          if (ev.type === 'content') attemptOutput += ev.delta;
+          else if (ev.type === 'usage') attemptUsage = ev;
+          else if (ev.type === 'citations') attemptCitations = ev.citations;
+          else if (ev.type === 'error') {
+            attemptError = ev.message;
+            attemptStatus = ev.status;
+          }
+        }
+
+        if (!attemptError) {
+          output = attemptOutput;
+          usage = attemptUsage;
+          citations = attemptCitations;
+          usedTransport = t;
+          produced = true;
+          break;
+        }
+
+        lastError = attemptError;
+        const hasNext = i < candidates.length - 1;
+        if (hasNext && isRetryableModelError(attemptStatus, attemptError)) {
+          this.logger.warn(
+            `AI Cron run ${runId}: ${candidates[i]} failed (${attemptError}); falling back to ${candidates[i + 1]}.`,
+          );
+          continue;
+        }
+        break;
       }
 
       const latencyMs = Date.now() - startedAt.getTime();
-      if (streamError) throw new Error(streamError);
+      if (!produced || !usedTransport) {
+        throw new Error(lastError ?? 'Model produced no output.');
+      }
 
       await this.observability.recordLLMCall({
         userId: prompt.ownerId,
         teamId: prompt.teamId,
         eventType: 'ai_cron_run',
-        model: transport.model,
-        provider: transport.provider,
+        model: usedTransport.model,
+        provider: usedTransport.provider,
         promptTokens: usage?.promptTokens ?? null,
         completionTokens: usage?.completionTokens ?? null,
         totalTokens: usage?.totalTokens ?? null,
@@ -162,8 +233,8 @@ export class CronRunnerService {
           status: 'success',
           output,
           finishedAt: new Date(),
-          model: transport.model,
-          provider: transport.provider,
+          model: usedTransport.model,
+          provider: usedTransport.provider,
           promptTokens: usage?.promptTokens ?? null,
           completionTokens: usage?.completionTokens ?? null,
           totalTokens: usage?.totalTokens ?? null,
