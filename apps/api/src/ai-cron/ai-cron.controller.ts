@@ -77,6 +77,14 @@ export class AiCronController {
     return this.service.update(id, user.id, body);
   }
 
+  @Post(':id/run-now')
+  runNow(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.runNow(id, user.id);
+  }
+
   @Post(':id/toggle')
   toggle(
     @Param('id', new ParseUUIDPipe()) id: string,

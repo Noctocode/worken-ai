@@ -16,6 +16,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import { CronRunnerService } from './cron-runner.service.js';
 
 /**
  * Schedules tighter than this are only allowed when the chosen model routes
@@ -68,6 +69,7 @@ export class AiCronService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly chatTransport: ChatTransportService,
+    private readonly runner: CronRunnerService,
   ) {}
 
   async list(userId: string) {
@@ -205,6 +207,35 @@ export class AiCronService {
       )
       .returning();
     return row;
+  }
+
+  /**
+   * Fire a job immediately (manual test). Creates a run tagged
+   * triggered_by='manual' — which the scheduler's per-owner concurrency cap
+   * deliberately ignores — and executes it synchronously so the caller gets
+   * the finished run back.
+   */
+  async runNow(id: string, userId: string) {
+    const prompt = await this.get(id, userId);
+    const now = new Date();
+    const [run] = await this.db
+      .insert(scheduledPromptRuns)
+      .values({
+        scheduledPromptId: prompt.id,
+        status: 'running',
+        triggeredBy: 'manual',
+        startedAt: now,
+        lastHeartbeatAt: now,
+      })
+      .returning({ id: scheduledPromptRuns.id });
+
+    await this.runner.execute(prompt, run.id);
+
+    const [fresh] = await this.db
+      .select()
+      .from(scheduledPromptRuns)
+      .where(eq(scheduledPromptRuns.id, run.id));
+    return fresh;
   }
 
   async listRuns(id: string, userId: string, limit = 50, offset = 0) {

@@ -4,6 +4,9 @@ import { and, asc, count, eq, lte, notInArray } from 'drizzle-orm';
 import { scheduledPromptRuns, scheduledPrompts } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { AiCronService } from './ai-cron.service.js';
+import { CronRunnerService } from './cron-runner.service.js';
+
+type ScheduledPrompt = typeof scheduledPrompts.$inferSelect;
 
 // Per-tick claim ceiling — a backstop so one tick can't fan out unbounded
 // work; surplus due jobs are picked up on the next minute.
@@ -24,6 +27,7 @@ export class CronSchedulerService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly aiCron: AiCronService,
+    private readonly runner: CronRunnerService,
   ) {}
 
   @Cron('* * * * *')
@@ -37,9 +41,19 @@ export class CronSchedulerService {
       await this.reapStaleRuns();
       const claimed = await this.claimDueJobs();
       if (claimed.length > 0) {
-        // Execution is wired in commit 6 (runner). The claim has already
-        // advanced next_run_at, so claimed jobs won't double-fire.
-        this.logger.log(`Claimed ${claimed.length} due AI Cron job(s).`);
+        this.logger.log(`Dispatching ${claimed.length} due AI Cron run(s).`);
+        // Phase 2: execute outside the claim transaction, fire-and-forget so
+        // the tick returns promptly (the `ticking` guard only protects the
+        // short claim/reap, not the long model calls). The runner is fully
+        // self-terminating — it records success/failure on the run row — so
+        // a rejection here would only ever be an unexpected bug; log it.
+        for (const job of claimed) {
+          void this.runner.execute(job.prompt, job.runId).catch((err) => {
+            this.logger.error(
+              `AI Cron run ${job.runId} dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          });
+        }
       }
     } catch (err) {
       this.logger.error(
@@ -58,10 +72,12 @@ export class CronSchedulerService {
    * runs outside any transaction so it never holds a row lock or DB
    * connection across a slow LLM request.
    */
-  private async claimDueJobs(): Promise<{ id: string }[]> {
+  private async claimDueJobs(): Promise<
+    { prompt: ScheduledPrompt; runId: string }[]
+  > {
     const now = new Date();
     const capped = await this.cappedOwnerIds();
-    const claimed: { id: string }[] = [];
+    const claimed: { prompt: ScheduledPrompt; runId: string }[] = [];
 
     await this.db.transaction(async (tx) => {
       const conditions = [
@@ -75,11 +91,7 @@ export class CronSchedulerService {
       }
 
       const due = await tx
-        .select({
-          id: scheduledPrompts.id,
-          cronExpression: scheduledPrompts.cronExpression,
-          timezone: scheduledPrompts.timezone,
-        })
+        .select()
         .from(scheduledPrompts)
         .where(and(...conditions))
         .orderBy(asc(scheduledPrompts.nextRunAt))
@@ -107,11 +119,27 @@ export class CronSchedulerService {
             .where(eq(scheduledPrompts.id, job.id));
           continue;
         }
+
+        // Advance the schedule (the dedup) and open the run row as `running`
+        // with a fresh heartbeat — so even before the runner picks it up the
+        // reaper can account for it — all inside the claim transaction.
         await tx
           .update(scheduledPrompts)
           .set({ lastRunAt: now, nextRunAt })
           .where(eq(scheduledPrompts.id, job.id));
-        claimed.push({ id: job.id });
+
+        const [run] = await tx
+          .insert(scheduledPromptRuns)
+          .values({
+            scheduledPromptId: job.id,
+            status: 'running',
+            triggeredBy: 'schedule',
+            startedAt: now,
+            lastHeartbeatAt: now,
+          })
+          .returning({ id: scheduledPromptRuns.id });
+
+        claimed.push({ prompt: job, runId: run.id });
       }
     });
 
