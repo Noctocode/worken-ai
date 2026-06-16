@@ -39,6 +39,8 @@ import {
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
+import { DocumentsService } from '../documents/documents.service.js';
+import { SkillRouterService } from '../skills/skill-router.service.js';
 import { CompareModelsService } from './compare-models.service.js';
 
 const ATTACHMENT_MAX_BYTES = 30 * 1024 * 1024;
@@ -71,6 +73,9 @@ interface CompareModelsRequestBody {
   /** Optional per-run judge override (UI selector). Falls back to
    *  ARENA_JUDGE_MODEL env / DEFAULT_JUDGE_MODEL when absent. */
   judgeModel?: string;
+  /** Skills the user pinned in the arena composer — always injected into
+   *  every panel's context, bypassing the embedding threshold. */
+  pinnedSkillIds?: string[];
 }
 
 interface ModelResponse {
@@ -115,6 +120,8 @@ export class CompareModelsController {
     private readonly observabilityService: ObservabilityService,
     private readonly guardrails: GuardrailEvaluatorService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
+    private readonly documentsService: DocumentsService,
+    private readonly skillRouter: SkillRouterService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -280,12 +287,24 @@ export class CompareModelsController {
     }
     const safeQuestion = inputDecision.text;
 
+    // Embed the question once and share the vector across RAG + the skill
+    // router (the embedder is local, but this keeps it to one call per run).
+    let queryEmbedding: number[] | undefined;
+    try {
+      [queryEmbedding] = await this.documentsService.embed([safeQuestion]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Question embed failed; RAG + skills degrade: ${msg}`);
+    }
+
     // RAG: same compose pattern as non-stream arena.
     let ragContext = '';
     try {
       const ragChunks = await this.knowledgeIngestion.searchAccessibleChunks(
         user.id,
         safeQuestion,
+        5,
+        queryEmbedding,
       );
       ragContext = ragChunks.map((c) => c.content).join('\n\n---\n\n');
     } catch (err) {
@@ -294,7 +313,27 @@ export class CompareModelsController {
         `RAG search failed for user ${user.id}; continuing without retrieved context: ${msg}`,
       );
     }
-    const composedContext = [ragContext, body.context]
+
+    // Skills: select once and inject into EVERY panel's context (computed
+    // here, before the fan-out) so the comparison stays apples-to-apples.
+    // Stateless — no conversationId, so no sticky persistence. Best-effort.
+    let skillBlock = '';
+    if (queryEmbedding) {
+      try {
+        const selected = await this.skillRouter.selectForMessage({
+          userId: user.id,
+          queryEmbedding,
+          messageText: safeQuestion,
+          pinnedSkillIds: body.pinnedSkillIds,
+        });
+        skillBlock = this.skillRouter.renderContextBlock(selected);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Skill selection failed; continuing without: ${msg}`);
+      }
+    }
+
+    const composedContext = [skillBlock, ragContext, body.context]
       .filter((s) => s && s.trim().length > 0)
       .join('\n\n---\n\n');
 
