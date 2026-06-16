@@ -15,7 +15,7 @@ interface RouteConfig {
   titleKey?: TranslationKey;
   hideSearch?: boolean;
   hideNotifications?: boolean;
-  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
+  appbarType?: "default" | "teamDetail" | "userDetail" | "createProject" | "aiCronForm" | "aiChat" | "projectDetail" | "tenderDetail" | "tenderCreate" | "observability";
   appbarAction?: AppbarAction;
   /** Only render the appbar action at lg+ — used where a smaller-width layout
    *  already provides its own in-page action button (e.g. the Model Arena
@@ -152,12 +152,23 @@ export function getRouteConfig(pathname: string): RouteConfig {
 
   // AI Cron create/edit are full-form sub-pages on the white canvas; the
   // list at /ai-cron keeps its own ROUTE_CONFIGS entry above.
-  if (pathname === "/ai-cron/new" || /^\/ai-cron\/[^/]+\/edit$/.test(pathname)) {
+  if (pathname === "/ai-cron/new") {
     return {
       bg: "bg-bg-1",
-      titleKey: "appbar.title.aiCron",
+      titleKey: "aiCron.form.newTitle",
       hideSearch: true,
       hideNotifications: true,
+      appbarType: "aiCronForm",
+    };
+  }
+
+  if (/^\/ai-cron\/[^/]+\/edit$/.test(pathname)) {
+    return {
+      bg: "bg-bg-1",
+      titleKey: "aiCron.form.editTitle",
+      hideSearch: true,
+      hideNotifications: true,
+      appbarType: "aiCronForm",
     };
   }
 
