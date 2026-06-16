@@ -1449,6 +1449,10 @@ export const scheduledPrompts = pgTable(
     name: text("name").notNull(),
     // The prompt sent to the model on each run ("what").
     prompt: text("prompt").notNull(),
+    // Free-form "Schedule Context" — extra framing prepended to the model
+    // context on every run (mirrors conversations.context). Distinct from the
+    // prompt; optional.
+    context: text("context"),
     // Effective model id from /models/effective — catalog, BYOK, Custom LLM,
     // or Azure deployment. Resolution at run time is delegated to
     // ChatTransportService, so every supported source works unchanged.
@@ -1551,5 +1555,30 @@ export const scheduledPromptRuns = pgTable(
       table.status,
       table.lastHeartbeatAt,
     ),
+  ],
+);
+
+/**
+ * Links knowledge_files attached to a specific AI Cron schedule (mirrors
+ * project_knowledge_files). Files attached here are uploaded into Knowledge
+ * Core with visibility='schedule', so they surface only as context for this
+ * schedule's runs, not in the general KC view. Cascade on both sides.
+ */
+export const scheduleKnowledgeFiles = pgTable(
+  "schedule_knowledge_files",
+  {
+    scheduledPromptId: uuid("scheduled_prompt_id")
+      .references(() => scheduledPrompts.id, { onDelete: "cascade" })
+      .notNull(),
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    attachedBy: uuid("attached_by").references(() => users.id),
+    attachedAt: timestamp("attached_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scheduledPromptId, table.fileId] }),
+    // Reverse lookup: "which schedules reference this KC file?"
+    index("schedule_knowledge_files_file_idx").on(table.fileId),
   ],
 );
