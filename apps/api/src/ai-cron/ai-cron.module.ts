@@ -3,6 +3,7 @@ import { ChatModule } from '../chat/chat.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { MailModule } from '../mail/mail.module.js';
+import { ModelsModule } from '../models/models.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { ObservabilityModule } from '../observability/observability.module.js';
 import { AiCronController } from './ai-cron.controller.js';
@@ -26,6 +27,7 @@ import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
     ChatModule, // ChatService (model execution)
     KnowledgeCoreModule, // KnowledgeIngestionService (RAG retrieval)
     ObservabilityModule, // recordLLMCall
+    ModelsModule, // OpenRouterCatalogService (budget cost estimate)
     NotificationsModule, // in-app delivery channel
     MailModule, // email delivery channel
   ],

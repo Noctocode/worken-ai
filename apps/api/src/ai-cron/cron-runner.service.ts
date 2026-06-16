@@ -6,6 +6,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { DeliveryService, type DeliveryPayload } from './delivery.service.js';
 import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
@@ -17,6 +18,11 @@ type ScheduledPrompt = typeof scheduledPrompts.$inferSelect;
 const HEARTBEAT_INTERVAL_MS = 60_000;
 // How many knowledge-core chunks to retrieve as context when RAG is enabled.
 const RAG_TOP_K = 5;
+// Upper-bound completion size used for the pre-flight cost estimate (matches
+// the chat path's budget pre-check).
+const MAX_COMPLETION_TOKENS_EST = 4096;
+// Flat surcharge added to the estimate when web search is on (mirrors chat).
+const WEB_SEARCH_SURCHARGE_USD = 0.005;
 
 interface UsageTotals {
   promptTokens?: number;
@@ -64,6 +70,7 @@ export class CronRunnerService {
     private readonly observability: ObservabilityService,
     private readonly delivery: DeliveryService,
     private readonly scheduleKnowledge: ScheduleKnowledgeService,
+    private readonly catalog: OpenRouterCatalogService,
   ) {}
 
   async execute(
@@ -133,6 +140,12 @@ export class CronRunnerService {
       const context =
         contextParts.length > 0 ? contextParts.join('\n\n---\n\n') : undefined;
 
+      // Rough prompt-token estimate (~4 chars/token) for the pre-flight budget
+      // gate below — same upper-bound approach as the chat path.
+      const promptTokens = Math.ceil(
+        (prompt.prompt.length + (context?.length ?? 0)) / 4,
+      );
+
       // Web search is an org/team capability (model-independent); the
       // OpenRouter-route check is applied per candidate below.
       const webAllowed =
@@ -175,6 +188,50 @@ export class CronRunnerService {
                 teamId: prompt.teamId,
               });
         const webSearch = webAllowed && t.source === 'openrouter';
+
+        // Budget gate — managed/team OpenRouter spend only (BYOK/Custom is
+        // user-paid, so caps don't apply). Same gates the chat path runs. A
+        // cap block isn't model-specific, but a later BYOK/Custom candidate
+        // would bypass it, so on a block we try the next candidate; if the
+        // last candidate is blocked the run fails with the cap message.
+        if (t.source === 'openrouter') {
+          try {
+            await this.chatTransport.assertManagedBudgetApproved(
+              t,
+              prompt.ownerId,
+              { teamId: prompt.teamId },
+            );
+            const estUsd = await this.catalog.estimateCost(
+              t.model,
+              promptTokens,
+              MAX_COMPLETION_TOKENS_EST,
+            );
+            const estCents = Math.ceil(
+              ((estUsd ?? 0) + (webSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
+                100,
+            );
+            await this.chatTransport.assertTeamMemberCapNotExceeded(
+              prompt.ownerId,
+              { teamId: prompt.teamId, estimatedCostCents: estCents },
+            );
+            await this.chatTransport.assertTeamBudgetNotExceeded({
+              teamId: prompt.teamId,
+              estimatedCostCents: estCents,
+            });
+            await this.chatTransport.assertOrgBudgetNotExceeded({
+              estimatedCostCents: estCents,
+              callerUserId: prompt.ownerId,
+            });
+          } catch (gateErr) {
+            lastError =
+              gateErr instanceof Error ? gateErr.message : String(gateErr);
+            this.logger.warn(
+              `AI Cron run ${runId}: ${candidates[i]} blocked by budget (${lastError}).`,
+            );
+            if (i < candidates.length - 1) continue;
+            break;
+          }
+        }
 
         let attemptOutput = '';
         let attemptUsage: UsageTotals | undefined;
