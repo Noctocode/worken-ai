@@ -401,7 +401,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       </h1>
 
       {/* WHAT */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.what")}
         </h2>
@@ -429,7 +429,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
               <button
                 key={p.name}
                 type="button"
-                className="rounded-full border border-border-1 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
+                className="rounded-full border border-border-2 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
                 onClick={() => {
                   if (!name.trim()) setName(p.name);
                   setPrompt(p.prompt);
@@ -443,7 +443,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       </section>
 
       {/* MODEL */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.model")}
         </h2>
@@ -476,7 +476,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       </section>
 
       {/* WHEN */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.when")}
         </h2>
@@ -488,7 +488,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             <button
               key={p.label}
               type="button"
-              className="rounded-full border border-border-1 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
+              className="rounded-full border border-border-2 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
               onClick={p.apply}
             >
               {p.label}
@@ -618,7 +618,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
                     className={`min-w-10 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
                       active
                         ? "border-primary-6 bg-primary-6 text-white"
-                        : "border-border-1 text-text-2 hover:bg-bg-2"
+                        : "border-border-2 text-text-2 hover:bg-bg-2"
                     }`}
                   >
                     {d.label}
@@ -676,7 +676,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
         {/* Live preview */}
         <div className="rounded-lg bg-bg-2 px-3 py-2 text-xs">
           {preview && !preview.valid && (
-            <span className="text-error-7">{t("aiCron.when.invalidCron")}</span>
+            <span className="text-danger-6">{t("aiCron.when.invalidCron")}</span>
           )}
           {preview?.valid && (
             <div className="flex flex-col gap-1">
@@ -694,7 +694,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
               )}
               {preview.minIntervalMinutes != null &&
                 preview.minIntervalMinutes < 15 && (
-                  <span className="text-warning-7">
+                  <span className="text-warning-6">
                     {t("aiCron.when.everyMinuteWarning")}
                   </span>
                 )}
@@ -704,7 +704,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       </section>
 
       {/* CONTEXT */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.context")}
         </h2>
@@ -736,7 +736,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       </section>
 
       {/* DELIVERY */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-1 p-4">
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.delivery")}
         </h2>

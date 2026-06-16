@@ -66,7 +66,7 @@ export function RunHistoryDialog({
             </div>
           )}
           {runs.length > 0 && (
-            <ul className="flex flex-col divide-y divide-border-1">
+            <ul className="flex flex-col divide-y divide-border-2">
               {runs.map((run) => {
                 const isOpen = expanded === run.id;
                 return (
@@ -118,7 +118,7 @@ export function RunHistoryDialog({
                             )}
                         </div>
                         {run.errorMessage && (
-                          <div className="rounded-lg bg-error-1 px-3 py-2 text-xs text-error-7">
+                          <div className="rounded-lg bg-danger-1 px-3 py-2 text-xs text-danger-6">
                             {run.errorMessage}
                           </div>
                         )}

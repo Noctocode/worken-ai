@@ -22,7 +22,6 @@ import {
   useScheduledPrompts,
   useToggleScheduledPrompt,
 } from "@/lib/hooks/use-scheduled-prompts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -108,6 +107,59 @@ export default function AiCronPage() {
     void name;
   };
 
+  const rowActions = (p: ScheduledPrompt) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon">
+          <MoreVertical className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem
+          onClick={() => router.push(`/ai-cron/${p.id}/edit`)}
+        >
+          <Pencil className="size-4" />
+          {t("aiCron.action.edit")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => handleRunNow(p)}
+          disabled={runMut.isPending}
+        >
+          <Play className="size-4" />
+          {t("aiCron.action.runNow")}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setHistoryFor(p)}>
+          <History className="size-4" />
+          {t("aiCron.action.history")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setPendingDelete(p)}
+          className="text-danger-6 focus:text-danger-6"
+        >
+          <Trash2 className="size-4" />
+          {t("aiCron.action.delete")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const statusBadge = (p: ScheduledPrompt) => (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
+        p.isEnabled
+          ? "bg-success-1 text-success-7"
+          : "bg-bg-1 text-text-3"
+      }`}
+    >
+      <span
+        className={`size-1.5 rounded-full ${
+          p.isEnabled ? "bg-success-7" : "bg-text-3"
+        }`}
+      />
+      {p.isEnabled ? t("aiCron.status.enabled") : t("aiCron.status.disabled")}
+    </span>
+  );
+
   return (
     <div className="flex flex-col gap-3 py-3 lg:gap-6 lg:py-6">
       {/* Mobile in-page header — the desktop appbar renders the title + the
@@ -127,7 +179,7 @@ export default function AiCronPage() {
       </p>
 
       {!isLoading && prompts.length === 0 && (
-        <div className="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border-1 px-6 py-16 text-center">
+        <div className="flex flex-col items-center justify-center gap-3 rounded-[20px] border border-border-2 bg-bg-white px-6 py-16 text-center">
           <CalendarClock className="size-8 text-text-3" />
           <div className="text-base font-medium text-text-1">
             {t("aiCron.empty.title")}
@@ -142,99 +194,100 @@ export default function AiCronPage() {
         </div>
       )}
 
+      {/* Mobile: card list */}
       {prompts.length > 0 && (
-        <div className="overflow-hidden rounded-xl border border-border-1">
-          <table className="w-full text-sm">
-            <thead className="bg-bg-2 text-left text-text-2">
-              <tr>
-                <th className="px-4 py-3 font-medium">{t("aiCron.col.name")}</th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">
+        <div className="flex flex-col gap-2.5 lg:hidden">
+          {prompts.map((p) => (
+            <div
+              key={p.id}
+              className="flex flex-col gap-3 rounded-[10px] border border-border-2 bg-bg-white p-3.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <button
+                  className="text-left text-[15px] font-semibold text-text-1"
+                  onClick={() => router.push(`/ai-cron/${p.id}/edit`)}
+                >
+                  {p.name}
+                </button>
+                {rowActions(p)}
+              </div>
+              <div className="flex flex-col gap-1 text-[13px] text-text-2">
+                <span className="font-mono text-[12px] text-text-3">
+                  {p.cronExpression}{" "}
+                  <span className="text-text-3">({p.timezone})</span>
+                </span>
+                <span>{getLabel(p.modelIdentifier)}</span>
+                <span className="text-text-3">
+                  {t("aiCron.col.nextRun")}:{" "}
+                  {p.nextRunAt ? formatDateTime(p.nextRunAt) : t("aiCron.never")}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                {statusBadge(p)}
+                <Switch
+                  checked={p.isEnabled}
+                  onCheckedChange={() => handleToggle(p)}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Desktop: table */}
+      {prompts.length > 0 && (
+        <div className="hidden overflow-hidden rounded-[20px] border border-border-2 bg-bg-white lg:block">
+          <table className="w-full text-left text-[13px]">
+            <thead>
+              <tr className="border-b border-border-2 text-[14px] font-medium text-text-2">
+                <th className="px-5 py-3 font-medium">{t("aiCron.col.name")}</th>
+                <th className="px-5 py-3 font-medium">
                   {t("aiCron.col.schedule")}
                 </th>
-                <th className="hidden px-4 py-3 font-medium lg:table-cell">
-                  {t("aiCron.col.model")}
-                </th>
-                <th className="hidden px-4 py-3 font-medium md:table-cell">
+                <th className="px-5 py-3 font-medium">{t("aiCron.col.model")}</th>
+                <th className="px-5 py-3 font-medium">
                   {t("aiCron.col.nextRun")}
                 </th>
-                <th className="px-4 py-3 font-medium">
+                <th className="px-5 py-3 font-medium">
                   {t("aiCron.col.status")}
                 </th>
-                <th className="px-4 py-3" />
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
               {prompts.map((p) => (
                 <tr
                   key={p.id}
-                  className="border-t border-border-1 hover:bg-bg-2/50"
+                  className="border-b border-border-2 transition-colors last:border-b-0 hover:bg-bg-1"
                 >
-                  <td className="px-4 py-3">
+                  <td className="px-5 py-4">
                     <button
-                      className="text-left font-medium text-text-1 hover:underline"
+                      className="text-left font-medium text-text-1 hover:text-primary-6"
                       onClick={() => router.push(`/ai-cron/${p.id}/edit`)}
                     >
                       {p.name}
                     </button>
                   </td>
-                  <td className="hidden px-4 py-3 font-mono text-xs text-text-2 md:table-cell">
+                  <td className="px-5 py-4 font-mono text-[12px] text-text-2">
                     {p.cronExpression}
                     <span className="ml-1 text-text-3">({p.timezone})</span>
                   </td>
-                  <td className="hidden px-4 py-3 text-text-2 lg:table-cell">
+                  <td className="px-5 py-4 text-text-2">
                     {getLabel(p.modelIdentifier)}
                   </td>
-                  <td className="hidden px-4 py-3 text-text-2 md:table-cell">
+                  <td className="px-5 py-4 text-text-2">
                     {p.nextRunAt ? formatDateTime(p.nextRunAt) : t("aiCron.never")}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-2.5">
                       <Switch
                         checked={p.isEnabled}
                         onCheckedChange={() => handleToggle(p)}
                       />
-                      <Badge variant={p.isEnabled ? "default" : "secondary"}>
-                        {p.isEnabled
-                          ? t("aiCron.status.enabled")
-                          : t("aiCron.status.disabled")}
-                      </Badge>
+                      {statusBadge(p)}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onClick={() => router.push(`/ai-cron/${p.id}/edit`)}
-                        >
-                          <Pencil className="size-4" />
-                          {t("aiCron.action.edit")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleRunNow(p)}
-                          disabled={runMut.isPending}
-                        >
-                          <Play className="size-4" />
-                          {t("aiCron.action.runNow")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setHistoryFor(p)}>
-                          <History className="size-4" />
-                          {t("aiCron.action.history")}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setPendingDelete(p)}
-                          className="text-error-7 focus:text-error-7"
-                        >
-                          <Trash2 className="size-4" />
-                          {t("aiCron.action.delete")}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </td>
+                  <td className="px-5 py-4 text-right">{rowActions(p)}</td>
                 </tr>
               ))}
             </tbody>

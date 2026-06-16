@@ -154,7 +154,7 @@ export function getRouteConfig(pathname: string): RouteConfig {
   // list at /ai-cron keeps its own ROUTE_CONFIGS entry above.
   if (pathname === "/ai-cron/new" || /^\/ai-cron\/[^/]+\/edit$/.test(pathname)) {
     return {
-      bg: "bg-bg-white",
+      bg: "bg-bg-1",
       titleKey: "appbar.title.aiCron",
       hideSearch: true,
       hideNotifications: true,
