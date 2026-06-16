@@ -17,7 +17,6 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.col.schedule': 'Urnik',
   'aiCron.col.model': 'Model',
   'aiCron.col.nextRun': 'Naslednji zagon',
-  'aiCron.col.lastRun': 'Zadnji zagon',
   'aiCron.col.status': 'Stanje',
   'aiCron.status.enabled': 'Aktiven',
   'aiCron.status.disabled': 'Ustavljen',
@@ -26,8 +25,6 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.action.runNow': 'Zaženi zdaj',
   'aiCron.action.history': 'Zgodovina zagonov',
   'aiCron.action.delete': 'Izbriši',
-  'aiCron.action.enable': 'Omogoči',
-  'aiCron.action.disable': 'Ustavi',
 
   // Form — sections
   'aiCron.form.newTitle': 'Nov urnik',
@@ -57,7 +54,6 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.when.unitMinutes': 'minut',
   'aiCron.when.unitHours': 'ur',
   'aiCron.when.time': 'Ura',
-  'aiCron.when.dayOfWeek': 'Dan v tednu',
   'aiCron.when.dayOfMonth': 'Dan v mesecu',
   'aiCron.when.timezone': 'Časovni pas',
   'aiCron.when.cronExpression': 'Cron izraz',
@@ -84,7 +80,6 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.day.sun': 'Ned',
 
   // Model picker
-  'aiCron.model.label': 'Model',
   'aiCron.model.placeholder': 'Izberite model',
   'aiCron.model.byok': 'BYOK',
   'aiCron.model.custom': 'Custom',
@@ -128,21 +123,15 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   // Run history
   'aiCron.runs.title': 'Zgodovina zagonov',
   'aiCron.runs.empty': 'Še ni zagonov.',
-  'aiCron.runs.status': 'Stanje',
-  'aiCron.runs.when': 'Kdaj',
   'aiCron.runs.model': 'Model',
   'aiCron.runs.tokens': 'Žetoni',
-  'aiCron.runs.trigger': 'Sprožil',
   'aiCron.runs.triggerSchedule': 'Urnik',
   'aiCron.runs.triggerManual': 'Ročno',
   'aiCron.runs.statusSuccess': 'Uspeh',
   'aiCron.runs.statusFailed': 'Napaka',
   'aiCron.runs.statusRunning': 'Teče',
   'aiCron.runs.statusPending': 'V čakanju',
-  'aiCron.runs.output': 'Izhod',
-  'aiCron.runs.error': 'Napaka',
   'aiCron.runs.delivery': 'Dostava',
-  'aiCron.runs.close': 'Zapri',
 
   // Toasts
   'aiCron.toast.created': 'Urnik ustvarjen.',

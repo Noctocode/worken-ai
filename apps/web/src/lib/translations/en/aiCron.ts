@@ -15,7 +15,6 @@ export const aiCron = {
   'aiCron.col.schedule': 'Schedule',
   'aiCron.col.model': 'Model',
   'aiCron.col.nextRun': 'Next run',
-  'aiCron.col.lastRun': 'Last run',
   'aiCron.col.status': 'Status',
   'aiCron.status.enabled': 'Active',
   'aiCron.status.disabled': 'Paused',
@@ -24,8 +23,6 @@ export const aiCron = {
   'aiCron.action.runNow': 'Run now',
   'aiCron.action.history': 'Run history',
   'aiCron.action.delete': 'Delete',
-  'aiCron.action.enable': 'Enable',
-  'aiCron.action.disable': 'Pause',
 
   // Form — sections
   'aiCron.form.newTitle': 'New schedule',
@@ -55,7 +52,6 @@ export const aiCron = {
   'aiCron.when.unitMinutes': 'minutes',
   'aiCron.when.unitHours': 'hours',
   'aiCron.when.time': 'Time',
-  'aiCron.when.dayOfWeek': 'Day of week',
   'aiCron.when.dayOfMonth': 'Day of month',
   'aiCron.when.timezone': 'Timezone',
   'aiCron.when.cronExpression': 'Cron expression',
@@ -82,7 +78,6 @@ export const aiCron = {
   'aiCron.day.sun': 'Sun',
 
   // Model picker
-  'aiCron.model.label': 'Model',
   'aiCron.model.placeholder': 'Select a model',
   'aiCron.model.byok': 'BYOK',
   'aiCron.model.custom': 'Custom',
@@ -126,21 +121,15 @@ export const aiCron = {
   // Run history
   'aiCron.runs.title': 'Run history',
   'aiCron.runs.empty': 'No runs yet.',
-  'aiCron.runs.status': 'Status',
-  'aiCron.runs.when': 'When',
   'aiCron.runs.model': 'Model',
   'aiCron.runs.tokens': 'Tokens',
-  'aiCron.runs.trigger': 'Trigger',
   'aiCron.runs.triggerSchedule': 'Scheduled',
   'aiCron.runs.triggerManual': 'Manual',
   'aiCron.runs.statusSuccess': 'Success',
   'aiCron.runs.statusFailed': 'Failed',
   'aiCron.runs.statusRunning': 'Running',
   'aiCron.runs.statusPending': 'Pending',
-  'aiCron.runs.output': 'Output',
-  'aiCron.runs.error': 'Error',
   'aiCron.runs.delivery': 'Delivery',
-  'aiCron.runs.close': 'Close',
 
   // Toasts
   'aiCron.toast.created': 'Schedule created.',
