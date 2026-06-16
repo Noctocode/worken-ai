@@ -41,7 +41,9 @@ function isRetryableModelError(status?: number, message?: string): boolean {
   return (
     m.includes('no endpoints found') ||
     m.includes('model not found') ||
-    m.includes('not a valid model') || // OpenRouter 400 for an unknown model id
+    // OpenRouter 400 for an unknown model id — scoped to 400 so an unrelated
+    // bad-request that happens to contain the phrase doesn't trigger fallback.
+    (status === 400 && m.includes('not a valid model')) ||
     status === 404 ||
     (status != null && status >= 500)
   );
@@ -262,7 +264,11 @@ export class CronRunnerService {
           }
         }
 
-        if (!attemptError) {
+        // Any streamed content counts as a usable result even if the stream
+        // errored mid-way — keep the partial output rather than discard it and
+        // re-bill a fallback. Only a pre-content failure (no output) falls
+        // through to the next candidate.
+        if (attemptOutput || !attemptError) {
           output = attemptOutput;
           usage = attemptUsage;
           citations = attemptCitations;

@@ -242,7 +242,15 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
-      .where(eq(knowledgeFolders.ownerId, userId))
+      // Schedule-scoped files (AI Cron) are managed from their schedule, not
+      // the general KC list, so they're hidden here (parallels their RAG
+      // exclusion).
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          sql`${knowledgeFiles.visibility} <> 'schedule'`,
+        ),
+      )
       // `id` tiebreaker so files sharing a createdAt (a Drive import
       // stamps them in one transaction) keep a stable order across
       // refetches — otherwise excluding one would reshuffle the ties.
@@ -1909,7 +1917,12 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
-      .where(eq(knowledgeFolders.ownerId, userId))
+      .where(
+        and(
+          eq(knowledgeFolders.ownerId, userId),
+          sql`${knowledgeFiles.visibility} <> 'schedule'`,
+        ),
+      )
       .orderBy(desc(knowledgeFiles.createdAt))
       .limit(10);
 

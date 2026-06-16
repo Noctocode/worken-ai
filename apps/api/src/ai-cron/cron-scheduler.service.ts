@@ -78,7 +78,14 @@ export class CronSchedulerService {
     { prompt: ScheduledPrompt; runId: string }[]
   > {
     const now = new Date();
-    const capped = await this.cappedOwnerIds();
+    const activeByOwner = await this.activeRunsByOwner();
+    const capped = [...activeByOwner.entries()]
+      .filter(([, n]) => n >= MAX_CONCURRENT_RUNS_PER_OWNER)
+      .map(([id]) => id);
+    // In-tick counter so an owner with many due jobs can't blow past the cap
+    // within a single tick (the SQL filter above only excludes owners already
+    // at the cap before this tick started).
+    const inTick = new Map<string, number>();
     const claimed: { prompt: ScheduledPrompt; runId: string }[] = [];
 
     await this.db.transaction(async (tx) => {
@@ -101,6 +108,12 @@ export class CronSchedulerService {
         .for('update', { skipLocked: true });
 
       for (const job of due) {
+        // Enforce the per-owner cap within this tick too.
+        const inFlight =
+          (activeByOwner.get(job.ownerId) ?? 0) +
+          (inTick.get(job.ownerId) ?? 0);
+        if (inFlight >= MAX_CONCURRENT_RUNS_PER_OWNER) continue;
+
         let nextRunAt: Date;
         try {
           nextRunAt = this.aiCron.computeNextRun(
@@ -142,14 +155,15 @@ export class CronSchedulerService {
           .returning({ id: scheduledPromptRuns.id });
 
         claimed.push({ prompt: job, runId: run.id });
+        inTick.set(job.ownerId, (inTick.get(job.ownerId) ?? 0) + 1);
       }
     });
 
     return claimed;
   }
 
-  /** Owners with at least the cap of in-flight scheduled runs. */
-  private async cappedOwnerIds(): Promise<string[]> {
+  /** Count of in-flight scheduled runs per owner. */
+  private async activeRunsByOwner(): Promise<Map<string, number>> {
     const rows = await this.db
       .select({ ownerId: scheduledPrompts.ownerId, active: count() })
       .from(scheduledPromptRuns)
@@ -164,9 +178,7 @@ export class CronSchedulerService {
         ),
       )
       .groupBy(scheduledPrompts.ownerId);
-    return rows
-      .filter((r) => Number(r.active) >= MAX_CONCURRENT_RUNS_PER_OWNER)
-      .map((r) => r.ownerId);
+    return new Map(rows.map((r) => [r.ownerId, Number(r.active)]));
   }
 
   /**

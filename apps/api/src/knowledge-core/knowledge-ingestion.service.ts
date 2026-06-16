@@ -638,12 +638,18 @@ export class KnowledgeIngestionService {
       })
       .from(knowledgeChunks)
       .where(
-        or(
-          and(
-            eq(knowledgeChunks.userId, userId),
-            eq(knowledgeChunks.scope, 'personal'),
+        and(
+          // Schedule-scoped files (AI Cron) never surface in the broad search —
+          // they're reachable only as their own schedule's context via
+          // searchScheduleAttachedChunks (parallels how 'project' is excluded).
+          sql`${knowledgeChunks.visibility} <> 'schedule'`,
+          or(
+            and(
+              eq(knowledgeChunks.userId, userId),
+              eq(knowledgeChunks.scope, 'personal'),
+            ),
+            companyBranch,
           ),
-          companyBranch,
         ),
       )
       .orderBy(desc(similarity))
