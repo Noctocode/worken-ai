@@ -2102,6 +2102,110 @@ export async function deleteShortcut(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete shortcut");
 }
 
+// Skills — instructional "how we do X here" recipes the chat/arena
+// auto-selects per turn and injects into the model's context.
+
+export type SkillVisibility = "all" | "admins" | "teams";
+
+export interface Skill {
+  id: string;
+  userId: string;
+  name: string;
+  description: string;
+  instructions: string;
+  scope: "personal" | "company";
+  visibility: SkillVisibility;
+  isActive: boolean;
+  source: "manual" | "import";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SkillInput {
+  name: string;
+  description: string;
+  instructions: string;
+  visibility?: SkillVisibility;
+  teamIds?: string[];
+}
+
+export async function fetchSkills(): Promise<Skill[]> {
+  const res = await apiFetch(`/skills`);
+  if (!res.ok) throw new Error("Failed to load skills");
+  return res.json();
+}
+
+export async function fetchSkill(id: string): Promise<Skill> {
+  const res = await apiFetch(`/skills/${id}`);
+  if (!res.ok) throw new Error("Failed to load skill");
+  return res.json();
+}
+
+export async function createSkill(input: SkillInput): Promise<Skill> {
+  const res = await apiFetch(`/skills`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to create skill"));
+  }
+  return res.json();
+}
+
+export async function importSkill(
+  content: string,
+  overrides?: Partial<SkillInput>,
+): Promise<Skill> {
+  const res = await apiFetch(`/skills/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, ...overrides }),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to import skill"));
+  }
+  return res.json();
+}
+
+export async function updateSkill(
+  id: string,
+  input: Partial<SkillInput>,
+): Promise<Skill> {
+  const res = await apiFetch(`/skills/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to update skill"));
+  }
+  return res.json();
+}
+
+export async function updateSkillVisibility(
+  id: string,
+  visibility: SkillVisibility,
+  teamIds?: string[],
+): Promise<Skill> {
+  const res = await apiFetch(`/skills/${id}/visibility`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ visibility, teamIds }),
+  });
+  if (!res.ok) {
+    throw new Error(
+      await extractErrorMessage(res, "Failed to update skill visibility"),
+    );
+  }
+  return res.json();
+}
+
+export async function deleteSkill(id: string): Promise<void> {
+  const res = await apiFetch(`/skills/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete skill");
+}
+
 // Tenders
 
 export interface TenderSummary {
