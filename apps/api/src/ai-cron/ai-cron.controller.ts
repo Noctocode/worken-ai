@@ -50,6 +50,16 @@ export class AiCronController {
     );
   }
 
+  // Stateless preview for the schedule builder's advanced cron field. No
+  // ownership needed — it only parses the expression the user is typing.
+  @Post('validate-cron')
+  validateCron(@Body() body: { cronExpression: string; timezone?: string }) {
+    return this.service.describeCron(
+      body?.cronExpression ?? '',
+      body?.timezone,
+    );
+  }
+
   @Post()
   create(
     @Body() body: CreateScheduledPromptInput,

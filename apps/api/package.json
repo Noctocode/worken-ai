@@ -39,6 +39,7 @@
     "argon2": "^0.44.0",
     "cookie-parser": "^1.4.7",
     "cron-parser": "^5.5.0",
+    "cronstrue": "^3.14.0",
     "drizzle-orm": "^0.38.0",
     "googleapis": "^172.0.0",
     "ioredis": "^5.9.2",

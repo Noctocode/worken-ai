@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CronExpressionParser } from 'cron-parser';
+import cronstrue from 'cronstrue';
 import { and, desc, eq } from 'drizzle-orm';
 import {
   scheduledPromptRuns,
@@ -14,6 +15,24 @@ import {
   teams,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
+
+/**
+ * Schedules tighter than this are only allowed when the chosen model routes
+ * through the user's own key (BYOK) or a Custom LLM endpoint. A model that
+ * falls back to the managed/team OpenRouter key would bill the team for a
+ * (potentially expensive) call as often as every minute, so we floor the
+ * cadence for that case.
+ */
+const MIN_INTERVAL_NON_BYOK_MINUTES = 15;
+
+export interface CronDescription {
+  valid: boolean;
+  error?: string;
+  description?: string;
+  nextRuns?: string[];
+  minIntervalMinutes?: number;
+}
 
 /**
  * Fields a caller may set on a scheduled prompt. `teamId` is the canonical
@@ -46,7 +65,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 @Injectable()
 export class AiCronService {
-  constructor(@Inject(DATABASE) private readonly db: Database) {}
+  constructor(
+    @Inject(DATABASE) private readonly db: Database,
+    private readonly chatTransport: ChatTransportService,
+  ) {}
 
   async list(userId: string) {
     return this.db
@@ -70,6 +92,17 @@ export class AiCronService {
   async create(userId: string, input: CreateScheduledPromptInput) {
     const values = await this.buildValues(userId, input, true);
     const timezone = (input.timezone ?? 'UTC').trim() || 'UTC';
+
+    // Cost guardrail: a sub-15-min cadence is only allowed for BYOK/Custom
+    // models (the user's own key), not the managed/team OpenRouter fallback.
+    await this.assertIntervalAllowed(
+      userId,
+      input.teamId ?? null,
+      input.modelIdentifier,
+      input.cronExpression,
+      timezone,
+    );
+
     // Precompute the first due time so the scanner (commit 5) can pick it up
     // without re-deriving it. Computed from now in the job's timezone.
     const nextRunAt = this.computeNextRun(input.cronExpression, timezone);
@@ -97,15 +130,30 @@ export class AiCronService {
     const patch = await this.buildValues(userId, input, false);
     const next: Record<string, unknown> = { ...patch, updatedAt: new Date() };
 
-    // Recompute nextRunAt whenever the schedule changes — the stored value
-    // must always reflect the current cron + timezone.
-    const cronChanged = input.cronExpression !== undefined;
-    const tzChanged = input.timezone !== undefined;
-    if (cronChanged || tzChanged) {
-      const cron = input.cronExpression ?? existing.cronExpression;
-      const tz = tzChanged
+    // Effective schedule/model/scope after the patch — used for both the cost
+    // guardrail and the nextRunAt recompute.
+    const cron = input.cronExpression ?? existing.cronExpression;
+    const tz =
+      input.timezone !== undefined
         ? (input.timezone ?? 'UTC').trim() || 'UTC'
         : existing.timezone;
+    const model = input.modelIdentifier ?? existing.modelIdentifier;
+    const teamId = input.teamId !== undefined ? input.teamId : existing.teamId;
+
+    // Re-check the cost guardrail when anything that affects routing or
+    // cadence changed.
+    if (
+      input.cronExpression !== undefined ||
+      input.timezone !== undefined ||
+      input.modelIdentifier !== undefined ||
+      input.teamId !== undefined
+    ) {
+      await this.assertIntervalAllowed(userId, teamId, model, cron, tz);
+    }
+
+    // Recompute nextRunAt whenever the schedule changes — the stored value
+    // must always reflect the current cron + timezone.
+    if (input.cronExpression !== undefined || input.timezone !== undefined) {
       next.timezone = tz;
       next.nextRunAt = this.computeNextRun(cron, tz);
     }
@@ -299,6 +347,110 @@ export class AiCronService {
       currentDate: from,
     });
     return interval.next().toDate();
+  }
+
+  /**
+   * Validate a cron expression and return a human-readable description plus
+   * the next few fire times — powers the live preview under the advanced cron
+   * field. Never throws: an invalid expression/timezone returns valid:false
+   * with an error message so the FE can show inline feedback.
+   */
+  describeCron(expr: string, timezone = 'UTC'): CronDescription {
+    const tz = (timezone || 'UTC').trim() || 'UTC';
+    try {
+      this.assertValidTimezone(tz);
+    } catch {
+      return { valid: false, error: `Invalid timezone: ${timezone}` };
+    }
+
+    let normalized: string;
+    try {
+      normalized = this.normalizeCron(expr);
+    } catch (err) {
+      return {
+        valid: false,
+        error: err instanceof Error ? err.message : 'Invalid cron expression.',
+      };
+    }
+
+    let description: string | undefined;
+    try {
+      description = cronstrue.toString(normalized, {
+        use24HourTimeFormat: true,
+        verbose: false,
+      });
+    } catch {
+      description = undefined;
+    }
+
+    const nextRuns = this.nextRuns(normalized, tz, 5).map((d) =>
+      d.toISOString(),
+    );
+
+    return {
+      valid: true,
+      description,
+      nextRuns,
+      minIntervalMinutes: this.minIntervalMinutes(normalized, tz),
+    };
+  }
+
+  /** The next `count` fire times for an expression in a timezone. */
+  private nextRuns(expr: string, timezone: string, count: number): Date[] {
+    const interval = CronExpressionParser.parse(expr, {
+      tz: timezone,
+      currentDate: new Date(),
+    });
+    const out: Date[] = [];
+    for (let i = 0; i < count; i++) {
+      out.push(interval.next().toDate());
+    }
+    return out;
+  }
+
+  /**
+   * Smallest gap (in minutes) between consecutive fires. Sampled over the next
+   * 20 occurrences, which is enough to surface a tight cadence (every minute /
+   * every 5 min) without unbounded work; longer-period crons just report their
+   * regular gap.
+   */
+  private minIntervalMinutes(expr: string, timezone: string): number {
+    const fires = this.nextRuns(expr, timezone, 20);
+    let minMs = Infinity;
+    for (let i = 1; i < fires.length; i++) {
+      const delta = fires[i].getTime() - fires[i - 1].getTime();
+      if (delta > 0 && delta < minMs) minMs = delta;
+    }
+    if (!Number.isFinite(minMs)) return Infinity;
+    return Math.round(minMs / 60000);
+  }
+
+  /**
+   * Enforce the cost guardrail: a cadence below MIN_INTERVAL_NON_BYOK_MINUTES
+   * is only permitted when the model resolves to a BYOK or Custom route (the
+   * user's own key). Models that fall back to the managed/team OpenRouter key
+   * must keep a looser cadence.
+   */
+  private async assertIntervalAllowed(
+    userId: string,
+    teamId: string | null,
+    modelIdentifier: string,
+    cronExpression: string,
+    timezone: string,
+  ): Promise<void> {
+    const interval = this.minIntervalMinutes(cronExpression, timezone);
+    if (interval >= MIN_INTERVAL_NON_BYOK_MINUTES) return;
+
+    const transport = await this.chatTransport.resolve({
+      userId,
+      modelIdentifier,
+      teamId,
+    });
+    if (transport.source === 'openrouter') {
+      throw new BadRequestException(
+        `Schedules more frequent than every ${MIN_INTERVAL_NON_BYOK_MINUTES} minutes require a model with your own API key (BYOK) or a Custom LLM endpoint.`,
+      );
+    }
   }
 
   private assertValidTimezone(tz: string): void {

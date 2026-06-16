@@ -68,6 +68,9 @@ importers:
       cron-parser:
         specifier: ^5.5.0
         version: 5.5.0
+      cronstrue:
+        specifier: ^3.14.0
+        version: 3.14.0
       drizzle-orm:
         specifier: ^0.38.0
         version: 0.38.4(@types/pg@8.16.0)(@types/react@19.2.13)(pg@8.18.0)(react@19.2.3)
@@ -3576,6 +3579,10 @@ packages:
   cron@4.4.0:
     resolution: {integrity: sha512-fkdfq+b+AHI4cKdhZlppHveI/mgz2qpiYxcm+t5E5TsxX7QrLS1VE0+7GENEk9z0EeGPcpSciGv6ez24duWhwQ==}
     engines: {node: '>=18.x'}
+
+  cronstrue@3.14.0:
+    resolution: {integrity: sha512-XnW4vuK/jPJjmTyDWiej1Zq36Od7ITwxaV2O1pzHZuyMVvdy7NAvyvIBzybt+idqSpfqYuoDG7uf/ocGtJVWxA==}
+    hasBin: true
 
   cross-env@10.1.0:
     resolution: {integrity: sha512-GsYosgnACZTADcmEyJctkJIoqAhHjttw7RsFrVoJNXbsWWqaq6Ym+7kZjq6mS45O0jij6vtiReppKQEtqWy6Dw==}
@@ -10365,6 +10372,8 @@ snapshots:
     dependencies:
       '@types/luxon': 3.7.1
       luxon: 3.7.2
+
+  cronstrue@3.14.0: {}
 
   cross-env@10.1.0:
     dependencies:
