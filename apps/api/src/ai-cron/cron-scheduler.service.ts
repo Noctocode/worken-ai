@@ -48,11 +48,13 @@ export class CronSchedulerService {
         // self-terminating — it records success/failure on the run row — so
         // a rejection here would only ever be an unexpected bug; log it.
         for (const job of claimed) {
-          void this.runner.execute(job.prompt, job.runId).catch((err) => {
-            this.logger.error(
-              `AI Cron run ${job.runId} dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
-            );
-          });
+          void this.runner
+            .execute(job.prompt, job.runId, 'schedule')
+            .catch((err) => {
+              this.logger.error(
+                `AI Cron run ${job.runId} dispatch failed: ${err instanceof Error ? err.message : String(err)}`,
+              );
+            });
         }
       }
     } catch (err) {

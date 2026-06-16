@@ -7,7 +7,7 @@ import { ChatTransportService } from '../integrations/chat-transport.service.js'
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
-import { DeliveryService } from './delivery.service.js';
+import { DeliveryService, type DeliveryPayload } from './delivery.service.js';
 
 type ScheduledPrompt = typeof scheduledPrompts.$inferSelect;
 
@@ -48,7 +48,11 @@ export class CronRunnerService {
     private readonly delivery: DeliveryService,
   ) {}
 
-  async execute(prompt: ScheduledPrompt, runId: string): Promise<void> {
+  async execute(
+    prompt: ScheduledPrompt,
+    runId: string,
+    triggeredBy: 'schedule' | 'manual' = 'schedule',
+  ): Promise<void> {
     const startedAt = new Date();
     await this.db
       .update(scheduledPromptRuns)
@@ -168,17 +172,12 @@ export class CronRunnerService {
         })
         .where(eq(scheduledPromptRuns.id, runId));
 
-      const deliveryStatus = await this.delivery.deliver(prompt, {
-        runId,
+      await this.runDelivery(prompt, runId, {
+        status: 'success',
+        triggeredBy,
         output,
         citations,
       });
-      if (Object.keys(deliveryStatus).length > 0) {
-        await this.db
-          .update(scheduledPromptRuns)
-          .set({ deliveryStatus })
-          .where(eq(scheduledPromptRuns.id, runId));
-      }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`AI Cron run ${runId} failed: ${message}`);
@@ -206,8 +205,42 @@ export class CronRunnerService {
           finishedAt: new Date(),
         })
         .where(eq(scheduledPromptRuns.id, runId));
+      // Deliver the failure too — a scheduled run always notifies, so the
+      // owner finds out it broke without having to open the run history.
+      await this.runDelivery(prompt, runId, {
+        status: 'failed',
+        triggeredBy,
+        output: '',
+        errorMessage: message,
+      });
     } finally {
       clearInterval(heartbeat);
+    }
+  }
+
+  /** Run delivery and persist the per-channel status onto the run row. */
+  private async runDelivery(
+    prompt: ScheduledPrompt,
+    runId: string,
+    payload: Omit<DeliveryPayload, 'runId'>,
+  ): Promise<void> {
+    try {
+      const deliveryStatus = await this.delivery.deliver(prompt, {
+        runId,
+        ...payload,
+      });
+      if (Object.keys(deliveryStatus).length > 0) {
+        await this.db
+          .update(scheduledPromptRuns)
+          .set({ deliveryStatus })
+          .where(eq(scheduledPromptRuns.id, runId));
+      }
+    } catch (err) {
+      // Delivery is best-effort and must never turn a finished run into a
+      // failure or escape the run lifecycle.
+      this.logger.error(
+        `AI Cron delivery for run ${runId} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 }

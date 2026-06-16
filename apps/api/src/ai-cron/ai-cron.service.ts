@@ -229,7 +229,7 @@ export class AiCronService {
       })
       .returning({ id: scheduledPromptRuns.id });
 
-    await this.runner.execute(prompt, run.id);
+    await this.runner.execute(prompt, run.id, 'manual');
 
     const [fresh] = await this.db
       .select()

@@ -7,7 +7,12 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 
 export interface DeliveryPayload {
   runId: string;
+  status: 'success' | 'failed';
+  /** Scheduled runs always notify in-app; manual run-now respects the toggle
+   *  (the caller already gets the result back synchronously). */
+  triggeredBy: 'schedule' | 'manual';
   output: string;
+  errorMessage?: string;
   citations?: { url: string; title?: string }[];
 }
 
@@ -67,7 +72,11 @@ export class DeliveryService {
   ): Promise<Record<string, string>> {
     const status: Record<string, string> = {};
 
-    if (prompt.deliverInApp) {
+    // A scheduled run ALWAYS produces an in-app notification (success or
+    // failure) so the owner knows it ran, regardless of the deliverInApp
+    // toggle. Manual run-now respects the toggle — the caller already gets
+    // the result back synchronously.
+    if (prompt.deliverInApp || payload.triggeredBy === 'schedule') {
       status.inApp = await this.deliverInApp(prompt, payload);
     }
     if (prompt.deliverEmail) {
@@ -84,16 +93,26 @@ export class DeliveryService {
     prompt: ScheduledPrompt,
     payload: DeliveryPayload,
   ): Promise<string> {
+    const succeeded = payload.status === 'success';
+    const raw = succeeded
+      ? payload.output
+      : `Run failed: ${payload.errorMessage ?? 'unknown error'}`;
     const body =
-      payload.output.length > NOTIFICATION_BODY_MAX
-        ? `${payload.output.slice(0, NOTIFICATION_BODY_MAX)}…`
-        : payload.output;
+      raw.length > NOTIFICATION_BODY_MAX
+        ? `${raw.slice(0, NOTIFICATION_BODY_MAX)}…`
+        : raw;
     const view = await this.notifications.create({
       userId: prompt.ownerId,
       type: 'ai_cron_run',
-      title: `AI Cron: ${prompt.name}`,
+      title: succeeded
+        ? `AI Cron: ${prompt.name}`
+        : `AI Cron failed: ${prompt.name}`,
       body,
-      data: { scheduledPromptId: prompt.id, runId: payload.runId },
+      data: {
+        scheduledPromptId: prompt.id,
+        runId: payload.runId,
+        status: payload.status,
+      },
     });
     // create() swallows its own errors and returns null on failure.
     return view ? 'sent' : 'failed';
@@ -106,6 +125,11 @@ export class DeliveryService {
     const recipients = prompt.emailRecipients ?? [];
     if (recipients.length === 0) return 'skipped (no recipients)';
 
+    const output =
+      payload.status === 'success'
+        ? payload.output
+        : `Run failed: ${payload.errorMessage ?? 'unknown error'}`;
+
     let ok = 0;
     let failed = 0;
     for (const to of recipients) {
@@ -113,7 +137,7 @@ export class DeliveryService {
         await this.mail.sendCronRunResult({
           to,
           jobName: prompt.name,
-          output: payload.output,
+          output,
         });
         ok++;
       } catch (err) {
@@ -137,7 +161,9 @@ export class DeliveryService {
         jobName: prompt.name,
         scheduledPromptId: prompt.id,
         runId: payload.runId,
+        status: payload.status,
         output: payload.output,
+        error: payload.errorMessage ?? null,
         citations: payload.citations ?? [],
       });
       return 'sent';
