@@ -8,6 +8,7 @@ import { resolveWebSearchCapability } from '../integrations/web-search-capabilit
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { DeliveryService, type DeliveryPayload } from './delivery.service.js';
+import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
 
 type ScheduledPrompt = typeof scheduledPrompts.$inferSelect;
 
@@ -62,6 +63,7 @@ export class CronRunnerService {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly observability: ObservabilityService,
     private readonly delivery: DeliveryService,
+    private readonly scheduleKnowledge: ScheduleKnowledgeService,
   ) {}
 
   async execute(
@@ -101,18 +103,35 @@ export class CronRunnerService {
         teamId: prompt.teamId,
       });
 
-      // 1. Optional knowledge-core RAG context (model-independent).
-      let context: string | undefined;
+      // 1. Build the model context (model-independent). Order: the schedule's
+      //    own context text, then its attached files, then the broader
+      //    knowledge core (opt-in).
+      const contextParts: string[] = [];
+      if (prompt.context?.trim()) {
+        contextParts.push(prompt.context.trim());
+      }
+      const scheduleFileIds = await this.scheduleKnowledge.getAttachedFileIds(
+        prompt.id,
+      );
+      if (scheduleFileIds.length > 0) {
+        const fileChunks =
+          await this.knowledgeIngestion.searchScheduleAttachedChunks(
+            prompt.ownerId,
+            scheduleFileIds,
+            prompt.prompt,
+          );
+        for (const c of fileChunks) contextParts.push(c.content);
+      }
       if (prompt.useKnowledgeCore) {
         const chunks = await this.knowledgeIngestion.searchAccessibleChunks(
           prompt.ownerId,
           prompt.prompt,
           RAG_TOP_K,
         );
-        if (chunks.length > 0) {
-          context = chunks.map((c) => c.content).join('\n\n---\n\n');
-        }
+        for (const c of chunks) contextParts.push(c.content);
       }
+      const context =
+        contextParts.length > 0 ? contextParts.join('\n\n---\n\n') : undefined;
 
       // Web search is an org/team capability (model-independent); the
       // OpenRouter-route check is applied per candidate below.

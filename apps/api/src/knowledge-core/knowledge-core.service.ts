@@ -1133,16 +1133,17 @@ export class KnowledgeCoreService {
     input: string | undefined,
     callerRole: string | null | undefined,
     scope?: 'personal' | 'company',
-  ): 'all' | 'admins' | 'teams' | 'project' {
+  ): 'all' | 'admins' | 'teams' | 'project' | 'schedule' {
     if (input == null || input === '') return 'all';
     if (
       input !== 'all' &&
       input !== 'admins' &&
       input !== 'teams' &&
-      input !== 'project'
+      input !== 'project' &&
+      input !== 'schedule'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', 'project', or 'schedule'.`,
       );
     }
     if (input === 'admins' && callerRole !== 'admin') {

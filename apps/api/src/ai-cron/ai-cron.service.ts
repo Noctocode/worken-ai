@@ -45,6 +45,7 @@ export interface CronDescription {
 export interface CreateScheduledPromptInput {
   name: string;
   prompt: string;
+  context?: string | null;
   modelIdentifier: string;
   teamId?: string | null;
   cronExpression: string;
@@ -287,6 +288,10 @@ export class AiCronService {
       out.modelIdentifier = input.modelIdentifier.trim();
     } else if (requireRequired) {
       throw new BadRequestException('`modelIdentifier` is required.');
+    }
+
+    if (input.context !== undefined) {
+      out.context = input.context?.trim() || null;
     }
 
     if (input.cronExpression !== undefined) {

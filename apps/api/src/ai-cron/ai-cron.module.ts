@@ -10,6 +10,7 @@ import { AiCronService } from './ai-cron.service.js';
 import { CronRunnerService } from './cron-runner.service.js';
 import { CronSchedulerService } from './cron-scheduler.service.js';
 import { DeliveryService } from './delivery.service.js';
+import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
 
 /**
  * AI Cron — recurring AI prompts scheduled by the user. CRUD + run history,
@@ -34,6 +35,7 @@ import { DeliveryService } from './delivery.service.js';
     CronSchedulerService,
     CronRunnerService,
     DeliveryService,
+    ScheduleKnowledgeService,
   ],
   exports: [AiCronService],
 })

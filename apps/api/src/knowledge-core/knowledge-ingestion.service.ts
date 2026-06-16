@@ -761,6 +761,39 @@ export class KnowledgeIngestionService {
   }
 
   /**
+   * Semantic search over the files attached to an AI Cron schedule. Schedule
+   * files are uploaded + attached by the schedule owner (visibility
+   * 'schedule'), so access is simply owner + the explicit fileIds — no team /
+   * company visibility branches needed. Used by the scheduled-run RAG path.
+   */
+  async searchScheduleAttachedChunks(
+    userId: string,
+    fileIds: string[],
+    query: string,
+    limit = 5,
+  ) {
+    if (fileIds.length === 0) return [];
+    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+    return this.db
+      .select({
+        id: knowledgeChunks.id,
+        fileId: knowledgeChunks.fileId,
+        content: knowledgeChunks.content,
+        similarity,
+      })
+      .from(knowledgeChunks)
+      .where(
+        and(
+          inArray(knowledgeChunks.fileId, fileIds),
+          eq(knowledgeChunks.userId, userId),
+        ),
+      )
+      .orderBy(desc(similarity))
+      .limit(limit);
+  }
+
+  /**
    * Full text of files attached to the *current message*, for DIRECT
    * injection into the chat context (ChatGPT-style "the model sees the
    * file you just attached"). Differs from searchProjectAttachedChunks:

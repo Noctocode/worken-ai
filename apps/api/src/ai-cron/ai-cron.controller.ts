@@ -9,18 +9,34 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { randomUUID } from 'crypto';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { uploadFileFilter } from '../knowledge-core/upload-allowlist.js';
 import {
   AiCronService,
   type CreateScheduledPromptInput,
   type UpdateScheduledPromptInput,
 } from './ai-cron.service.js';
+import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
+
+// Shared on-disk upload dir with the Knowledge Core / projects controllers.
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 @Controller('ai-cron')
 export class AiCronController {
-  constructor(private readonly service: AiCronService) {}
+  constructor(
+    private readonly service: AiCronService,
+    private readonly scheduleKnowledge: ScheduleKnowledgeService,
+  ) {}
 
   @Get()
   list(@CurrentUser() user: AuthenticatedUser) {
@@ -101,5 +117,57 @@ export class AiCronController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<void> {
     return this.service.remove(id, user.id);
+  }
+
+  /* ── Files attached to a schedule (KC visibility='schedule') ──────────── */
+
+  @Get(':id/files')
+  listFiles(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduleKnowledge.listAttached(id, user.id);
+  }
+
+  @Post(':id/files')
+  attachFiles(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { fileIds: string[] },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduleKnowledge.attach(id, body?.fileIds ?? [], user.id);
+  }
+
+  @Delete(':id/files/:fileId')
+  detachFile(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('fileId', new ParseUUIDPipe()) fileId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduleKnowledge.detach(id, fileId, user.id);
+  }
+
+  @Post(':id/files/upload')
+  @UseInterceptors(
+    FilesInterceptor('files', 20, {
+      storage: diskStorage({
+        destination: UPLOAD_DIR,
+        filename: (_req, file, cb) => {
+          const safe = file.originalname
+            .replace(/[^a-zA-Z0-9_.-]/g, '_')
+            .slice(0, 200);
+          cb(null, `${randomUUID()}-${safe}`);
+        },
+      }),
+      limits: { fileSize: 50 * 1024 * 1024 },
+      fileFilter: uploadFileFilter,
+    }),
+  )
+  uploadFiles(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.scheduleKnowledge.uploadAndAttach(id, user.id, files);
   }
 }
