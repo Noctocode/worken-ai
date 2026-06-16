@@ -23,6 +23,7 @@ import { notifications } from "./notifications";
 import { guardrails } from "./guardrails";
 import { chat } from "./chat";
 import { dialogs } from "./dialogs";
+import { aiCron } from "./aiCron";
 
 export const sl: Record<TranslationKey, string> = {
   ...common,
@@ -49,4 +50,5 @@ export const sl: Record<TranslationKey, string> = {
   ...guardrails,
   ...chat,
   ...dialogs,
+  ...aiCron,
 };

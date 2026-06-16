@@ -125,6 +125,13 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     appbarSearch: { placeholderKey: "appbar.search.placeholder", event: "knowledge-core:search" },
     appbarExpandControls: true,
   },
+  "/ai-cron": {
+    bg: "bg-bg-1",
+    titleKey: "appbar.title.aiCron",
+    hideSearch: true,
+    hideNotifications: true,
+    appbarAction: { labelKey: "appbar.action.newScheduledPrompt", event: "ai-cron:new" },
+  },
   "/tender-ai": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.tenderAI",
@@ -142,6 +149,17 @@ const DEFAULT_CONFIG: RouteConfig = {
 
 export function getRouteConfig(pathname: string): RouteConfig {
   if (ROUTE_CONFIGS[pathname]) return ROUTE_CONFIGS[pathname];
+
+  // AI Cron create/edit are full-form sub-pages on the white canvas; the
+  // list at /ai-cron keeps its own ROUTE_CONFIGS entry above.
+  if (pathname === "/ai-cron/new" || /^\/ai-cron\/[^/]+\/edit$/.test(pathname)) {
+    return {
+      bg: "bg-bg-white",
+      titleKey: "appbar.title.aiCron",
+      hideSearch: true,
+      hideNotifications: true,
+    };
+  }
 
   if (pathname === "/projects/create") {
     return {

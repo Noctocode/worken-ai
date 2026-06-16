@@ -4372,3 +4372,167 @@ export async function cancelOneDriveImport(): Promise<{ cancelled: true }> {
   if (!res.ok) throw new Error("Failed to cancel OneDrive import");
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// AI Cron — scheduled prompts
+// ---------------------------------------------------------------------------
+
+export interface ScheduledPrompt {
+  id: string;
+  ownerId: string;
+  teamId: string | null;
+  name: string;
+  prompt: string;
+  modelIdentifier: string;
+  cronExpression: string;
+  timezone: string;
+  useKnowledgeCore: boolean;
+  knowledgeFolderId: string | null;
+  useWebSearch: boolean;
+  deliverInApp: boolean;
+  deliverEmail: boolean;
+  deliverWebhook: boolean;
+  emailRecipients: string[] | null;
+  webhookUrl: string | null;
+  isEnabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduledPromptRun {
+  id: string;
+  scheduledPromptId: string;
+  status: "pending" | "running" | "success" | "failed";
+  triggeredBy: "schedule" | "manual";
+  startedAt: string | null;
+  finishedAt: string | null;
+  output: string | null;
+  errorMessage: string | null;
+  model: string | null;
+  provider: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  costUsd: string | null;
+  latencyMs: number | null;
+  deliveryStatus: Record<string, string> | null;
+  createdAt: string;
+}
+
+export interface ScheduledPromptInput {
+  name: string;
+  prompt: string;
+  modelIdentifier: string;
+  cronExpression: string;
+  timezone?: string;
+  teamId?: string | null;
+  useKnowledgeCore?: boolean;
+  knowledgeFolderId?: string | null;
+  useWebSearch?: boolean;
+  deliverInApp?: boolean;
+  deliverEmail?: boolean;
+  deliverWebhook?: boolean;
+  emailRecipients?: string[];
+  webhookUrl?: string | null;
+  isEnabled?: boolean;
+}
+
+export interface CronDescription {
+  valid: boolean;
+  error?: string;
+  description?: string;
+  nextRuns?: string[];
+  minIntervalMinutes?: number;
+}
+
+export async function fetchScheduledPrompts(): Promise<ScheduledPrompt[]> {
+  const res = await apiFetch("/ai-cron");
+  if (!res.ok) throw new Error("Failed to fetch scheduled prompts");
+  return res.json();
+}
+
+export async function fetchScheduledPrompt(
+  id: string,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch scheduled prompt");
+  return res.json();
+}
+
+export async function createScheduledPrompt(
+  data: ScheduledPromptInput,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch("/ai-cron", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to create scheduled prompt");
+  return res.json();
+}
+
+export async function updateScheduledPrompt(
+  id: string,
+  data: Partial<ScheduledPromptInput>,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update scheduled prompt");
+  return res.json();
+}
+
+export async function deleteScheduledPrompt(id: string): Promise<void> {
+  const res = await apiFetch(`/ai-cron/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete scheduled prompt");
+}
+
+export async function toggleScheduledPrompt(
+  id: string,
+  isEnabled: boolean,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}/toggle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isEnabled }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle scheduled prompt");
+  return res.json();
+}
+
+export async function runScheduledPromptNow(
+  id: string,
+): Promise<ScheduledPromptRun> {
+  const res = await apiFetch(`/ai-cron/${id}/run-now`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to run scheduled prompt");
+  return res.json();
+}
+
+export async function fetchScheduledPromptRuns(
+  id: string,
+  limit = 50,
+  offset = 0,
+): Promise<ScheduledPromptRun[]> {
+  const res = await apiFetch(
+    `/ai-cron/${id}/runs?limit=${limit}&offset=${offset}`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch run history");
+  return res.json();
+}
+
+export async function validateCronExpression(
+  cronExpression: string,
+  timezone?: string,
+): Promise<CronDescription> {
+  const res = await apiFetch("/ai-cron/validate-cron", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cronExpression, timezone }),
+  });
+  if (!res.ok) throw new Error("Failed to validate cron expression");
+  return res.json();
+}
