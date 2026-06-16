@@ -30,7 +30,14 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-type Frequency = "daily" | "weekly" | "monthly" | "advanced";
+type Frequency = "daily" | "weekly" | "monthly" | "interval" | "advanced";
+type IntervalUnit = "minutes" | "hours";
+
+// Interval choices the builder offers; minute values stay clean divisors of 60
+// and >= 15 (the non-BYOK guardrail floor — tighter cadences need Advanced +
+// a BYOK/Custom model).
+const INTERVAL_MINUTES = [15, 30];
+const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12];
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -70,7 +77,7 @@ function pad(n: number): string {
 
 /** Turn the builder state into a 5-field cron expression. */
 function buildCron(
-  freq: Exclude<Frequency, "advanced">,
+  freq: "daily" | "weekly" | "monthly",
   time: string,
   dow: number,
   dom: number,
@@ -83,27 +90,50 @@ function buildCron(
   return `${m} ${h} ${dom} * *`;
 }
 
-/** Best-effort parse of a stored cron back into builder state. */
-function parseCron(expr: string): {
+interface ParsedCron {
   freq: Frequency;
   time: string;
   dow: number;
   dom: number;
-} {
+  intervalValue: number;
+  intervalUnit: IntervalUnit;
+}
+
+/** Best-effort parse of a stored cron back into builder state. */
+function parseCron(expr: string): ParsedCron {
+  const fallback: ParsedCron = {
+    freq: "advanced",
+    time: "08:00",
+    dow: 1,
+    dom: 1,
+    intervalValue: 15,
+    intervalUnit: "minutes",
+  };
   const parts = expr.trim().split(/\s+/);
-  const fallback = { freq: "advanced" as Frequency, time: "08:00", dow: 1, dom: 1 };
   if (parts.length !== 5) return fallback;
   const [m, h, domF, monF, dowF] = parts;
+  const allStar = domF === "*" && monF === "*" && dowF === "*";
+
+  // Interval — every N minutes (*/N * * * *) or every N hours (0 */N * * *).
+  const minMatch = /^\*\/(\d+)$/.exec(m);
+  if (allStar && h === "*" && minMatch) {
+    return { ...fallback, freq: "interval", intervalUnit: "minutes", intervalValue: Number(minMatch[1]) };
+  }
+  const hrMatch = /^\*\/(\d+)$/.exec(h);
+  if (allStar && m === "0" && hrMatch) {
+    return { ...fallback, freq: "interval", intervalUnit: "hours", intervalValue: Number(hrMatch[1]) };
+  }
+
   const mn = Number(m);
   const hn = Number(h);
   if (!Number.isInteger(mn) || !Number.isInteger(hn)) return fallback;
-  const time = `${pad(hn)}:${pad(mn)}`;
   if (monF !== "*") return fallback;
-  if (domF === "*" && dowF === "*") return { freq: "daily", time, dow: 1, dom: 1 };
+  const time = `${pad(hn)}:${pad(mn)}`;
+  if (domF === "*" && dowF === "*") return { ...fallback, freq: "daily", time };
   if (domF === "*" && /^\d+$/.test(dowF))
-    return { freq: "weekly", time, dow: Number(dowF), dom: 1 };
+    return { ...fallback, freq: "weekly", time, dow: Number(dowF) };
   if (dowF === "*" && /^\d+$/.test(domF))
-    return { freq: "monthly", time, dow: 1, dom: Number(domF) };
+    return { ...fallback, freq: "monthly", time, dom: Number(domF) };
   return fallback;
 }
 
@@ -140,6 +170,12 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const [time, setTime] = useState(parsed?.time ?? "08:00");
   const [dow, setDow] = useState(parsed?.dow ?? 1);
   const [dom, setDom] = useState(parsed?.dom ?? 1);
+  const [intervalValue, setIntervalValue] = useState(
+    parsed?.intervalValue ?? 15,
+  );
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>(
+    parsed?.intervalUnit ?? "minutes",
+  );
   const [timezone, setTimezone] = useState(initial?.timezone ?? detectedTz);
   const [advancedCron, setAdvancedCron] = useState(
     initial?.cronExpression ?? "0 8 * * *",
@@ -170,7 +206,11 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const effectiveCron =
     frequency === "advanced"
       ? advancedCron
-      : buildCron(frequency, time, dow, dom);
+      : frequency === "interval"
+        ? intervalUnit === "minutes"
+          ? `*/${intervalValue} * * * *`
+          : `0 */${intervalValue} * * *`
+        : buildCron(frequency, time, dow, dom);
 
   // Live preview of the schedule (debounced) via the validate-cron endpoint.
   const [preview, setPreview] = useState<CronDescription | null>(null);
@@ -361,6 +401,9 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
                 <SelectItem value="monthly">
                   {t("aiCron.when.monthly")}
                 </SelectItem>
+                <SelectItem value="interval">
+                  {t("aiCron.when.interval")}
+                </SelectItem>
                 <SelectItem value="advanced">
                   {t("aiCron.when.advanced")}
                 </SelectItem>
@@ -368,7 +411,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             </Select>
           </div>
 
-          {frequency !== "advanced" && (
+          {frequency !== "advanced" && frequency !== "interval" && (
             <div className="flex flex-col gap-1.5">
               <Label>{t("aiCron.when.time")}</Label>
               <Input
@@ -377,6 +420,58 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
                 onChange={(e) => setTime(e.target.value)}
               />
             </div>
+          )}
+
+          {frequency === "interval" && (
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label>{t("aiCron.when.every")}</Label>
+                <Select
+                  value={String(intervalValue)}
+                  onValueChange={(v) => setIntervalValue(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(intervalUnit === "minutes"
+                      ? INTERVAL_MINUTES
+                      : INTERVAL_HOURS
+                    ).map((n) => (
+                      <SelectItem key={n} value={String(n)}>
+                        {n}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>&nbsp;</Label>
+                <Select
+                  value={intervalUnit}
+                  onValueChange={(v) => {
+                    const unit = v as IntervalUnit;
+                    setIntervalUnit(unit);
+                    // Snap to a valid value for the new unit.
+                    setIntervalValue(
+                      unit === "minutes" ? INTERVAL_MINUTES[0] : INTERVAL_HOURS[0],
+                    );
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="minutes">
+                      {t("aiCron.when.unitMinutes")}
+                    </SelectItem>
+                    <SelectItem value="hours">
+                      {t("aiCron.when.unitHours")}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
           )}
 
           {frequency === "weekly" && (
@@ -465,6 +560,12 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
                     .join(" · ")}
                 </span>
               )}
+              {preview.minIntervalMinutes != null &&
+                preview.minIntervalMinutes < 15 && (
+                  <span className="text-warning-7">
+                    {t("aiCron.when.everyMinuteWarning")}
+                  </span>
+                )}
             </div>
           )}
         </div>
