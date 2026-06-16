@@ -2,6 +2,7 @@
 
 import {
   CalendarClock,
+  History,
   MoreVertical,
   Pencil,
   Play,
@@ -38,6 +39,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { RunHistoryDialog } from "./run-history-dialog";
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "";
@@ -62,6 +64,7 @@ export default function AiCronPage() {
   const [pendingDelete, setPendingDelete] = useState<ScheduledPrompt | null>(
     null,
   );
+  const [historyFor, setHistoryFor] = useState<ScheduledPrompt | null>(null);
 
   // Appbar "New schedule" action.
   useEffect(() => {
@@ -218,6 +221,10 @@ export default function AiCronPage() {
                           <Play className="size-4" />
                           {t("aiCron.action.runNow")}
                         </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setHistoryFor(p)}>
+                          <History className="size-4" />
+                          {t("aiCron.action.history")}
+                        </DropdownMenuItem>
                         <DropdownMenuItem
                           onClick={() => setPendingDelete(p)}
                           className="text-error-7 focus:text-error-7"
@@ -258,6 +265,13 @@ export default function AiCronPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RunHistoryDialog
+        promptId={historyFor?.id}
+        promptName={historyFor?.name}
+        open={!!historyFor}
+        onOpenChange={(open) => !open && setHistoryFor(null)}
+      />
     </div>
   );
 }
