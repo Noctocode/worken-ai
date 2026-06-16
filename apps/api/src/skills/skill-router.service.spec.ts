@@ -5,7 +5,7 @@ import {
 
 // Build a routable skill with a 2-D unit embedding so cosine is easy to
 // reason about: [1,0] matches a [1,0] query exactly (cos=1), [0,1] is
-// orthogonal (cos=0, below the 0.45 threshold).
+// orthogonal (cos=0, below the similarity threshold).
 function skill(
   id: string,
   embedding: number[],
@@ -24,7 +24,7 @@ describe('SkillRouterService.selectForMessage', () => {
   let router: SkillRouterService;
 
   beforeEach(() => {
-    router = new SkillRouterService({} as never, {} as never);
+    router = new SkillRouterService({} as never, {} as never, {} as never);
     // Isolate the selection algorithm from the DB + LLM.
     jest
       .spyOn(router as never, 'loadConversationSkills')
@@ -35,17 +35,16 @@ describe('SkillRouterService.selectForMessage', () => {
   });
 
   const stubAccessible = (skills: RoutableSkill[]) =>
-    jest
-      .spyOn(router, 'getAccessibleSkills')
-      .mockResolvedValue(skills);
+    jest.spyOn(router, 'getAccessibleSkills').mockResolvedValue(skills);
 
   // Confirm-step stub: confirm everything passed in (so embedding ranking
   // is what's under test). Individual tests override this.
   const confirmAll = () =>
     jest
       .spyOn(router as never, 'confirmRelevance')
-      .mockImplementation((_msg: never, candidates: RoutableSkill[]) =>
-        Promise.resolve(new Set(candidates.map((c) => c.id))),
+      .mockImplementation(
+        (_userId: never, _msg: never, candidates: RoutableSkill[]) =>
+          Promise.resolve(new Set(candidates.map((c) => c.id))),
       );
 
   it('returns nothing when the user has no accessible skills', async () => {
@@ -159,8 +158,74 @@ describe('SkillRouterService.selectForMessage', () => {
   });
 });
 
+describe('SkillRouterService.resolveConfirmClient', () => {
+  const origKey = process.env['OPENROUTER_API_KEY'];
+  afterEach(() => {
+    if (origKey === undefined) delete process.env['OPENROUTER_API_KEY'];
+    else process.env['OPENROUTER_API_KEY'] = origKey;
+  });
+
+  it('builds a client from the per-user transport key (no env needed)', async () => {
+    delete process.env['OPENROUTER_API_KEY'];
+    const transport = {
+      resolve: jest.fn().mockResolvedValue({
+        apiKey: 'sk-byok-user',
+        baseURL: 'https://openrouter.ai/api/v1',
+      }),
+    };
+    const router = new SkillRouterService(
+      {} as never,
+      {} as never,
+      transport as never,
+    );
+    const client = await (
+      router as never as {
+        resolveConfirmClient: (u: string) => Promise<unknown>;
+      }
+    ).resolveConfirmClient('u1');
+    expect(client).not.toBeNull();
+    expect(transport.resolve).toHaveBeenCalled();
+  });
+
+  it('falls back to process.env when the transport resolves no key', async () => {
+    process.env['OPENROUTER_API_KEY'] = 'sk-platform-fallback';
+    const transport = {
+      resolve: jest.fn().mockResolvedValue({ apiKey: '', baseURL: '' }),
+    };
+    const router = new SkillRouterService(
+      {} as never,
+      {} as never,
+      transport as never,
+    );
+    const client = await (
+      router as never as {
+        resolveConfirmClient: (u: string) => Promise<unknown>;
+      }
+    ).resolveConfirmClient('u1');
+    expect(client).not.toBeNull();
+  });
+
+  it('returns null (→ fail-closed) when neither transport nor env yields a key', async () => {
+    delete process.env['OPENROUTER_API_KEY'];
+    const transport = {
+      resolve: jest.fn().mockRejectedValue(new Error('no route')),
+    };
+    const router = new SkillRouterService(
+      {} as never,
+      {} as never,
+      transport as never,
+    );
+    const client = await (
+      router as never as {
+        resolveConfirmClient: (u: string) => Promise<unknown>;
+      }
+    ).resolveConfirmClient('u1');
+    expect(client).toBeNull();
+  });
+});
+
 describe('SkillRouterService.renderContextBlock', () => {
-  const router = new SkillRouterService({} as never, {} as never);
+  const router = new SkillRouterService({} as never, {} as never, {} as never);
 
   it('returns empty string for no skills', () => {
     expect(router.renderContextBlock([])).toBe('');

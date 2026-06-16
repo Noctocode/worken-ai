@@ -4,6 +4,7 @@ import OpenAI from 'openai';
 import { conversationSkills, skills, users } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
 
 /** A skill the router considers / selects. Embedding is required to be
  *  non-null here (the accessible query filters nulls out). */
@@ -43,12 +44,20 @@ export interface SelectParams {
 // Conservative defaults: a false positive (wrong skill silently rewriting
 // the answer) is the costlier error, so we keep the bar high and the count
 // low. Tunable later from org settings if needed.
-const SIMILARITY_THRESHOLD = 0.45;
+// Prefilter threshold. Deliberately loose: it's a high-recall first stage
+// (all-MiniLM-L6-v2 cosines run low — naturally-phrased matches land ~0.3–0.4
+// against a "use when…" description), with the LLM-confirm step below doing
+// the precision. Too tight here and well-phrased requests silently never
+// match; confirm is what stops false positives, not this number.
+const SIMILARITY_THRESHOLD = 0.3;
 const TOP_K = 3; // candidates considered before LLM-confirm
 const MAX_AUTO_SKILLS = 2; // cap on auto-selected (pins/sticky don't count)
 const MAX_SKILL_CHARS = 4000; // total injected instructions budget
-// Cheap, fast model for the confirm step (same free tier used elsewhere).
-const CONFIRM_MODEL = 'arcee-ai/trinity-large-preview:free';
+// Cheap, fast model for the confirm step. Defaults to the same model the
+// arena trusts as its judge (google/gemini-2.5-flash) — small, fast, and
+// reliably available on OpenRouter. Override via env if the catalog shifts.
+const CONFIRM_MODEL =
+  process.env['SKILL_CONFIRM_MODEL'] || 'google/gemini-2.5-flash';
 
 @Injectable()
 export class SkillRouterService {
@@ -57,7 +66,37 @@ export class SkillRouterService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly documentsService: DocumentsService,
+    private readonly chatTransport: ChatTransportService,
   ) {}
+
+  /**
+   * Resolve an OpenRouter (baseURL, apiKey) for the cheap confirm call via
+   * the SAME per-user/BYOK → platform-key resolution chat uses, instead of
+   * reading process.env directly. CONFIRM_MODEL is an OpenRouter id, so this
+   * yields the caller's OpenRouter key (or the platform fallback). Returns
+   * null when no usable key resolves — confirm then can't run and the caller
+   * fails closed. process.env is the last-resort fallback.
+   */
+  private async resolveConfirmClient(userId: string): Promise<OpenAI | null> {
+    let apiKey: string | undefined;
+    let baseURL = 'https://openrouter.ai/api/v1';
+    try {
+      const transport = await this.chatTransport.resolve({
+        userId,
+        modelIdentifier: CONFIRM_MODEL,
+      });
+      if (transport.apiKey) {
+        apiKey = transport.apiKey;
+        baseURL = transport.baseURL || baseURL;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.debug(`Confirm-key transport resolve failed: ${msg}`);
+    }
+    apiKey = apiKey ?? process.env['OPENROUTER_API_KEY'];
+    if (!apiKey) return null;
+    return new OpenAI({ baseURL, apiKey });
+  }
 
   /**
    * Skills the user may have auto-applied: their own + company-scope skills
@@ -166,15 +205,19 @@ export class SkillRouterService {
    * candidates rather than inject a possibly-wrong skill.
    */
   private async confirmRelevance(
+    userId: string,
     message: string,
     candidates: RoutableSkill[],
   ): Promise<Set<string>> {
     if (candidates.length === 0) return new Set();
     try {
-      const client = new OpenAI({
-        baseURL: 'https://openrouter.ai/api/v1',
-        apiKey: process.env['OPENROUTER_API_KEY'],
-      });
+      const client = await this.resolveConfirmClient(userId);
+      if (!client) {
+        this.logger.warn(
+          'Skill confirm step skipped: no OpenRouter key resolved (BYOK/platform); dropping auto-candidates this turn.',
+        );
+        return new Set();
+      }
       const list = candidates
         .map((c, i) => `${i + 1}. ${c.name}: ${c.description}`)
         .join('\n');
@@ -191,9 +234,14 @@ export class SkillRouterService {
               `Message:\n${message}\n\nSkills:\n${list}`,
           },
         ],
-        max_completion_tokens: 20,
+        // Generous cap: the answer is a few digits, but reasoning-capable
+        // confirm models (e.g. gemini-2.5-flash) spend completion tokens on
+        // internal thinking first. A tight cap (e.g. 20) starves the visible
+        // answer → empty reply → every candidate silently rejected.
+        max_completion_tokens: 1000,
       });
       const reply = response.choices[0]?.message?.content?.trim() ?? '';
+      this.logger.debug(`Skill confirm reply: "${reply}"`);
       const picked = new Set<string>();
       for (const m of reply.matchAll(/\d+/g)) {
         const idx = Number(m[0]) - 1;
@@ -273,6 +321,7 @@ export class SkillRouterService {
     //    message text; otherwise fall back to embedding-only selection.
     const confirmed = params.messageText
       ? await this.confirmRelevance(
+          userId,
           params.messageText,
           ranked.map((r) => r.skill),
         )
