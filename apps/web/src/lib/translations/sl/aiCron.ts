@@ -115,6 +115,16 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.delivery.webhookUrlPlaceholder': 'https://primer.si/hook',
   'aiCron.delivery.atLeastOne': 'Izberite vsaj en kanal dostave.',
 
+  // Validation
+  'aiCron.validation.fix': 'Popravite označena polja.',
+  'aiCron.validation.nameRequired': 'Ime je obvezno.',
+  'aiCron.validation.promptRequired': 'Poziv je obvezen.',
+  'aiCron.validation.modelRequired': 'Izberite model.',
+  'aiCron.validation.emailRequired': 'Dodajte vsaj enega prejemnika.',
+  'aiCron.validation.webhookRequired': 'URL webhooka je obvezen.',
+  'aiCron.validation.webhookHttps': 'URL webhooka se mora začeti s https://.',
+  'aiCron.validation.webhookInvalid': 'Vnesite veljaven URL.',
+
   // Run history
   'aiCron.runs.title': 'Zgodovina zagonov',
   'aiCron.runs.empty': 'Še ni zagonov.',

@@ -2,18 +2,20 @@
 
 import { Globe, KeySquare, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
 import { useLanguage } from "@/lib/i18n";
 import {
   uploadScheduleFiles,
-  validateCronExpression,
-  type CronDescription,
   type ScheduledPrompt,
   type ScheduledPromptInput,
 } from "@/lib/api";
 import { ScheduleFilesSection } from "./schedule-files-section";
+import {
+  ScheduleWhenSection,
+  type ScheduleSpec,
+} from "./schedule-when-section";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import {
   useCreateScheduledPrompt,
@@ -32,30 +34,10 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-type Frequency = "daily" | "weekly" | "monthly" | "interval" | "advanced";
-type IntervalUnit = "minutes" | "hours";
-
-// Interval choices the builder offers; minute values stay clean divisors of 60
-// and >= 15 (the non-BYOK guardrail floor — tighter cadences need Advanced +
-// a BYOK/Custom model).
-const INTERVAL_MINUTES = [15, 30];
-const INTERVAL_HOURS = [1, 2, 3, 4, 6, 8, 12];
-
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// A small curated timezone list; the user's detected zone is prepended.
-const BASE_TIMEZONES = [
-  "UTC",
-  "Europe/Ljubljana",
-  "Europe/London",
-  "Europe/Berlin",
-  "America/New_York",
-  "America/Los_Angeles",
-  "Asia/Tokyo",
-];
-
 // Example prompts (frontend constant — not user-editable).
-const PRESETS: { name: string; prompt: string }[] = [
+const PROMPT_PRESETS: { name: string; prompt: string }[] = [
   {
     name: "Daily morning briefing",
     prompt:
@@ -73,98 +55,16 @@ const PRESETS: { name: string; prompt: string }[] = [
   },
 ];
 
-function pad(n: number): string {
-  return n.toString().padStart(2, "0");
-}
+type FieldErrors = Partial<
+  Record<
+    "name" | "prompt" | "model" | "schedule" | "delivery" | "email" | "webhook",
+    string
+  >
+>;
 
-/** Normalise a set of cron weekday numbers (0=Sun..6=Sat) into the field. */
-function dowsToField(dows: number[]): string {
-  const uniq = Array.from(new Set(dows)).sort((a, b) => a - b);
-  return uniq.length ? uniq.join(",") : "1";
-}
-
-/** Parse a cron day-of-week field (`1-5`, `1,3,5`, `3`, …) into day numbers. */
-function parseDows(field: string): number[] | null {
-  const out = new Set<number>();
-  for (const part of field.split(",")) {
-    const range = /^(\d+)-(\d+)$/.exec(part);
-    if (range) {
-      const a = Number(range[1]);
-      const b = Number(range[2]);
-      if (a > b) return null;
-      for (let i = a; i <= b; i++) out.add(i % 7); // cron allows 7 = Sunday
-    } else if (/^\d+$/.test(part)) {
-      out.add(Number(part) % 7);
-    } else {
-      return null;
-    }
-  }
-  const arr = [...out].filter((d) => d >= 0 && d <= 6);
-  return arr.length ? arr : null;
-}
-
-/** Turn the builder state into a 5-field cron expression. */
-function buildCron(
-  freq: "daily" | "weekly" | "monthly",
-  time: string,
-  dows: number[],
-  dom: number,
-): string {
-  const [hh, mm] = time.split(":").map((x) => Number(x));
-  const h = Number.isFinite(hh) ? hh : 8;
-  const m = Number.isFinite(mm) ? mm : 0;
-  if (freq === "daily") return `${m} ${h} * * *`;
-  if (freq === "weekly") return `${m} ${h} * * ${dowsToField(dows)}`;
-  return `${m} ${h} ${dom} * *`;
-}
-
-interface ParsedCron {
-  freq: Frequency;
-  time: string;
-  dows: number[];
-  dom: number;
-  intervalValue: number;
-  intervalUnit: IntervalUnit;
-}
-
-/** Best-effort parse of a stored cron back into builder state. */
-function parseCron(expr: string): ParsedCron {
-  const fallback: ParsedCron = {
-    freq: "advanced",
-    time: "08:00",
-    dows: [1],
-    dom: 1,
-    intervalValue: 15,
-    intervalUnit: "minutes",
-  };
-  const parts = expr.trim().split(/\s+/);
-  if (parts.length !== 5) return fallback;
-  const [m, h, domF, monF, dowF] = parts;
-  const allStar = domF === "*" && monF === "*" && dowF === "*";
-
-  // Interval — every N minutes (*/N * * * *) or every N hours (0 */N * * *).
-  const minMatch = /^\*\/(\d+)$/.exec(m);
-  if (allStar && h === "*" && minMatch) {
-    return { ...fallback, freq: "interval", intervalUnit: "minutes", intervalValue: Number(minMatch[1]) };
-  }
-  const hrMatch = /^\*\/(\d+)$/.exec(h);
-  if (allStar && m === "0" && hrMatch) {
-    return { ...fallback, freq: "interval", intervalUnit: "hours", intervalValue: Number(hrMatch[1]) };
-  }
-
-  const mn = Number(m);
-  const hn = Number(h);
-  if (!Number.isInteger(mn) || !Number.isInteger(hn)) return fallback;
-  if (monF !== "*") return fallback;
-  const time = `${pad(hn)}:${pad(mn)}`;
-  if (domF === "*" && dowF === "*") return { ...fallback, freq: "daily", time };
-  if (domF === "*" && dowF !== "*") {
-    const dows = parseDows(dowF);
-    return dows ? { ...fallback, freq: "weekly", time, dows } : fallback;
-  }
-  if (dowF === "*" && /^\d+$/.test(domF))
-    return { ...fallback, freq: "monthly", time, dom: Number(domF) };
-  return fallback;
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return <span className="text-xs text-danger-6">{msg}</span>;
 }
 
 export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
@@ -173,23 +73,6 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const { effective } = useUserModels();
   const createMut = useCreateScheduledPrompt();
   const updateMut = useUpdateScheduledPrompt();
-
-  const detectedTz = useMemo(() => {
-    try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    } catch {
-      return "UTC";
-    }
-  }, []);
-  const timezones = useMemo(
-    () => Array.from(new Set([detectedTz, ...BASE_TIMEZONES])),
-    [detectedTz],
-  );
-
-  const parsed = useMemo(
-    () => (initial ? parseCron(initial.cronExpression) : null),
-    [initial],
-  );
 
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
@@ -200,20 +83,16 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const [modelIdentifier, setModelIdentifier] = useState(
     initial?.modelIdentifier ?? "",
   );
-  const [frequency, setFrequency] = useState<Frequency>(parsed?.freq ?? "daily");
-  const [time, setTime] = useState(parsed?.time ?? "08:00");
-  const [dows, setDows] = useState<number[]>(parsed?.dows ?? [1]);
-  const [dom, setDom] = useState(parsed?.dom ?? 1);
-  const [intervalValue, setIntervalValue] = useState(
-    parsed?.intervalValue ?? 15,
-  );
-  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>(
-    parsed?.intervalUnit ?? "minutes",
-  );
-  const [timezone, setTimezone] = useState(initial?.timezone ?? detectedTz);
-  const [advancedCron, setAdvancedCron] = useState(
-    initial?.cronExpression ?? "0 8 * * *",
-  );
+
+  // Schedule spec is owned by ScheduleWhenSection and reported up here.
+  const [schedule, setSchedule] = useState<ScheduleSpec>({
+    cronExpression: initial?.cronExpression ?? "0 8 * * *",
+    timezone: initial?.timezone ?? "UTC",
+    valid: true,
+  });
+  const handleSchedule = useCallback((spec: ScheduleSpec) => {
+    setSchedule(spec);
+  }, []);
 
   const [useKnowledgeCore, setUseKnowledgeCore] = useState(
     initial?.useKnowledgeCore ?? false,
@@ -237,33 +116,9 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   );
   const [webhookUrl, setWebhookUrl] = useState(initial?.webhookUrl ?? "");
 
-  const effectiveCron =
-    frequency === "advanced"
-      ? advancedCron
-      : frequency === "interval"
-        ? intervalUnit === "minutes"
-          ? `*/${intervalValue} * * * *`
-          : `0 */${intervalValue} * * *`
-        : buildCron(frequency, time, dows, dom);
-
-  // Live preview of the schedule (debounced) via the validate-cron endpoint.
-  const [preview, setPreview] = useState<CronDescription | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    const handle = setTimeout(() => {
-      void validateCronExpression(effectiveCron, timezone)
-        .then((res) => {
-          if (!cancelled) setPreview(res);
-        })
-        .catch(() => {
-          if (!cancelled) setPreview(null);
-        });
-    }, 350);
-    return () => {
-      cancelled = true;
-      clearTimeout(handle);
-    };
-  }, [effectiveCron, timezone]);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const clearErr = (key: keyof FieldErrors) =>
+    setErrors((e) => (e[key] ? { ...e, [key]: undefined } : e));
 
   const addEmail = () => {
     const v = emailDraft.trim().toLowerCase();
@@ -274,91 +129,47 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
     }
     if (!emailRecipients.includes(v)) {
       setEmailRecipients([...emailRecipients, v]);
+      clearErr("email");
     }
     setEmailDraft("");
   };
 
-  // Weekday toggles shown for the Weekly frequency. Ordered Mon→Sun for
-  // readability; values are cron weekday numbers (0 = Sun).
-  const weekOrder: { v: number; label: string }[] = [
-    { v: 1, label: t("aiCron.day.mon") },
-    { v: 2, label: t("aiCron.day.tue") },
-    { v: 3, label: t("aiCron.day.wed") },
-    { v: 4, label: t("aiCron.day.thu") },
-    { v: 5, label: t("aiCron.day.fri") },
-    { v: 6, label: t("aiCron.day.sat") },
-    { v: 0, label: t("aiCron.day.sun") },
-  ];
-  const toggleDay = (v: number) =>
-    setDows((cur) =>
-      cur.includes(v) ? cur.filter((d) => d !== v) : [...cur, v],
-    );
-
-  // One-click common schedules.
-  const presets: { label: string; apply: () => void }[] = [
-    {
-      label: t("aiCron.preset.every15"),
-      apply: () => {
-        setFrequency("interval");
-        setIntervalUnit("minutes");
-        setIntervalValue(15);
-      },
-    },
-    {
-      label: t("aiCron.preset.hourly"),
-      apply: () => {
-        setFrequency("interval");
-        setIntervalUnit("hours");
-        setIntervalValue(1);
-      },
-    },
-    {
-      label: t("aiCron.preset.daily9"),
-      apply: () => {
-        setFrequency("daily");
-        setTime("09:00");
-      },
-    },
-    {
-      label: t("aiCron.preset.weekdays9"),
-      apply: () => {
-        setFrequency("weekly");
-        setTime("09:00");
-        setDows([1, 2, 3, 4, 5]);
-      },
-    },
-    {
-      label: t("aiCron.preset.mondays9"),
-      apply: () => {
-        setFrequency("weekly");
-        setTime("09:00");
-        setDows([1]);
-      },
-    },
-    {
-      label: t("aiCron.preset.monthly1"),
-      apply: () => {
-        setFrequency("monthly");
-        setTime("09:00");
-        setDom(1);
-      },
-    },
-  ];
-
   const isSaving = createMut.isPending || updateMut.isPending;
 
-  const submit = () => {
-    if (!name.trim()) return toast.error(t("aiCron.form.name"));
-    if (!prompt.trim()) return toast.error(t("aiCron.form.prompt"));
-    if (!modelIdentifier) return toast.error(t("aiCron.model.placeholder"));
-    if (preview && !preview.valid) {
-      return toast.error(t("aiCron.when.invalidCron"));
-    }
+  const validate = (): FieldErrors => {
+    const e: FieldErrors = {};
+    if (!name.trim()) e.name = t("aiCron.validation.nameRequired");
+    if (!prompt.trim()) e.prompt = t("aiCron.validation.promptRequired");
+    if (!modelIdentifier) e.model = t("aiCron.validation.modelRequired");
+    if (!schedule.valid) e.schedule = t("aiCron.when.invalidCron");
     if (!deliverInApp && !deliverEmail && !deliverWebhook) {
-      return toast.error(t("aiCron.delivery.atLeastOne"));
+      e.delivery = t("aiCron.delivery.atLeastOne");
     }
-    if (deliverWebhook && !webhookUrl.trim()) {
-      return toast.error(t("aiCron.delivery.webhookUrl"));
+    if (deliverEmail && emailRecipients.length === 0) {
+      e.email = t("aiCron.validation.emailRequired");
+    }
+    if (deliverWebhook) {
+      const url = webhookUrl.trim();
+      if (!url) e.webhook = t("aiCron.validation.webhookRequired");
+      else if (!/^https:\/\//i.test(url))
+        e.webhook = t("aiCron.validation.webhookHttps");
+      else {
+        try {
+          new URL(url);
+        } catch {
+          e.webhook = t("aiCron.validation.webhookInvalid");
+        }
+      }
+    }
+    return e;
+  };
+
+  const submit = () => {
+    const e = validate();
+    setErrors(e);
+    if (Object.keys(e).length > 0) {
+      toast.error(t("aiCron.validation.fix"));
+      return;
     }
 
     const payload: ScheduledPromptInput = {
@@ -366,8 +177,8 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       prompt: prompt.trim(),
       context: context.trim() || null,
       modelIdentifier,
-      cronExpression: effectiveCron,
-      timezone,
+      cronExpression: schedule.cronExpression,
+      timezone: schedule.timezone,
       useKnowledgeCore,
       useWebSearch,
       deliverInApp,
@@ -385,8 +196,8 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             toast.success(t("aiCron.toast.updated"));
             router.push("/ai-cron");
           },
-          onError: (e: Error) =>
-            toast.error(e.message || t("aiCron.toast.updateFailed")),
+          onError: (err: Error) =>
+            toast.error(err.message || t("aiCron.toast.updateFailed")),
         },
       );
     } else {
@@ -404,8 +215,8 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
           toast.success(t("aiCron.toast.created"));
           router.push("/ai-cron");
         },
-        onError: (e: Error) =>
-          toast.error(e.message || t("aiCron.toast.createFailed")),
+        onError: (err: Error) =>
+          toast.error(err.message || t("aiCron.toast.createFailed")),
       });
     }
   };
@@ -427,23 +238,33 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
           <Label>{t("aiCron.form.name")}</Label>
           <Input
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            aria-invalid={!!errors.name}
+            onChange={(e) => {
+              setName(e.target.value);
+              clearErr("name");
+            }}
             placeholder={t("aiCron.form.namePlaceholder")}
           />
+          <FieldError msg={errors.name} />
         </div>
         <div className="flex flex-col gap-1.5">
           <Label>{t("aiCron.form.prompt")}</Label>
           <Textarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            aria-invalid={!!errors.prompt}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              clearErr("prompt");
+            }}
             placeholder={t("aiCron.form.promptPlaceholder")}
             rows={5}
           />
+          <FieldError msg={errors.prompt} />
           <div className="flex flex-wrap gap-2 pt-1">
             <span className="text-xs text-text-3">
               {t("aiCron.form.presets")}:
             </span>
-            {PRESETS.map((p) => (
+            {PROMPT_PRESETS.map((p) => (
               <button
                 key={p.name}
                 type="button"
@@ -451,6 +272,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
                 onClick={() => {
                   if (!name.trim()) setName(p.name);
                   setPrompt(p.prompt);
+                  clearErr("prompt");
                 }}
               >
                 {p.name}
@@ -485,8 +307,14 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.model")}
         </h2>
-        <Select value={modelIdentifier} onValueChange={setModelIdentifier}>
-          <SelectTrigger>
+        <Select
+          value={modelIdentifier}
+          onValueChange={(v) => {
+            setModelIdentifier(v);
+            clearErr("model");
+          }}
+        >
+          <SelectTrigger aria-invalid={!!errors.model}>
             <SelectValue placeholder={t("aiCron.model.placeholder")} />
           </SelectTrigger>
           <SelectContent>
@@ -511,235 +339,18 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             ))}
           </SelectContent>
         </Select>
+        <FieldError msg={errors.model} />
       </section>
 
       {/* WHEN */}
-      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
-        <h2 className="text-sm font-semibold text-text-1">
-          {t("aiCron.form.section.when")}
-        </h2>
-
-        {/* Quick presets */}
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-text-3">{t("aiCron.when.presets")}:</span>
-          {presets.map((p) => (
-            <button
-              key={p.label}
-              type="button"
-              className="rounded-full border border-border-2 px-2.5 py-1 text-xs text-text-2 hover:bg-bg-2"
-              onClick={p.apply}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1.5">
-            <Label>{t("aiCron.when.frequency")}</Label>
-            <Select
-              value={frequency}
-              onValueChange={(v) => setFrequency(v as Frequency)}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">{t("aiCron.when.daily")}</SelectItem>
-                <SelectItem value="weekly">{t("aiCron.when.weekly")}</SelectItem>
-                <SelectItem value="monthly">
-                  {t("aiCron.when.monthly")}
-                </SelectItem>
-                <SelectItem value="interval">
-                  {t("aiCron.when.interval")}
-                </SelectItem>
-                <SelectItem value="advanced">
-                  {t("aiCron.when.advanced")}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {frequency !== "advanced" && frequency !== "interval" && (
-            <div className="flex flex-col gap-1.5">
-              <Label>{t("aiCron.when.time")}</Label>
-              <Input
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-              />
-            </div>
-          )}
-
-          {frequency === "interval" && (
-            <>
-              <div className="flex flex-col gap-1.5">
-                <Label>{t("aiCron.when.every")}</Label>
-                <Select
-                  value={String(intervalValue)}
-                  onValueChange={(v) => setIntervalValue(Number(v))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(intervalUnit === "minutes"
-                      ? INTERVAL_MINUTES
-                      : INTERVAL_HOURS
-                    ).map((n) => (
-                      <SelectItem key={n} value={String(n)}>
-                        {n}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label>&nbsp;</Label>
-                <Select
-                  value={intervalUnit}
-                  onValueChange={(v) => {
-                    const unit = v as IntervalUnit;
-                    setIntervalUnit(unit);
-                    // Snap to a valid value for the new unit.
-                    setIntervalValue(
-                      unit === "minutes" ? INTERVAL_MINUTES[0] : INTERVAL_HOURS[0],
-                    );
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="minutes">
-                      {t("aiCron.when.unitMinutes")}
-                    </SelectItem>
-                    <SelectItem value="hours">
-                      {t("aiCron.when.unitHours")}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </>
-          )}
-
-          {frequency === "monthly" && (
-            <div className="flex flex-col gap-1.5">
-              <Label>{t("aiCron.when.dayOfMonth")}</Label>
-              <Select value={String(dom)} onValueChange={(v) => setDom(Number(v))}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {d}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
-        </div>
-
-        {frequency === "weekly" && (
-          <div className="flex flex-col gap-1.5">
-            <Label>{t("aiCron.when.days")}</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {weekOrder.map((d) => {
-                const active = dows.includes(d.v);
-                return (
-                  <button
-                    key={d.v}
-                    type="button"
-                    onClick={() => toggleDay(d.v)}
-                    className={`min-w-10 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition-colors ${
-                      active
-                        ? "border-primary-6 bg-primary-6 text-white"
-                        : "border-border-2 text-text-2 hover:bg-bg-2"
-                    }`}
-                  >
-                    {d.label}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                className="text-xs text-primary-6 hover:underline"
-                onClick={() => setDows([1, 2, 3, 4, 5])}
-              >
-                {t("aiCron.when.weekdays")}
-              </button>
-              <button
-                type="button"
-                className="text-xs text-primary-6 hover:underline"
-                onClick={() => setDows([0, 6])}
-              >
-                {t("aiCron.when.weekend")}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {frequency === "advanced" && (
-          <div className="flex flex-col gap-1.5">
-            <Label>{t("aiCron.when.cronExpression")}</Label>
-            <Input
-              value={advancedCron}
-              onChange={(e) => setAdvancedCron(e.target.value)}
-              placeholder={t("aiCron.when.cronPlaceholder")}
-              className="font-mono"
-            />
-          </div>
-        )}
-
-        <div className="flex flex-col gap-1.5">
-          <Label>{t("aiCron.when.timezone")}</Label>
-          <Select value={timezone} onValueChange={setTimezone}>
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {timezones.map((tz) => (
-                <SelectItem key={tz} value={tz}>
-                  {tz}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Live preview */}
-        <div className="rounded-lg bg-bg-2 px-3 py-2 text-xs">
-          {preview && !preview.valid && (
-            <span className="text-danger-6">{t("aiCron.when.invalidCron")}</span>
-          )}
-          {preview?.valid && (
-            <div className="flex flex-col gap-1">
-              {preview.description && (
-                <span className="text-text-1">{preview.description}</span>
-              )}
-              {preview.nextRuns && preview.nextRuns.length > 0 && (
-                <span className="text-text-3">
-                  {t("aiCron.when.preview")}:{" "}
-                  {preview.nextRuns
-                    .slice(0, 3)
-                    .map((r) => new Date(r).toLocaleString())
-                    .join(" · ")}
-                </span>
-              )}
-              {preview.minIntervalMinutes != null &&
-                preview.minIntervalMinutes < 15 && (
-                  <span className="text-warning-6">
-                    {t("aiCron.when.everyMinuteWarning")}
-                  </span>
-                )}
-            </div>
-          )}
-        </div>
-      </section>
+      <div className="flex flex-col gap-1.5">
+        <ScheduleWhenSection
+          initialCron={initial?.cronExpression}
+          initialTimezone={initial?.timezone}
+          onChange={handleSchedule}
+        />
+        <FieldError msg={errors.schedule} />
+      </div>
 
       {/* CONTEXT */}
       <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
@@ -783,14 +394,27 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
           <span className="text-sm text-text-1">
             {t("aiCron.delivery.inApp")}
           </span>
-          <Switch checked={deliverInApp} onCheckedChange={setDeliverInApp} />
+          <Switch
+            checked={deliverInApp}
+            onCheckedChange={(v) => {
+              setDeliverInApp(v);
+              clearErr("delivery");
+            }}
+          />
         </label>
 
         <label className="flex items-center justify-between gap-3">
           <span className="text-sm text-text-1">
             {t("aiCron.delivery.email")}
           </span>
-          <Switch checked={deliverEmail} onCheckedChange={setDeliverEmail} />
+          <Switch
+            checked={deliverEmail}
+            onCheckedChange={(v) => {
+              setDeliverEmail(v);
+              clearErr("delivery");
+              clearErr("email");
+            }}
+          />
         </label>
         {deliverEmail && (
           <div className="flex flex-col gap-1.5">
@@ -817,6 +441,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             </div>
             <Input
               value={emailDraft}
+              aria-invalid={!!errors.email}
               onChange={(e) => setEmailDraft(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === ",") {
@@ -827,6 +452,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
               onBlur={addEmail}
               placeholder={t("aiCron.delivery.emailRecipientsPlaceholder")}
             />
+            <FieldError msg={errors.email} />
           </div>
         )}
 
@@ -834,18 +460,31 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
           <span className="text-sm text-text-1">
             {t("aiCron.delivery.webhook")}
           </span>
-          <Switch checked={deliverWebhook} onCheckedChange={setDeliverWebhook} />
+          <Switch
+            checked={deliverWebhook}
+            onCheckedChange={(v) => {
+              setDeliverWebhook(v);
+              clearErr("delivery");
+              clearErr("webhook");
+            }}
+          />
         </label>
         {deliverWebhook && (
           <div className="flex flex-col gap-1.5">
             <Label>{t("aiCron.delivery.webhookUrl")}</Label>
             <Input
               value={webhookUrl}
-              onChange={(e) => setWebhookUrl(e.target.value)}
+              aria-invalid={!!errors.webhook}
+              onChange={(e) => {
+                setWebhookUrl(e.target.value);
+                clearErr("webhook");
+              }}
               placeholder={t("aiCron.delivery.webhookUrlPlaceholder")}
             />
+            <FieldError msg={errors.webhook} />
           </div>
         )}
+        <FieldError msg={errors.delivery} />
       </section>
 
       <div className="flex justify-end gap-2">

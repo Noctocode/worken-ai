@@ -113,6 +113,16 @@ export const aiCron = {
   'aiCron.delivery.webhookUrlPlaceholder': 'https://example.com/hook',
   'aiCron.delivery.atLeastOne': 'Choose at least one delivery channel.',
 
+  // Validation
+  'aiCron.validation.fix': 'Please fix the highlighted fields.',
+  'aiCron.validation.nameRequired': 'Name is required.',
+  'aiCron.validation.promptRequired': 'Prompt is required.',
+  'aiCron.validation.modelRequired': 'Pick a model.',
+  'aiCron.validation.emailRequired': 'Add at least one recipient.',
+  'aiCron.validation.webhookRequired': 'Webhook URL is required.',
+  'aiCron.validation.webhookHttps': 'Webhook URL must start with https://.',
+  'aiCron.validation.webhookInvalid': 'Enter a valid URL.',
+
   // Run history
   'aiCron.runs.title': 'Run history',
   'aiCron.runs.empty': 'No runs yet.',
