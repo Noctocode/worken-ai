@@ -1425,3 +1425,131 @@ export const onedriveImportSources = pgTable(
       .where(sql`${table.scope} = 'all'`),
   ],
 );
+
+/**
+ * AI Cron — a recurring AI prompt the user schedules. The scheduler scans
+ * this table every minute (see ai-cron module) for due jobs, runs the prompt
+ * through the same ChatTransportService the chat/arena uses, and delivers the
+ * result. Each definition produces one `scheduledPromptRuns` row per fire.
+ */
+export const scheduledPrompts = pgTable(
+  "scheduled_prompts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // Team scope for model/key resolution. NULL = personal. This maps 1:1
+    // to ChatTransportService.resolve({ userId, modelIdentifier, teamId }) —
+    // we deliberately store ONLY teamId (no separate `scope` column) so the
+    // runner passes it straight through with no translation layer. The FE
+    // picker's "personal" | "<teamId>" scope string is collapsed to
+    // null/teamId at the controller boundary on save.
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // The prompt sent to the model on each run ("what").
+    prompt: text("prompt").notNull(),
+    // Effective model id from /models/effective — catalog, BYOK, Custom LLM,
+    // or Azure deployment. Resolution at run time is delegated to
+    // ChatTransportService, so every supported source works unchanged.
+    modelIdentifier: text("model_identifier").notNull(),
+    // Standard 5-field cron expression ("when") evaluated in `timezone`.
+    cronExpression: text("cron_expression").notNull(),
+    timezone: text("timezone").notNull().default("UTC"),
+    // Optional context injected before the prompt.
+    useKnowledgeCore: boolean("use_knowledge_core").notNull().default(false),
+    knowledgeFolderId: uuid("knowledge_folder_id").references(
+      () => knowledgeFolders.id,
+      { onDelete: "set null" },
+    ),
+    useWebSearch: boolean("use_web_search").notNull().default(false),
+    // Delivery channels for the run output.
+    deliverInApp: boolean("deliver_in_app").notNull().default(true),
+    deliverEmail: boolean("deliver_email").notNull().default(false),
+    deliverWebhook: boolean("deliver_webhook").notNull().default(false),
+    // Recipient addresses for the email channel (the user can type extra
+    // addresses on the form besides their own).
+    emailRecipients: jsonb("email_recipients").$type<string[]>(),
+    webhookUrl: text("webhook_url"),
+    // Pause flag — disabled jobs are skipped by the scanner without losing
+    // their schedule/history.
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    // Next due time, precomputed from cronExpression+timezone. The scanner's
+    // hot query filters on this, and the two-phase claim advances it to the
+    // next future occurrence inside the claim transaction so a job is never
+    // double-fired.
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // Scanner hot path: WHERE is_enabled AND next_run_at <= now(). Composite
+    // so the minute tick is an index scan, not a seq scan, as jobs grow.
+    index("scheduled_prompts_enabled_next_run_idx").on(
+      table.isEnabled,
+      table.nextRunAt,
+    ),
+    index("scheduled_prompts_owner_idx").on(table.ownerId),
+  ],
+);
+
+/**
+ * One execution of a `scheduledPrompts` job (scheduled or manual run-now).
+ * Holds status, the AI output, usage/cost metrics (mirroring observability),
+ * a per-channel delivery status, and a heartbeat used by the reaper.
+ */
+export const scheduledPromptRuns = pgTable(
+  "scheduled_prompt_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scheduledPromptId: uuid("scheduled_prompt_id")
+      .references(() => scheduledPrompts.id, { onDelete: "cascade" })
+      .notNull(),
+    // pending | running | success | failed
+    status: text("status").notNull().default("pending"),
+    // schedule | manual — manual (run-now) runs are excluded from the
+    // per-owner concurrency cap since they're an explicit user test.
+    triggeredBy: text("triggered_by").notNull().default("schedule"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    // Refreshed periodically by the runner while the model call is in
+    // flight. The reaper marks runs with a stale heartbeat (no update for
+    // a few minutes) as failed — heartbeat-based rather than absolute time
+    // from startedAt so legitimately slow runs (large RAG context + web
+    // search + long output) aren't killed prematurely.
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    output: text("output"),
+    errorMessage: text("error_message"),
+    // Usage/cost — mirrors observability_events. costUsd is null for Custom
+    // routes (no catalog pricing).
+    model: text("model"),
+    provider: text("provider"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    totalTokens: integer("total_tokens"),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    latencyMs: integer("latency_ms"),
+    // Per-channel delivery outcome, e.g. { inApp: 'sent', email: 'failed' }.
+    deliveryStatus: jsonb("delivery_status").$type<Record<string, string>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // History view: most recent runs for a job.
+    index("scheduled_prompt_runs_prompt_created_idx").on(
+      table.scheduledPromptId,
+      table.createdAt,
+    ),
+    // Reaper sweep: find stuck `running` rows by heartbeat age.
+    index("scheduled_prompt_runs_status_heartbeat_idx").on(
+      table.status,
+      table.lastHeartbeatAt,
+    ),
+  ],
+);
