@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
+import { WORKENAI_LOGO_BASE64 } from './logo-asset.js';
 
 interface TeamInvitationParams {
   to: string;
@@ -104,12 +105,11 @@ export class MailService {
       to,
       subject: `${inviterName} invited you to join ${teamName} on WorkenAI`,
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
   async sendVerificationEmail({ to, name, token }: VerificationEmailParams) {
-    const frontendUrl =
-      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const apiUrl =
       this.config.get<string>('API_URL') || 'http://localhost:3001';
     const verifyUrl = `${apiUrl}/auth/verify?token=${encodeURIComponent(token)}`;
@@ -130,7 +130,7 @@ export class MailService {
     // show empty/dead links.
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        ${this.brandedHeader(frontendUrl)}
+        ${this.brandedHeader()}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Hi ${escapeHtml(greetingName)},</h1>
           <p style="font-size: 23px; font-weight: 400; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Thanks for joining WorkenAI</p>
@@ -151,6 +151,7 @@ export class MailService {
       to,
       subject: 'Confirm your email address',
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
@@ -161,12 +162,30 @@ export class MailService {
    * Falls back to a plain text wordmark when the image can't load (most
    * desktop clients block remote images by default until the user opts in).
    */
-  private brandedHeader(frontendUrl: string): string {
+  private brandedHeader(): string {
+    // The logo is embedded as a CID attachment (see logoAttachment) rather
+    // than a remote URL: a mail client can't load `${FRONTEND_URL}/full-logo
+    // .png` when FRONTEND_URL is localhost, and remote images are blocked by
+    // default in most clients. A CID image renders without either problem.
     return `
       <div style="height: 48px; margin-bottom: 30px;">
-        <img src="${frontendUrl}/full-logo.png" alt="WorkenAI" width="106" height="29" style="display: block; border: 0; outline: none; text-decoration: none; height: 29px; width: 106px;" />
+        <img src="cid:workenai-logo" alt="WorkenAI" width="106" height="29" style="display: block; border: 0; outline: none; text-decoration: none; height: 29px; width: 106px;" />
       </div>
     `;
+  }
+
+  /**
+   * Inline logo attachment referenced by `cid:workenai-logo` in the header.
+   * Bytes are inlined (logo-asset.ts) so it ships with the build and needs no
+   * filesystem read or publicly reachable asset host.
+   */
+  private logoAttachment() {
+    return {
+      filename: 'full-logo.png',
+      content: Buffer.from(WORKENAI_LOGO_BASE64, 'base64'),
+      cid: 'workenai-logo',
+      contentType: 'image/png',
+    };
   }
 
   /**
@@ -214,7 +233,7 @@ export class MailService {
 
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        ${this.brandedHeader(frontendUrl)}
+        ${this.brandedHeader()}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Hi ${escapeHtml(greetingName)},</h1>
           <p style="font-size: 23px; font-weight: 400; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Reset your WorkenAI password</p>
@@ -236,6 +255,7 @@ export class MailService {
       to,
       subject: 'Reset your WorkenAI password',
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
@@ -250,7 +270,7 @@ export class MailService {
 
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        ${this.brandedHeader(frontendUrl)}
+        ${this.brandedHeader()}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">You've been invited to WorkenAI</h1>
           <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 30px; line-height: 1.6;">
@@ -278,6 +298,7 @@ export class MailService {
       to,
       subject: `${inviterName} invited you to join WorkenAI`,
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
@@ -293,8 +314,6 @@ export class MailService {
     byName,
     companyName,
   }: AccountRemovedParams) {
-    const frontendUrl =
-      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const greeting = name?.trim() ? `Hi ${escapeHtml(name)},` : 'Hi,';
     const orgCopy = companyName?.trim()
       ? `the <strong>${escapeHtml(companyName)}</strong> workspace on WorkenAI`
@@ -306,7 +325,7 @@ export class MailService {
 
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        ${this.brandedHeader(frontendUrl)}
+        ${this.brandedHeader()}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px; text-align: center;">
           <h1 style="font-size: 32px; font-weight: 700; color: #1D2129; margin: 0 0 30px; line-height: 1.3;">Your access has been removed</h1>
           <p style="font-size: 16px; font-weight: 400; color: #4E5969; margin: 0 0 16px; line-height: 1.6; text-align: left;">${greeting}</p>
@@ -330,6 +349,7 @@ export class MailService {
       to,
       subject: `Your WorkenAI account has been removed`,
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
@@ -347,12 +367,9 @@ export class MailService {
     jobName: string;
     output: string;
   }) {
-    const frontendUrl =
-      this.config.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-
     const html = `
       <div style="font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 0 auto; background: #ffffff; padding: 30px 100px;">
-        ${this.brandedHeader(frontendUrl)}
+        ${this.brandedHeader()}
         <div style="background: #ffffff; border-radius: 30px; padding: 30px 60px;">
           <h1 style="font-size: 24px; font-weight: 700; color: #1D2129; margin: 0 0 8px; line-height: 1.3;">${escapeHtml(jobName)}</h1>
           <p style="font-size: 14px; font-weight: 400; color: #86909C; margin: 0 0 24px; line-height: 1.3;">Scheduled AI run result</p>
@@ -368,6 +385,7 @@ export class MailService {
       to,
       subject: `AI Cron: ${jobName}`,
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 
@@ -419,6 +437,7 @@ export class MailService {
       to,
       subject: `${inviterName} invited you to join ${teamName} on WorkenAI`,
       html,
+      attachments: [this.logoAttachment()],
     });
   }
 }
