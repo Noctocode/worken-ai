@@ -4383,6 +4383,7 @@ export interface ScheduledPrompt {
   teamId: string | null;
   name: string;
   prompt: string;
+  context: string | null;
   modelIdentifier: string;
   cronExpression: string;
   timezone: string;
@@ -4424,6 +4425,7 @@ export interface ScheduledPromptRun {
 export interface ScheduledPromptInput {
   name: string;
   prompt: string;
+  context?: string | null;
   modelIdentifier: string;
   cronExpression: string;
   timezone?: string;
@@ -4534,5 +4536,46 @@ export async function validateCronExpression(
     body: JSON.stringify({ cronExpression, timezone }),
   });
   if (!res.ok) throw new Error("Failed to validate cron expression");
+  return res.json();
+}
+
+export interface ScheduleFile {
+  fileId: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  ingestionStatus: string;
+  ingestionError: string | null;
+  attachedAt: string;
+}
+
+export async function fetchScheduleFiles(id: string): Promise<ScheduleFile[]> {
+  const res = await apiFetch(`/ai-cron/${id}/files`);
+  if (!res.ok) throw new Error("Failed to fetch schedule files");
+  return res.json();
+}
+
+export async function detachScheduleFile(
+  id: string,
+  fileId: string,
+): Promise<void> {
+  const res = await apiFetch(`/ai-cron/${id}/files/${fileId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to detach file");
+}
+
+export async function uploadScheduleFiles(
+  id: string,
+  files: File[],
+): Promise<{ uploaded: { id: string; name: string }[] }> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  // No explicit Content-Type — the browser sets the multipart boundary.
+  const res = await apiFetch(`/ai-cron/${id}/files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error("Failed to upload files");
   return res.json();
 }

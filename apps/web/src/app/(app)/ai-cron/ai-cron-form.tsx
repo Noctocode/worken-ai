@@ -7,11 +7,13 @@ import { toast } from "sonner";
 
 import { useLanguage } from "@/lib/i18n";
 import {
+  uploadScheduleFiles,
   validateCronExpression,
   type CronDescription,
   type ScheduledPrompt,
   type ScheduledPromptInput,
 } from "@/lib/api";
+import { ScheduleFilesSection } from "./schedule-files-section";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import {
   useCreateScheduledPrompt,
@@ -191,6 +193,10 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
 
   const [name, setName] = useState(initial?.name ?? "");
   const [prompt, setPrompt] = useState(initial?.prompt ?? "");
+  const [context, setContext] = useState(initial?.context ?? "");
+  // New-form only: files chosen before the schedule exists, uploaded after
+  // create (approach A). On edit, the files section uploads immediately.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [modelIdentifier, setModelIdentifier] = useState(
     initial?.modelIdentifier ?? "",
   );
@@ -358,6 +364,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
     const payload: ScheduledPromptInput = {
       name: name.trim(),
       prompt: prompt.trim(),
+      context: context.trim() || null,
       modelIdentifier,
       cronExpression: effectiveCron,
       timezone,
@@ -384,7 +391,16 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       );
     } else {
       createMut.mutate(payload, {
-        onSuccess: () => {
+        // Approach A: the schedule must exist before files can attach, so
+        // upload the queued files to the new id, then navigate.
+        onSuccess: async (created) => {
+          if (pendingFiles.length > 0) {
+            try {
+              await uploadScheduleFiles(created.id, pendingFiles);
+            } catch {
+              toast.error(t("aiCron.files.uploadFailed"));
+            }
+          }
           toast.success(t("aiCron.toast.created"));
           router.push("/ai-cron");
         },
@@ -443,6 +459,26 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
           </div>
         </div>
       </section>
+
+      {/* SCHEDULE CONTEXT */}
+      <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">
+        <h2 className="text-sm font-semibold text-text-1">
+          {t("aiCron.scheduleContext.title")}
+        </h2>
+        <Textarea
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          placeholder={t("aiCron.scheduleContext.placeholder")}
+          rows={3}
+        />
+      </section>
+
+      {/* FILES IN THIS CONTEXT */}
+      <ScheduleFilesSection
+        scheduleId={initial?.id}
+        pendingFiles={pendingFiles}
+        setPendingFiles={setPendingFiles}
+      />
 
       {/* MODEL */}
       <section className="flex flex-col gap-3 rounded-xl border border-border-2 bg-bg-white p-4">

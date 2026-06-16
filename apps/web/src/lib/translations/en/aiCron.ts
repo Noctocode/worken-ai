@@ -87,6 +87,16 @@ export const aiCron = {
   'aiCron.model.byok': 'BYOK',
   'aiCron.model.custom': 'Custom',
 
+  // Schedule context (free text) + attached files
+  'aiCron.scheduleContext.title': 'Schedule Context',
+  'aiCron.scheduleContext.placeholder': 'Extra context for the AI on every run (optional).',
+  'aiCron.files.title': 'Files in this context',
+  'aiCron.files.add': 'Add files',
+  'aiCron.files.empty': 'No files added yet.',
+  'aiCron.files.uploading': 'Uploading…',
+  'aiCron.files.hint': 'PDF, Word or Excel. Added to Knowledge Core, scoped to this schedule.',
+  'aiCron.files.uploadFailed': 'Could not upload the files.',
+
   // Context
   'aiCron.context.knowledgeCore': 'Use Knowledge Core',
   'aiCron.context.knowledgeCoreDesc': 'Retrieve relevant documents from your Knowledge Core as context.',

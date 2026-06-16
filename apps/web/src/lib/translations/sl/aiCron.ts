@@ -89,6 +89,16 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.model.byok': 'BYOK',
   'aiCron.model.custom': 'Custom',
 
+  // Schedule context (free text) + attached files
+  'aiCron.scheduleContext.title': 'Kontekst urnika',
+  'aiCron.scheduleContext.placeholder': 'Dodaten kontekst za AI ob vsakem zagonu (neobvezno).',
+  'aiCron.files.title': 'Datoteke v tem kontekstu',
+  'aiCron.files.add': 'Dodaj datoteke',
+  'aiCron.files.empty': 'Še ni dodanih datotek.',
+  'aiCron.files.uploading': 'Nalagam…',
+  'aiCron.files.hint': 'PDF, Word ali Excel. Dodano v Knowledge Core, vezano na ta urnik.',
+  'aiCron.files.uploadFailed': 'Datotek ni bilo mogoče naložiti.',
+
   // Context
   'aiCron.context.knowledgeCore': 'Uporabi Knowledge Core',
   'aiCron.context.knowledgeCoreDesc': 'Pred zagonom pridobi relevantne dokumente iz Knowledge Core kot kontekst.',
