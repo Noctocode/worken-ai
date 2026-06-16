@@ -549,7 +549,14 @@ export class KnowledgeIngestionService {
    * scoping. Used by the chat layer to mix personal + company
    * knowledge into RAG context alongside project documents.
    */
-  async searchAccessibleChunks(userId: string, query: string, limit = 5) {
+  async searchAccessibleChunks(
+    userId: string,
+    query: string,
+    limit = 5,
+    // Shared query vector from the chat/arena path so a turn embeds the
+    // message exactly once across all RAG + skill-router lookups.
+    precomputedEmbedding?: number[],
+  ) {
     // Admin gating on the second visibility layer: company-scope
     // chunks marked `visibility='admins'` are reachable only when
     // the caller has role='admin'. Personal-scope chunks are
@@ -571,7 +578,8 @@ export class KnowledgeIngestionService {
     const isAdmin = caller?.role === 'admin';
     const callerCompanyId = caller?.companyId ?? null;
 
-    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const queryEmbedding =
+      precomputedEmbedding ?? (await this.documentsService.embed([query]))[0];
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
     // Company-scope filter — four-state:
@@ -667,6 +675,8 @@ export class KnowledgeIngestionService {
     fileIds: string[],
     query: string,
     limit = 5,
+    // Shared query vector from the chat path (one embed per turn).
+    precomputedEmbedding?: number[],
   ) {
     if (fileIds.length === 0) return [];
 
@@ -677,7 +687,8 @@ export class KnowledgeIngestionService {
     const isAdmin = caller?.role === 'admin';
     const callerCompanyId = caller?.companyId ?? null;
 
-    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const queryEmbedding =
+      precomputedEmbedding ?? (await this.documentsService.embed([query]))[0];
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
     // Cross-tenant isolation (same guard as searchAccessibleChunks):

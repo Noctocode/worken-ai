@@ -223,12 +223,21 @@ export class ChatController {
       content: m.content,
     }));
 
+    // Embed the user message ONCE and share the vector across every
+    // similarity lookup this turn (project docs, attached files, accessible
+    // KC chunks — and, later, the skill router). The embedder is local /
+    // in-process so this is CPU-only, but a project chat with attachments
+    // otherwise embeds the same prompt 3× per turn.
+    const [queryEmbedding] = await this.documentsService.embed([safePrompt]);
+
     const contextChunks: string[] = [];
     if (body.projectId) {
       // Project-scoped paste-text snippets (legacy + still active).
       const relevant = await this.documentsService.searchRelevant(
         body.projectId,
         safePrompt,
+        5,
+        queryEmbedding,
       );
       for (const doc of relevant) contextChunks.push(doc.content);
 
@@ -251,6 +260,8 @@ export class ChatController {
             user.id,
             attachedFileIds,
             safePrompt,
+            5,
+            queryEmbedding,
           );
         for (const chunk of attachedChunks) contextChunks.push(chunk.content);
       }
@@ -258,6 +269,8 @@ export class ChatController {
     const userKnowledge = await this.knowledgeIngestion.searchAccessibleChunks(
       user.id,
       safePrompt,
+      5,
+      queryEmbedding,
     );
     for (const chunk of userKnowledge) contextChunks.push(chunk.content);
 

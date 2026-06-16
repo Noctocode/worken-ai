@@ -237,8 +237,17 @@ export class DocumentsService {
 
   // standard vector similarity search for RAG. 1.0 = identical
   // todo: drop irrelevant chunks (minimum similartiy treshold)
-  async searchRelevant(projectId: string, query: string, limit = 5) {
-    const [queryEmbedding] = await this.embed([query]);
+  async searchRelevant(
+    projectId: string,
+    query: string,
+    limit = 5,
+    // When the caller already embedded this query (e.g. the chat path
+    // embeds the message once and shares the vector across all RAG +
+    // skill-router lookups), pass it here to skip a redundant embed.
+    precomputedEmbedding?: number[],
+  ) {
+    const queryEmbedding =
+      precomputedEmbedding ?? (await this.embed([query]))[0];
 
     const similarity = sql<number>`1 - (${cosineDistance(documents.embedding, queryEmbedding)})`;
 
