@@ -748,24 +748,22 @@ export default function FolderDetailPage({
 
   const confirmUpload = () => {
     if (stagedFiles.length === 0) return;
-    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error(t("kcFolder.pickTeam"));
-      return;
-    }
-    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error(t("kcFolder.pickProject"));
-      return;
-    }
-    if (stagedVisibility === "schedule" && stagedScheduleIds.length === 0) {
-      toast.error(t("kcFolder.pickSchedule"));
+    const specific = stagedVisibility === "none";
+    if (
+      specific &&
+      stagedTeamIds.length === 0 &&
+      stagedProjectIds.length === 0 &&
+      stagedScheduleIds.length === 0
+    ) {
+      toast.error(t("visDlg.pickAtLeastScope"));
       return;
     }
     uploadMutation.mutate({
       files: stagedFiles,
       visibility: stagedVisibility,
-      teamIds: stagedTeamIds,
-      projectIds: stagedProjectIds,
-      scheduleIds: stagedScheduleIds,
+      teamIds: specific ? stagedTeamIds : [],
+      projectIds: specific ? stagedProjectIds : [],
+      scheduleIds: specific ? stagedScheduleIds : [],
     });
     setStagedFiles([]);
     setStagedVisibility("all");
@@ -1525,25 +1523,19 @@ export default function FolderDetailPage({
                 {isAdmin && (
                   <SelectItem value="admins">{t("kcFolder.adminsOpt")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
-                <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
-                <SelectItem value="schedule">{t("kcFolder.specificSchedule")}</SelectItem>
+                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {stagedVisibility === "admins"
                 ? t("kcFolder.hintAdmins")
-                : stagedVisibility === "teams"
-                  ? t("kcFolder.hintTeams")
-                  : stagedVisibility === "project"
-                    ? t("kcFolder.hintProject")
-                    : stagedVisibility === "schedule"
-                      ? t("kcFolder.hintSchedule")
-                      : t("kcFolder.hintEveryone")}
+                : stagedVisibility === "none"
+                  ? t("visDlg.hintSpecific")
+                  : t("kcFolder.hintEveryone")}
             </p>
           </div>
 
-          {stagedVisibility === "teams" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("kcFolder.teamsWithAccess")}
@@ -1583,7 +1575,7 @@ export default function FolderDetailPage({
             </div>
           )}
 
-          {stagedVisibility === "project" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("kcFolder.projectsWithAccess")}
@@ -1630,7 +1622,7 @@ export default function FolderDetailPage({
             </div>
           )}
 
-          {stagedVisibility === "schedule" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("kcFolder.schedulesWithAccess")}

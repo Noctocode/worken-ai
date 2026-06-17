@@ -762,13 +762,21 @@ export class KnowledgeCoreService {
       scope,
     );
 
-    // For 'teams' visibility: resolve the caller-supplied team IDs to
-    // a validated set the caller actually belongs to (admin bypass —
-    // any company team is fair game). Bail out before any file write
-    // if the input is empty or contains a team the caller can't
-    // assign to.
+    // UNION model: team / project links are independent additive scopes —
+    // resolve whichever the caller supplied, regardless of the base tier, so
+    // a file can be team- AND project-scoped at once. Team and project links
+    // are only meaningful for company-scope rows (personal files are
+    // owner-only at chat time), so reject those up front.
+    if (
+      ((teamIdsInput ?? []).length > 0 || (projectIdsInput ?? []).length > 0) &&
+      scope === 'personal'
+    ) {
+      throw new BadRequestException(
+        'Team / Project scopes require a company profile — personal-scope files are owner-only.',
+      );
+    }
     const allowedTeamIds =
-      visibility === 'teams'
+      (teamIdsInput ?? []).length > 0
         ? await this.resolveAssignableTeamIds(
             teamIdsInput ?? [],
             userId,
@@ -777,21 +785,9 @@ export class KnowledgeCoreService {
         : [];
 
     // Attach the upload to one or more projects. The link rows in
-    // project_knowledge_files double as the chat-time RAG grant —
-    // chunks only surface inside the linked project. This is decoupled
-    // from the KC `visibility` tier on purpose: a personal-profile
-    // user can attach an owner-only file to their own project's chat
-    // (scope stays 'personal', so the chunk is still owner-only — see
-    // searchProjectAttachedChunks), and a company user attaching with
-    // 'project' visibility behaves exactly as before. 'project'
-    // visibility still REQUIRES at least one project id (the link is
-    // its only access grant; without it the file would be unreadable).
+    // project_knowledge_files double as the chat-time RAG grant — chunks only
+    // surface inside the linked project (independent of the base tier).
     const projectIdsToLink = projectIdsInput ?? [];
-    if (visibility === 'project' && projectIdsToLink.length === 0) {
-      throw new BadRequestException(
-        'Pick at least one project for "Project" visibility.',
-      );
-    }
     const allowedProjectIds =
       projectIdsToLink.length > 0
         ? await this.resolveAssignableProjectIds(
@@ -1070,12 +1066,9 @@ export class KnowledgeCoreService {
       // Link every inserted file to the resolved team set so the
       // chat-time RAG filter (and the FE row badge) can see which
       // teams have access. Done in one INSERT regardless of how many
-      // files / teams to keep the upload path fast.
-      if (
-        visibility === 'teams' &&
-        inserted.length > 0 &&
-        allowedTeamIds.length > 0
-      ) {
+      // files / teams to keep the upload path fast. Independent of the
+      // base tier (UNION model) — link whenever teams were supplied.
+      if (inserted.length > 0 && allowedTeamIds.length > 0) {
         await this.db.insert(knowledgeFileTeams).values(
           inserted.flatMap((row) =>
             allowedTeamIds.map((teamId) => ({
@@ -1201,17 +1194,18 @@ export class KnowledgeCoreService {
     input: string | undefined,
     callerRole: string | null | undefined,
     scope?: 'personal' | 'company',
-  ): 'all' | 'admins' | 'teams' | 'project' | 'schedule' {
+  ): 'all' | 'admins' | 'none' | 'teams' | 'project' | 'schedule' {
     if (input == null || input === '') return 'all';
     if (
       input !== 'all' &&
       input !== 'admins' &&
+      input !== 'none' &&
       input !== 'teams' &&
       input !== 'project' &&
       input !== 'schedule'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', 'project', or 'schedule'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', 'none', 'teams', 'project', or 'schedule'.`,
       );
     }
     if (input === 'admins' && callerRole !== 'admin') {

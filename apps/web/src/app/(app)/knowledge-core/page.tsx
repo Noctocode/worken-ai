@@ -512,16 +512,13 @@ export default function KnowledgeCorePage() {
     // selection but the picker is empty — the BE rejects this too,
     // but a client guard keeps the dialog from collapsing on a 400
     // with stale staged files.
-    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error(t("knowledgeMain.toastNeedTeams"));
-      return;
-    }
-    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error(t("knowledgeMain.toastNeedProjects"));
-      return;
-    }
-    if (stagedVisibility === "schedule" && stagedScheduleIds.length === 0) {
-      toast.error(t("knowledgeMain.toastNeedSchedules"));
+    if (
+      stagedVisibility === "none" &&
+      stagedTeamIds.length === 0 &&
+      stagedProjectIds.length === 0 &&
+      stagedScheduleIds.length === 0
+    ) {
+      toast.error(t("visDlg.pickAtLeastScope"));
       return;
     }
     setUploading(true);
@@ -572,14 +569,16 @@ export default function KnowledgeCorePage() {
     files: File[],
     actions: Record<string, NameConflictAction> | undefined,
   ) => {
+    // UNION model: only send scope links under the "Specific" base.
+    const specific = stagedVisibility === "none";
     const result = await uploadKnowledgeFiles(
       folderId,
       files,
       stagedVisibility,
-      stagedTeamIds,
-      stagedProjectIds,
+      specific ? stagedTeamIds : [],
+      specific ? stagedProjectIds : [],
       actions,
-      stagedScheduleIds,
+      specific ? stagedScheduleIds : [],
     );
     await Promise.all([
       queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -642,14 +641,15 @@ export default function KnowledgeCorePage() {
     }
     setUploading(true);
     try {
+      const ctxSpecific = ctx.visibility === "none";
       const result = await uploadKnowledgeFiles(
         ctx.folderId,
         filesToResend,
         ctx.visibility,
-        ctx.teamIds,
-        ctx.projectIds,
+        ctxSpecific ? ctx.teamIds : [],
+        ctxSpecific ? ctx.projectIds : [],
         actions,
-        ctx.scheduleIds,
+        ctxSpecific ? ctx.scheduleIds : [],
       );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -1223,21 +1223,15 @@ export default function KnowledgeCorePage() {
                 {isAdmin && (
                   <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
-                <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
-                <SelectItem value="schedule">{t("knowledgeCore.specificSchedule")}</SelectItem>
+                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {stagedVisibility === "admins"
                 ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
-                : stagedVisibility === "teams"
-                  ? "Only members of the teams you pick below will see these files in chat / arena."
-                  : stagedVisibility === "project"
-                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
-                    : stagedVisibility === "schedule"
-                      ? "These files will only be used as context for the AI Cron schedule(s) you pick below — never in the org-wide RAG."
-                      : "Every user in the company can see these files in chat / arena."}
+                : stagedVisibility === "none"
+                  ? t("visDlg.hintSpecific")
+                  : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
 
@@ -1246,7 +1240,7 @@ export default function KnowledgeCorePage() {
               the BE rejects assignments to teams the user isn't in
               for non-admins, so listing them here would just route
               users to a 403. Empty state has its own copy. */}
-          {stagedVisibility === "teams" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("knowledgeCore.teamsWithAccess")}
@@ -1292,7 +1286,7 @@ export default function KnowledgeCorePage() {
               Lists every project the caller can access (their own
               + team projects). Empty state mirrors the teams case
               so the dialog stays consistent. */}
-          {stagedVisibility === "project" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("knowledgeCore.projectsWithAccess")}
@@ -1343,7 +1337,7 @@ export default function KnowledgeCorePage() {
           {/* Schedule checkbox panel — shown only when
               visibility='schedule'. Lists the caller's AI Cron
               schedules; selected ones get the file as run context. */}
-          {stagedVisibility === "schedule" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("knowledgeCore.schedulesWithAccess")}
