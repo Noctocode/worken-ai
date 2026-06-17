@@ -1048,6 +1048,15 @@ export class KnowledgeIngestionService
             eq(knowledgeChunks.visibility, 'project'),
             sameCompanyAsCaller,
           ),
+          // UNION model: a project-scoped file now carries base
+          // visibility='none' + a project_knowledge_files link. Being in
+          // fileIds IS the access grant (same as the 'project' branch above),
+          // so allow 'none' too. 'admins' stays off-limits for non-admins.
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'none'),
+            sameCompanyAsCaller,
+          ),
         );
 
     return this.db

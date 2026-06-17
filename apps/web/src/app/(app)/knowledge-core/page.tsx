@@ -402,13 +402,30 @@ export default function KnowledgeCorePage() {
   // surfaces any 403 in toast for safety in case a future code path
   // exposes it.
   const visibilityMutation = useMutation({
+    // Quick base-tier flip (Everyone ↔ Admins). Forwards the file's existing
+    // scope links so the one-click toggle only changes the base and never
+    // silently drops the file's team / project / schedule scopes — clearing
+    // those stays a deliberate action in the full visibility editor.
     mutationFn: ({
       fileId,
       visibility,
+      teamIds,
+      projectIds,
+      scheduleIds,
     }: {
       fileId: string;
       visibility: KnowledgeFileVisibility;
-    }) => updateKnowledgeFileVisibility(fileId, visibility),
+      teamIds: string[];
+      projectIds: string[];
+      scheduleIds: string[];
+    }) =>
+      updateKnowledgeFileVisibility(
+        fileId,
+        visibility,
+        teamIds,
+        projectIds,
+        scheduleIds,
+      ),
     onSuccess: (_, { visibility }) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
@@ -989,6 +1006,9 @@ export default function KnowledgeCorePage() {
                           fileId: file.id,
                           visibility:
                             file.visibility === "admins" ? "all" : "admins",
+                          teamIds: file.teams.map((tm) => tm.id),
+                          projectIds: file.projects.map((p) => p.id),
+                          scheduleIds: file.schedules.map((s) => s.id),
                         })
                       }
                     >

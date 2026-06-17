@@ -495,13 +495,29 @@ export default function FolderDetailPage({
   // Admin-only PATCH to flip visibility post-upload. BE rejects
   // non-admin with 403 — UI hides the menu item entirely below.
   const visibilityMutation = useMutation({
+    // Quick base-tier flip — forwards existing scope links so the one-click
+    // toggle never silently drops the file's team / project / schedule scopes
+    // (clearing those stays a deliberate action in the full editor).
     mutationFn: ({
       fileId,
       visibility,
+      teamIds,
+      projectIds,
+      scheduleIds,
     }: {
       fileId: string;
       visibility: KnowledgeFileVisibility;
-    }) => updateKnowledgeFileVisibility(fileId, visibility),
+      teamIds: string[];
+      projectIds: string[];
+      scheduleIds: string[];
+    }) =>
+      updateKnowledgeFileVisibility(
+        fileId,
+        visibility,
+        teamIds,
+        projectIds,
+        scheduleIds,
+      ),
     onSuccess: (_, { visibility }) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
@@ -1220,6 +1236,9 @@ export default function FolderDetailPage({
                                 fileId: f.id,
                                 visibility:
                                   f.visibility === "admins" ? "all" : "admins",
+                                teamIds: f.teams.map((tm) => tm.id),
+                                projectIds: f.projects.map((p) => p.id),
+                                scheduleIds: f.schedules.map((s) => s.id),
                               })
                             }
                           >
@@ -1359,6 +1378,9 @@ export default function FolderDetailPage({
                           fileId: f.id,
                           visibility:
                             f.visibility === "admins" ? "all" : "admins",
+                          teamIds: f.teams.map((tm) => tm.id),
+                          projectIds: f.projects.map((p) => p.id),
+                          scheduleIds: f.schedules.map((s) => s.id),
                         })
                       }
                     >
