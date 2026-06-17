@@ -2,7 +2,7 @@
 
 > Companion to `docs/skills-plan.md` → "Follow-up: Option #3". That section is the
 > high-level proposal; **this doc is the concrete, code-grounded build plan** for the
-> executable-skills subsystem, plus the ordered commit/PR sequence to ship it.
+> executable-skills subsystem, plus the ordered commit sequence to ship it.
 >
 > Tracking issue: **#216** (Skills Opcija #3 — izvršljive veščine). Predecessor:
 > **#213** (Option #2, auto-selected instructional skills, already merged).
@@ -37,9 +37,14 @@ Verified before planning so the plan reflects reality, not assumptions:
 - **Observability is per-call.** `ObservabilityService.recordLLMCall()` inserts **one row
   per LLM call** (`observability.service.ts:564`). → a multi-call turn needs a
   correlation id so the N rows roll up to one turn.
-- **Existing "capability" precedent.** Web search is already a gated capability
-  (`integrations/web-search-capability.resolver.js`, OpenRouter surcharge) — the model
-  for "let a turn use an existing WorkenAI tool" before arbitrary code exists.
+- **Web search is OpenRouter-plugin-specific.** It's a gated capability with an OpenRouter
+  surcharge (`integrations/web-search-capability.resolver.js`), tied to OpenRouter models
+  — **not** a provider-agnostic tool. On the Anthropic-native path it needs its own
+  implementation (Anthropic's web-search tool or a search API), so `web_search` is NOT a
+  free reuse.
+- **Anthropic path is detectable.** The transport already distinguishes the Anthropic SDK
+  route (`kind === 'anthropic-sdk'` in `chat.service.ts` / `anthropic-client.service.ts`)
+  — that's the gate for "executable skills available".
 - **Forward-compat already in place (from #2).** `skills.source` is `manual | import`
   (add `executable`); the `SKILL.md` parser keeps unknown frontmatter in
   `extraFrontmatter` and preserves the body (`skill-md.parser.ts`) — script sections are
@@ -48,159 +53,183 @@ Verified before planning so the plan reflects reality, not assumptions:
 
 ## 3. Architecture decisions
 
-1. **Anthropic-native first.** Build the agent loop on the Anthropic adapter only
-   (`integrations/anthropic-client.service.ts`), where tool-calling + a code-execution
-   sandbox are first-class. Avoids the multi-provider wire-format tangle for v1; other
-   providers fall back to Option-#2 behavior (instructions only).
+1. **Anthropic-native first.** Build the agent loop on the Anthropic adapter only, where
+   tool-calling + a code-execution sandbox are first-class. Avoids the multi-provider
+   wire-format tangle for v1; other providers fall back to Option-#2 behavior
+   (instructions only), gated on `kind === 'anthropic-sdk'`.
 2. **Isolated execution path.** A dedicated `skill-execution` service + endpoint
-   (`POST /skills/:id/run` or an opt-in flag on the chat turn) so `chatStream` and every
-   other feature (compare-models, team chat, AI cron, tenders) stay untouched.
-3. **Two-stage capability ramp.**
-   - **3a — existing tools only (no sandbox):** the agent loop may call a small registry
-     of *vetted WorkenAI tools* (KC lookup, web search, document/embedding ops). ~70% of
-     the value, **no arbitrary code execution**, dramatically smaller risk surface.
-   - **3b — sandboxed script execution:** run skill-provided scripts in a real sandbox
-     (container/WASM/Anthropic code-exec) producing file artifacts.
-4. **Tool-calling abstraction in the transport layer.** A provider-agnostic tool
+   (`POST /skills/:id/run`) so `chatStream` and every other feature (compare-models, team
+   chat, AI cron, tenders) stay untouched.
+3. **Feature-flagged from day one.** The entire subsystem sits behind an
+   **executable-skills flag** (org-setting + env kill-switch, **default OFF**). This lets
+   the single large PR merge "dark" and be enabled per-org gradually — the main mitigation
+   for the one-PR risk (§12). No flag = endpoints 404 / UI hidden.
+4. **Two-stage capability ramp — be precise about what each delivers:**
+   - **3a — agent loop with vetted tools (no sandbox, Phase B):** the loop may call a
+     small registry of *WorkenAI-owned* tools (KC lookup, read-attached-file). **It does
+     NOT run the skill's own scripts** — the skill's instructions just steer the model to
+     use those tools. ~70% of the value, no arbitrary code execution.
+   - **3b — sandboxed script execution (Phase D):** the skill's *own* scripts actually
+     run in a sandbox and produce file artifacts. This is the part that makes a skill
+     truly "executable".
+   > Don't conflate the two: Phase B is the loop + tools; real skill-script execution
+   > arrives only in Phase D.
+5. **Tool-calling abstraction in the transport layer.** A provider-agnostic tool
    schema + loop driver added to `ChatTransportService`, with the Anthropic adapter as
    the first concrete implementation.
-5. **Turn = unit of billing/observability.** A `turnId` correlates all upstream + tool
-   calls; budget gates run before each upstream call; spend aggregates to the turn.
+6. **Turn = unit of billing/observability.** A `turnId` correlates all upstream + tool
+   calls; budget gates run before each upstream call; spend aggregates to the turn; a
+   hard **pre-run cost ceiling** caps the whole run.
 
-## 4. Data model (incremental, additive)
+## 4. Data model (decisions made — not deferred)
 
-- `skills.source`: add value **`executable`** (no migration shape change — it's a text
-  column; just a new accepted value + validation).
-- New **`skill_scripts`** (or reuse a JSONB column on `skills`): structured script /
-  resource entries extracted from `SKILL.md` (name, language, entrypoint, content/ref).
-  Decide table vs JSONB during PR A; JSONB is lighter if scripts stay small.
-- New **`skill_runs`** table: one row per execution turn — `id`, `skillId`, `userId`,
-  `conversationId?`, `status` (running/done/failed/cancelled), `turnId`, timing, error.
-- New **`skill_run_steps`** table: per tool/LLM step within a run — `runId`, `stepType`
-  (llm | tool | script), `tool`, input/output preview, tokens, costUsd, latency.
-  (Mirrors `observabilityEvents`; or extend that table with a `turnId`/`parentId` instead
-  of a new table — decide in PR C.)
-- New **`skill_artifacts`** table: generated files — `runId`, filename, mime, sizeBytes,
-  storagePath (under `uploads/skill-artifacts/`), createdAt. Cascade on run delete.
+- `skills.source`: add value **`executable`** (text column; new accepted value +
+  validation, no shape change).
+- **Scripts → JSONB column `skills.scripts`** (not a table): structured entries from
+  `SKILL.md` (name, language, entrypoint, content/ref). Script bodies are small and only
+  read as a unit — JSONB is lighter than a table here.
+- **`skill_runs`** table: one row per execution — `id`, `skillId`, `userId`,
+  `conversationId?`, `status` (running/done/failed/cancelled), `turnId`, `costUsd`,
+  timing, error.
+- **`skill_run_steps`** table (real table, not JSONB): per LLM/tool/script step —
+  `runId`, `stepType` (llm | tool | script), `tool`, input/output preview, tokens,
+  costUsd, latency. A table because steps are queried for observability dashboards.
+- **Observability:** add a nullable **`turnId`** column to the existing
+  `observabilityEvents` table (extend, don't create a parallel table) so existing
+  dashboards keep working and a multi-call turn rolls up by `turnId`.
+- **`skill_artifacts`** table: generated files — `runId`, filename, mime, sizeBytes,
+  storagePath (`uploads/skill-artifacts/`), createdAt, **expiresAt** (retention).
+  Cascade on run delete.
 
 ## 5. Backend components
 
-- **`SkillExecutionService`** — owns a single run: builds the system prompt from the
-  skill, runs the agent loop, persists `skill_runs`/`_steps`/`_artifacts`, emits SSE.
+- **`SkillExecutionService`** — owns a single run: builds the system prompt + tool
+  definitions from the skill, runs the agent loop, persists `skill_runs`/`_steps`/
+  `_artifacts`, emits SSE. **One active run per user** (mirror the import `activeJobs`
+  guard) — a second run is rejected with 409 until the first finishes or is cancelled.
 - **Agent loop driver** — model → parse tool calls → dispatch to ToolRegistry → feed
-  `tool_result` back → repeat until no tool calls or a step cap (hard max iterations +
-  wall-clock + token budget). Fail-closed on cap.
-- **`ToolRegistry`** — vetted tools for 3a: `kc_search`, `web_search`,
-  `read_attached_file`, `generate_embedding`. Each has a JSON Schema + a guarded handler.
-- **Provider tool-calling adapter** — extend `ChatTransportService` with a
-  `streamWithTools(...)` that the Anthropic adapter implements (tool_use / tool_result
-  blocks); other providers throw "executable skills require an Anthropic-native model".
-- **Sandbox runtime (3b)** — pluggable; v1 candidate = Anthropic code execution, fallback
-  = a locked-down container/WASM worker with no network, CPU/mem/time limits, ephemeral
-  FS. Output files copied to `skill_artifacts`.
+  `tool_result` back → repeat until no tool calls or a cap. **Hard caps from day one:**
+  max iterations, total tokens, wall-clock, and the per-run cost ceiling. Fail-closed on
+  any cap. Honors an abort signal (Stop) like the chat stream.
+- **`ToolRegistry`** — vetted tools for 3a: `kc_search`, `read_attached_file` (both scoped
+  to the caller). `web_search` only if implemented for the Anthropic path (§2) — otherwise
+  omitted from v1. Each tool has a JSON Schema + a guarded handler.
+- **Provider tool-calling adapter** — extend `ChatTransportService` with `streamWithTools`
+  implemented by the Anthropic adapter; non-Anthropic routes throw "executable skills
+  require an Anthropic-native model".
+- **Sandbox runtime (3b)** — pluggable behind an interface; v1 candidate = Anthropic code
+  execution, fallback = locked-down container/WASM worker (no network, CPU/mem/time caps,
+  ephemeral FS). Output files → `skill_artifacts`.
+- **Artifact retention reaper** — periodic cleanup of expired artifacts + their disk files
+  (reuse the `knowledge-ingestion` reaper pattern), so generated files don't accumulate.
 - **Multi-call billing/observability** — `turnId` threaded through; budget gate before
-  each upstream call; `recordLLMCall` gets `turnId` (+ step index) so a turn rolls up.
+  each upstream call; `recordLLMCall` gets `turnId` so a turn rolls up.
 
 ## 6. API + SSE
 
-- `POST /skills/:id/run` (or `chat` with `executeSkillId`) → SSE stream of:
-  `run_started`, `llm_delta`, `tool_call`, `tool_result`, `artifact`, `run_done`,
-  `run_error`. Mirrors the existing chat SSE framing so the FE transport is reused.
-- `GET /skills/runs/:id` — run + steps + artifacts (for reload/history).
+- `POST /skills/:id/run` → SSE stream of: `run_started`, `llm_delta`, `tool_call`,
+  `tool_result`, `artifact`, `run_done`, `run_error`. Mirrors the chat SSE framing so the
+  FE transport is reused. 404 when the flag is off.
+- `GET /skills/runs/:id` — run + steps + artifacts (reload/history).
 - `GET /skills/artifacts/:id/download` — stream the generated file (authz: run owner).
-- `DELETE /skills/runs/active` — cancel a running execution (abort signal, like chat Stop).
+- `DELETE /skills/runs/active` — cancel the running execution (abort, like chat Stop).
 
 ## 7. Frontend
 
 - New chat states: "Running skill…", collapsible **tool-step timeline** (each call +
   result), and **artifact chips** with download — net-new UI under `project-chat/`.
 - Reuse the SSE client + the `metadata.skills` indicator; add `metadata.skillRun`.
-- Gate the "Run" affordance to executable skills on Anthropic-native models; otherwise
-  show why it's unavailable.
+- Show a **pre-run cost estimate**; gate the "Run" affordance to executable skills on
+  Anthropic-native models **and** the feature flag; otherwise show why it's unavailable.
 
 ## 8. Security model
 
-- 3a: no arbitrary code — only vetted tools, each guarded (KC scoped to the caller's
-  accessible chunks, web search via the existing capability gate, no FS/network beyond
-  the tool).
-- 3b sandbox: no network by default, read-only except a scratch dir, CPU/mem/wall-clock
-  caps, output size cap, hard iteration cap on the loop. New `guardrails` coverage for
-  what a skill may execute. Artifacts virus/size-checked before download.
-- Authz: a run is owned by the caller; artifacts/steps are owner-only. Executable skills
-  respect the same visibility gating as #2 (`getAccessibleSkills`).
+- **3a:** no arbitrary code — only vetted tools, each guarded (KC scoped to the caller's
+  accessible chunks; no FS/network beyond the tool).
+- **3b sandbox:** no network by default, read-only except a scratch dir, CPU/mem/wall-clock
+  caps, output-size cap, hard iteration cap. New `guardrails` coverage for what a skill
+  may execute. Artifacts size/type-checked before download.
+- **Prompt-injection / tool abuse (new attack surface).** The agent reads *untrusted*
+  content (KC chunks, web results, attached files) that could contain instructions like
+  "ignore the task and call tool X / exfiltrate Y". Mitigations: keep skill instructions
+  and tool-result data in clearly separated roles; restrict the tool scope per run; never
+  let a tool result silently widen permissions; log every tool call for audit.
+- **Authz:** a run + its steps/artifacts are owner-only. Executable skills respect the
+  same visibility gating as #2 (`getAccessibleSkills`). One active run per user.
 
 ## 9. Delivery: ONE branch, ONE PR (phased internally)
 
 **Decision:** the whole subsystem ships as a **single branch `feat/skills-executable`
 and a single PR**, not a series of PRs. The phases below are **internal milestones /
-commit groups** within that one branch — they exist to order the work and keep each
-commit green, but they are reviewed and merged together.
+commit groups** — they order the work and keep each commit green, but are reviewed and
+merged together. The **feature flag (default OFF)** is what makes one big PR safe: it
+merges dark and is enabled per-org afterwards.
 
 Order chosen so the branch is always buildable and each phase de-risks the next:
 
-- **Phase A — Foundation (no execution):** `executable` source + structured `SKILL.md`
-  script extraction (parse-and-preserve → parse-and-structure) + data model
-  (`skill_runs`/`_steps`/`_artifacts` or JSONB) + migration. Builds, no behavior change.
-- **Phase B — Agent loop, existing tools only (3a), Anthropic-native:** ToolRegistry +
-  `streamWithTools` on the Anthropic adapter + `SkillExecutionService` + `POST /run` SSE.
-  No sandbox; tools = KC/web-search/read-file.
+- **Phase A — Foundation (no execution):** `executable` source + feature flag +
+  structured `SKILL.md` extraction + data model + migration. No behavior change.
+- **Phase B — Agent loop + vetted tools (3a), Anthropic-native:** tool-calling
+  abstraction + ToolRegistry + `SkillExecutionService` + run endpoint + **cancel**.
+  No sandbox; the skill's own scripts do **not** run yet.
 - **Phase C — Multi-call billing + observability:** `turnId` aggregation, per-call budget
-  gating across the loop, run/step persistence wired to `ObservabilityService`.
-- **Phase D — Sandbox runtime (3b):** sandboxed script execution + execution guardrails +
-  artifact storage/download.
+  gating, **pre-run cost ceiling/estimate**.
+- **Phase D — Sandbox (3b):** run the skill's own scripts in a sandbox → artifacts +
+  retention + execution guardrails.
 - **Phase E — Web UI:** tool-step timeline, artifact chips/download, run history,
-  model-gate messaging.
-- **Phase F — Full SKILL.md package import + polish:** scripts + resources package
-  format, cancel/resume, limits tuning.
+  cost estimate, flag/model gating.
+- **Phase F — Package format + polish:** full scripts+resources `SKILL.md` package,
+  limits/config tuning, docs.
 
-> Note: this supersedes the "expect several PRs" wording in `docs/skills-plan.md` →
-> Follow-up: Option #3. Single migration journal, single review, single merge.
+> Supersedes the "expect several PRs" wording in `docs/skills-plan.md`. Single migration
+> journal, single review, single merge — kept safe by the flag.
 
 ## 10. Commit plan (one branch `feat/skills-executable`, one PR)
 
-All commits land on the **single branch** `feat/skills-executable` and are merged as
-**one PR**. Commit + push each in order; `pnpm build` + `pnpm lint` +
-`pnpm --filter api test` (+ web `tsc`/lint where relevant) must be green before the next.
-Conventional-commit prefixes. The **Phase** labels are just grouping within the branch —
-there is only one migration journal, one review, one merge.
+All commits land on the **single branch** and merge as **one PR**. Commit + push each in
+order; `pnpm build` + `pnpm lint` + `pnpm --filter api test` (+ web `tsc`/lint where
+relevant) green before the next. Conventional-commit prefixes.
 
 **Phase A — Foundation**
-1. `feat(db): skill_runs + skill_run_steps + skill_artifacts schema + migration`
+1. `feat(db): skill_runs + skill_run_steps + skill_artifacts + skills.scripts + observabilityEvents.turnId schema + migration`
 2. `feat(skills): accept source='executable' (validation + types)`
-3. `feat(skills): structured SKILL.md script/resource extraction (extend parser, keep backward-compat)`
-4. `test(skills): parser structured-extraction + executable-source validation`
+3. `feat(skills): executable-skills feature flag (org-setting + env kill-switch, default off)`
+4. `feat(skills): structured SKILL.md script/resource extraction (extend parser, keep backward-compat)`
+5. `test(skills): parser structured-extraction + executable-source + flag gating`
 
-**Phase B — Agent loop (3a, Anthropic-native, existing tools only)**
-5. `feat(integrations): provider tool-calling abstraction (streamWithTools) + Anthropic impl`
-6. `feat(skills): ToolRegistry (kc_search, web_search, read_attached_file) with JSON schemas + guarded handlers`
-7. `feat(skills): SkillExecutionService agent loop (step/iteration/token caps, fail-closed)`
-8. `feat(skills): POST /skills/:id/run SSE endpoint + run persistence`
-9. `test(skills): agent loop (tool dispatch, cap enforcement, no-tool short-circuit) with a stub provider`
+**Phase B — Agent loop (3a, Anthropic-native, vetted tools only)**
+6. `feat(integrations): Anthropic streamWithTools POC (tool_use/tool_result loop, spike)`
+7. `feat(integrations): provider tool-calling abstraction over streamWithTools (Anthropic impl)`
+8. `feat(skills): ToolRegistry (kc_search, read_attached_file) with JSON schemas + guarded handlers`
+9. `feat(skills): SkillExecutionService agent loop (iteration/token/wall-clock caps, fail-closed, one-run-per-user)`
+10. `feat(skills): POST /skills/:id/run SSE endpoint + run persistence`
+11. `feat(skills): cancel running execution (DELETE /skills/runs/active, abort signal)`
+12. `test(skills): agent loop (tool dispatch, cap + cancel + single-run guard) with a stub provider`
 
 **Phase C — Billing + observability**
-10. `feat(observability): turnId correlation for multi-call turns (recordLLMCall + rollup)`
-11. `feat(skills): per-upstream-call budget gating across the loop`
-12. `test(skills): multi-call turn aggregates spend + re-gates each call`
+13. `feat(observability): turnId correlation for multi-call turns (recordLLMCall + rollup)`
+14. `feat(skills): per-upstream-call budget gating + hard pre-run cost ceiling + estimate`
+15. `test(skills): multi-call turn aggregates spend, re-gates each call, enforces ceiling`
 
 **Phase D — Sandbox (3b)**
-13. `feat(skills): sandbox runtime interface + first implementation (no network, resource caps)`
-14. `feat(skills): skill_artifacts storage + GET /artifacts/:id/download (owner-only)`
-15. `feat(guardrails): execution guardrails for sandboxed skills`
-16. `test(skills): sandbox limits (timeout/mem/output cap) + artifact authz`
+16. `feat(skills): sandbox runtime interface + first implementation (no network, resource caps)`
+17. `feat(skills): execute skill-provided scripts in sandbox → file artifacts`
+18. `feat(skills): artifact storage + GET download (owner-only) + retention reaper`
+19. `feat(guardrails): execution guardrails + untrusted-content/tool-abuse mitigations`
+20. `test(skills): sandbox limits (timeout/mem/output) + artifact authz + retention`
 
 **Phase E — Web UI**
-17. `feat(web): skill-run SSE client + tool-step timeline component`
-18. `feat(web): artifact chips + download + run history`
-19. `feat(web): gate "Run skill" to Anthropic-native models + unavailable messaging + i18n (en/sl)`
+21. `feat(web): skill-run SSE client + tool-step timeline component`
+22. `feat(web): artifact chips + download + run history + pre-run cost estimate`
+23. `feat(web): gate "Run skill" to Anthropic-native + feature flag + unavailable messaging + i18n (en/sl)`
 
 **Phase F — Package format + polish**
-20. `feat(skills): full SKILL.md package import (scripts + resources)`
-21. `feat(skills): cancel running execution (DELETE /skills/runs/active)`
-22. `chore(skills): limits/config tuning + docs`
+24. `feat(skills): full SKILL.md package import (scripts + resources)`
+25. `chore(skills): limits/config tuning + docs`
 
-> Single migration journal across all phases: the only DB migration is the Phase-A one
-> (commit 1); later phases add columns/tables in that same migration if still unmerged,
-> or a follow-up numbered migration if needed — never a renumber.
+> Single migration journal: the only DB migration is the Phase-A one (commit 1); later
+> phases extend it while the PR is unmerged, or add a follow-up numbered migration —
+> never a renumber.
 
 ## 11. Acceptance criteria (from issue #216)
 
@@ -212,11 +241,17 @@ there is only one migration journal, one review, one merge.
 
 ## 12. Risks / open questions
 
+- **One big PR (top risk).** Agent loop + sandbox + billing + UI in a single PR is hard to
+  review and risky to merge. **Mitigation:** the default-OFF feature flag (merge dark,
+  enable per-org), strictly self-contained green commits, and individually-revertable
+  phases. If review pain is still too high, the flag also makes it trivial to split later.
 - **Sandbox choice** (Anthropic code-exec vs self-hosted container/WASM) — biggest
-  unknown; Phase D can start behind an interface so the choice isn't load-bearing earlier.
-- **Provider lock-in** — v1 is Anthropic-only; document the model-gate clearly so users
+  unknown; Phase D sits behind an interface so the choice isn't load-bearing earlier.
+- **Provider lock-in** — v1 is Anthropic-only; the model-gate must be explicit so users
   aren't surprised when a skill won't run on a non-Anthropic model.
-- **Cost blow-ups** — hard caps (iterations, tokens, wall-clock) + per-call budget gates
-  are non-negotiable; surface estimated cost before a run if feasible.
-- **JSONB vs tables** for scripts/steps — decide in PR A/C; lean tables for steps
-  (queryable observability), JSONB for small script bodies.
+- **Prompt-injection from untrusted tool results** — see §8; treat as a first-class
+  security requirement, not an afterthought.
+- **Cost blow-ups** — hard caps + per-call budget gates + a pre-run ceiling are
+  non-negotiable.
+- **`web_search` on the Anthropic path** — not a free reuse of the OpenRouter plugin;
+  either implement an Anthropic-native search tool or drop it from v1.
