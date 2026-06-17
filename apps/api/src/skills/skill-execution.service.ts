@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { skillRunSteps, skillRuns, skills } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { ToolCallingService } from '../integrations/tool-calling.service.js';
@@ -200,5 +200,37 @@ export class SkillExecutionService {
     }
 
     yield { type: 'run_done', runId, status: finalStatus };
+  }
+
+  /** The caller's recent runs (newest first), for the run-history UI. */
+  async listRuns(userId: string) {
+    return this.db
+      .select({
+        id: skillRuns.id,
+        skillId: skillRuns.skillId,
+        status: skillRuns.status,
+        error: skillRuns.error,
+        startedAt: skillRuns.startedAt,
+        finishedAt: skillRuns.finishedAt,
+      })
+      .from(skillRuns)
+      .where(eq(skillRuns.userId, userId))
+      .orderBy(desc(skillRuns.startedAt))
+      .limit(50);
+  }
+
+  /** One run + its ordered steps (owner-only). */
+  async getRun(userId: string, runId: string) {
+    const [run] = await this.db
+      .select()
+      .from(skillRuns)
+      .where(and(eq(skillRuns.id, runId), eq(skillRuns.userId, userId)));
+    if (!run) throw new NotFoundException('Run not found.');
+    const steps = await this.db
+      .select()
+      .from(skillRunSteps)
+      .where(eq(skillRunSteps.runId, runId))
+      .orderBy(skillRunSteps.stepIndex);
+    return { ...run, steps };
   }
 }

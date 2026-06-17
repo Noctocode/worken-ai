@@ -5,15 +5,30 @@ import {
   Delete,
   Get,
   HttpCode,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Req,
+  Res,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { OrgSettingsService } from '../org-settings/org-settings.service.js';
 import { parseSkillMd } from './skill-md.parser.js';
+import { SkillExecutionService } from './skill-execution.service.js';
 import { SkillsService } from './skills.service.js';
+
+interface RunSkillBody {
+  /** What to ask the skill to do; optional generic kick-off otherwise. */
+  message?: string;
+  /** Model to run on (must route to an Anthropic-native model). */
+  model: string;
+  conversationId?: string;
+  projectId?: string;
+}
 
 interface CreateSkillBody {
   name: string;
@@ -44,11 +59,92 @@ interface ImportSkillBody {
 
 @Controller('skills')
 export class SkillsController {
-  constructor(private readonly skills: SkillsService) {}
+  constructor(
+    private readonly skills: SkillsService,
+    private readonly execution: SkillExecutionService,
+    private readonly orgSettings: OrgSettingsService,
+  ) {}
+
+  /** 404 the executable-skills surface unless the tenant flag is on. */
+  private async assertExecutableEnabled(userId: string): Promise<void> {
+    if (!(await this.orgSettings.isExecutableSkillsEnabled(userId))) {
+      throw new NotFoundException('Not found.');
+    }
+  }
 
   @Get()
   async list(@CurrentUser() user: AuthenticatedUser) {
     return this.skills.list(user.id);
+  }
+
+  // ── Executable skills (Option #3) — declared before :id so the literal
+  //    `runs` paths win over the param route. ────────────────────────────
+  @Get('runs')
+  async listRuns(@CurrentUser() user: AuthenticatedUser) {
+    await this.assertExecutableEnabled(user.id);
+    return this.execution.listRuns(user.id);
+  }
+
+  @Get('runs/:id')
+  async getRun(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.assertExecutableEnabled(user.id);
+    return this.execution.getRun(user.id, id);
+  }
+
+  /**
+   * Run an executable skill, streaming the agent loop as SSE
+   * (`run_started` / `text` / `tool_call` / `tool_result` / `usage` /
+   * `done` / `run_done` / `error`). 404 when the tenant flag is off. The
+   * run aborts if the client disconnects.
+   */
+  @Post(':id/run')
+  async run(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: RunSkillBody,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.assertExecutableEnabled(user.id);
+    if (!body?.model) {
+      throw new BadRequestException('`model` is required.');
+    }
+
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    const send = (event: string, data: unknown) => {
+      if (res.writableEnded || res.destroyed) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      for await (const ev of this.execution.run({
+        userId: user.id,
+        skillId: id,
+        modelIdentifier: body.model,
+        userMessage: body.message,
+        conversationId: body.conversationId ?? null,
+        projectId: body.projectId ?? null,
+        signal: controller.signal,
+      })) {
+        send(ev.type, ev);
+      }
+    } catch (err) {
+      send('error', {
+        message: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      if (!res.writableEnded) res.end();
+    }
   }
 
   @Get(':id')
