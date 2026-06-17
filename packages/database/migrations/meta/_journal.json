@@ -120,6 +120,20 @@
       "when": 1780020000000,
       "tag": "0016_project_name_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1780030000000,
+      "tag": "0017_ingestion_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780040000000,
+      "tag": "0018_import_notify_flag",
+      "breakpoints": true
     }
   ]
 }

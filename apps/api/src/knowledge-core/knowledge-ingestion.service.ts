@@ -1,4 +1,10 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 import {
   and,
   asc,
@@ -6,6 +12,8 @@ import {
   desc,
   eq,
   inArray,
+  isNull,
+  lt,
   or,
   sql,
 } from 'drizzle-orm';
@@ -52,6 +60,25 @@ const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
  *  locks in the app. Paired with hashtext(userId) as the objid. */
 const INGESTION_LOCK_NAMESPACE = 4271;
 
+/** How often the stalled-ingestion reaper runs. */
+const REAPER_INTERVAL_MS = 60_000;
+
+/** A `processing` row whose claim is older than this is considered orphaned
+ *  (its worker died). Generous vs. real single-file time so a slow-but-alive
+ *  job is never reclaimed — and the per-user advisory lock means a live run
+ *  holding the lock can't be double-processed even if a reclaim races it. */
+const STALE_INGESTION_MS = 15 * 60 * 1000;
+
+/** After this many reclaim attempts a stuck row goes terminal `failed`
+ *  instead of looping forever on a poison-pill file. */
+const MAX_INGESTION_ATTEMPTS = 3;
+
+/** Reason persisted + notified when the reaper gives up on a poison-pill
+ *  row after MAX_INGESTION_ATTEMPTS. Kept as one constant so the DB write
+ *  and the notification can't drift apart. */
+const RECOVERY_GAVE_UP_MESSAGE =
+  'Recovered after a stalled run; gave up after repeated stalls.';
+
 export type IngestionStatus = 'pending' | 'processing' | 'done' | 'failed';
 
 export interface IngestionAggregate {
@@ -81,17 +108,20 @@ export interface IngestionAggregate {
  * shape as project documents.
  */
 @Injectable()
-export class KnowledgeIngestionService {
+export class KnowledgeIngestionService
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly logger = new Logger(KnowledgeIngestionService.name);
+  /** Timer for the periodic stalled-ingestion reaper. */
+  private reaperTimer?: ReturnType<typeof setInterval>;
   // Per-user ingestion concurrency control. Only one background run per
   // user at a time; overlapping triggers set `rerunRequested` so the
   // active run re-scans instead of starting a second loop (which would
-  // split tallies + fire duplicate notifications). `importNotifyPending`
-  // marks runs that an external import fed, so re-ingests / manual
-  // uploads don't masquerade as "Import complete".
+  // split tallies + fire duplicate notifications). The import-complete
+  // intent is NOT tracked here — it lives on the row (`import_notify`) so
+  // it survives a cross-instance / reaper handoff.
   private readonly ingesting = new Set<string>();
   private readonly rerunRequested = new Set<string>();
-  private readonly importNotifyPending = new Set<string>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -109,6 +139,96 @@ export class KnowledgeIngestionService {
     private readonly onedriveGraph: OneDriveGraphService,
   ) {}
 
+  onModuleInit(): void {
+    // Periodic (NOT startup-only) reaper that recovers files orphaned in
+    // `processing` by a worker that died mid-ingest. setInterval rather than
+    // @nestjs/schedule to avoid pulling in a new dependency for one job.
+    // unref() so the timer never keeps the process alive on shutdown/tests.
+    this.reaperTimer = setInterval(() => {
+      void this.recoverStalledIngestions().catch((err) => {
+        this.logger.error(
+          'Stalled-ingestion reaper failed',
+          err instanceof Error ? err.stack : String(err),
+        );
+      });
+    }, REAPER_INTERVAL_MS);
+    this.reaperTimer.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.reaperTimer) clearInterval(this.reaperTimer);
+  }
+
+  /**
+   * Reclaim files stuck in `processing` because their worker died mid-job
+   * (the claim only ever takes `pending`, so nothing else re-picks them).
+   * Atomic single UPDATE: a row goes back to `pending` to be retried, or
+   * terminal `failed` once it has burned through MAX_INGESTION_ATTEMPTS.
+   * Only touches genuinely stale claims (`claimed_at` older than the window,
+   * or NULL for rows orphaned before that column existed) so a slow-but-
+   * alive job is never reclaimed. Re-triggers ingestion for the affected
+   * users; the import-complete notification needs no special handling here —
+   * the `import_notify` flag rode along on the row, so the re-drain fires it
+   * normally once the recovered file finishes.
+   */
+  private async recoverStalledIngestions(): Promise<void> {
+    const cutoff = new Date(Date.now() - STALE_INGESTION_MS);
+    const reclaimed = await this.db
+      .update(knowledgeFiles)
+      .set({
+        ingestionStatus: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN 'failed' ELSE 'pending' END`,
+        attempts: sql`${knowledgeFiles.attempts} + 1`,
+        claimedAt: null,
+        ingestionError: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN ${RECOVERY_GAVE_UP_MESSAGE} ELSE ${knowledgeFiles.ingestionError} END`,
+        ingestionCompletedAt: sql`CASE WHEN ${knowledgeFiles.attempts} + 1 >= ${MAX_INGESTION_ATTEMPTS} THEN now() ELSE ${knowledgeFiles.ingestionCompletedAt} END`,
+      })
+      .where(
+        and(
+          eq(knowledgeFiles.ingestionStatus, 'processing'),
+          or(
+            isNull(knowledgeFiles.claimedAt),
+            lt(knowledgeFiles.claimedAt, cutoff),
+          ),
+        ),
+      )
+      .returning({
+        id: knowledgeFiles.id,
+        name: knowledgeFiles.name,
+        status: knowledgeFiles.ingestionStatus,
+        userId: knowledgeFiles.uploadedById,
+      });
+
+    if (reclaimed.length === 0) return;
+    this.logger.warn(
+      `Recovered ${reclaimed.length} stalled ingestion file(s): ${reclaimed
+        .map((r) => `${r.name} → ${r.status}`)
+        .join(', ')}`,
+    );
+
+    // Re-drain each user whose files went back to `pending`. The
+    // import-complete notification rides on the row's `import_notify` flag,
+    // so a plain trigger is enough — drainUserQueue fires it once the
+    // recovered file finishes. Terminal `failed` rows get the per-file
+    // failure notice instead.
+    const pendingUsers = new Set<string>();
+    for (const r of reclaimed) {
+      if (!r.userId) continue;
+      if (r.status === 'pending') {
+        pendingUsers.add(r.userId);
+      } else {
+        await this.notifyIngestionFailure(
+          r.userId,
+          r.id,
+          r.name,
+          RECOVERY_GAVE_UP_MESSAGE,
+        );
+      }
+    }
+    for (const userId of pendingUsers) {
+      this.ingestPendingFilesForUser(userId);
+    }
+  }
+
   /**
    * Kick off ingestion for `pending` files owned by `userId` (across
    * all folders, including the auto-created "Onboarding" folder).
@@ -123,8 +243,14 @@ export class KnowledgeIngestionService {
     userId: string,
     opts?: { fromImport?: boolean },
   ): void {
-    // Mark this user's run as import-fed so it notifies on completion.
-    if (opts?.fromImport) this.importNotifyPending.add(userId);
+    // Flag this import's not-yet-finished files so the drain fires the
+    // import-complete notification when the last one lands. Persisted on the
+    // row (not in-memory) so it survives a cross-instance / reaper handoff.
+    // Fire-and-forget but kicked before the run below, so it's set well
+    // before any file finishes (a single UPDATE vs. download+parse+embed).
+    if (opts?.fromImport) {
+      void this.markImportNotify(userId);
+    }
 
     // One run per user: if a run is already draining, just ask it to
     // re-scan for the rows we added (its loop polls until empty) rather
@@ -150,6 +276,32 @@ export class KnowledgeIngestionService {
           this.ingestPendingFilesForUser(userId);
         }
       });
+  }
+
+  /**
+   * Flag the caller's not-yet-finished import files (`pending`/`processing`,
+   * import source) so the drain knows to fire the import-complete
+   * notification when they all reach a terminal state. Idempotent. Persisted
+   * on the row so the intent survives across instances and a reaper handoff.
+   */
+  private async markImportNotify(userId: string): Promise<void> {
+    try {
+      await this.db
+        .update(knowledgeFiles)
+        .set({ importNotify: true })
+        .where(
+          and(
+            eq(knowledgeFiles.uploadedById, userId),
+            inArray(knowledgeFiles.source, [...IMPORT_SOURCES]),
+            inArray(knowledgeFiles.ingestionStatus, ['pending', 'processing']),
+          ),
+        );
+    } catch (err) {
+      this.logger.error(
+        `Failed to flag import-notify for user ${userId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
+    }
   }
 
   /**
@@ -205,12 +357,6 @@ export class KnowledgeIngestionService {
     // files stay 'pending' ("Queued") until their turn.
     const INGESTION_BATCH_SIZE = 5;
 
-    // Tally files that came from a Drive/OneDrive/SharePoint import so we
-    // can fire a single "import complete" notification when the whole
-    // background run finishes — the user may have navigated away.
-    let importAdded = 0;
-    let importFailed = 0;
-
     // Outer loop absorbs concurrent triggers: a trigger that lands while
     // this run is active sets `rerunRequested` instead of starting a
     // second loop, so all rows go through ONE run with ONE notification.
@@ -222,7 +368,9 @@ export class KnowledgeIngestionService {
         // INGESTION_BATCH_SIZE rows transition pending→processing per round.
         const claimed = await this.db
           .update(knowledgeFiles)
-          .set({ ingestionStatus: 'processing' })
+          // Stamp the claim so the reaper can tell a live worker (fresh
+          // claimed_at) from a dead one (stale / NULL).
+          .set({ ingestionStatus: 'processing', claimedAt: new Date() })
           .where(
             inArray(
               knowledgeFiles.id,
@@ -253,21 +401,53 @@ export class KnowledgeIngestionService {
         if (claimed.length === 0) break;
 
         for (const file of claimed) {
-          const status = await this.ingestOneFile(userId, file);
-          if (IMPORT_SOURCES.has(file.source)) {
-            if (status === 'done') importAdded++;
-            else importFailed++;
-          }
+          await this.ingestOneFile(userId, file);
         }
       }
     } while (this.rerunRequested.has(userId));
 
-    // Whole pending queue drained. Notify only when an external import
-    // (not a manual upload / single re-ingest) fed this run and something
-    // was processed — fires even if the user left the page.
-    const wasImport = this.importNotifyPending.delete(userId);
-    if (wasImport && importAdded + importFailed > 0) {
-      await this.notifyImportComplete(userId, importAdded, importFailed);
+    await this.fireImportCompleteIfDone(userId);
+  }
+
+  /**
+   * Fire the import-complete notification iff every file flagged with
+   * `import_notify` for this user has reached a terminal state. DB-driven and
+   * atomic: the single UPDATE clears the flags only when none are still
+   * pending/processing, and RETURNING tells exactly one instance it won the
+   * notification (a racing instance's UPDATE matches nothing once the flags
+   * are cleared). Counts come from the DB, so a recovered-late file is
+   * counted correctly and the notification never fires twice. Best-effort.
+   */
+  private async fireImportCompleteIfDone(userId: string): Promise<void> {
+    try {
+      const completed = await this.db
+        .update(knowledgeFiles)
+        .set({ importNotify: false })
+        .where(
+          and(
+            eq(knowledgeFiles.uploadedById, userId),
+            eq(knowledgeFiles.importNotify, true),
+            // Hold until the whole flagged batch is terminal — a single file
+            // still pending/processing (incl. one a reaper just re-queued)
+            // keeps the notification armed.
+            sql`NOT EXISTS (
+              SELECT 1 FROM ${knowledgeFiles} k2
+              WHERE k2.uploaded_by_id = ${userId}
+                AND k2.import_notify = true
+                AND k2.ingestion_status IN ('pending', 'processing')
+            )`,
+          ),
+        )
+        .returning({ status: knowledgeFiles.ingestionStatus });
+
+      if (completed.length === 0) return;
+      const added = completed.filter((r) => r.status === 'done').length;
+      await this.notifyImportComplete(userId, added, completed.length - added);
+    } catch (err) {
+      this.logger.error(
+        `Failed to evaluate import-complete for user ${userId}`,
+        err instanceof Error ? err.stack : String(err),
+      );
     }
   }
 
@@ -390,6 +570,12 @@ export class KnowledgeIngestionService {
       const embeddings = await this.documentsService.embed(chunks);
 
       await this.db.transaction(async (tx) => {
+        // Idempotent (re)ingest: clear any chunks left by a prior partial
+        // run before inserting, so a reaper-reclaimed file — or any
+        // re-process — never duplicates chunks for the same file_id.
+        await tx
+          .delete(knowledgeChunks)
+          .where(eq(knowledgeChunks.fileId, file.id));
         await tx.insert(knowledgeChunks).values(
           chunks.map((content, i) => ({
             userId,
