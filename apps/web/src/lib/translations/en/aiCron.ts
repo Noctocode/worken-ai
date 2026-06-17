@@ -93,8 +93,8 @@ export const aiCron = {
   'aiCron.files.uploadFailed': 'Could not upload the files.',
 
   // Context
-  'aiCron.context.knowledgeCore': 'Use Knowledge Core',
-  'aiCron.context.knowledgeCoreDesc': 'Retrieve relevant documents from your Knowledge Core as context.',
+  'aiCron.context.knowledgeCore': 'Use all files in Knowledge Core',
+  'aiCron.context.knowledgeCoreDesc': 'Search every file you have access to in Knowledge Core for context. When off, only the files in this context are used.',
   'aiCron.context.webSearch': 'Web search',
   'aiCron.context.webSearchDesc': 'Let the model browse the live web (where enabled for your org).',
 

@@ -95,8 +95,8 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.files.uploadFailed': 'Datotek ni bilo mogoče naložiti.',
 
   // Context
-  'aiCron.context.knowledgeCore': 'Uporabi Knowledge Core',
-  'aiCron.context.knowledgeCoreDesc': 'Pred zagonom pridobi relevantne dokumente iz Knowledge Core kot kontekst.',
+  'aiCron.context.knowledgeCore': 'Uporabi vse datoteke v Knowledge Core',
+  'aiCron.context.knowledgeCoreDesc': 'Pri iskanju konteksta upošteva vse datoteke, do katerih imaš dostop v Knowledge Core. Ko je izklopljeno, se uporabijo le datoteke v tem kontekstu.',
   'aiCron.context.webSearch': 'Spletno iskanje',
   'aiCron.context.webSearchDesc': 'Modelu dovoli iskanje po spletu (kjer je omogočeno za organizacijo).',
 
