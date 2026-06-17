@@ -202,7 +202,12 @@ export class KnowledgeCoreController {
   updateFileVisibility(
     @Param('id') id: string,
     @Body()
-    body: { visibility: string; teamIds?: string[]; projectIds?: string[] },
+    body: {
+      visibility: string;
+      teamIds?: string[];
+      projectIds?: string[];
+      scheduleIds?: string[];
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.updateFileVisibility(
@@ -211,6 +216,7 @@ export class KnowledgeCoreController {
       body?.visibility,
       body?.teamIds,
       body?.projectIds,
+      body?.scheduleIds,
     );
   }
 

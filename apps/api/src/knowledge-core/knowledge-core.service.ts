@@ -1386,6 +1386,51 @@ export class KnowledgeCoreService {
   }
 
   /**
+   * Validate + dedupe schedule IDs for 'schedule' visibility. A
+   * schedule-visibility file is pinned to specific AI Cron schedule(s) —
+   * searchable only as those schedules' run context, never via the org-wide
+   * RAG path (mirrors how 'project' works). The caller must own each
+   * schedule (scheduled_prompts.owner_id); there is no admin/team override
+   * because schedules are personal to their owner. Returns the validated
+   * array ready to insert into schedule_knowledge_files.
+   */
+  private async resolveAssignableScheduleIds(
+    input: string[],
+    callerId: string,
+  ): Promise<string[]> {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException(
+        '`scheduleIds` must be an array when visibility is "schedule".',
+      );
+    }
+    const unique = Array.from(
+      new Set(input.filter((s) => typeof s === 'string' && s.length > 0)),
+    );
+    if (unique.length === 0) {
+      throw new BadRequestException(
+        'Pick at least one schedule for "Schedule" visibility.',
+      );
+    }
+    const rows = await this.db
+      .select({ id: scheduledPrompts.id })
+      .from(scheduledPrompts)
+      .where(
+        and(
+          eq(scheduledPrompts.ownerId, callerId),
+          inArray(scheduledPrompts.id, unique),
+        ),
+      );
+    const owned = new Set(rows.map((r) => r.id));
+    const denied = unique.filter((id) => !owned.has(id));
+    if (denied.length > 0) {
+      throw new ForbiddenException(
+        'You can only assign schedules you own.',
+      );
+    }
+    return unique;
+  }
+
+  /**
    * Force a fresh ingestion pass for a single file. The /knowledge-core
    * UI exposes this as a "Retrain" action on each row; useful after
    * we change the parser / chunker (or when an earlier run landed
@@ -1536,6 +1581,7 @@ export class KnowledgeCoreService {
     visibilityInput: string,
     teamIdsInput?: string[],
     projectIdsInput?: string[],
+    scheduleIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
@@ -1546,10 +1592,11 @@ export class KnowledgeCoreService {
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
       visibilityInput !== 'teams' &&
-      visibilityInput !== 'project'
+      visibilityInput !== 'project' &&
+      visibilityInput !== 'schedule'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', 'project', or 'schedule'.`,
       );
     }
 
@@ -1622,6 +1669,13 @@ export class KnowledgeCoreService {
             isAdmin,
           )
         : [];
+    const scheduleIds =
+      visibilityInput === 'schedule'
+        ? await this.resolveAssignableScheduleIds(
+            scheduleIdsInput ?? [],
+            callerId,
+          )
+        : [];
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -1655,9 +1709,35 @@ export class KnowledgeCoreService {
           })),
         );
       }
+      // Schedule links double as the schedule's "Files in this context"
+      // attachment, so only TOUCH them when the caller is explicitly setting
+      // the 'schedule' tier (replace with the picked set). Switching to any
+      // OTHER tier leaves existing schedule attachments intact — detaching a
+      // file from its schedule's run context must be a deliberate action from
+      // the schedule UI, never a side effect of a KC visibility flip.
+      if (visibilityInput === 'schedule') {
+        await tx
+          .delete(scheduleKnowledgeFiles)
+          .where(eq(scheduleKnowledgeFiles.fileId, fileId));
+        if (scheduleIds.length > 0) {
+          await tx.insert(scheduleKnowledgeFiles).values(
+            scheduleIds.map((scheduledPromptId) => ({
+              scheduledPromptId,
+              fileId,
+              attachedBy: callerId,
+            })),
+          );
+        }
+      }
     });
 
-    return { id: fileId, visibility: visibilityInput, teamIds, projectIds };
+    return {
+      id: fileId,
+      visibility: visibilityInput,
+      teamIds,
+      projectIds,
+      scheduleIds,
+    };
   }
 
   /**

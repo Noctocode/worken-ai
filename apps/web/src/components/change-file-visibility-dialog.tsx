@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import {
   fetchProjects,
+  fetchScheduledPrompts,
   fetchTeams,
   updateKnowledgeFileVisibility,
   type KnowledgeFileVisibility,
@@ -35,6 +36,7 @@ interface FileForVisibility {
   visibility: KnowledgeFileVisibility;
   teams: { id: string; name: string }[];
   projects: { id: string; name: string }[];
+  schedules: { id: string; name: string }[];
 }
 
 interface ChangeFileVisibilityDialogProps {
@@ -67,6 +69,7 @@ export function ChangeFileVisibilityDialog({
     useState<KnowledgeFileVisibility>("all");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [projectIds, setProjectIds] = useState<string[]>([]);
+  const [scheduleIds, setScheduleIds] = useState<string[]>([]);
 
   // Reset state every time the dialog opens for a new file. Without
   // this the picker remembers the prior file's selection across
@@ -76,6 +79,7 @@ export function ChangeFileVisibilityDialog({
     setVisibility(file.visibility);
     setTeamIds(file.teams.map((t) => t.id));
     setProjectIds(file.projects.map((p) => p.id));
+    setScheduleIds(file.schedules.map((s) => s.id));
   }, [open, file]);
 
   // Lazy-fetch the picker data — only when the dialog is open AND
@@ -91,6 +95,11 @@ export function ChangeFileVisibilityDialog({
     queryFn: () => fetchProjects("all"),
     enabled: open && visibility === "project",
   });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "visibility-picker"],
+    queryFn: fetchScheduledPrompts,
+    enabled: open && visibility === "schedule",
+  });
 
   const mutation = useMutation({
     mutationFn: () => {
@@ -100,6 +109,7 @@ export function ChangeFileVisibilityDialog({
         visibility,
         teamIds,
         projectIds,
+        scheduleIds,
       );
     },
     onSuccess: () => {
@@ -119,6 +129,10 @@ export function ChangeFileVisibilityDialog({
     }
     if (visibility === "project" && projectIds.length === 0) {
       toast.error(t("visDlg.pickAtLeastProject"));
+      return;
+    }
+    if (visibility === "schedule" && scheduleIds.length === 0) {
+      toast.error(t("visDlg.pickAtLeastSchedule"));
       return;
     }
     mutation.mutate();
@@ -159,6 +173,7 @@ export function ChangeFileVisibilityDialog({
                 </SelectItem>
                 <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
                 <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
+                <SelectItem value="schedule">{t("visDlg.specificSchedule")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -168,7 +183,9 @@ export function ChangeFileVisibilityDialog({
                   ? t("visDlg.hintTeams")
                   : visibility === "project"
                     ? t("visDlg.hintProject")
-                    : t("visDlg.hintEveryone")}
+                    : visibility === "schedule"
+                      ? t("visDlg.hintSchedule")
+                      : t("visDlg.hintEveryone")}
             </p>
           </div>
 
@@ -247,6 +264,44 @@ export function ChangeFileVisibilityDialog({
                             </span>
                           ) : null}
                         </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {visibility === "schedule" && (
+            <div className="space-y-2">
+              <Label>{t("visDlg.schedulesWithAccess")}</Label>
+              {userSchedules.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  {t("visDlg.noSchedules")}
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userSchedules.map((s) => {
+                    const checked = scheduleIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={mutation.isPending}
+                          onChange={() =>
+                            setScheduleIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id],
+                            )
+                          }
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{s.name}</span>
                       </label>
                     );
                   })}

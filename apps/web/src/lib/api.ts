@@ -2503,11 +2503,13 @@ export async function updateKnowledgeFileVisibility(
   visibility: KnowledgeFileVisibility,
   teamIds: string[] = [],
   projectIds: string[] = [],
+  scheduleIds: string[] = [],
 ): Promise<{
   id: string;
   visibility: KnowledgeFileVisibility;
   teamIds: string[];
   projectIds: string[];
+  scheduleIds: string[];
 }> {
   const res = await apiFetch(
     `/knowledge-core/files/${fileId}/visibility`,
@@ -2521,7 +2523,9 @@ export async function updateKnowledgeFileVisibility(
           ? { visibility, teamIds }
           : visibility === "project"
             ? { visibility, projectIds }
-            : { visibility },
+            : visibility === "schedule"
+              ? { visibility, scheduleIds }
+              : { visibility },
       ),
     },
   );
