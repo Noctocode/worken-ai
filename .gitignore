@@ -46,3 +46,6 @@ apps/api/uploads
 # Local Figma reference screenshots downloaded by the figma MCP — not
 # part of the codebase, kept out so PRs stay focused.
 _figma-refs/
+
+# Design-bug reference screenshot (local debugging aid, not part of the app)
+design-bug.png
