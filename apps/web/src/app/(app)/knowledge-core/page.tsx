@@ -8,6 +8,7 @@ import {
   Folder,
   FolderInput,
   Loader2,
+  Lock,
   MoreVertical,
   Plus,
   Download,
@@ -45,6 +46,7 @@ import {
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { DriveSection } from "@/components/drive-section";
 import { OneDriveSection } from "@/components/onedrive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
@@ -175,6 +177,7 @@ function VisibilityBadge({
   projects?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   if (visibility === "admins") {
     return (
       <span
@@ -222,6 +225,19 @@ function VisibilityBadge({
       </span>
     );
   }
+  // visibility === 'all'. For a personal account this means owner-only, so the
+  // badge must read "Only me", not the company-wide "Everyone".
+  if (isPersonal) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title={t("knowledgeCore.visibilityOnlyMe")}
+      >
+        <Lock className="h-3 w-3" strokeWidth={2} />
+        {t("knowledgeCore.visibilityOnlyMe")}
+      </span>
+    );
+  }
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
@@ -237,6 +253,7 @@ export default function KnowledgeCorePage() {
   const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -1175,12 +1192,20 @@ export default function KnowledgeCorePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("onboarding.step6.visibilityAll")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("onboarding.step6.visibilityAll")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
-                <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
+                )}
+                {!isPersonal && (
+                  <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">

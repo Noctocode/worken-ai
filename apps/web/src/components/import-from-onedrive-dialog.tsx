@@ -28,6 +28,7 @@ import {
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -143,6 +144,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   const [scopeChoice, setScopeChoice] = useState<ImportScopeChoice>("all");
   const [entireConfirmed, setEntireConfirmed] = useState(false);
@@ -645,12 +647,20 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t("odDlg.everyone")}</SelectItem>
+              <SelectItem value="all">
+                {isPersonal
+                  ? t("knowledgeCore.visibilityOnlyMe")
+                  : t("odDlg.everyone")}
+              </SelectItem>
               {isAdmin && (
                 <SelectItem value="admins">{t("odDlg.adminsOnly")}</SelectItem>
               )}
-              <SelectItem value="teams">{t("odDlg.specificTeams")}</SelectItem>
-              <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
+              {!isPersonal && (
+                <SelectItem value="teams">{t("odDlg.specificTeams")}</SelectItem>
+              )}
+              {!isPersonal && (
+                <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
+              )}
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
