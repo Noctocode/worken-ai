@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -294,7 +293,6 @@ export class ConfluenceImportService {
         ),
       );
     if (!source) throw new NotFoundException('Confluence source not found');
-    if (source.ownerId !== userId) throw new ForbiddenException();
     await this.db
       .delete(confluenceImportSources)
       .where(eq(confluenceImportSources.id, sourceId));
@@ -538,6 +536,22 @@ export class ConfluenceImportService {
           scope.teamIds ?? [],
           scope.projectIds ?? [],
         );
+        // If a cancel landed during this batch's insert, cancelImport may
+        // have already snapshotted insertedFileIds without these ids. Delete
+        // this batch ourselves rather than pushing it — otherwise the rows
+        // are orphaned (source row gone, files left in `pending`).
+        if (job.cancelled) {
+          await this.db.delete(knowledgeFiles).where(
+            and(
+              eq(knowledgeFiles.uploadedById, userId),
+              inArray(
+                knowledgeFiles.id,
+                insertedRows.map((r) => r.id),
+              ),
+            ),
+          );
+          break;
+        }
         for (const row of insertedRows) job.insertedFileIds.push(row.id);
         totalInserted += insertedRows.length;
         job.progress.imported = totalInserted;
@@ -742,6 +756,11 @@ export class ConfluenceImportService {
           externalDriveId: spaceId,
         })),
       )
+      // Two concurrent imports for the same user can both clear dedup and
+      // race to insert the same page id; the source-scoped unique index
+      // would 23505 the loser. Skip the dup instead of crashing — returning
+      // then reflects only the rows actually inserted.
+      .onConflictDoNothing()
       .returning({ id: knowledgeFiles.id });
 
     if (visibility === 'teams' && teamIds.length > 0) {
@@ -792,6 +811,9 @@ export class ConfluenceImportService {
     }
 
     const kcByPage = new Map<string, string>();
+    // Guards against a cyclic parent chain (Confluence shouldn't return one,
+    // but a corrupt/hostile response could) recursing forever.
+    const visiting = new Set<string>();
     const resolve = async (pageId: string): Promise<string> => {
       const cached = kcByPage.get(pageId);
       if (cached) return cached;
@@ -799,12 +821,16 @@ export class ConfluenceImportService {
       // Parent of an imported page that wasn't itself in the new-pages set
       // (e.g. already imported on a prior sync) — attach under the space root.
       if (!page) return spaceFolderId;
+      // Cycle detected — break it by attaching under the space root.
+      if (visiting.has(pageId)) return spaceFolderId;
+      visiting.add(pageId);
       const parentKc =
         page.parentId && containerIds.has(page.parentId)
           ? await resolve(page.parentId)
           : spaceFolderId;
       const kcId = await this.ensureChildFolder(userId, parentKc, page.title);
       kcByPage.set(pageId, kcId);
+      visiting.delete(pageId);
       return kcId;
     };
 
