@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  CalendarClock,
   FileText,
   Files,
   Folder,
@@ -218,6 +219,17 @@ function VisibilityBadge({
         {projects.length > 0
           ? t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))
           : t("knowledgeMain.labelProject")}
+      </span>
+    );
+  }
+  if (visibility === "schedule") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={t("knowledgeMain.titleSchedule")}
+      >
+        <CalendarClock className="h-3 w-3" strokeWidth={2} />
+        {t("knowledgeCore.schedule")}
       </span>
     );
   }

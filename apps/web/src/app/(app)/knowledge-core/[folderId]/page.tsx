@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  CalendarClock,
   Download,
   FileText,
   Files,
@@ -223,6 +224,17 @@ function VisibilityBadge({
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
         {projects.length > 0 ? `${t("kcFolder.projects")} (${projects.length})` : t("kcFolder.project")}
+      </span>
+    );
+  }
+  if (visibility === "schedule") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
+        title={t("kcFolder.scheduleTitle")}
+      >
+        <CalendarClock className="h-3 w-3" strokeWidth={2} />
+        {t("kcFolder.schedule")}
       </span>
     );
   }

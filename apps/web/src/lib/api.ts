@@ -2249,7 +2249,8 @@ export type KnowledgeFileVisibility =
   | "all"
   | "admins"
   | "teams"
-  | "project";
+  | "project"
+  | "schedule";
 
 /**
  * Compact representation of a team link on a knowledge file. Carries
