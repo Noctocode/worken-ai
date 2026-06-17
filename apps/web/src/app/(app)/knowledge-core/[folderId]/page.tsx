@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
   CalendarClock,
@@ -187,6 +187,8 @@ function VisibilityBadge({
   schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const chipClass =
+    "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
   if (visibility === "admins") {
     return (
       <span
@@ -198,66 +200,62 @@ function VisibilityBadge({
       </span>
     );
   }
-  if (visibility === "teams") {
-    const names = teams.map((team) => team.name).join(", ");
-    return (
+  // UNION model: render one chip per non-empty scope set (teams + projects +
+  // schedules can coexist on the same file).
+  const chips: ReactNode[] = [];
+  if (teams.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("kcFolder.teamsTooltipPrefix")} ${names}.`
-            : t("kcFolder.teamsEmptyTooltip")
-        }
+        key="teams"
+        className={chipClass}
+        title={`${t("kcFolder.teamsTooltipPrefix")} ${teams.map((tm) => tm.name).join(", ")}.`}
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0 ? `${t("kcFolder.teams")} (${teams.length})` : t("kcFolder.teams")}
-      </span>
+        {teams.length === 1 ? teams[0].name : `${t("kcFolder.teams")} (${teams.length})`}
+      </span>,
     );
   }
-  if (visibility === "project") {
-    const names = projects.map((p) => p.name).join(", ");
-    return (
+  if (projects.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("kcFolder.projectsTooltipPrefix")} ${names}.`
-            : t("kcFolder.projectsEmptyTooltip")
-        }
+        key="projects"
+        className={chipClass}
+        title={`${t("kcFolder.projectsTooltipPrefix")} ${projects.map((p) => p.name).join(", ")}.`}
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0 ? `${t("kcFolder.projects")} (${projects.length})` : t("kcFolder.project")}
-      </span>
+        {projects.length === 1
+          ? projects[0].name
+          : `${t("kcFolder.projects")} (${projects.length})`}
+      </span>,
     );
   }
-  if (visibility === "schedule") {
-    const names = schedules.map((s) => s.name).join(", ");
-    return (
+  if (schedules.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("kcFolder.schedule")}: ${names}`
-            : t("kcFolder.scheduleTitle")
-        }
+        key="schedules"
+        className={chipClass}
+        title={`${t("kcFolder.schedule")}: ${schedules.map((s) => s.name).join(", ")}`}
       >
         <CalendarClock className="h-3 w-3" strokeWidth={2} />
         {schedules.length === 1
           ? schedules[0].name
-          : schedules.length > 1
-            ? `${t("kcFolder.schedule")} (${schedules.length})`
-            : t("kcFolder.schedule")}
+          : `${t("kcFolder.schedule")} (${schedules.length})`}
+      </span>,
+    );
+  }
+  if (visibility === "all" || chips.length === 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title={t("kcFolder.everyoneTitle")}
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {t("kcFolder.everyone")}
       </span>
     );
   }
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title={t("kcFolder.everyoneTitle")}
-    >
-      <Users className="h-3 w-3" strokeWidth={2} />
-      {t("kcFolder.everyone")}
-    </span>
+    <span className="inline-flex flex-wrap items-center gap-1">{chips}</span>
   );
 }
 

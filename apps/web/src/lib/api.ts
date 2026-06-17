@@ -2361,6 +2361,7 @@ export interface KnowledgeFolder {
 export type KnowledgeFileVisibility =
   | "all"
   | "admins"
+  | "none"
   | "teams"
   | "project"
   | "schedule";
@@ -2634,17 +2635,10 @@ export async function updateKnowledgeFileVisibility(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // Only ship the id array that matches the chosen visibility —
-      // for 'all' / 'admins' the BE clears any prior links anyway.
-      body: JSON.stringify(
-        visibility === "teams"
-          ? { visibility, teamIds }
-          : visibility === "project"
-            ? { visibility, projectIds }
-            : visibility === "schedule"
-              ? { visibility, scheduleIds }
-              : { visibility },
-      ),
+      // UNION model: `visibility` is the base tier ('all'/'admins'/'none')
+      // and the three link sets are independent + additive, so ship them all.
+      // The BE replaces each set authoritatively (empty array = clear).
+      body: JSON.stringify({ visibility, teamIds, projectIds, scheduleIds }),
     },
   );
   if (!res.ok) {

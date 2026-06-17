@@ -1617,15 +1617,19 @@ export class KnowledgeCoreService {
       .from(users)
       .where(eq(users.id, callerId));
     const isAdmin = caller?.role === 'admin';
-    if (
-      visibilityInput !== 'all' &&
-      visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams' &&
-      visibilityInput !== 'project' &&
-      visibilityInput !== 'schedule'
-    ) {
+    // UNION model: `visibility` is just the BROAD base tier — 'all'
+    // (company-wide), 'admins' (admin-only), or 'none' (no broad access).
+    // Team / project / schedule scopes are independent, additive link sets
+    // that can coexist with each other and the base, so a file can be in a
+    // project AND a team at the same time. Legacy single-scope values map to
+    // base 'none' (their access now comes purely from the link sets).
+    let base = visibilityInput;
+    if (base === 'teams' || base === 'project' || base === 'schedule') {
+      base = 'none';
+    }
+    if (base !== 'all' && base !== 'admins' && base !== 'none') {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', 'project', or 'schedule'.`,
+        `Invalid visibility "${visibilityInput}". Base must be 'all', 'admins', or 'none'.`,
       );
     }
 
@@ -1646,90 +1650,75 @@ export class KnowledgeCoreService {
         "Only the file's uploader or an admin can change its visibility.",
       );
     }
-    if (visibilityInput === 'admins' && !isAdmin) {
+    if (base === 'admins' && !isAdmin) {
       throw new ForbiddenException(
         'Only admins can mark a file as admin-only.',
       );
     }
-    // Mirror the upload-path invariant: 'teams' / 'project' are only
-    // meaningful for company-scope rows. Personal files are owner-
-    // only at chat time, so a restricted personal file would just
-    // leave stray link rows nobody ever reads.
-    if (
-      (visibilityInput === 'teams' || visibilityInput === 'project') &&
-      file.scope === 'personal'
-    ) {
+    const wantsTeams = (teamIdsInput ?? []).length > 0;
+    const wantsProjects = (projectIdsInput ?? []).length > 0;
+    // Mirror the upload-path invariant: team / project links are only
+    // meaningful for company-scope rows. Personal files are owner-only at
+    // chat time, so the links would just be stray rows nobody reads.
+    // (Schedule links ARE valid for personal-scope files.)
+    if ((wantsTeams || wantsProjects) && file.scope === 'personal') {
       throw new BadRequestException(
-        `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
+        'Team / Project scopes require a company profile — personal-scope files are owner-only.',
       );
     }
-    // Block visibility flips while the worker is mid-ingestion.
-    // KnowledgeIngestionService captures `visibility` at claim time
-    // and inserts chunks with that captured value — if we updated the
-    // file row + (still-empty) chunks rowset here, the worker's later
-    // INSERT would land chunks at the stale visibility and leave
-    // file.visibility and chunks.visibility out of sync. Mirror the
-    // same guard reingestFile uses; the admin retries in a second.
+    // Block visibility flips while the worker is mid-ingestion (chunks
+    // capture `visibility` at claim time — see reingestFile).
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
         'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 
-    // Resolve link sets BEFORE the transaction so validation errors
-    // don't leave a half-applied state. Empty arrays for unrelated
-    // visibility levels are intentional — the transaction below wipes
-    // any pre-existing links regardless. isAdmin gates whether the
-    // caller can target arbitrary teams/projects; non-admin owners
-    // are limited to their own membership.
-    const teamIds =
-      visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(
-            teamIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
-    const projectIds =
-      visibilityInput === 'project'
-        ? await this.resolveAssignableProjectIds(
-            projectIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
+    // Resolve every supplied link set BEFORE the transaction so a validation
+    // error can't leave a half-applied state. Each is independent — the
+    // caller can set any combination.
+    const teamIds = wantsTeams
+      ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, isAdmin)
+      : [];
+    const projectIds = wantsProjects
+      ? await this.resolveAssignableProjectIds(
+          projectIdsInput ?? [],
+          callerId,
+          isAdmin,
+        )
+      : [];
     const scheduleIds =
-      visibilityInput === 'schedule'
-        ? await this.resolveAssignableScheduleIds(
-            scheduleIdsInput ?? [],
-            callerId,
-          )
+      (scheduleIdsInput ?? []).length > 0
+        ? await this.resolveAssignableScheduleIds(scheduleIdsInput ?? [], callerId)
         : [];
 
     await this.db.transaction(async (tx) => {
       await tx
         .update(knowledgeFiles)
-        .set({ visibility: visibilityInput })
+        .set({ visibility: base })
         .where(eq(knowledgeFiles.id, fileId));
       await tx
         .update(knowledgeChunks)
-        .set({ visibility: visibilityInput })
+        .set({ visibility: base })
         .where(eq(knowledgeChunks.fileId, fileId));
-      // Replace, not merge: wiping and re-inserting keeps the link
-      // sets authoritative — flipping away clears the prior links;
-      // flipping in replaces with the new set.
+      // Replace all three link sets authoritatively — the editor sends the
+      // complete intended set for each scope (pre-filled from the file's
+      // current links), so wipe-and-reinsert keeps them in sync.
       await tx
         .delete(knowledgeFileTeams)
         .where(eq(knowledgeFileTeams.fileId, fileId));
       await tx
         .delete(projectKnowledgeFiles)
         .where(eq(projectKnowledgeFiles.fileId, fileId));
-      if (visibilityInput === 'teams' && teamIds.length > 0) {
+      await tx
+        .delete(scheduleKnowledgeFiles)
+        .where(eq(scheduleKnowledgeFiles.fileId, fileId));
+      if (teamIds.length > 0) {
         await tx
           .insert(knowledgeFileTeams)
           .values(teamIds.map((teamId) => ({ fileId, teamId })));
       }
-      if (visibilityInput === 'project' && projectIds.length > 0) {
+      if (projectIds.length > 0) {
         await tx.insert(projectKnowledgeFiles).values(
           projectIds.map((projectId) => ({
             projectId,
@@ -1738,31 +1727,20 @@ export class KnowledgeCoreService {
           })),
         );
       }
-      // Schedule links double as the schedule's "Files in this context"
-      // attachment, so only TOUCH them when the caller is explicitly setting
-      // the 'schedule' tier (replace with the picked set). Switching to any
-      // OTHER tier leaves existing schedule attachments intact — detaching a
-      // file from its schedule's run context must be a deliberate action from
-      // the schedule UI, never a side effect of a KC visibility flip.
-      if (visibilityInput === 'schedule') {
-        await tx
-          .delete(scheduleKnowledgeFiles)
-          .where(eq(scheduleKnowledgeFiles.fileId, fileId));
-        if (scheduleIds.length > 0) {
-          await tx.insert(scheduleKnowledgeFiles).values(
-            scheduleIds.map((scheduledPromptId) => ({
-              scheduledPromptId,
-              fileId,
-              attachedBy: callerId,
-            })),
-          );
-        }
+      if (scheduleIds.length > 0) {
+        await tx.insert(scheduleKnowledgeFiles).values(
+          scheduleIds.map((scheduledPromptId) => ({
+            scheduledPromptId,
+            fileId,
+            attachedBy: callerId,
+          })),
+        );
       }
     });
 
     return {
       id: fileId,
-      visibility: visibilityInput,
+      visibility: base,
       teamIds,
       projectIds,
       scheduleIds,

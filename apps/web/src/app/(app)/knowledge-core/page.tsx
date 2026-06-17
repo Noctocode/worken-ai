@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CalendarClock,
   FileText,
@@ -179,6 +179,9 @@ function VisibilityBadge({
   schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const chipClass =
+    "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
+  // 'admins' / 'all' are exclusive broad tiers — render a single pill.
   if (visibility === "admins") {
     return (
       <span
@@ -190,70 +193,71 @@ function VisibilityBadge({
       </span>
     );
   }
-  if (visibility === "teams") {
-    const names = teams.map((tm) => tm.name).join(", ");
-    return (
+  // UNION model: a file can carry several scopes at once — render one chip
+  // per non-empty scope set (team(s) + project(s) + schedule(s) together).
+  const chips: ReactNode[] = [];
+  if (teams.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? t("knowledgeMain.titleTeamsList").replace("{names}", names)
-            : t("knowledgeMain.titleNoTeams")
-        }
+        key="teams"
+        className={chipClass}
+        title={t("knowledgeMain.titleTeamsList").replace(
+          "{names}",
+          teams.map((tm) => tm.name).join(", "),
+        )}
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0
-          ? t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))
-          : t("knowledgeMain.labelTeams")}
-      </span>
+        {teams.length === 1
+          ? teams[0].name
+          : t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))}
+      </span>,
     );
   }
-  if (visibility === "project") {
-    const names = projects.map((p) => p.name).join(", ");
-    return (
+  if (projects.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? t("knowledgeMain.titleProjectsList").replace("{names}", names)
-            : t("knowledgeMain.titleNoProjects")
-        }
+        key="projects"
+        className={chipClass}
+        title={t("knowledgeMain.titleProjectsList").replace(
+          "{names}",
+          projects.map((p) => p.name).join(", "),
+        )}
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0
-          ? t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))
-          : t("knowledgeMain.labelProject")}
-      </span>
+        {projects.length === 1
+          ? projects[0].name
+          : t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))}
+      </span>,
     );
   }
-  if (visibility === "schedule") {
-    const names = schedules.map((s) => s.name).join(", ");
-    return (
+  if (schedules.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("knowledgeCore.schedule")}: ${names}`
-            : t("knowledgeMain.titleSchedule")
-        }
+        key="schedules"
+        className={chipClass}
+        title={`${t("knowledgeCore.schedule")}: ${schedules.map((s) => s.name).join(", ")}`}
       >
         <CalendarClock className="h-3 w-3" strokeWidth={2} />
         {schedules.length === 1
           ? schedules[0].name
-          : schedules.length > 1
-            ? `${t("knowledgeCore.schedule")} (${schedules.length})`
-            : t("knowledgeCore.schedule")}
+          : `${t("knowledgeCore.schedule")} (${schedules.length})`}
+      </span>,
+    );
+  }
+  // Base 'all' (or a file with no scopes at all) is company-wide.
+  if (visibility === "all" || chips.length === 0) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title={t("knowledgeMain.titleCompanyWide")}
+      >
+        <Users className="h-3 w-3" strokeWidth={2} />
+        {t("knowledgeCore.everyone")}
       </span>
     );
   }
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title={t("knowledgeMain.titleCompanyWide")}
-    >
-      <Users className="h-3 w-3" strokeWidth={2} />
-      {t("knowledgeCore.everyone")}
-    </span>
+    <span className="inline-flex flex-wrap items-center gap-1">{chips}</span>
   );
 }
 

@@ -50,12 +50,16 @@ interface ChangeFileVisibilityDialogProps {
   isAdmin: boolean;
 }
 
+// Base visibility tier (the broad access level). Team / project / schedule
+// scopes are independent additive sets layered on top under "Specific".
+type VisibilityBase = "all" | "admins" | "none";
+
 /**
- * Post-upload visibility editor for a single KC file. Covers all
- * four tiers (all / admins / teams / project) symmetrically with the
- * upload-time picker, including the multi-select pickers for teams
- * and projects. Pre-fills from the file's current state on every
- * open so the user starts from where they left off.
+ * Post-upload visibility editor for a single KC file. UNION model: pick a
+ * base tier (Everyone / Admins / Specific) and, under "Specific", any
+ * combination of teams + projects + schedules at once — a file can be scoped
+ * to a project AND a team simultaneously. Pre-fills from the file's current
+ * state on every open.
  */
 export function ChangeFileVisibilityDialog({
   file,
@@ -65,51 +69,58 @@ export function ChangeFileVisibilityDialog({
   isAdmin,
 }: ChangeFileVisibilityDialogProps) {
   const { t } = useLanguage();
-  const [visibility, setVisibility] =
-    useState<KnowledgeFileVisibility>("all");
+  const [base, setBase] = useState<VisibilityBase>("all");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [projectIds, setProjectIds] = useState<string[]>([]);
   const [scheduleIds, setScheduleIds] = useState<string[]>([]);
 
-  // Reset state every time the dialog opens for a new file. Without
-  // this the picker remembers the prior file's selection across
-  // openings, which is misleading.
+  // Reset state every time the dialog opens for a new file. Map the stored
+  // visibility to the base: 'all'/'admins' stay; any other value (legacy
+  // single-scope, or 'none') becomes "Specific" so the scope panels show.
   useEffect(() => {
     if (!open || !file) return;
-    setVisibility(file.visibility);
+    setBase(
+      file.visibility === "all"
+        ? "all"
+        : file.visibility === "admins"
+          ? "admins"
+          : "none",
+    );
     setTeamIds(file.teams.map((t) => t.id));
     setProjectIds(file.projects.map((p) => p.id));
     setScheduleIds(file.schedules.map((s) => s.id));
   }, [open, file]);
 
-  // Lazy-fetch the picker data — only when the dialog is open AND
-  // the matching visibility branch is active, so closing the dialog
-  // (or picking 'all'/'admins') doesn't burn round-trips.
+  // Under "Specific" all three scope lists are needed at once.
+  const scopesActive = open && base === "none";
   const { data: userTeams = [] } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
-    enabled: open && visibility === "teams",
+    enabled: scopesActive,
   });
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "kc-upload"],
     queryFn: () => fetchProjects("all"),
-    enabled: open && visibility === "project",
+    enabled: scopesActive,
   });
   const { data: userSchedules = [] } = useQuery({
     queryKey: ["ai-cron", "visibility-picker"],
     queryFn: fetchScheduledPrompts,
-    enabled: open && visibility === "schedule",
+    enabled: scopesActive,
   });
 
   const mutation = useMutation({
     mutationFn: () => {
       if (!file) throw new Error("Missing file");
+      // Under a broad base, clear the scope sets; under "Specific", send the
+      // chosen combination. The BE replaces each link set authoritatively.
+      const specific = base === "none";
       return updateKnowledgeFileVisibility(
         file.id,
-        visibility,
-        teamIds,
-        projectIds,
-        scheduleIds,
+        base,
+        specific ? teamIds : [],
+        specific ? projectIds : [],
+        specific ? scheduleIds : [],
       );
     },
     onSuccess: () => {
@@ -123,16 +134,13 @@ export function ChangeFileVisibilityDialog({
 
   const handleSave = () => {
     if (!file) return;
-    if (visibility === "teams" && teamIds.length === 0) {
-      toast.error(t("visDlg.pickAtLeastTeam"));
-      return;
-    }
-    if (visibility === "project" && projectIds.length === 0) {
-      toast.error(t("visDlg.pickAtLeastProject"));
-      return;
-    }
-    if (visibility === "schedule" && scheduleIds.length === 0) {
-      toast.error(t("visDlg.pickAtLeastSchedule"));
+    if (
+      base === "none" &&
+      teamIds.length === 0 &&
+      projectIds.length === 0 &&
+      scheduleIds.length === 0
+    ) {
+      toast.error(t("visDlg.pickAtLeastScope"));
       return;
     }
     mutation.mutate();
@@ -152,10 +160,8 @@ export function ChangeFileVisibilityDialog({
           <div className="space-y-2">
             <Label>{t("visDlg.visibility")}</Label>
             <Select
-              value={visibility}
-              onValueChange={(v) =>
-                setVisibility(v as KnowledgeFileVisibility)
-              }
+              value={base}
+              onValueChange={(v) => setBase(v as VisibilityBase)}
               disabled={mutation.isPending}
             >
               <SelectTrigger className="h-10 w-full cursor-pointer">
@@ -171,25 +177,19 @@ export function ChangeFileVisibilityDialog({
                 <SelectItem value="admins" disabled={!isAdmin}>
                   {t("visDlg.adminsOnly")}{!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
                 </SelectItem>
-                <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
-                <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
-                <SelectItem value="schedule">{t("visDlg.specificSchedule")}</SelectItem>
+                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
-              {visibility === "admins"
+              {base === "admins"
                 ? t("visDlg.hintAdmins")
-                : visibility === "teams"
-                  ? t("visDlg.hintTeams")
-                  : visibility === "project"
-                    ? t("visDlg.hintProject")
-                    : visibility === "schedule"
-                      ? t("visDlg.hintSchedule")
-                      : t("visDlg.hintEveryone")}
+                : base === "none"
+                  ? t("visDlg.hintSpecific")
+                  : t("visDlg.hintEveryone")}
             </p>
           </div>
 
-          {visibility === "teams" && (
+          {base === "none" && (
             <div className="space-y-2">
               <Label>{t("visDlg.teamsWithAccess")}</Label>
               {userTeams.length === 0 ? (
@@ -227,7 +227,7 @@ export function ChangeFileVisibilityDialog({
             </div>
           )}
 
-          {visibility === "project" && (
+          {base === "none" && (
             <div className="space-y-2">
               <Label>{t("visDlg.projectsWithAccess")}</Label>
               {userProjects.length === 0 ? (
@@ -272,7 +272,7 @@ export function ChangeFileVisibilityDialog({
             </div>
           )}
 
-          {visibility === "schedule" && (
+          {base === "none" && (
             <div className="space-y-2">
               <Label>{t("visDlg.schedulesWithAccess")}</Label>
               {userSchedules.length === 0 ? (

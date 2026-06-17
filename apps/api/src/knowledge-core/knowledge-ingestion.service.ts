@@ -855,32 +855,43 @@ export class KnowledgeIngestionService
         )`
       : sql`FALSE`;
 
+    // UNION visibility model: a file's broad-RAG access is the OR of its
+    // independent scopes, NOT a single enum tier. The base `visibility`
+    // ('all' / 'admins' / anything-else-as-restricted) drives the company-wide
+    // grant; team access is purely link-based (knowledge_file_teams), so a
+    // file scoped to BOTH a project AND a team surfaces for that team's
+    // members here while ALSO being pinned to the project's chat. Project /
+    // schedule links intentionally grant NO broad access — they're reached
+    // only via searchProjectAttachedChunks / searchScheduleAttachedChunks.
+    const teamLinkForMember = sql`EXISTS (
+      SELECT 1
+      FROM ${knowledgeFileTeams} kft
+      INNER JOIN ${teamMembers} tm
+        ON tm.team_id = kft.team_id
+      WHERE kft.file_id = ${knowledgeChunks.fileId}
+        AND tm.user_id = ${userId}
+        AND tm.status = 'accepted'
+    )`;
     const companyBranch = isAdmin
       ? and(
           eq(knowledgeChunks.scope, 'company'),
-          sql`${knowledgeChunks.visibility} <> 'project'`,
           sameCompanyAsCaller,
-        )
-      : or(
-          and(
-            eq(knowledgeChunks.scope, 'company'),
+          // Admin sees company-wide + admin-only files, plus any team-scoped
+          // file (no membership needed — admins see across teams). Project /
+          // schedule-only files stay out of the broad path.
+          or(
             eq(knowledgeChunks.visibility, 'all'),
-            sameCompanyAsCaller,
-          ),
-          and(
-            eq(knowledgeChunks.scope, 'company'),
-            eq(knowledgeChunks.visibility, 'teams'),
-            sameCompanyAsCaller,
+            eq(knowledgeChunks.visibility, 'admins'),
             sql`EXISTS (
-              SELECT 1
-              FROM ${knowledgeFileTeams} kft
-              INNER JOIN ${teamMembers} tm
-                ON tm.team_id = kft.team_id
+              SELECT 1 FROM ${knowledgeFileTeams} kft
               WHERE kft.file_id = ${knowledgeChunks.fileId}
-                AND tm.user_id = ${userId}
-                AND tm.status = 'accepted'
             )`,
           ),
+        )
+      : and(
+          eq(knowledgeChunks.scope, 'company'),
+          sameCompanyAsCaller,
+          or(eq(knowledgeChunks.visibility, 'all'), teamLinkForMember),
         );
 
     // Schedule-scoped files (AI Cron) never surface in the broad search —
