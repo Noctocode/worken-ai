@@ -10,35 +10,19 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
-import { CurrentUser } from '../auth/current-user.decorator.js';
-import type { AuthenticatedUser } from '../auth/types.js';
 import { uploadFileFilter } from '../knowledge-core/upload-allowlist.js';
-import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { DocumentsService } from './documents.service.js';
 
 @Controller()
 export class DocumentsController {
-  constructor(
-    private readonly documentsService: DocumentsService,
-    private readonly keyResolverService: KeyResolverService,
-  ) {}
+  constructor(private readonly documentsService: DocumentsService) {}
 
   @Post('projects/:projectId/documents')
   async create(
     @Param('projectId') projectId: string,
     @Body() body: { content: string },
-    @CurrentUser() user: AuthenticatedUser,
   ) {
-    const apiKey = await this.keyResolverService.resolveForProject(
-      projectId,
-      user.id,
-    );
-    return this.documentsService.create(
-      projectId,
-      body.content,
-      apiKey,
-      user.id,
-    );
+    return this.documentsService.create(projectId, body.content);
   }
 
   /**

@@ -125,7 +125,28 @@
       "idx": 17,
       "version": "7",
       "when": 1780030000000,
-      "tag": "0017_skills",
+      "tag": "0017_ingestion_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1780040000000,
+      "tag": "0018_import_notify_flag",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1780050000000,
+      "tag": "0019_confluence",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1780060000000,
+      "tag": "0020_skills",
       "breakpoints": true
     }
   ]

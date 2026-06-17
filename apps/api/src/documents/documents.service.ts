@@ -6,30 +6,13 @@ import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { documents } from '@worken/database/schema';
 import { randomUUID } from 'crypto';
 import { and, cosineDistance, count, desc, eq, min, sql } from 'drizzle-orm';
-import OpenAI from 'openai';
 import { DATABASE, type Database } from '../database/database.module.js';
-import { ObservabilityService } from '../observability/observability.service.js';
-
-interface OpenRouterUsage {
-  cost?: number;
-  total_tokens?: number;
-}
 
 @Injectable()
 export class DocumentsService {
   private embedder: FeatureExtractionPipeline | null = null;
 
-  constructor(
-    @Inject(DATABASE) private readonly db: Database,
-    private readonly observabilityService: ObservabilityService,
-  ) {}
-
-  private makeClient(apiKey?: string): OpenAI {
-    return new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: apiKey ?? process.env['OPENROUTER_API_KEY'],
-    });
-  }
+  constructor(@Inject(DATABASE) private readonly db: Database) {}
 
   private async getEmbedder(): Promise<FeatureExtractionPipeline> {
     if (!this.embedder) {
@@ -116,76 +99,25 @@ export class DocumentsService {
     return results;
   }
 
-  private async generateTitle(
-    text: string,
-    apiKey?: string,
-    callerUserId?: string,
-  ): Promise<string> {
-    const snippet = text.slice(0, 500);
-    const TITLE_MODEL = 'arcee-ai/trinity-large-preview:free';
-    const start = Date.now();
-    try {
-      const response = await this.makeClient(apiKey).chat.completions.create({
-        model: TITLE_MODEL,
-        messages: [
-          {
-            role: 'user',
-            content: `Summarize what this text is about in 2-5 words. Reply with only the title, no quotes or punctuation.\n\n${snippet}`,
-          },
-        ],
-        max_completion_tokens: 20,
-      });
-      if (callerUserId) {
-        const usage = response.usage as OpenRouterUsage | undefined;
-        const teamId =
-          await this.observabilityService.getPrimaryTeamId(callerUserId);
-        void this.observabilityService.recordLLMCall({
-          userId: callerUserId,
-          teamId,
-          eventType: 'document_title',
-          model: TITLE_MODEL,
-          totalTokens: usage?.total_tokens,
-          costUsd: usage?.cost,
-          latencyMs: Date.now() - start,
-          success: true,
-          metadata: { phase: 'title-generation' },
-        });
-      }
-      return (
-        response.choices[0]?.message?.content?.trim() || 'Untitled Document'
-      );
-    } catch (err) {
-      if (callerUserId) {
-        const teamId =
-          await this.observabilityService.getPrimaryTeamId(callerUserId);
-        void this.observabilityService.recordLLMCall({
-          userId: callerUserId,
-          teamId,
-          eventType: 'document_title',
-          model: TITLE_MODEL,
-          latencyMs: Date.now() - start,
-          success: false,
-          errorMessage: err instanceof Error ? err.message : String(err),
-          metadata: { phase: 'title-generation' },
-        });
-      }
-      return 'Untitled Document';
-    }
+  /**
+   * Display label for a pasted-text document group. This is purely a UI
+   * label for the project's document list — it does NOT affect retrieval
+   * (RAG searches chunk content + embeddings, never the title). It used to
+   * call an LLM to summarize the text into a title, which was overkill for a
+   * cosmetic field and brittle (the hardcoded model got delisted, so every
+   * title silently became "Untitled Document"). A generic dated label is
+   * enough; uploaded files keep their filename via createFromFile.
+   */
+  private pasteTitle(): string {
+    return `Pasted text · ${new Date().toISOString().slice(0, 10)}`;
   }
 
-  async create(
-    projectId: string,
-    content: string,
-    apiKey?: string,
-    callerUserId?: string,
-  ) {
+  async create(projectId: string, content: string) {
     const chunks = this.chunkText(content);
     if (chunks.length === 0) return [];
 
-    const [embeddings, title] = await Promise.all([
-      this.embed(chunks),
-      this.generateTitle(content, apiKey, callerUserId),
-    ]);
+    const embeddings = await this.embed(chunks);
+    const title = this.pasteTitle();
 
     const groupId = randomUUID();
 

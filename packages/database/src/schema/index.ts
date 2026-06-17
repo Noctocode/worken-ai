@@ -684,6 +684,20 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   ingestionStatus: text("ingestion_status").notNull().default("pending"),
   ingestionError: text("ingestion_error"),
   ingestionCompletedAt: timestamp("ingestion_completed_at"),
+  // Set to now() each time a worker claims this row (pending → processing).
+  // The stalled-ingestion reaper reclaims `processing` rows whose claim is
+  // older than the stale window (or NULL, i.e. orphaned before this column
+  // existed) so a worker that died mid-ingest doesn't strand the file.
+  claimedAt: timestamp("claimed_at"),
+  // How many times the reaper has reclaimed this row. After a cap it goes
+  // terminal `failed` rather than looping forever on a poison-pill file.
+  attempts: integer("attempts").notNull().default(0),
+  // True while this file is part of an import whose completion notification
+  // hasn't fired yet. Set when an import-fed drain is kicked off; cleared
+  // (and the notification sent) by whichever instance drains the last
+  // flagged file. DB-backed rather than in-memory so it survives a
+  // cross-instance / reaper handoff and fires exactly once.
+  importNotify: boolean("import_notify").notNull().default(false),
   // RAG visibility at chat / arena time. Personal accounts →
   // uploader-only; company accounts → org-wide. Set from the
   // uploader's profileType at upload time.
@@ -723,7 +737,12 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   // outside of source='drive'.
   externalUrl: text("external_url"),
   // SharePoint needs a (driveId, itemId) pair to download — itemId
-  // alone is ambiguous across libraries. Drive rows leave this NULL.
+  // alone is ambiguous across libraries. Drive / OneDrive rows leave
+  // this NULL. Confluence rows set it to the space id — not needed for
+  // download, but it keeps Confluence out of the Drive/OneDrive dedup
+  // index below (which requires external_drive_id IS NULL), so a
+  // Confluence page id that happens to equal a Drive file id for the
+  // same user can't collide.
   externalDriveId: text("external_drive_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
@@ -760,6 +779,16 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   uniqueIndex("knowledge_files_owner_sp_external_unique")
     .on(table.uploadedById, table.externalDriveId, table.externalId)
     .where(sql`${table.source} = 'sharepoint'`),
+  // De-dupe import of the same Confluence page by the same user.
+  // Confluence page ids are unique within the connected site, so the
+  // key is just (uploaded_by_id, external_id). Source-scoped so it can't
+  // collide with a Drive/OneDrive file id that happens to be the same
+  // string — those rows live in the index above (external_drive_id IS
+  // NULL), while Confluence rows set external_drive_id to the space id,
+  // which excludes them from it. Probed on every Confluence import.
+  uniqueIndex("knowledge_files_owner_confluence_external_unique")
+    .on(table.uploadedById, table.externalId)
+    .where(sql`${table.source} = 'confluence'`),
 ]);
 
 // Many-to-many link between `projects` and `knowledge_files`. Lets
@@ -1514,5 +1543,69 @@ export const onedriveImportSources = pgTable(
     uniqueIndex("onedrive_import_sources_owner_all_unique")
       .on(table.ownerId)
       .where(sql`${table.scope} = 'all'`),
+  ],
+);
+
+/**
+ * Per-space / per-page record of what's been imported from a connected
+ * Confluence (Atlassian) site. Parallels `driveImportSources` but the
+ * hierarchy is space → page (pages form a tree), so a row carries spaceId
+ * plus an optional pageId:
+ *
+ *   - `scope = 'space'`: whole-space import (every current page in the
+ *     space). One row per (owner, spaceId) via the partial unique index.
+ *   - `scope = 'page'` : a specific page and its descendant pages. One row
+ *     per (owner, spaceId, pageId).
+ *
+ * Re-sync semantics match Drive: only NEW pages are added (dedup by
+ * `knowledge_files.external_id` = Confluence page id, which is unique within
+ * a site; external_drive_id stays NULL so Confluence rows share the
+ * Drive/OneDrive `knowledge_files_owner_external_unique` index). Existing
+ * rows stay put even if the Confluence page changed.
+ */
+export const confluenceImportSources = pgTable(
+  "confluence_import_sources",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    connectionId: uuid("connection_id")
+      .references(() => oauthConnections.id, { onDelete: "cascade" })
+      .notNull(),
+    // 'space' for a whole-space import, 'page' for a specific page subtree.
+    scope: text("scope").notNull(),
+    // Confluence v2 space id. Always set — every import is anchored to a space.
+    spaceId: text("space_id").notNull(),
+    // Space key (e.g. "ENG"). Display + web-link cache.
+    spaceKey: text("space_key").notNull(),
+    // Display cache of the space name; also used as the KC child-folder name.
+    spaceName: text("space_name").notNull(),
+    // Confluence page id of the imported page. NULL when scope='space'.
+    pageId: text("page_id"),
+    // Display cache of the page title. NULL when scope='space'.
+    pageTitle: text("page_title"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    fileCountAtLastSync: integer("file_count_at_last_sync")
+      .notNull()
+      .default(0),
+    visibility: text("visibility").notNull().default("all"),
+    teamIds: jsonb("team_ids").$type<string[]>(),
+    projectIds: jsonb("project_ids").$type<string[]>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // At most one whole-space source per (owner, space).
+    uniqueIndex("confluence_import_sources_owner_space_unique")
+      .on(table.ownerId, table.spaceId)
+      .where(sql`${table.scope} = 'space'`),
+    // At most one page source per (owner, space, page).
+    uniqueIndex("confluence_import_sources_owner_page_unique")
+      .on(table.ownerId, table.spaceId, table.pageId)
+      .where(sql`${table.scope} = 'page'`),
   ],
 );
