@@ -61,9 +61,12 @@ Verified before planning so the plan reflects reality, not assumptions:
    (`POST /skills/:id/run`) so `chatStream` and every other feature (compare-models, team
    chat, AI cron, tenders) stay untouched.
 3. **Feature-flagged from day one.** The entire subsystem sits behind an
-   **executable-skills flag** (org-setting + env kill-switch, **default OFF**). This lets
-   the single large PR merge "dark" and be enabled per-org gradually — the main mitigation
-   for the one-PR risk (§12). No flag = endpoints 404 / UI hidden.
+   **executable-skills flag** stored on the existing `org_settings` table (via
+   `org-settings.service`), plus an env **kill-switch**, **default OFF**. This lets the
+   single large PR merge "dark" and be enabled per-org gradually — the main mitigation for
+   the one-PR risk (§12). No flag = endpoints 404 / UI hidden. **Rollout:** after merge,
+   enable per-org from the admin org-settings UI (internal/beta orgs first); the env
+   kill-switch disables it everywhere instantly if needed.
 4. **Two-stage capability ramp — be precise about what each delivers:**
    - **3a — agent loop with vetted tools (no sandbox, Phase B):** the loop may call a
      small registry of *WorkenAI-owned* tools (KC lookup, read-attached-file). **It does
@@ -80,6 +83,14 @@ Verified before planning so the plan reflects reality, not assumptions:
 6. **Turn = unit of billing/observability.** A `turnId` correlates all upstream + tool
    calls; budget gates run before each upstream call; spend aggregates to the turn; a
    hard **pre-run cost ceiling** caps the whole run.
+7. **Trigger = explicit "Run" for v1 (not auto-in-chat).** Unlike Option #2 (which
+   *auto-selects* instructional skills into a turn), an executable skill is launched by a
+   **deliberate user action** — running code + spending on a multi-call loop should never
+   fire implicitly. A run is initiated from the skill (or a composer "Run skill" action),
+   creates a `skill_run`, and its result + artifacts are posted back into the conversation
+   as an assistant message (with `metadata.skillRun`) so it lives in chat history.
+   `conversationId` is set when launched from a chat; a run launched from `/resources/skills`
+   has none. Auto-trigger can be revisited later, behind the same flag.
 
 ## 4. Data model (decisions made — not deferred)
 
@@ -184,6 +195,17 @@ Order chosen so the branch is always buildable and each phase de-risks the next:
 > Supersedes the "expect several PRs" wording in `docs/skills-plan.md`. Single migration
 > journal, single review, single merge — kept safe by the flag.
 
+**Sizing & prerequisites (set expectations):**
+- This is a **multi-week effort**, not a quick add. **Phase D (sandbox)** is the biggest,
+  riskiest piece.
+- Phase B alone is mostly **infrastructure** (agent loop + vetted tools): the model can
+  actively call `kc_search`/`read-file`, but the **headline feature — running the skill's
+  own scripts to produce a downloadable `.xlsx` — only lands in Phase D.** Don't market B
+  as "executable skills".
+- **Prerequisite before starting Phase D:** verify Anthropic **code-execution** is
+  available on our account/plan. If not, Phase D falls back to a self-hosted
+  container/WASM sandbox (materially more work) — decide before committing to the path.
+
 ## 10. Commit plan (one branch `feat/skills-executable`, one PR)
 
 All commits land on the **single branch** and merge as **one PR**. Commit + push each in
@@ -227,9 +249,17 @@ relevant) green before the next. Conventional-commit prefixes.
 24. `feat(skills): full SKILL.md package import (scripts + resources)`
 25. `chore(skills): limits/config tuning + docs`
 
-> Single migration journal: the only DB migration is the Phase-A one (commit 1); later
-> phases extend it while the PR is unmerged, or add a follow-up numbered migration —
-> never a renumber.
+> **Migrations: one NEW numbered migration per phase that needs schema — never edit an
+> already-pushed one.** Drizzle tracks applied migrations by content hash, so editing a
+> pushed migration is silently skipped on any dev/prod DB that already ran it (the exact
+> `relation … does not exist` failure we hit this cycle). So Phase A adds `00NN_*`, and if
+> Phase C/D need more columns they add `00NN+1`, `00NN+2`, … each with a strictly
+> increasing journal `when`. `check:migrations` must stay green at every commit.
+
+> **Sandbox testing caveat:** CI has no sandbox runtime, so the Phase-D test commit (20)
+> exercises the **sandbox interface against a mock** (caps, output handling, authz,
+> retention) — the *real* sandbox is verified manually / in a dedicated environment, not
+> in `pnpm --filter api test`. Don't write CI tests that need a live sandbox.
 
 ## 11. Acceptance criteria (from issue #216)
 
@@ -246,7 +276,9 @@ relevant) green before the next. Conventional-commit prefixes.
   enable per-org), strictly self-contained green commits, and individually-revertable
   phases. If review pain is still too high, the flag also makes it trivial to split later.
 - **Sandbox choice** (Anthropic code-exec vs self-hosted container/WASM) — biggest
-  unknown; Phase D sits behind an interface so the choice isn't load-bearing earlier.
+  unknown. **Action: verify Anthropic code-execution availability on our account/plan
+  before Phase D.** Phase D sits behind an interface so the choice isn't load-bearing
+  earlier, but the fallback (self-hosted container/WASM) is materially more work.
 - **Provider lock-in** — v1 is Anthropic-only; the model-gate must be explicit so users
   aren't surprised when a skill won't run on a non-Anthropic model.
 - **Prompt-injection from untrusted tool results** — see §8; treat as a first-class
