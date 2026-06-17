@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import Anthropic from '@anthropic-ai/sdk';
 import type { MessageStream } from '@anthropic-ai/sdk/lib/MessageStream';
 import type { ChatStreamEvent, StreamOptions } from '../chat/chat.service.js';
+import type { AgentLoopEvent, AgentLoopRequest } from './agent-tools.types.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -15,60 +16,14 @@ export interface AnthropicChatResponse {
   completionTokens?: number;
 }
 
-// ── Tool-calling agent loop (Option #3) ─────────────────────────────
-// Provider-neutral-ish shapes; commit 7 lifts these into a transport
-// abstraction. For the spike they live with the only implementation.
-
-/** A tool the model may call. `inputSchema` is a JSON Schema object. */
-export interface AgentToolDef {
-  name: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-}
-
-/** Caller-supplied handler: runs a tool call, returns its result text.
- *  Throwing is surfaced to the model as an error tool_result. */
-export type AgentToolDispatch = (call: {
-  id: string;
-  name: string;
-  input: unknown;
-}) => Promise<string>;
-
-/** Events streamed by the agent loop. */
-export type AgentLoopEvent =
-  | { type: 'text'; delta: string }
-  | { type: 'tool_call'; id: string; name: string; input: unknown }
-  | {
-      type: 'tool_result';
-      id: string;
-      name: string;
-      output: string;
-      isError: boolean;
-    }
-  | {
-      type: 'usage';
-      promptTokens: number;
-      completionTokens: number;
-      totalTokens: number;
-    }
-  | { type: 'done'; stopReason: string }
-  | { type: 'error'; message: string; status?: number };
-
-export interface StreamWithToolsParams {
-  model: string;
-  apiKey: string;
-  system?: string;
-  messages: ChatMessage[];
-  tools: AgentToolDef[];
-  dispatch: AgentToolDispatch;
-  /** Hard cap on model↔tool round-trips. Fail-closed on reaching it. */
-  maxIterations?: number;
-  maxTokens?: number;
-  signal?: AbortSignal;
-}
-
 const DEFAULT_MAX_TOKENS = 4096;
 const DEFAULT_MAX_ITERATIONS = 8;
+
+/** Anthropic-impl params: the provider-neutral run + resolved routing. */
+export type StreamWithToolsParams = AgentLoopRequest & {
+  model: string;
+  apiKey: string;
+};
 
 /**
  * Native Anthropic SDK wrapper. Used when a user has a BYOK key for the

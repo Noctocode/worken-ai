@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AnthropicClientService } from './anthropic-client.service.js';
 import { ChatTransportService } from './chat-transport.service.js';
+import { ToolCallingService } from './tool-calling.service.js';
 import { IntegrationsController } from './integrations.controller.js';
 import { IntegrationsService } from './integrations.service.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
@@ -16,7 +17,13 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
     IntegrationsService,
     ChatTransportService,
     AnthropicClientService,
+    ToolCallingService,
   ],
-  exports: [IntegrationsService, ChatTransportService, AnthropicClientService],
+  exports: [
+    IntegrationsService,
+    ChatTransportService,
+    AnthropicClientService,
+    ToolCallingService,
+  ],
 })
 export class IntegrationsModule {}
