@@ -11,6 +11,7 @@ import { projects } from "./projects";
 import { arena } from "./arena";
 import { prompts } from "./prompts";
 import { shortcuts } from "./shortcuts";
+import { skills } from "./skills";
 import { learnAcademy } from "./learnAcademy";
 import { resources } from "./resources";
 import { docs } from "./docs";
@@ -18,6 +19,7 @@ import { drive } from "./drive";
 import { sharepoint } from "./sharepoint";
 import { onedrive } from "./onedrive";
 import { msConnect } from "./msConnect";
+import { confluence } from "./confluence";
 import { observability } from "./observability";
 import { notifications } from "./notifications";
 import { guardrails } from "./guardrails";
@@ -38,6 +40,7 @@ export const sl: Record<TranslationKey, string> = {
   ...arena,
   ...prompts,
   ...shortcuts,
+  ...skills,
   ...learnAcademy,
   ...resources,
   ...docs,
@@ -45,6 +48,7 @@ export const sl: Record<TranslationKey, string> = {
   ...sharepoint,
   ...onedrive,
   ...msConnect,
+  ...confluence,
   ...observability,
   ...notifications,
   ...guardrails,

@@ -93,6 +93,18 @@ export default function ResourcesPage() {
       href: "/resources/shortcuts",
     },
     {
+      titleKey: "resources.skills",
+      descriptionKey: "",
+      icon: Sparkles,
+      bullets: [
+        "Capture how your team does a task",
+        "Auto-applied when a message fits",
+        "Stays active across a conversation",
+        "Import from SKILL.md",
+      ],
+      href: "/resources/skills",
+    },
+    {
       titleKey: "resources.howItWorks",
       descriptionKey: "",
       icon: Network,
@@ -117,6 +129,8 @@ export default function ResourcesPage() {
       "Master prompt engineering with curated lessons and enterprise best practices.",
     "resources.shortcuts":
       "Save short text snippets and macros to drop into the composer in one click.",
+    "resources.skills":
+      "Capture how your team does a task once; the assistant applies it automatically when it fits.",
     "resources.howItWorks":
       "See the platform architecture and the three ways WorkenAI can be deployed.",
   };

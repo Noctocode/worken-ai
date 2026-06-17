@@ -13,6 +13,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtOrApiKeyGuard } from './auth/jwt-or-api-key.guard';
 import { ChatModule } from './chat/chat.module';
 import { CompareModelsModule } from './compare-models/compare-models.module';
+import { ConfluenceModule } from './confluence/confluence.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { DatabaseModule } from './database/database.module';
 import { DocumentsModule } from './documents/documents.module';
@@ -31,6 +32,7 @@ import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { SharePointModule } from './sharepoint/sharepoint.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
+import { SkillsModule } from './skills/skills.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
 import { UsersModule } from './users/users.module';
@@ -59,6 +61,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     AuthModule,
     ChatModule,
     CompareModelsModule,
+    ConfluenceModule,
     ConversationsModule,
     DocumentsModule,
     GoogleDriveModule,
@@ -75,6 +78,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     PromptsModule,
     SharePointModule,
     ShortcutsModule,
+    SkillsModule,
     TeamsModule,
     TendersModule,
     UsersModule,

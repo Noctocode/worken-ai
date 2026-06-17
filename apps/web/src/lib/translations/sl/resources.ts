@@ -11,6 +11,9 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.promptImprover': 'Izboljšalnik promptov',
   'resources.learnAcademy': 'Akademija učenja',
   'resources.shortcuts': 'Bližnjice',
+  'resources.skills': 'Veščine',
+  'resources.skills.cardDesc':
+    'Enkrat zapišite, kako vaša ekipa opravi nalogo; pomočnik jo samodejno uporabi, ko se prilega.',
   'resources.quickStartGuide': 'Vodnik za hitri začetek',
   'resources.openTool': 'Odpri orodje',
   'resources.startWithBuilder': 'Začnite z Graditeljem',

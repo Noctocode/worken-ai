@@ -35,6 +35,10 @@ import {
   SharePointImportService,
   type SharePointImportScope,
 } from './sharepoint-import.service.js';
+import {
+  ConfluenceImportService,
+  type ConfluenceImportScope,
+} from './confluence-import.service.js';
 import { uploadFileFilter } from './upload-allowlist.js';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'knowledge-core');
@@ -55,6 +59,7 @@ export class KnowledgeCoreController {
     private readonly driveImport: DriveImportService,
     private readonly sharepointImport: SharePointImportService,
     private readonly onedriveImport: OneDriveImportService,
+    private readonly confluenceImport: ConfluenceImportService,
   ) {}
 
   @Get('folders')
@@ -542,6 +547,71 @@ export class KnowledgeCoreController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     await this.onedriveImport.deleteSource(user.id, id);
+    return { success: true };
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Confluence import + Re-sync
+  //
+  // OAuth lifecycle + raw space/page browsing live under /confluence/*
+  // (ConfluenceController). These endpoints handle only the
+  // Confluence→KC orchestration — direct parallel of /sharepoint/*.
+  // ────────────────────────────────────────────────────────────────
+
+  @Get('confluence/spaces/:spaceId/file-count')
+  getConfluenceSpaceFileCount(
+    @Param('spaceId') spaceId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.confluenceImport.getFileCountEstimateForSpace(user.id, spaceId);
+  }
+
+  @Post('confluence/import')
+  importFromConfluence(
+    @Body() body: ConfluenceImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.confluenceImport.importFromConfluence(user.id, body);
+  }
+
+  @Post('confluence/import/async')
+  startConfluenceImportAsync(
+    @Body() body: ConfluenceImportScope,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.confluenceImport.startImportSpaceAsync(user.id, body);
+  }
+
+  @Get('confluence/import/progress')
+  getConfluenceImportProgress(@CurrentUser() user: AuthenticatedUser) {
+    return { progress: this.confluenceImport.getImportProgress(user.id) };
+  }
+
+  @Delete('confluence/import/active')
+  async cancelConfluenceImport(@CurrentUser() user: AuthenticatedUser) {
+    await this.confluenceImport.cancelImport(user.id);
+    return { cancelled: true };
+  }
+
+  @Get('confluence/sources')
+  listConfluenceSources(@CurrentUser() user: AuthenticatedUser) {
+    return this.confluenceImport.listSources(user.id);
+  }
+
+  @Post('confluence/sources/:id/resync')
+  resyncConfluenceSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.confluenceImport.resyncSource(user.id, id);
+  }
+
+  @Delete('confluence/sources/:id')
+  async deleteConfluenceSource(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.confluenceImport.deleteSource(user.id, id);
     return { success: true };
   }
 }

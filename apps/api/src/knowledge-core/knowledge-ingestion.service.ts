@@ -35,6 +35,7 @@ import { DocumentsService } from '../documents/documents.service.js';
 import { GoogleDriveClientService } from '../google-drive/google-drive-client.service.js';
 import { OneDriveGraphService } from '../onedrive/onedrive-graph.service.js';
 import { SharePointGraphService } from '../sharepoint/sharepoint-graph.service.js';
+import { ConfluenceClientService } from '../confluence/confluence-client.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
 // Mirror of the constant in OnboardingService — kept inline rather than
@@ -54,7 +55,12 @@ const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
 /** File sources that come from an external "import" flow (vs. a manual
  *  upload or a single re-ingest). Drives the import-complete notify. */
-const IMPORT_SOURCES = new Set(['drive', 'onedrive', 'sharepoint']);
+const IMPORT_SOURCES = new Set([
+  'drive',
+  'onedrive',
+  'sharepoint',
+  'confluence',
+]);
 
 /** Namespace (classid) for the per-user ingestion Postgres advisory lock.
  *  Arbitrary, just has to be stable + not collide with other advisory
@@ -166,6 +172,10 @@ export class KnowledgeIngestionService
     // Same role for source='onedrive' rows — injected from
     // OneDriveModule via KnowledgeCoreModule.
     private readonly onedriveGraph: OneDriveGraphService,
+    // Same role for source='confluence' rows — injected from
+    // ConfluenceModule via KnowledgeCoreModule. Downloads the page body
+    // and converts it to Markdown before parsing.
+    private readonly confluenceClient: ConfluenceClientService,
   ) {}
 
   onModuleInit(): void {
@@ -558,6 +568,27 @@ export class KnowledgeIngestionService
         file.storagePath = storagePath;
       }
 
+      // Confluence-source rows arrive with storagePath=null and no byte
+      // payload — the page body is fetched + converted to Markdown here.
+      // externalId is the Confluence page id; single-site so no
+      // externalDriveId is needed (it stays NULL on Confluence rows).
+      if (file.source === 'confluence' && !file.storagePath) {
+        if (!file.externalId) {
+          throw new Error(
+            'Confluence-source file is missing externalId; cannot download.',
+          );
+        }
+        const storagePath = await this.fetchConfluenceBytes(userId, file);
+        const { size: actualBytes } = await fs.promises.stat(
+          resolve(process.cwd(), storagePath),
+        );
+        await this.db
+          .update(knowledgeFiles)
+          .set({ storagePath, sizeBytes: actualBytes })
+          .where(eq(knowledgeFiles.id, file.id));
+        file.storagePath = storagePath;
+      }
+
       if (!file.storagePath) {
         throw new Error('File has no storage path on disk');
       }
@@ -764,7 +795,14 @@ export class KnowledgeIngestionService
    * scoping. Used by the chat layer to mix personal + company
    * knowledge into RAG context alongside project documents.
    */
-  async searchAccessibleChunks(userId: string, query: string, limit = 5) {
+  async searchAccessibleChunks(
+    userId: string,
+    query: string,
+    limit = 5,
+    // Shared query vector from the chat/arena path so a turn embeds the
+    // message exactly once across all RAG + skill-router lookups.
+    precomputedEmbedding?: number[],
+  ) {
     // Admin gating on the second visibility layer: company-scope
     // chunks marked `visibility='admins'` are reachable only when
     // the caller has role='admin'. Personal-scope chunks are
@@ -786,7 +824,8 @@ export class KnowledgeIngestionService
     const isAdmin = caller?.role === 'admin';
     const callerCompanyId = caller?.companyId ?? null;
 
-    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const queryEmbedding =
+      precomputedEmbedding ?? (await this.documentsService.embed([query]))[0];
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
     // Company-scope filter — four-state:
@@ -930,6 +969,8 @@ export class KnowledgeIngestionService
     fileIds: string[],
     query: string,
     limit = 5,
+    // Shared query vector from the chat path (one embed per turn).
+    precomputedEmbedding?: number[],
   ) {
     if (fileIds.length === 0) return [];
 
@@ -940,7 +981,8 @@ export class KnowledgeIngestionService
     const isAdmin = caller?.role === 'admin';
     const callerCompanyId = caller?.companyId ?? null;
 
-    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const queryEmbedding =
+      precomputedEmbedding ?? (await this.documentsService.embed([query]))[0];
     const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
 
     // Cross-tenant isolation (same guard as searchAccessibleChunks):
@@ -1242,6 +1284,38 @@ export class KnowledgeIngestionService
     }
     const ext = this.extFromName(file.name);
     const storagePath = `uploads/knowledge-core/onedrive/${file.id}${ext}`;
+    const absolutePath = resolve(process.cwd(), storagePath);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, download.buffer);
+    return storagePath;
+  }
+
+  /**
+   * Same role as fetchDriveBytes for Confluence-source rows. The page body
+   * is rendered to Markdown by the client and written under
+   * `uploads/knowledge-core/confluence/` as a `.md` file, which KC's
+   * existing Markdown parser chunks + embeds. Page bodies are text, so the
+   * 50 MB cap is academic here, but we keep the same belt-and-braces check.
+   */
+  private async fetchConfluenceBytes(
+    userId: string,
+    file: { id: string; name: string; externalId: string | null },
+  ): Promise<string> {
+    if (!file.externalId) {
+      throw new Error('Confluence-source file is missing externalId');
+    }
+    const download = await this.confluenceClient.downloadPage(
+      userId,
+      file.externalId,
+    );
+    if (download.buffer.length > MAX_DRIVE_FILE_BYTES) {
+      const mb = (download.buffer.length / (1024 * 1024)).toFixed(1);
+      throw new Error(
+        `Page is ${mb}MB — Confluence imports are capped at ${MAX_DRIVE_FILE_BYTES / (1024 * 1024)}MB per page. Skipped.`,
+      );
+    }
+    // Always `.md` — the client converts every page body to Markdown.
+    const storagePath = `uploads/knowledge-core/confluence/${file.id}.md`;
     const absolutePath = resolve(process.cwd(), storagePath);
     await mkdir(dirname(absolutePath), { recursive: true });
     await writeFile(absolutePath, download.buffer);

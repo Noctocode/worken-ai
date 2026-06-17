@@ -8,6 +8,8 @@ import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { ModelsModule } from '../models/models.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
+import { DocumentsModule } from '../documents/documents.module.js';
+import { SkillsModule } from '../skills/skills.module.js';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { OpenRouterModule } from '../openrouter/openrouter.module.js';
     KnowledgeCoreModule, // KnowledgeIngestionService for RAG over user uploads
     ModelsModule,
     OpenRouterModule,
+    DocumentsModule, // DocumentsService.embed — one query vector per run
+    SkillsModule, // SkillRouterService for per-question skill selection
   ],
   controllers: [CompareModelsController],
   providers: [CompareModelsService],

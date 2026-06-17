@@ -33,6 +33,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'appbar.title.promptBuilder': 'Sestavljalnik pozivov',
   'appbar.title.promptImprover': 'Izboljševalec pozivov',
   'appbar.title.shortcuts': 'Bližnjice',
+  'appbar.title.skills': 'Veščine',
   'appbar.title.howItWorks': 'Kako deluje WorkenAI',
   'appbar.title.guardrails': 'Varovala',
   'appbar.title.observability': 'Nadzor',

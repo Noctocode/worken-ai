@@ -139,21 +139,35 @@
       "idx": 19,
       "version": "7",
       "when": 1780050000000,
-      "tag": "0019_ai_cron",
+      "tag": "0019_confluence",
       "breakpoints": true
     },
     {
       "idx": 20,
       "version": "7",
       "when": 1780060000000,
-      "tag": "0020_ai_cron_context_files",
+      "tag": "0020_skills",
       "breakpoints": true
     },
     {
       "idx": 21,
       "version": "7",
       "when": 1780070000000,
-      "tag": "0021_import_schedule_ids",
+      "tag": "0021_ai_cron",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780080000000,
+      "tag": "0022_ai_cron_context_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780090000000,
+      "tag": "0023_import_schedule_ids",
       "breakpoints": true
     }
   ]

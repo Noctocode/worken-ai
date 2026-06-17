@@ -39,6 +39,7 @@ export const projects: Record<keyof typeof projectsEn, string> = {
   'projDetail.thinking': 'Razmišljam...',
   'projDetail.showThinking': 'Prikaži razmišljanje',
   'projDetail.sources': 'Viri',
+  'projDetail.skillApplied': 'Veščina: {name}',
   'projDetail.stopped': 'Ustavljeno',
   'projDetail.answeredBy': 'odgovoril',
   'projDetail.noResponse': 'Ni odgovora s AI prehoda. Endpoint za pretok morda ni na voljo — osvežite stran, in če težava traja, znova zaženite API strežnik.',
