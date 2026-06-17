@@ -14,6 +14,7 @@ import {
   knowledgeFiles,
   knowledgeFolders,
   projectKnowledgeFiles,
+  scheduleKnowledgeFiles,
   users,
 } from '@worken/database/schema';
 import { UPLOAD_ALLOWED_EXTENSIONS } from './upload-allowlist.js';
@@ -63,7 +64,12 @@ const MAX_ALL_IMPORT_FILES = 10_000;
  */
 const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
-export type DriveVisibility = 'all' | 'admins' | 'teams' | 'project';
+export type DriveVisibility =
+  | 'all'
+  | 'admins'
+  | 'teams'
+  | 'project'
+  | 'schedule';
 
 export type ImportScope = (
   | { kind: 'all' }
@@ -72,6 +78,7 @@ export type ImportScope = (
   visibility?: DriveVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export interface ImportResult {
@@ -187,6 +194,7 @@ export class DriveImportService {
       'admins',
       'teams',
       'project',
+      'schedule',
     ];
     if (
       scope.visibility !== undefined &&
@@ -210,6 +218,14 @@ export class DriveImportService {
     ) {
       throw new BadRequestException(
         'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+    if (
+      scope.visibility === 'schedule' &&
+      (!Array.isArray(scope.scheduleIds) || scope.scheduleIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'scheduleIds must be a non-empty array when visibility is "schedule".',
       );
     }
 
@@ -261,6 +277,7 @@ export class DriveImportService {
         visibility: scope.visibility,
         teamIds: scope.teamIds,
         projectIds: scope.projectIds,
+        scheduleIds: scope.scheduleIds,
       });
       result.added += inserted.added;
       result.skippedDuplicates += inserted.skippedDuplicates;
@@ -320,6 +337,7 @@ export class DriveImportService {
           visibility: scope.visibility,
           teamIds: scope.teamIds,
           projectIds: scope.projectIds,
+          scheduleIds: scope.scheduleIds,
         });
         result.added += inserted.added;
         result.skippedDuplicates += inserted.skippedDuplicates;
@@ -370,6 +388,7 @@ export class DriveImportService {
       visibility: (source.visibility as DriveVisibility) ?? undefined,
       teamIds: source.teamIds ?? undefined,
       projectIds: source.projectIds ?? undefined,
+      scheduleIds: source.scheduleIds ?? undefined,
     };
 
     if (source.scope === 'all') {
@@ -486,7 +505,13 @@ export class DriveImportService {
     }
 
     // Re-use the same visibility validation as importFromDrive.
-    const VALID: DriveVisibility[] = ['all', 'admins', 'teams', 'project'];
+    const VALID: DriveVisibility[] = [
+      'all',
+      'admins',
+      'teams',
+      'project',
+      'schedule',
+    ];
     if (scope.visibility !== undefined && !VALID.includes(scope.visibility)) {
       throw new BadRequestException(
         `Invalid visibility "${scope.visibility}".`,
@@ -506,6 +531,14 @@ export class DriveImportService {
     ) {
       throw new BadRequestException(
         'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+    if (
+      scope.visibility === 'schedule' &&
+      (!Array.isArray(scope.scheduleIds) || scope.scheduleIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'scheduleIds must be a non-empty array when visibility is "schedule".',
       );
     }
 
@@ -712,6 +745,7 @@ export class DriveImportService {
             visibility,
             teamIds: scope.teamIds ?? null,
             projectIds: scope.projectIds ?? null,
+            scheduleIds: scope.scheduleIds ?? null,
           })
           .returning({ id: driveImportSources.id });
         sourceId = created.id;
@@ -778,6 +812,17 @@ export class DriveImportService {
             insertedRows.flatMap((row) =>
               (scope.projectIds ?? []).map((projectId) => ({
                 projectId,
+                fileId: row.id,
+                attachedBy: userId,
+              })),
+            ),
+          );
+        }
+        if (visibility === 'schedule' && (scope.scheduleIds ?? []).length > 0) {
+          await this.db.insert(scheduleKnowledgeFiles).values(
+            insertedRows.flatMap((row) =>
+              (scope.scheduleIds ?? []).map((scheduledPromptId) => ({
+                scheduledPromptId,
                 fileId: row.id,
                 attachedBy: userId,
               })),
@@ -1032,6 +1077,7 @@ export class DriveImportService {
       visibility?: DriveVisibility;
       teamIds?: string[];
       projectIds?: string[];
+      scheduleIds?: string[];
     },
   ): Promise<{
     sourceId: string;
@@ -1146,6 +1192,7 @@ export class DriveImportService {
           visibility: args.visibility ?? 'all',
           teamIds: args.teamIds ?? null,
           projectIds: args.projectIds ?? null,
+          scheduleIds: args.scheduleIds ?? null,
         })
         .returning({ id: driveImportSources.id });
       sourceId = inserted.id;
@@ -1215,6 +1262,17 @@ export class DriveImportService {
         insertedFiles.flatMap((row) =>
           (args.projectIds ?? []).map((projectId) => ({
             projectId,
+            fileId: row.id,
+            attachedBy: userId,
+          })),
+        ),
+      );
+    }
+    if (visibility === 'schedule' && (args.scheduleIds ?? []).length > 0) {
+      await this.db.insert(scheduleKnowledgeFiles).values(
+        insertedFiles.flatMap((row) =>
+          (args.scheduleIds ?? []).map((scheduledPromptId) => ({
+            scheduledPromptId,
             fileId: row.id,
             attachedBy: userId,
           })),

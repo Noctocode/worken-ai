@@ -1,6 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 
-export type SharePointVisibility = 'all' | 'admins' | 'teams' | 'project';
+export type SharePointVisibility =
+  | 'all'
+  | 'admins'
+  | 'teams'
+  | 'project'
+  | 'schedule';
 
 /**
  * Shape passed by the FE to every SharePoint import endpoint.
@@ -25,6 +30,7 @@ export type SharePointImportScope = (
   visibility?: SharePointVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 const VALID_VISIBILITIES: readonly SharePointVisibility[] = [
@@ -32,6 +38,7 @@ const VALID_VISIBILITIES: readonly SharePointVisibility[] = [
   'admins',
   'teams',
   'project',
+  'schedule',
 ];
 
 /**
@@ -91,6 +98,14 @@ export function validateSharePointScope(
   ) {
     throw new BadRequestException(
       'projectIds must be a non-empty array when visibility is "project".',
+    );
+  }
+  if (
+    scope.visibility === 'schedule' &&
+    (!Array.isArray(scope.scheduleIds) || scope.scheduleIds.length === 0)
+  ) {
+    throw new BadRequestException(
+      'scheduleIds must be a non-empty array when visibility is "schedule".',
     );
   }
 }

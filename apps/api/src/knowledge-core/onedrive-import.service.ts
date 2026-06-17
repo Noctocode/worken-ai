@@ -14,6 +14,7 @@ import {
   knowledgeFolders,
   onedriveImportSources,
   projectKnowledgeFiles,
+  scheduleKnowledgeFiles,
   users,
 } from '@worken/database/schema';
 import { UPLOAD_ALLOWED_EXTENSIONS } from './upload-allowlist.js';
@@ -38,7 +39,12 @@ const MAX_FOLDER_IMPORT_FILES = 1000;
 const MAX_ALL_IMPORT_FILES = 10_000;
 const MAX_ONEDRIVE_FILE_BYTES = 50 * 1024 * 1024;
 
-export type OneDriveVisibility = 'all' | 'admins' | 'teams' | 'project';
+export type OneDriveVisibility =
+  | 'all'
+  | 'admins'
+  | 'teams'
+  | 'project'
+  | 'schedule';
 
 export type OneDriveImportScope = (
   | { kind: 'all' }
@@ -47,6 +53,7 @@ export type OneDriveImportScope = (
   visibility?: OneDriveVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export interface OneDriveImportResult {
@@ -125,6 +132,7 @@ export class OneDriveImportService {
       'admins',
       'teams',
       'project',
+      'schedule',
     ];
     if (
       scope.visibility !== undefined &&
@@ -148,6 +156,14 @@ export class OneDriveImportService {
     ) {
       throw new BadRequestException(
         'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+    if (
+      scope.visibility === 'schedule' &&
+      (!Array.isArray(scope.scheduleIds) || scope.scheduleIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'scheduleIds must be a non-empty array when visibility is "schedule".',
       );
     }
 
@@ -188,6 +204,7 @@ export class OneDriveImportService {
         visibility: scope.visibility,
         teamIds: scope.teamIds,
         projectIds: scope.projectIds,
+        scheduleIds: scope.scheduleIds,
       });
       result.added += inserted.added;
       result.skippedDuplicates += inserted.skippedDuplicates;
@@ -236,6 +253,7 @@ export class OneDriveImportService {
           visibility: scope.visibility,
           teamIds: scope.teamIds,
           projectIds: scope.projectIds,
+          scheduleIds: scope.scheduleIds,
         });
         result.added += inserted.added;
         result.skippedDuplicates += inserted.skippedDuplicates;
@@ -276,6 +294,7 @@ export class OneDriveImportService {
       visibility: (source.visibility as OneDriveVisibility) ?? undefined,
       teamIds: source.teamIds ?? undefined,
       projectIds: source.projectIds ?? undefined,
+      scheduleIds: source.scheduleIds ?? undefined,
     };
 
     if (source.scope === 'all') {
@@ -370,7 +389,13 @@ export class OneDriveImportService {
       );
     }
 
-    const VALID: OneDriveVisibility[] = ['all', 'admins', 'teams', 'project'];
+    const VALID: OneDriveVisibility[] = [
+      'all',
+      'admins',
+      'teams',
+      'project',
+      'schedule',
+    ];
     if (scope.visibility !== undefined && !VALID.includes(scope.visibility)) {
       throw new BadRequestException(
         `Invalid visibility "${scope.visibility}".`,
@@ -390,6 +415,14 @@ export class OneDriveImportService {
     ) {
       throw new BadRequestException(
         'projectIds must be a non-empty array when visibility is "project".',
+      );
+    }
+    if (
+      scope.visibility === 'schedule' &&
+      (!Array.isArray(scope.scheduleIds) || scope.scheduleIds.length === 0)
+    ) {
+      throw new BadRequestException(
+        'scheduleIds must be a non-empty array when visibility is "schedule".',
       );
     }
 
@@ -571,6 +604,7 @@ export class OneDriveImportService {
             visibility,
             teamIds: scope.teamIds ?? null,
             projectIds: scope.projectIds ?? null,
+            scheduleIds: scope.scheduleIds ?? null,
           })
           .returning({ id: onedriveImportSources.id });
         sourceId = created.id;
@@ -625,6 +659,17 @@ export class OneDriveImportService {
             insertedRows.flatMap((row) =>
               (scope.projectIds ?? []).map((projectId) => ({
                 projectId,
+                fileId: row.id,
+                attachedBy: userId,
+              })),
+            ),
+          );
+        }
+        if (visibility === 'schedule' && (scope.scheduleIds ?? []).length > 0) {
+          await this.db.insert(scheduleKnowledgeFiles).values(
+            insertedRows.flatMap((row) =>
+              (scope.scheduleIds ?? []).map((scheduledPromptId) => ({
+                scheduledPromptId,
                 fileId: row.id,
                 attachedBy: userId,
               })),
@@ -757,6 +802,7 @@ export class OneDriveImportService {
       visibility?: OneDriveVisibility;
       teamIds?: string[];
       projectIds?: string[];
+      scheduleIds?: string[];
     },
   ): Promise<{
     sourceId: string;
@@ -847,6 +893,7 @@ export class OneDriveImportService {
           visibility: args.visibility ?? 'all',
           teamIds: args.teamIds ?? null,
           projectIds: args.projectIds ?? null,
+          scheduleIds: args.scheduleIds ?? null,
         })
         .returning({ id: onedriveImportSources.id });
       sourceId = inserted.id;
@@ -896,6 +943,17 @@ export class OneDriveImportService {
         insertedFiles.flatMap((row) =>
           (args.projectIds ?? []).map((projectId) => ({
             projectId,
+            fileId: row.id,
+            attachedBy: userId,
+          })),
+        ),
+      );
+    }
+    if (visibility === 'schedule' && (args.scheduleIds ?? []).length > 0) {
+      await this.db.insert(scheduleKnowledgeFiles).values(
+        insertedFiles.flatMap((row) =>
+          (args.scheduleIds ?? []).map((scheduledPromptId) => ({
+            scheduledPromptId,
             fileId: row.id,
             attachedBy: userId,
           })),

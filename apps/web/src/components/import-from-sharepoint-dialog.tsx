@@ -21,6 +21,7 @@ import {
   fetchSharePointImportProgress,
   fetchSharePointSites,
   fetchSharePointSiteFileCount,
+  fetchScheduledPrompts,
   fetchTeams,
   importFromSharePoint,
   startSharePointImportAsync,
@@ -155,6 +156,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   // Drive (document library) picker. Auto-selects when the site has
   // exactly one drive (the common case) — we keep the state so the
@@ -174,6 +176,11 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "sharepoint-import"],
     queryFn: () => fetchProjects("all"),
+    enabled: open,
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "sharepoint-import"],
+    queryFn: fetchScheduledPrompts,
     enabled: open,
   });
 
@@ -433,6 +440,8 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         visibility,
         teamIds: visibility === "teams" ? selectedTeamIds : undefined,
         projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "schedule" ? selectedScheduleIds : undefined,
       };
       return importFromSharePoint({
         kind: "folder",
@@ -488,6 +497,8 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         visibility,
         teamIds: visibility === "teams" ? selectedTeamIds : undefined,
         projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "schedule" ? selectedScheduleIds : undefined,
       }),
     onSuccess: () => {
       handledPhaseRef.current = null;
@@ -519,7 +530,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
     visibility !== "teams" || selectedTeamIds.length > 0;
   const projectRuleSatisfied =
     visibility !== "project" || selectedProjectIds.length > 0;
-  const visibilityValid = teamsRuleSatisfied && projectRuleSatisfied;
+  const scheduleRuleSatisfied =
+    visibility !== "schedule" || selectedScheduleIds.length > 0;
+  const visibilityValid =
+    teamsRuleSatisfied && projectRuleSatisfied && scheduleRuleSatisfied;
 
   const canSubmit =
     !folderImportMutation.isPending &&
@@ -856,6 +870,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 setVisibility(v as KnowledgeFileVisibility);
                 setSelectedTeamIds([]);
                 setSelectedProjectIds([]);
+                setSelectedScheduleIds([]);
               }}
             >
               <SelectTrigger className="h-10 w-full cursor-pointer">
@@ -868,6 +883,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 )}
                 <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
                 <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                <SelectItem value="schedule">{t("spDlg.specificSchedule")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -877,7 +893,9 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                   ? t("spDlg.visHintTeams")
                   : visibility === "project"
                     ? t("spDlg.visHintProject")
-                    : t("spDlg.visHintEveryone")}
+                    : visibility === "schedule"
+                      ? t("spDlg.visHintSchedule")
+                      : t("spDlg.visHintEveryone")}
             </p>
           </div>
         )}
@@ -957,6 +975,44 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                           </span>
                         )}
                       </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Schedule picker */}
+        {selectedSiteId && visibility === "schedule" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              {t("spDlg.schedulesWithAccess")}
+            </label>
+            {userSchedules.length === 0 ? (
+              <p className="text-[11px] text-text-3">{t("spDlg.noSchedules")}</p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userSchedules.map((s) => {
+                  const checked = selectedScheduleIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedScheduleIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== s.id)
+                              : [...prev, s.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">{s.name}</span>
                     </label>
                   );
                 })}

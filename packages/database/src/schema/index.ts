@@ -1289,6 +1289,9 @@ export const driveImportSources = pgTable(
     // 'teams' or 'project'.
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1371,6 +1374,9 @@ export const sharepointImportSources = pgTable(
     visibility: text("visibility").notNull().default("all"),
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1423,6 +1429,9 @@ export const onedriveImportSources = pgTable(
     visibility: text("visibility").notNull().default("all"),
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

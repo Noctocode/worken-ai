@@ -19,6 +19,7 @@ import {
   fetchOneDriveFolders,
   fetchOneDriveImportProgress,
   fetchProjects,
+  fetchScheduledPrompts,
   fetchTeams,
   importFromOneDrive,
   startOneDriveImportAsync,
@@ -149,6 +150,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
   const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   const [asyncJobActive, setAsyncJobActive] = useState(false);
   const handledPhaseRef = useRef<string | null>(null);
@@ -163,6 +165,11 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "onedrive-import"],
     queryFn: () => fetchProjects("all"),
+    enabled: open,
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "onedrive-import"],
+    queryFn: fetchScheduledPrompts,
     enabled: open,
   });
 
@@ -252,6 +259,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
     setVisibility("all");
     setSelectedTeamIds([]);
     setSelectedProjectIds([]);
+    setSelectedScheduleIds([]);
     setRootFolders(null);
     setRootError(null);
     setChildren({});
@@ -333,6 +341,8 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         visibility,
         teamIds: visibility === "teams" ? selectedTeamIds : undefined,
         projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "schedule" ? selectedScheduleIds : undefined,
       };
       return importFromOneDrive({
         kind: "folders",
@@ -383,6 +393,8 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
         visibility,
         teamIds: visibility === "teams" ? selectedTeamIds : undefined,
         projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "schedule" ? selectedScheduleIds : undefined,
       }),
     onSuccess: () => {
       handledPhaseRef.current = null;
@@ -409,7 +421,10 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
     visibility !== "teams" || selectedTeamIds.length > 0;
   const projectRuleSatisfied =
     visibility !== "project" || selectedProjectIds.length > 0;
-  const visibilityValid = teamsRuleSatisfied && projectRuleSatisfied;
+  const scheduleRuleSatisfied =
+    visibility !== "schedule" || selectedScheduleIds.length > 0;
+  const visibilityValid =
+    teamsRuleSatisfied && projectRuleSatisfied && scheduleRuleSatisfied;
 
   const canSubmit =
     !folderImportMutation.isPending &&
@@ -639,6 +654,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               setVisibility(v as KnowledgeFileVisibility);
               setSelectedTeamIds([]);
               setSelectedProjectIds([]);
+              setSelectedScheduleIds([]);
             }}
           >
             <SelectTrigger className="h-10 w-full cursor-pointer">
@@ -651,6 +667,7 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               )}
               <SelectItem value="teams">{t("odDlg.specificTeams")}</SelectItem>
               <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
+              <SelectItem value="schedule">{t("odDlg.specificSchedule")}</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
@@ -660,7 +677,9 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
                 ? t("odDlg.visHintTeams")
                 : visibility === "project"
                   ? t("odDlg.visHintProject")
-                  : t("odDlg.visHintEveryone")}
+                  : visibility === "schedule"
+                    ? t("odDlg.visHintSchedule")
+                    : t("odDlg.visHintEveryone")}
           </p>
         </div>
 
@@ -735,6 +754,43 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
                           <span className="ml-1 text-text-3">· {p.teamName}</span>
                         )}
                       </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {visibility === "schedule" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              {t("odDlg.schedulesWithAccess")}
+            </label>
+            {userSchedules.length === 0 ? (
+              <p className="text-[11px] text-text-3">{t("odDlg.noSchedules")}</p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userSchedules.map((s) => {
+                  const checked = selectedScheduleIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedScheduleIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== s.id)
+                              : [...prev, s.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">{s.name}</span>
                     </label>
                   );
                 })}

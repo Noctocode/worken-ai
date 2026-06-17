@@ -3757,6 +3757,7 @@ export type DriveImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchDriveStatus(): Promise<DriveStatus> {
@@ -3882,6 +3883,7 @@ export async function startDriveImportAsync(
     visibility?: KnowledgeFileVisibility;
     teamIds?: string[];
     projectIds?: string[];
+    scheduleIds?: string[];
   },
 ): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/drive/import/async", {
@@ -4000,6 +4002,7 @@ export type SharePointImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchSharePointStatus(): Promise<SharePointStatus> {
@@ -4177,6 +4180,7 @@ export async function startSharePointImportAsync(scope: {
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 }): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/sharepoint/import/async", {
     method: "POST",
@@ -4252,6 +4256,7 @@ export type OneDriveImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchOneDriveStatus(): Promise<OneDriveStatus> {
@@ -4366,6 +4371,7 @@ export async function startOneDriveImportAsync(scope: {
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 }): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/onedrive/import/async", {
     method: "POST",
