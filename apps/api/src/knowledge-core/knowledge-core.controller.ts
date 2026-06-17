@@ -273,8 +273,6 @@ export class KnowledgeCoreController {
     body: {
       fileIds: string[];
       visibility: string;
-      teamIds?: string[];
-      projectIds?: string[];
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -282,8 +280,6 @@ export class KnowledgeCoreController {
       body?.fileIds ?? [],
       user.id,
       body?.visibility,
-      body?.teamIds,
-      body?.projectIds,
     );
   }
 

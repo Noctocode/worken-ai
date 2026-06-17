@@ -69,6 +69,32 @@ describe('validateSharePointScope', () => {
           visibility: 'admins',
         },
       ],
+      // UNION model: 'none' is the base for "Specific scopes" — the FE
+      // sends it with any combination of team/project/schedule ids. No
+      // per-tier requirement server-side (the client enforces ≥1).
+      [
+        'site scope with visibility=none (no scopes required server-side)',
+        { kind: 'site', siteId: 's-1', visibility: 'none' },
+      ],
+      [
+        'site scope with visibility=none + mixed scopes (project + team)',
+        {
+          kind: 'site',
+          siteId: 's-1',
+          visibility: 'none',
+          teamIds: ['t-1'],
+          projectIds: ['p-1'],
+        },
+      ],
+      [
+        'site scope with visibility=schedule + scheduleIds',
+        {
+          kind: 'site',
+          siteId: 's-1',
+          visibility: 'schedule',
+          scheduleIds: ['sch-1'],
+        },
+      ],
     ];
 
     it.each(VALID)('%s', (_label, scope) => {
@@ -176,6 +202,25 @@ describe('validateSharePointScope', () => {
           visibility: 'project',
         },
         'projectIds must be a non-empty array',
+      ],
+      [
+        'visibility=schedule with empty scheduleIds',
+        {
+          kind: 'site',
+          siteId: 's-1',
+          visibility: 'schedule',
+          scheduleIds: [],
+        },
+        'scheduleIds must be a non-empty array',
+      ],
+      [
+        'visibility=schedule with missing scheduleIds',
+        {
+          kind: 'site',
+          siteId: 's-1',
+          visibility: 'schedule',
+        },
+        'scheduleIds must be a non-empty array',
       ],
       [
         'visibility not in the allowed enum',

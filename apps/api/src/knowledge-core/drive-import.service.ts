@@ -1248,9 +1248,8 @@ export class DriveImportService {
       )
       .returning({ id: knowledgeFiles.id });
 
-    // Link inserted files to teams / projects via junction tables,
-    // mirroring the same pattern used by the manual upload path.
-    const visibility = args.visibility ?? 'all';
+    // Link inserted files to teams / projects / schedules via junction
+    // tables (UNION model — each scope set is independent of the base tier).
     if ((args.teamIds ?? []).length > 0) {
       await this.db
         .insert(knowledgeFileTeams)

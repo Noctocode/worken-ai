@@ -931,7 +931,6 @@ export class OneDriveImportService {
       )
       .returning({ id: knowledgeFiles.id });
 
-    const visibility = args.visibility ?? 'all';
     if ((args.teamIds ?? []).length > 0) {
       await this.db
         .insert(knowledgeFileTeams)

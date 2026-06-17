@@ -1446,9 +1446,7 @@ export class KnowledgeCoreService {
     const owned = new Set(rows.map((r) => r.id));
     const denied = unique.filter((id) => !owned.has(id));
     if (denied.length > 0) {
-      throw new ForbiddenException(
-        'You can only assign schedules you own.',
-      );
+      throw new ForbiddenException('You can only assign schedules you own.');
     }
     return unique;
   }
@@ -1672,7 +1670,11 @@ export class KnowledgeCoreService {
     // error can't leave a half-applied state. Each is independent — the
     // caller can set any combination.
     const teamIds = wantsTeams
-      ? await this.resolveAssignableTeamIds(teamIdsInput ?? [], callerId, isAdmin)
+      ? await this.resolveAssignableTeamIds(
+          teamIdsInput ?? [],
+          callerId,
+          isAdmin,
+        )
       : [];
     const projectIds = wantsProjects
       ? await this.resolveAssignableProjectIds(
@@ -1683,7 +1685,10 @@ export class KnowledgeCoreService {
       : [];
     const scheduleIds =
       (scheduleIdsInput ?? []).length > 0
-        ? await this.resolveAssignableScheduleIds(scheduleIdsInput ?? [], callerId)
+        ? await this.resolveAssignableScheduleIds(
+            scheduleIdsInput ?? [],
+            callerId,
+          )
         : [];
 
     await this.db.transaction(async (tx) => {
@@ -1757,22 +1762,21 @@ export class KnowledgeCoreService {
     fileIds: string[],
     callerId: string,
     visibilityInput: string,
-    teamIdsInput?: string[],
-    projectIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
       .from(users)
       .where(eq(users.id, callerId));
     const isAdmin = caller?.role === 'admin';
+    // Bulk only flips the base tier (UNION model) — Everyone / Admins / None.
+    // Per-file scope sets (teams/projects/schedules) are managed in the editor.
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams' &&
-      visibilityInput !== 'project'
+      visibilityInput !== 'none'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'none'.`,
       );
     }
     if (visibilityInput === 'admins' && !isAdmin) {
@@ -1783,26 +1787,6 @@ export class KnowledgeCoreService {
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       throw new BadRequestException('`fileIds` must be a non-empty array.');
     }
-
-    // Same pre-transaction link resolution as the per-file path —
-    // non-admin owners can only point to teams/projects they
-    // themselves can reach.
-    const teamIds =
-      visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(
-            teamIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
-    const projectIds =
-      visibilityInput === 'project'
-        ? await this.resolveAssignableProjectIds(
-            projectIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
 
     // Cheap dedupe in case the FE accidentally sends duplicates;
     // drizzle inArray would still work but we'd update twice.
@@ -1837,14 +1821,6 @@ export class KnowledgeCoreService {
         );
       }
     }
-    if (visibilityInput === 'teams' || visibilityInput === 'project') {
-      const personal = statuses.filter((r) => r.scope === 'personal');
-      if (personal.length > 0) {
-        throw new BadRequestException(
-          `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
-        );
-      }
-    }
     const eligibleIds: string[] = [];
     const skippedIds: string[] = [];
     for (const row of statuses) {
@@ -1870,44 +1846,16 @@ export class KnowledgeCoreService {
             .update(knowledgeChunks)
             .set({ visibility: visibilityInput })
             .where(inArray(knowledgeChunks.fileId, affectedIds));
-          // Replace team/project links for every affected row. Same
-          // shape as the per-file path — wipe-then-insert is cheaper
-          // than diffing for the bulk case and keeps the link sets
-          // authoritative regardless of prior state.
-          await tx
-            .delete(knowledgeFileTeams)
-            .where(inArray(knowledgeFileTeams.fileId, affectedIds));
-          await tx
-            .delete(projectKnowledgeFiles)
-            .where(inArray(projectKnowledgeFiles.fileId, affectedIds));
-          if (visibilityInput === 'teams' && teamIds.length > 0) {
-            await tx
-              .insert(knowledgeFileTeams)
-              .values(
-                affectedIds.flatMap((fileId) =>
-                  teamIds.map((teamId) => ({ fileId, teamId })),
-                ),
-              );
-          }
-          if (visibilityInput === 'project' && projectIds.length > 0) {
-            await tx.insert(projectKnowledgeFiles).values(
-              affectedIds.flatMap((fileId) =>
-                projectIds.map((projectId) => ({
-                  projectId,
-                  fileId,
-                  attachedBy: callerId,
-                })),
-              ),
-            );
-          }
+          // UNION model: bulk flips only the BASE tier (Everyone / Admins) and
+          // deliberately leaves each file's team / project / schedule links
+          // intact — a batch base-flip must never silently destroy per-file
+          // scopes. Clearing/changing scopes is done per file in the editor.
         }
       });
     }
 
     return {
       visibility: visibilityInput,
-      teamIds,
-      projectIds,
       affectedIds,
       skippedIds,
     };

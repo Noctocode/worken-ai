@@ -2700,12 +2700,8 @@ export async function untrainKnowledgeFile(
 export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
-  teamIds: string[] = [],
-  projectIds: string[] = [],
 ): Promise<{
   visibility: KnowledgeFileVisibility;
-  teamIds: string[];
-  projectIds: string[];
   affectedIds: string[];
   /** Files skipped because they were mid-ingestion at the time of the
    *  call — BE refuses to flip during processing to avoid leaving
@@ -2713,16 +2709,11 @@ export async function updateKnowledgeFilesVisibilityBulk(
    *  worker is about to insert. Admin can retry once they finish. */
   skippedIds: string[];
 }> {
+  // Bulk only flips the base tier (UNION model); per-file scopes stay intact.
   const res = await apiFetch(`/knowledge-core/files/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      visibility === "teams"
-        ? { fileIds, visibility, teamIds }
-        : visibility === "project"
-          ? { fileIds, visibility, projectIds }
-          : { fileIds, visibility },
-    ),
+    body: JSON.stringify({ fileIds, visibility }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
