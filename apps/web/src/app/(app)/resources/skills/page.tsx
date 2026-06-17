@@ -59,6 +59,7 @@ import {
   type TeamListItem,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 
 interface DraftSkill {
   name: string;
@@ -80,6 +81,11 @@ const EMPTY_DRAFT: DraftSkill = {
 
 export default function SkillsPage() {
   const { t } = useLanguage();
+  // Personal accounts are a single person: company-tier visibility ('all' =
+  // everyone in the company, 'admins', 'teams') is meaningless and the backend
+  // rejects it. Show only "Only me" (+ Projects, which personal users can
+  // still have) for them.
+  const isPersonal = useIsPersonal();
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -515,14 +521,20 @@ export default function SkillsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    {t("skills.visibilityAll")}
+                    {isPersonal
+                      ? t("skills.visibilityPersonal")
+                      : t("skills.visibilityAll")}
                   </SelectItem>
-                  <SelectItem value="admins">
-                    {t("skills.visibilityAdmins")}
-                  </SelectItem>
-                  <SelectItem value="teams">
-                    {t("skills.visibilityTeams")}
-                  </SelectItem>
+                  {!isPersonal && (
+                    <SelectItem value="admins">
+                      {t("skills.visibilityAdmins")}
+                    </SelectItem>
+                  )}
+                  {!isPersonal && (
+                    <SelectItem value="teams">
+                      {t("skills.visibilityTeams")}
+                    </SelectItem>
+                  )}
                   <SelectItem value="project">
                     {t("skills.visibilityProject")}
                   </SelectItem>
