@@ -106,3 +106,80 @@ describe('parseSkillMd', () => {
     expect(parsed.description).toBe('d');
   });
 });
+
+describe('parseSkillMd — script extraction (Option #3)', () => {
+  it('extracts a named fenced block: language, name, entrypoint, content', () => {
+    const raw = [
+      '---',
+      'name: Excel report',
+      'description: Use when building an .xlsx report.',
+      '---',
+      'Run this to build the workbook:',
+      '',
+      '```python name=generate_report.py entrypoint',
+      'import openpyxl',
+      'wb = openpyxl.Workbook()',
+      '```',
+    ].join('\n');
+    const parsed = parseSkillMd(raw);
+    expect(parsed.scripts).toHaveLength(1);
+    expect(parsed.scripts[0]).toEqual({
+      name: 'generate_report.py',
+      language: 'python',
+      entrypoint: true,
+      content: 'import openpyxl\nwb = openpyxl.Workbook()',
+    });
+    // Non-destructive: the block stays in the instructions body too.
+    expect(parsed.instructions).toContain('name=generate_report.py');
+  });
+
+  it('ignores ordinary code blocks without name= (instructional skill)', () => {
+    const raw = [
+      '---',
+      'name: Plain',
+      'description: d',
+      '---',
+      'Example:',
+      '',
+      '```ts',
+      'const x = 1;',
+      '```',
+    ].join('\n');
+    const parsed = parseSkillMd(raw);
+    expect(parsed.scripts).toEqual([]);
+  });
+
+  it('extracts multiple scripts; entrypoint omitted when absent', () => {
+    const raw = [
+      '```python name=main.py entrypoint',
+      'print(1)',
+      '```',
+      '',
+      '```bash name=setup.sh',
+      'echo hi',
+      '```',
+    ].join('\n');
+    const parsed = parseSkillMd(raw); // no frontmatter
+    expect(parsed.scripts.map((s) => s.name)).toEqual(['main.py', 'setup.sh']);
+    expect(parsed.scripts[0].entrypoint).toBe(true);
+    expect(parsed.scripts[1].entrypoint).toBeUndefined();
+    expect(parsed.scripts[1].language).toBe('bash');
+  });
+
+  it('defaults language to "text" when the fence has only name=', () => {
+    const parsed = parseSkillMd(
+      ['```name=notes.txt', 'hello', '```'].join('\n'),
+    );
+    expect(parsed.scripts[0]).toMatchObject({
+      name: 'notes.txt',
+      language: 'text',
+    });
+  });
+
+  it('does not extract an unterminated named block', () => {
+    const parsed = parseSkillMd(
+      ['```python name=oops.py', 'x = 1', '(no closing fence)'].join('\n'),
+    );
+    expect(parsed.scripts).toEqual([]);
+  });
+});

@@ -51,4 +51,26 @@ describe('OrgSettingsService.update validation', () => {
       svc().update({ monthlyBudgetCents: NaN }, 'caller-id'),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('rejects a non-boolean executableSkillsEnabled', async () => {
+    await expect(
+      svc().update({ executableSkillsEnabled: 'yes' as never }, 'caller-id'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('OrgSettingsService.isExecutableSkillsEnabled — env kill-switch', () => {
+  const orig = process.env['EXECUTABLE_SKILLS_KILL_SWITCH'];
+  afterEach(() => {
+    if (orig === undefined) delete process.env['EXECUTABLE_SKILLS_KILL_SWITCH'];
+    else process.env['EXECUTABLE_SKILLS_KILL_SWITCH'] = orig;
+  });
+
+  it('returns false WITHOUT touching the DB when the kill-switch is set', async () => {
+    process.env['EXECUTABLE_SKILLS_KILL_SWITCH'] = 'true';
+    // svc()'s DB explodes on any access — the env check must short-circuit first.
+    await expect(svc().isExecutableSkillsEnabled('caller-id')).resolves.toBe(
+      false,
+    );
+  });
 });
