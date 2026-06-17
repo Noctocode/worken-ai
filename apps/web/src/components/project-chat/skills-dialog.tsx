@@ -14,7 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { fetchSkills, type Skill } from "@/lib/api";
+import { fetchPinnableSkills, type PinnableSkill } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 
 /**
@@ -32,6 +32,7 @@ export function SkillsDialog({
   children,
   pinnedIds,
   onTogglePin,
+  projectId,
   open: controlledOpen,
   onOpenChange,
 }: {
@@ -39,6 +40,9 @@ export function SkillsDialog({
   children?: React.ReactNode;
   pinnedIds: string[];
   onTogglePin: (id: string) => void;
+  /** Current project (project chat). Scopes the list so a project's skill
+   *  only shows for pinning inside that project. Omit for the arena. */
+  projectId?: string;
   /** Controlled-open mode (e.g. arena opens it from a separate chip). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -54,14 +58,14 @@ export function SkillsDialog({
   const [query, setQuery] = useState("");
 
   const { data: skills = [], isLoading } = useQuery({
-    queryKey: ["skills"],
-    queryFn: fetchSkills,
+    queryKey: ["skills", "pinnable", projectId ?? null],
+    queryFn: () => fetchPinnableSkills(projectId),
     enabled: open,
   });
 
   const pinned = useMemo(() => new Set(pinnedIds), [pinnedIds]);
 
-  const filtered = useMemo<Skill[]>(() => {
+  const filtered = useMemo<PinnableSkill[]>(() => {
     const q = query.trim().toLowerCase();
     if (!q) return skills;
     return skills.filter((s) =>

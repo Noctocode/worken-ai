@@ -156,6 +156,68 @@ describe('SkillRouterService.selectForMessage', () => {
     // The single pinned skill exceeds the budget on its own → dropped.
     expect(out).toEqual([]);
   });
+
+  it('forwards projectId to getAccessibleSkills (project-scoped routing)', async () => {
+    const spy = stubAccessible([]);
+    confirmAll();
+    await router.selectForMessage({
+      userId: 'u1',
+      queryEmbedding: [1, 0],
+      messageText: 'hi',
+      projectId: 'p1',
+    });
+    expect(spy).toHaveBeenCalledWith('u1', 'p1');
+  });
+
+  // Regression guards for the visibility leaks: EVERY injection path (pin and
+  // sticky included) must go through the accessible set. getAccessibleSkills
+  // is the single gate that enforces project/team/admin visibility, so a skill
+  // it doesn't return must never reach the context — even if the request pins
+  // it or a stale conversation_skills row marks it sticky.
+  it('does not inject a pinned skill that is not accessible in this context', async () => {
+    // e.g. a project-scoped skill pinned while chatting in a different project:
+    // getAccessibleSkills returns nothing for this context.
+    stubAccessible([]);
+    confirmAll();
+    const out = await router.selectForMessage({
+      userId: 'u1',
+      queryEmbedding: [1, 0],
+      messageText: 'hi',
+      conversationId: 'c1',
+      pinnedSkillIds: ['other-project-skill'],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('drops a sticky skill that is no longer accessible (stale conversation row)', async () => {
+    stubAccessible([]); // skill went out of scope (e.g. project visibility, other project)
+    confirmAll();
+    jest
+      .spyOn(router as never, 'loadConversationSkills')
+      .mockResolvedValue([{ skillId: 'stale-sticky', pinned: false }] as never);
+    const out = await router.selectForMessage({
+      userId: 'u1',
+      queryEmbedding: [1, 0],
+      messageText: 'hi',
+      conversationId: 'c1',
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('only injects the accessible skill when a pin references an out-of-scope one', async () => {
+    // 'ok' is accessible; 'gone' is pinned but not accessible → only 'ok' lands.
+    stubAccessible([skill('ok', [1, 0])]);
+    confirmAll();
+    const out = await router.selectForMessage({
+      userId: 'u1',
+      queryEmbedding: [1, 0],
+      messageText: 'hi',
+      conversationId: 'c1',
+      pinnedSkillIds: ['gone', 'ok'],
+    });
+    expect(out.map((s) => s.id)).toEqual(['ok']);
+    expect(out[0].reason).toBe('pinned');
+  });
 });
 
 describe('SkillRouterService.resolveConfirmClient', () => {

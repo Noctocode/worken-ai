@@ -32,7 +32,15 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skills.visibilityAll': 'Vsi v podjetju',
   'skills.visibilityAdmins': 'Samo skrbniki',
   'skills.visibilityTeams': 'Določene ekipe',
+  'skills.visibilityProject': 'Določeni projekti',
   'skills.visibilityPersonal': 'Samo jaz (osebni račun)',
+  'skills.pickTeams': 'Ekipe, ki lahko uporabljajo to veščino',
+  'skills.pickProjects': 'Projekti, v katerih velja ta veščina',
+  'skills.noTeams': 'Niste član nobene ekipe.',
+  'skills.noProjects': 'Nimate še nobenega projekta.',
+  'skills.errPickTeam': 'Izberite vsaj eno ekipo za vidnost »Določene ekipe«.',
+  'skills.errPickProject':
+    'Izberite vsaj en projekt za vidnost »Določeni projekti«.',
   'skills.importTitle': 'Uvoz SKILL.md',
   'skills.importDesc':
     'Prilepite vsebino agentskills.io SKILL.md. Ime in opis se prebereta iz frontmatterja.',
