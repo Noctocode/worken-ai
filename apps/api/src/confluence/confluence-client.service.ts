@@ -218,8 +218,8 @@ export class ConfluenceClientService {
       // from an empty result). 401/403 stay as-is so the FE can prompt a
       // reconnect; everything else is reported as a 502 (upstream failure).
       const status =
-        res.status === HttpStatus.UNAUTHORIZED ||
-        res.status === HttpStatus.FORBIDDEN
+        res.status === (HttpStatus.UNAUTHORIZED as number) ||
+        res.status === (HttpStatus.FORBIDDEN as number)
           ? res.status
           : HttpStatus.BAD_GATEWAY;
       throw new HttpException(message, status);
@@ -250,10 +250,10 @@ export class ConfluenceClientService {
     let fetches = 0;
     while (path && fetches < maxFetches) {
       fetches++;
-      const body = await this.apiGet<{
+      const body: {
         results?: T[];
         _links?: { next?: string };
-      }>(userId, path);
+      } = await this.apiGet(userId, path);
       for (const item of body.results ?? []) out.push(item);
       if (out.length >= cap) break;
       path = body._links?.next || undefined;
@@ -533,17 +533,20 @@ export function htmlToMarkdown(html: string): string {
   s = s.replace(/<\/?(ul|ol)[^>]*>/gi, '\n');
 
   // Blockquotes.
-  s = s.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m, inner) => {
-    const text = stripTags(inner).trim();
-    return text
-      ? '\n\n' +
-          text
-            .split('\n')
-            .map((l) => `> ${l}`)
-            .join('\n') +
-          '\n\n'
-      : '\n\n';
-  });
+  s = s.replace(
+    /<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi,
+    (_m, inner: string) => {
+      const text = stripTags(inner).trim();
+      return text
+        ? '\n\n' +
+            text
+              .split('\n')
+              .map((l) => `> ${l}`)
+              .join('\n') +
+            '\n\n'
+        : '\n\n';
+    },
+  );
 
   // Pre / code blocks.
   s = s.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_m, inner: string) => {
@@ -566,11 +569,14 @@ export function htmlToMarkdown(html: string): string {
   );
 
   // Inline emphasis.
-  s = s.replace(/<(strong|b)[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, inner) => {
-    const text = stripTags(inner).trim();
-    return text ? `**${text}**` : '';
-  });
-  s = s.replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, inner) => {
+  s = s.replace(
+    /<(strong|b)[^>]*>([\s\S]*?)<\/\1>/gi,
+    (_m, _t, inner: string) => {
+      const text = stripTags(inner).trim();
+      return text ? `**${text}**` : '';
+    },
+  );
+  s = s.replace(/<(em|i)[^>]*>([\s\S]*?)<\/\1>/gi, (_m, _t, inner: string) => {
     const text = stripTags(inner).trim();
     return text ? `*${text}*` : '';
   });

@@ -16,8 +16,7 @@ function makeService(opts: { expired: boolean; hasRefresh?: boolean }) {
     ownerId: 'user-1',
     provider: 'confluence',
     accessTokenEncrypted: 'enc:old-access',
-    refreshTokenEncrypted:
-      opts.hasRefresh === false ? null : 'enc:old-refresh',
+    refreshTokenEncrypted: opts.hasRefresh === false ? null : 'enc:old-refresh',
     expiresAt: new Date(
       opts.expired ? Date.now() - 60_000 : Date.now() + 60 * 60_000,
     ),

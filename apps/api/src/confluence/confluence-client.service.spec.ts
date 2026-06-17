@@ -65,7 +65,11 @@ describe('ConfluenceClientService pagination', () => {
       if (url.includes('accessible-resources')) {
         return Promise.resolve(
           jsonResponse([
-            { id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] },
+            {
+              id: CLOUD_ID,
+              url: SITE_URL,
+              scopes: ['read:confluence-content.all'],
+            },
           ]),
         );
       }
@@ -84,7 +88,9 @@ describe('ConfluenceClientService pagination', () => {
       if (url.includes('cursor=C2')) {
         return Promise.resolve(
           jsonResponse({
-            results: [{ id: '3', key: 'OPS', name: 'Operations', type: 'global' }],
+            results: [
+              { id: '3', key: 'OPS', name: 'Operations', type: 'global' },
+            ],
             _links: {},
           }),
         );
@@ -98,7 +104,9 @@ describe('ConfluenceClientService pagination', () => {
     // (Engineering, Operations, Personal).
     expect(spaces.map((s) => s.key)).toEqual(['ENG', 'OPS', '~user']);
     // The relative next was resolved against the gateway base.
-    expect(urls).toContain(`${API_BASE}/wiki/api/v2/spaces?cursor=C2&limit=250`);
+    expect(urls).toContain(
+      `${API_BASE}/wiki/api/v2/spaces?cursor=C2&limit=250`,
+    );
   });
 
   it('follows an absolute _links.next URL untouched', async () => {
@@ -108,7 +116,13 @@ describe('ConfluenceClientService pagination', () => {
       urls.push(url);
       if (url.includes('accessible-resources')) {
         return Promise.resolve(
-          jsonResponse([{ id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] }]),
+          jsonResponse([
+            {
+              id: CLOUD_ID,
+              url: SITE_URL,
+              scopes: ['read:confluence-content.all'],
+            },
+          ]),
         );
       }
       if (url.includes('/spaces/9/pages') && !url.includes('cursor=')) {
@@ -153,7 +167,13 @@ describe('ConfluenceClientService pagination', () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.includes('accessible-resources')) {
         return Promise.resolve(
-          jsonResponse([{ id: CLOUD_ID, url: SITE_URL, scopes: ['read:confluence-content.all'] }]),
+          jsonResponse([
+            {
+              id: CLOUD_ID,
+              url: SITE_URL,
+              scopes: ['read:confluence-content.all'],
+            },
+          ]),
         );
       }
       if (url.includes('/wiki/api/v2/spaces')) {
@@ -162,7 +182,10 @@ describe('ConfluenceClientService pagination', () => {
           return Promise.resolve(jsonResponse({}, 429, { 'retry-after': '1' }));
         }
         return Promise.resolve(
-          jsonResponse({ results: [{ id: '1', key: 'ENG', name: 'Eng', type: 'global' }], _links: {} }),
+          jsonResponse({
+            results: [{ id: '1', key: 'ENG', name: 'Eng', type: 'global' }],
+            _links: {},
+          }),
         );
       }
       throw new Error(`unexpected url ${url}`);

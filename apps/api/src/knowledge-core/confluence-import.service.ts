@@ -162,7 +162,11 @@ export class ConfluenceImportService {
         scope.spaceId,
         MAX_SPACE_IMPORT_FILES + 1,
       );
-      this.enforceImportCountCap(allPages.length, 'space', MAX_SPACE_IMPORT_FILES);
+      this.enforceImportCountCap(
+        allPages.length,
+        'space',
+        MAX_SPACE_IMPORT_FILES,
+      );
       units.push({ pageId: null, pageTitle: null, selected: allPages });
     } else {
       for (const pageId of scope.pageIds) {
@@ -172,7 +176,11 @@ export class ConfluenceImportService {
           MAX_PAGE_IMPORT_FILES + 1,
         );
         if (subtree.length === 0) continue; // picked page gone / inaccessible
-        this.enforceImportCountCap(subtree.length, 'pages', MAX_PAGE_IMPORT_FILES);
+        this.enforceImportCountCap(
+          subtree.length,
+          'pages',
+          MAX_PAGE_IMPORT_FILES,
+        );
         units.push({
           pageId,
           pageTitle: subtree.find((p) => p.id === pageId)?.title ?? null,
@@ -439,7 +447,11 @@ export class ConfluenceImportService {
       // Fail loudly on an over-cap space rather than silently importing only
       // the first N pages. The throw is caught by startImportSpaceAsync's
       // .catch, which sets phase='error' so the FE surfaces the message.
-      this.enforceImportCountCap(allPages.length, 'space', MAX_SPACE_IMPORT_FILES);
+      this.enforceImportCountCap(
+        allPages.length,
+        'space',
+        MAX_SPACE_IMPORT_FILES,
+      );
       const selected = allPages;
 
       // ── Phase 2: dedup ───────────────────────────────────────────────
