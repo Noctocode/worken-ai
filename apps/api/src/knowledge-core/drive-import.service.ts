@@ -67,6 +67,7 @@ const MAX_DRIVE_FILE_BYTES = 50 * 1024 * 1024;
 export type DriveVisibility =
   | 'all'
   | 'admins'
+  | 'none'
   | 'teams'
   | 'project'
   | 'schedule';
@@ -192,6 +193,7 @@ export class DriveImportService {
     const VALID_VISIBILITIES: DriveVisibility[] = [
       'all',
       'admins',
+      'none',
       'teams',
       'project',
       'schedule',
@@ -508,6 +510,7 @@ export class DriveImportService {
     const VALID: DriveVisibility[] = [
       'all',
       'admins',
+      'none',
       'teams',
       'project',
       'schedule',
@@ -797,7 +800,7 @@ export class DriveImportService {
         job.progress.imported = totalInserted;
 
         // Team / project junction rows.
-        if (visibility === 'teams' && (scope.teamIds ?? []).length > 0) {
+        if ((scope.teamIds ?? []).length > 0) {
           await this.db.insert(knowledgeFileTeams).values(
             insertedRows.flatMap((row) =>
               (scope.teamIds ?? []).map((teamId) => ({
@@ -807,7 +810,7 @@ export class DriveImportService {
             ),
           );
         }
-        if (visibility === 'project' && (scope.projectIds ?? []).length > 0) {
+        if ((scope.projectIds ?? []).length > 0) {
           await this.db.insert(projectKnowledgeFiles).values(
             insertedRows.flatMap((row) =>
               (scope.projectIds ?? []).map((projectId) => ({
@@ -818,7 +821,7 @@ export class DriveImportService {
             ),
           );
         }
-        if (visibility === 'schedule' && (scope.scheduleIds ?? []).length > 0) {
+        if ((scope.scheduleIds ?? []).length > 0) {
           await this.db.insert(scheduleKnowledgeFiles).values(
             insertedRows.flatMap((row) =>
               (scope.scheduleIds ?? []).map((scheduledPromptId) => ({
@@ -1248,7 +1251,7 @@ export class DriveImportService {
     // Link inserted files to teams / projects via junction tables,
     // mirroring the same pattern used by the manual upload path.
     const visibility = args.visibility ?? 'all';
-    if (visibility === 'teams' && (args.teamIds ?? []).length > 0) {
+    if ((args.teamIds ?? []).length > 0) {
       await this.db
         .insert(knowledgeFileTeams)
         .values(
@@ -1257,7 +1260,7 @@ export class DriveImportService {
           ),
         );
     }
-    if (visibility === 'project' && (args.projectIds ?? []).length > 0) {
+    if ((args.projectIds ?? []).length > 0) {
       await this.db.insert(projectKnowledgeFiles).values(
         insertedFiles.flatMap((row) =>
           (args.projectIds ?? []).map((projectId) => ({
@@ -1268,7 +1271,7 @@ export class DriveImportService {
         ),
       );
     }
-    if (visibility === 'schedule' && (args.scheduleIds ?? []).length > 0) {
+    if ((args.scheduleIds ?? []).length > 0) {
       await this.db.insert(scheduleKnowledgeFiles).values(
         insertedFiles.flatMap((row) =>
           (args.scheduleIds ?? []).map((scheduledPromptId) => ({

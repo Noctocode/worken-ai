@@ -3,6 +3,7 @@ import { BadRequestException } from '@nestjs/common';
 export type SharePointVisibility =
   | 'all'
   | 'admins'
+  | 'none'
   | 'teams'
   | 'project'
   | 'schedule';
@@ -36,6 +37,7 @@ export type SharePointImportScope = (
 const VALID_VISIBILITIES: readonly SharePointVisibility[] = [
   'all',
   'admins',
+  'none',
   'teams',
   'project',
   'schedule',

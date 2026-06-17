@@ -372,10 +372,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     mutationFn: async () => {
       const visibilityExtra = {
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
         scheduleIds:
-          visibility === "schedule" ? selectedScheduleIds : undefined,
+          visibility === "none" ? selectedScheduleIds : undefined,
       };
       return importFromDrive({
         kind: "folders",
@@ -420,10 +420,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       startDriveImportAsync({
         kind: "all",
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
         scheduleIds:
-          visibility === "schedule" ? selectedScheduleIds : undefined,
+          visibility === "none" ? selectedScheduleIds : undefined,
       }),
     onSuccess: () => {
       handledPhaseRef.current = null;
@@ -461,9 +461,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   });
 
   const visibilityValid =
-    (visibility !== "teams" || selectedTeamIds.length > 0) &&
-    (visibility !== "project" || selectedProjectIds.length > 0) &&
-    (visibility !== "schedule" || selectedScheduleIds.length > 0);
+    visibility !== "none" ||
+    selectedTeamIds.length > 0 ||
+    selectedProjectIds.length > 0 ||
+    selectedScheduleIds.length > 0;
 
   const canSubmit =
     !folderImportMutation.isPending &&
@@ -779,32 +780,22 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                   {t("driveDlg.adminsOnly")}
                 </SelectItem>
               )}
-              <SelectItem value="teams">
-                {t("driveDlg.specificTeams")}
-              </SelectItem>
-              <SelectItem value="project">
-                {t("driveDlg.specificProject")}
-              </SelectItem>
-              <SelectItem value="schedule">
-                {t("driveDlg.specificSchedule")}
+              <SelectItem value="none">
+                {t("visDlg.specificScopes")}
               </SelectItem>
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">
             {visibility === "admins"
               ? t("driveDlg.visHintAdmins")
-              : visibility === "teams"
-                ? t("driveDlg.visHintTeams")
-                : visibility === "project"
-                  ? t("driveDlg.visHintProject")
-                  : visibility === "schedule"
-                    ? t("driveDlg.visHintSchedule")
-                    : t("driveDlg.visHintEveryone")}
+              : visibility === "none"
+                ? t("visDlg.hintSpecific")
+                : t("driveDlg.visHintEveryone")}
           </p>
         </div>
 
         {/* Team picker */}
-        {visibility === "teams" && (
+        {visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("driveDlg.teamsWithAccess")}
@@ -844,7 +835,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         )}
 
         {/* Project picker */}
-        {visibility === "project" && (
+        {visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("driveDlg.projectsWithAccess")}
@@ -891,7 +882,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         )}
 
         {/* Schedule picker */}
-        {visibility === "schedule" && (
+        {visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("driveDlg.schedulesWithAccess")}

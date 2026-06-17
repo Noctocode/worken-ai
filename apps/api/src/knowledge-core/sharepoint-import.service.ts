@@ -621,7 +621,7 @@ export class SharePointImportService {
         totalInserted += insertedRows.length;
         job.progress.imported = totalInserted;
 
-        if (visibility === 'teams' && (scope.teamIds ?? []).length > 0) {
+        if ((scope.teamIds ?? []).length > 0) {
           await this.db.insert(knowledgeFileTeams).values(
             insertedRows.flatMap((row) =>
               (scope.teamIds ?? []).map((teamId) => ({
@@ -631,7 +631,7 @@ export class SharePointImportService {
             ),
           );
         }
-        if (visibility === 'project' && (scope.projectIds ?? []).length > 0) {
+        if ((scope.projectIds ?? []).length > 0) {
           await this.db.insert(projectKnowledgeFiles).values(
             insertedRows.flatMap((row) =>
               (scope.projectIds ?? []).map((projectId) => ({
@@ -642,7 +642,7 @@ export class SharePointImportService {
             ),
           );
         }
-        if (visibility === 'schedule' && (scope.scheduleIds ?? []).length > 0) {
+        if ((scope.scheduleIds ?? []).length > 0) {
           await this.db.insert(scheduleKnowledgeFiles).values(
             insertedRows.flatMap((row) =>
               (scope.scheduleIds ?? []).map((scheduledPromptId) => ({
@@ -1003,7 +1003,7 @@ export class SharePointImportService {
       .returning({ id: knowledgeFiles.id });
 
     const visibility = args.visibility ?? 'all';
-    if (visibility === 'teams' && (args.teamIds ?? []).length > 0) {
+    if ((args.teamIds ?? []).length > 0) {
       await this.db.insert(knowledgeFileTeams).values(
         insertedFiles.flatMap((row) =>
           (args.teamIds ?? []).map((teamId) => ({
@@ -1013,7 +1013,7 @@ export class SharePointImportService {
         ),
       );
     }
-    if (visibility === 'project' && (args.projectIds ?? []).length > 0) {
+    if ((args.projectIds ?? []).length > 0) {
       await this.db.insert(projectKnowledgeFiles).values(
         insertedFiles.flatMap((row) =>
           (args.projectIds ?? []).map((projectId) => ({
@@ -1024,7 +1024,7 @@ export class SharePointImportService {
         ),
       );
     }
-    if (visibility === 'schedule' && (args.scheduleIds ?? []).length > 0) {
+    if ((args.scheduleIds ?? []).length > 0) {
       await this.db.insert(scheduleKnowledgeFiles).values(
         insertedFiles.flatMap((row) =>
           (args.scheduleIds ?? []).map((scheduledPromptId) => ({
