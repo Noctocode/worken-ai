@@ -4,6 +4,7 @@ import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { SkillRouterService } from './skill-router.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
+import { SkillExecutionService } from './skill-execution.service.js';
 import { SkillsController } from './skills.controller.js';
 import { SkillsService } from './skills.service.js';
 
@@ -13,7 +14,12 @@ import { SkillsService } from './skills.service.js';
   // read_attached_file tools.
   imports: [DocumentsModule, IntegrationsModule, KnowledgeCoreModule],
   controllers: [SkillsController],
-  providers: [SkillsService, SkillRouterService, ToolRegistryService],
+  providers: [
+    SkillsService,
+    SkillRouterService,
+    ToolRegistryService,
+    SkillExecutionService,
+  ],
   // Exported so the chat / arena paths can select + inject skills per turn.
   exports: [SkillsService, SkillRouterService],
 })
