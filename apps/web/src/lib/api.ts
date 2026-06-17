@@ -2114,7 +2114,7 @@ export async function deleteShortcut(id: string): Promise<void> {
 // Skills — instructional "how we do X here" recipes the chat/arena
 // auto-selects per turn and injects into the model's context.
 
-export type SkillVisibility = "all" | "admins" | "teams";
+export type SkillVisibility = "all" | "admins" | "teams" | "project";
 
 export interface Skill {
   id: string;
@@ -2128,6 +2128,10 @@ export interface Skill {
   source: "manual" | "import";
   createdAt: string;
   updatedAt: string;
+  /** Current link sets — only populated by fetchSkill (the detail endpoint),
+   *  used to prefill the edit dialog's team / project pickers. */
+  teamIds?: string[];
+  projectIds?: string[];
 }
 
 export interface SkillInput {
@@ -2136,6 +2140,7 @@ export interface SkillInput {
   instructions: string;
   visibility?: SkillVisibility;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 export async function fetchSkills(): Promise<Skill[]> {
@@ -2196,11 +2201,12 @@ export async function updateSkillVisibility(
   id: string,
   visibility: SkillVisibility,
   teamIds?: string[],
+  projectIds?: string[],
 ): Promise<Skill> {
   const res = await apiFetch(`/skills/${id}/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ visibility, teamIds }),
+    body: JSON.stringify({ visibility, teamIds, projectIds }),
   });
   if (!res.ok) {
     throw new Error(

@@ -36,6 +36,9 @@ export interface SelectParams {
   /** Conversation for sticky selection + persistence. Omit for arena
    *  (stateless single question → per-question selection, no persistence). */
   conversationId?: string | null;
+  /** Project being chatted in. When set, project-scoped skills linked to it
+   *  become routable; omit for the (project-less) arena. */
+  projectId?: string | null;
   /** Skills the user pinned in the composer this turn — always included,
    *  bypassing the embedding threshold. */
   pinnedSkillIds?: string[];
@@ -102,11 +105,16 @@ export class SkillRouterService {
    * Skills the user may have auto-applied: their own + company-scope skills
    * shared with them. Visibility gating mirrors
    * KnowledgeIngestionService.searchAccessibleChunks (all / admins / teams),
-   * with cross-tenant isolation on companyId. Only active, embedded rows are
-   * returned — a null embedding means the async backfill hasn't run yet, so
-   * the skill simply isn't routable until it does.
+   * with cross-tenant isolation on companyId. When `projectId` is given,
+   * project-scoped skills linked to that project are also included (they apply
+   * only when chatting in that project — mirrors KC project files). Only
+   * active, embedded rows are returned — a null embedding means the async
+   * backfill hasn't run yet, so the skill simply isn't routable until it does.
    */
-  async getAccessibleSkills(userId: string): Promise<RoutableSkill[]> {
+  async getAccessibleSkills(
+    userId: string,
+    projectId?: string | null,
+  ): Promise<RoutableSkill[]> {
     const [caller] = await this.db
       .select({ role: users.role, companyId: users.companyId })
       .from(users)
@@ -147,6 +155,21 @@ export class SkillRouterService {
           ),
         );
 
+    // A project-scoped skill is routable only when chatting in a project it's
+    // linked to. The caller (chat) has already gated access to `projectId`, so
+    // a link to it is sufficient — include such skills regardless of owner
+    // (mirrors KC project files being shared with the project).
+    const projectBranch = projectId
+      ? and(
+          eq(skills.visibility, 'project'),
+          sql`EXISTS (
+            SELECT 1 FROM skill_projects sp
+            WHERE sp.skill_id = ${skills.id}
+              AND sp.project_id = ${projectId}
+          )`,
+        )
+      : sql`FALSE`;
+
     const rows = await this.db
       .select({
         id: skills.id,
@@ -160,8 +183,9 @@ export class SkillRouterService {
         and(
           eq(skills.isActive, true),
           sql`${skills.descriptionEmbedding} IS NOT NULL`,
-          // Own skills (any scope) OR a company skill shared with the caller.
-          or(eq(skills.userId, userId), companyBranch),
+          // Own skills (any scope) OR a company skill shared with the caller
+          // OR a project skill linked to the project being chatted in.
+          or(eq(skills.userId, userId), companyBranch, projectBranch),
         ),
       );
 
@@ -290,8 +314,8 @@ export class SkillRouterService {
    * on later messages. Arena passes no conversationId → no sticky/persist.
    */
   async selectForMessage(params: SelectParams): Promise<SelectedSkill[]> {
-    const { userId, queryEmbedding, conversationId } = params;
-    const accessible = await this.getAccessibleSkills(userId);
+    const { userId, queryEmbedding, conversationId, projectId } = params;
+    const accessible = await this.getAccessibleSkills(userId, projectId);
     if (accessible.length === 0) return [];
     const byId = new Map(accessible.map((s) => [s.id, s]));
 

@@ -156,6 +156,18 @@ describe('SkillRouterService.selectForMessage', () => {
     // The single pinned skill exceeds the budget on its own → dropped.
     expect(out).toEqual([]);
   });
+
+  it('forwards projectId to getAccessibleSkills (project-scoped routing)', async () => {
+    const spy = stubAccessible([]);
+    confirmAll();
+    await router.selectForMessage({
+      userId: 'u1',
+      queryEmbedding: [1, 0],
+      messageText: 'hi',
+      projectId: 'p1',
+    });
+    expect(spy).toHaveBeenCalledWith('u1', 'p1');
+  });
 });
 
 describe('SkillRouterService.resolveConfirmClient', () => {

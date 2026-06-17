@@ -310,6 +310,7 @@ export class ChatController {
         queryEmbedding,
         messageText: safePrompt,
         conversationId: body.conversationId,
+        projectId: body.projectId,
         pinnedSkillIds: body.pinnedSkillIds,
       });
       if (selected.length > 0) {

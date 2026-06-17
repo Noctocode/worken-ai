@@ -21,6 +21,7 @@ interface CreateSkillBody {
   instructions: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 type UpdateSkillBody = Partial<
@@ -30,6 +31,7 @@ type UpdateSkillBody = Partial<
 interface UpdateVisibilityBody {
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 interface ImportSkillBody {
@@ -40,6 +42,7 @@ interface ImportSkillBody {
   description?: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 @Controller('skills')
@@ -70,6 +73,7 @@ export class SkillsController {
       instructions: body.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: 'manual',
     });
   }
@@ -106,6 +110,7 @@ export class SkillsController {
       instructions: parsed.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: 'import',
     });
   }
@@ -130,6 +135,7 @@ export class SkillsController {
       user.id,
       body.visibility,
       body.teamIds,
+      body.projectIds,
     );
   }
 
