@@ -390,10 +390,15 @@ export const observabilityEvents = pgTable(
     errorMessage: text("error_message"),
     promptPreview: text("prompt_preview"), // first 200 chars, never the full prompt
     metadata: jsonb("metadata"),            // small extras, e.g. { arenaRunId, guardrailId, severity }
+    // Correlates the N upstream calls of one multi-call turn (executable
+    // skills, Option #3) so spend/usage rolls up per turn. NULL for the
+    // single-shot calls that exist today — additive, no behavior change.
+    turnId: uuid("turn_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [
     index("observability_events_user_created_idx").on(table.userId, table.createdAt),
+    index("observability_events_turn_idx").on(table.turnId),
     index("observability_events_team_created_idx").on(table.teamId, table.createdAt),
     index("observability_events_model_created_idx").on(table.model, table.createdAt),
     index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
@@ -950,7 +955,19 @@ export const skills = pgTable(
     scope: text("scope").notNull().default("personal"), // personal | company
     visibility: text("visibility").notNull().default("all"), // all | admins | teams
     isActive: boolean("is_active").notNull().default(true),
-    source: text("source").notNull().default("manual"), // manual | import
+    source: text("source").notNull().default("manual"), // manual | import | executable
+    // Executable-skill scripts/resources (Option #3) parsed from SKILL.md.
+    // NULL for instructional (#2) skills. Stored as JSONB (small, read as a
+    // unit) rather than a side table.
+    scripts:
+      jsonb("scripts").$type<
+        {
+          name: string;
+          language: string;
+          entrypoint?: boolean;
+          content: string;
+        }[]
+      >(),
     // pgvector embedding of name+description for the Stage-1 prefilter.
     // Dim 384 = Xenova/all-MiniLM-L6-v2 (the same model DocumentsService.embed
     // uses for KC chunks — cosine is only meaningful within one model space).
@@ -1014,6 +1031,86 @@ export const conversationSkills = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.conversationId, table.skillId] }),
+  ],
+);
+
+// ── Executable skills (Option #3) ───────────────────────────────────
+// One row per execution of an executable skill. Holds the multi-call
+// agent loop's lifecycle + rolled-up cost. `turnId` correlates the run's
+// upstream/tool calls in observability_events.
+export const skillRuns = pgTable(
+  "skill_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    skillId: uuid("skill_id")
+      .references(() => skills.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // Set when launched from a chat; NULL when launched from /resources/skills.
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    // running | done | failed | cancelled
+    status: text("status").notNull().default("running"),
+    turnId: uuid("turn_id"),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    error: text("error"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+  },
+  (table) => [
+    index("skill_runs_user_idx").on(table.userId, table.startedAt),
+    index("skill_runs_skill_idx").on(table.skillId),
+  ],
+);
+
+// Per-step trace of a run (one row per LLM / tool / script step). A real
+// table (not JSONB) because steps are queried for observability.
+export const skillRunSteps = pgTable(
+  "skill_run_steps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .references(() => skillRuns.id, { onDelete: "cascade" })
+      .notNull(),
+    stepType: text("step_type").notNull(), // llm | tool | script
+    // tool name (tool steps) / model id (llm steps) / script name (script steps)
+    tool: text("tool"),
+    inputPreview: text("input_preview"),
+    outputPreview: text("output_preview"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    totalTokens: integer("total_tokens"),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    latencyMs: integer("latency_ms"),
+    success: boolean("success").notNull().default(true),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [index("skill_run_steps_run_idx").on(table.runId, table.createdAt)],
+);
+
+// Files produced by a sandboxed run (Phase D). `expiresAt` drives the
+// retention reaper; `storagePath` lives under uploads/skill-artifacts/.
+export const skillArtifacts = pgTable(
+  "skill_artifacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .references(() => skillRuns.id, { onDelete: "cascade" })
+      .notNull(),
+    filename: text("filename").notNull(),
+    mimeType: text("mime_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    storagePath: text("storage_path").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at"),
+  },
+  (table) => [
+    index("skill_artifacts_run_idx").on(table.runId),
+    index("skill_artifacts_expires_idx").on(table.expiresAt),
   ],
 );
 
