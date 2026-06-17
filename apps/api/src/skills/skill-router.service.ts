@@ -190,16 +190,17 @@ export class SkillRouterService {
         and(
           eq(skills.isActive, true),
           sql`${skills.descriptionEmbedding} IS NOT NULL`,
-          // Own NON-project skills (any scope) are always routable; a project
-          // skill — even one you own — must only route inside its project, so
-          // it comes solely via projectBranch (mirrors KC project files, which
-          // don't surface outside their project for the owner either).
-          // Plus: a company skill shared with the caller, or a project skill
-          // linked to the project being chatted in.
+          // Own UNRESTRICTED skills (visibility 'all'/'admins') are always
+          // routable. A scoped skill — even one you own — honours its scope:
+          // a 'project' skill routes only inside its project (projectBranch),
+          // and a 'teams' skill only via team membership (companyBranch). This
+          // mirrors KC files and keeps the visibility the user picked actually
+          // restrictive — otherwise the owner sees their team-/project-scoped
+          // skill in every chat regardless of the team/project.
           or(
             and(
               eq(skills.userId, userId),
-              sql`${skills.visibility} != 'project'`,
+              sql`${skills.visibility} NOT IN ('project', 'teams')`,
             ),
             companyBranch,
             projectBranch,

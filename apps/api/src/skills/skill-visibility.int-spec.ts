@@ -132,6 +132,36 @@ describe('Skill visibility — team & project scoping (integration)', () => {
       expect(await accessibleIds(nonMember)).not.toContain(skill);
     });
 
+    // Regression: a team-scoped skill the user OWNS must still obey the team
+    // gate — the owner does not get a free pass into every chat just because
+    // they created it. (Bug: owner saw their 'teams' skill in all projects.)
+    it('does NOT route for the owner when they are not a member of the team', async () => {
+      const co = await mkCompany();
+      const owner = await mkUser(co);
+      const team = await mkTeam(owner); // team.ownerId set, but no membership row
+      const skill = await mkSkill({
+        userId: owner,
+        scope: 'company',
+        visibility: 'teams',
+      });
+      await linkTeam(skill, team);
+      expect(await accessibleIds(owner)).not.toContain(skill);
+    });
+
+    it('routes for the owner once they are an accepted member', async () => {
+      const co = await mkCompany();
+      const owner = await mkUser(co);
+      const team = await mkTeam(owner);
+      await addMember(team, owner);
+      const skill = await mkSkill({
+        userId: owner,
+        scope: 'company',
+        visibility: 'teams',
+      });
+      await linkTeam(skill, team);
+      expect(await accessibleIds(owner)).toContain(skill);
+    });
+
     it('does not leak to another tenant even for a team-shaped query', async () => {
       const coA = await mkCompany();
       const coB = await mkCompany();
