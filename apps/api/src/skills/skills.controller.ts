@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -19,6 +20,7 @@ import type { AuthenticatedUser } from '../auth/types.js';
 import { OrgSettingsService } from '../org-settings/org-settings.service.js';
 import { parseSkillMd } from './skill-md.parser.js';
 import { SkillExecutionService } from './skill-execution.service.js';
+import { SkillRouterService } from './skill-router.service.js';
 import { SkillsService } from './skills.service.js';
 
 interface RunSkillBody {
@@ -36,6 +38,7 @@ interface CreateSkillBody {
   instructions: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 type UpdateSkillBody = Partial<
@@ -45,6 +48,7 @@ type UpdateSkillBody = Partial<
 interface UpdateVisibilityBody {
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 interface ImportSkillBody {
@@ -55,6 +59,7 @@ interface ImportSkillBody {
   description?: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 @Controller('skills')
@@ -63,6 +68,7 @@ export class SkillsController {
     private readonly skills: SkillsService,
     private readonly execution: SkillExecutionService,
     private readonly orgSettings: OrgSettingsService,
+    private readonly router: SkillRouterService,
   ) {}
 
   /** 404 the executable-skills surface unless the tenant flag is on. */
@@ -154,6 +160,30 @@ export class SkillsController {
     }
   }
 
+  /**
+   * Skills the caller can pin in THIS context — own (non-project) skills,
+   * company-shared skills, and project-scoped skills linked to `projectId`
+   * (omit for the project-less arena). Backed by the same accessible-skills
+   * query the router uses, so the picker can't offer a skill that wouldn't
+   * actually apply here (e.g. another project's project-scoped skill).
+   * Declared before `:id` so the literal path wins over the param route.
+   */
+  @Get('pinnable')
+  async pinnable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    const accessible = await this.router.getAccessibleSkills(
+      user.id,
+      projectId ?? null,
+    );
+    return accessible.map((s) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+    }));
+  }
+
   @Get(':id')
   async get(
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -173,6 +203,7 @@ export class SkillsController {
       instructions: body.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: 'manual',
     });
   }
@@ -212,6 +243,7 @@ export class SkillsController {
       instructions: parsed.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: isExecutable ? 'executable' : 'import',
       scripts: isExecutable ? parsed.scripts : undefined,
     });
@@ -237,6 +269,7 @@ export class SkillsController {
       user.id,
       body.visibility,
       body.teamIds,
+      body.projectIds,
     );
   }
 

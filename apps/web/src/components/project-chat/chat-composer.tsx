@@ -61,6 +61,7 @@ interface Props {
  * Restricted to Word / Excel / PDF documents.
  */
 export function ChatComposer({
+  projectId,
   message,
   onMessageChange,
   onSubmit,
@@ -213,6 +214,7 @@ export function ChatComposer({
             <SkillsDialog
               pinnedIds={pinnedSkillIds}
               onTogglePin={onTogglePinnedSkill}
+              projectId={projectId}
             >
               <ComposerPill icon={Sparkles}>
                 {t("chatComp.skills")}

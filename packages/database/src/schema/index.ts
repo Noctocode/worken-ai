@@ -959,7 +959,7 @@ export const skills = pgTable(
     instructions: text("instructions").notNull(),
     // Same semantics as knowledge_files.scope / visibility.
     scope: text("scope").notNull().default("personal"), // personal | company
-    visibility: text("visibility").notNull().default("all"), // all | admins | teams
+    visibility: text("visibility").notNull().default("all"), // all | admins | teams | project
     isActive: boolean("is_active").notNull().default(true),
     source: text("source").notNull().default("manual"), // manual | import | executable
     // Executable-skill scripts/resources (Option #3) parsed from SKILL.md.
@@ -1012,6 +1012,30 @@ export const skillTeams = pgTable(
     // Reverse lookup: "which skills does team X get?" — used by the
     // accessible-filter EXISTS probe at chat time.
     index("skill_teams_team_idx").on(table.teamId),
+  ],
+);
+
+// Project gating for visibility='project' — mirrors project_knowledge_files.
+// A project-scoped skill applies when anyone with access to the project
+// chats IN that project (the chat carries projectId); it does not surface in
+// other projects or in the (project-less) Model Arena. Cascade on both sides
+// so deleting a skill or a project auto-cleans the links.
+export const skillProjects = pgTable(
+  "skill_projects",
+  {
+    skillId: uuid("skill_id")
+      .references(() => skills.id, { onDelete: "cascade" })
+      .notNull(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.skillId, table.projectId] }),
+    // Reverse lookup: "which skills does project X get?" — the router's
+    // accessible-filter EXISTS probe when chatting in a project.
+    index("skill_projects_project_idx").on(table.projectId),
   ],
 );
 

@@ -45,20 +45,29 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createSkill,
   deleteSkill,
+  fetchProjects,
+  fetchSkill,
   fetchSkills,
+  fetchTeams,
   importSkill,
   updateSkill,
+  updateSkillVisibility,
+  type Project,
   type Skill,
   type SkillInput,
   type SkillVisibility,
+  type TeamListItem,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 
 interface DraftSkill {
   name: string;
   description: string;
   instructions: string;
   visibility: SkillVisibility;
+  teamIds: string[];
+  projectIds: string[];
 }
 
 const EMPTY_DRAFT: DraftSkill = {
@@ -66,10 +75,17 @@ const EMPTY_DRAFT: DraftSkill = {
   description: "",
   instructions: "",
   visibility: "all",
+  teamIds: [],
+  projectIds: [],
 };
 
 export default function SkillsPage() {
   const { t } = useLanguage();
+  // Personal accounts are a single person: company-tier visibility ('all' =
+  // everyone in the company, 'admins', 'teams') is meaningless and the backend
+  // rejects it. Show only "Only me" (+ Projects, which personal users can
+  // still have) for them.
+  const isPersonal = useIsPersonal();
   const [items, setItems] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -83,6 +99,24 @@ export default function SkillsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  // Picker sources for 'teams' / 'project' visibility. Loaded once; failures
+  // are non-fatal (the picker just shows empty).
+  const [teams, setTeams] = useState<TeamListItem[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.allSettled([fetchTeams(), fetchProjects()]).then(
+      ([teamsRes, projectsRes]) => {
+        if (cancelled) return;
+        if (teamsRes.status === "fulfilled") setTeams(teamsRes.value);
+        if (projectsRes.status === "fulfilled") setProjects(projectsRes.value);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,9 +165,34 @@ export default function SkillsPage() {
       description: s.description,
       instructions: s.instructions,
       visibility: s.visibility,
+      teamIds: [],
+      projectIds: [],
     });
     setDraftOpen(true);
+    // Prefill the team / project pickers from the detail endpoint (the list
+    // rows don't carry the link sets). Non-fatal — pickers start empty.
+    if (s.visibility === "teams" || s.visibility === "project") {
+      void fetchSkill(s.id)
+        .then((detail) =>
+          setDraft((d) => ({
+            ...d,
+            teamIds: detail.teamIds ?? [],
+            projectIds: detail.projectIds ?? [],
+          })),
+        )
+        .catch(() => {
+          /* non-fatal */
+        });
+    }
   };
+
+  const toggleId = (key: "teamIds" | "projectIds", id: string) =>
+    setDraft((d) => ({
+      ...d,
+      [key]: d[key].includes(id)
+        ? d[key].filter((x) => x !== id)
+        : [...d[key], id],
+    }));
 
   const sortByUpdated = (rows: Skill[]) =>
     [...rows].sort(
@@ -157,23 +216,35 @@ export default function SkillsPage() {
       toast.error(t("skills.errInstructions"));
       return;
     }
+    if (draft.visibility === "teams" && draft.teamIds.length === 0) {
+      toast.error(t("skills.errPickTeam"));
+      return;
+    }
+    if (draft.visibility === "project" && draft.projectIds.length === 0) {
+      toast.error(t("skills.errPickProject"));
+      return;
+    }
 
     const payload: SkillInput = {
       name,
       description,
       instructions,
       visibility: draft.visibility,
+      teamIds: draft.visibility === "teams" ? draft.teamIds : undefined,
+      projectIds: draft.visibility === "project" ? draft.projectIds : undefined,
     };
 
     setSaving(true);
     try {
       if (editing) {
-        const updated = await updateSkill(editing.id, {
-          name,
-          description,
-          instructions,
-        });
-        // Visibility lives on its own endpoint.
+        await updateSkill(editing.id, { name, description, instructions });
+        // Visibility (+ its team/project links) lives on its own endpoint.
+        const updated = await updateSkillVisibility(
+          editing.id,
+          draft.visibility,
+          draft.teamIds,
+          draft.projectIds,
+        );
         setItems((prev) =>
           sortByUpdated(prev.map((s) => (s.id === updated.id ? updated : s))),
         );
@@ -450,14 +521,84 @@ export default function SkillsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">
-                    {t("skills.visibilityAll")}
+                    {isPersonal
+                      ? t("skills.visibilityPersonal")
+                      : t("skills.visibilityAll")}
                   </SelectItem>
-                  <SelectItem value="admins">
-                    {t("skills.visibilityAdmins")}
+                  {!isPersonal && (
+                    <SelectItem value="admins">
+                      {t("skills.visibilityAdmins")}
+                    </SelectItem>
+                  )}
+                  {!isPersonal && (
+                    <SelectItem value="teams">
+                      {t("skills.visibilityTeams")}
+                    </SelectItem>
+                  )}
+                  <SelectItem value="project">
+                    {t("skills.visibilityProject")}
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {draft.visibility === "teams" && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-text-2">
+                  {t("skills.pickTeams")}
+                </label>
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-2 p-2">
+                  {teams.length === 0 ? (
+                    <p className="px-1 py-2 text-[12px] text-text-3">
+                      {t("skills.noTeams")}
+                    </p>
+                  ) : (
+                    teams.map((team) => (
+                      <label
+                        key={team.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={draft.teamIds.includes(team.id)}
+                          onChange={() => toggleId("teamIds", team.id)}
+                          className="h-4 w-4 cursor-pointer accent-primary-6"
+                        />
+                        {team.name}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+            {draft.visibility === "project" && (
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-medium text-text-2">
+                  {t("skills.pickProjects")}
+                </label>
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-2 p-2">
+                  {projects.length === 0 ? (
+                    <p className="px-1 py-2 text-[12px] text-text-3">
+                      {t("skills.noProjects")}
+                    </p>
+                  ) : (
+                    projects.map((project) => (
+                      <label
+                        key={project.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={draft.projectIds.includes(project.id)}
+                          onChange={() => toggleId("projectIds", project.id)}
+                          className="h-4 w-4 cursor-pointer accent-primary-6"
+                        />
+                        {project.name}
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
           </div>
           <DialogFooter className="gap-2">
             <Button

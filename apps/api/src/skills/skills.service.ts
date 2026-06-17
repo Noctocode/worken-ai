@@ -6,8 +6,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { and, desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, or } from 'drizzle-orm';
 import {
+  projectMembers,
+  projects,
+  skillProjects,
   skills,
   skillTeams,
   teamMembers,
@@ -16,7 +19,7 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { DocumentsService } from '../documents/documents.service.js';
 
-export type SkillVisibility = 'all' | 'admins' | 'teams';
+export type SkillVisibility = 'all' | 'admins' | 'teams' | 'project';
 
 /** A script/resource entry of an executable skill (Option #3), parsed from
  *  SKILL.md. Persisted on `skills.scripts`; matches the schema JSONB shape. */
@@ -35,6 +38,7 @@ export interface CreateSkillInput {
   instructions: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
   source?: SkillSource;
   /** Executable-skill scripts (Option #3). Required + persisted only when
    *  source === 'executable'; ignored otherwise. */
@@ -110,9 +114,9 @@ export class SkillsService {
 
   /**
    * Validate the requested visibility against the caller's scope + role.
-   * Mirrors knowledge-core's resolveUploadVisibility (minus 'project',
-   * which skills don't have): 'admins' is admin-only, 'teams' needs a
-   * company profile.
+   * Mirrors knowledge-core's resolveUploadVisibility: 'admins' is admin-only,
+   * 'teams' needs a company profile, 'project' is gated by project access
+   * (allowed for personal accounts too).
    */
   private resolveVisibility(
     input: string | undefined,
@@ -120,12 +124,20 @@ export class SkillsService {
     isAdmin: boolean,
   ): SkillVisibility {
     if (input == null || input === '') return 'all';
-    if (input !== 'all' && input !== 'admins' && input !== 'teams') {
+    if (
+      input !== 'all' &&
+      input !== 'admins' &&
+      input !== 'teams' &&
+      input !== 'project'
+    ) {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all', 'admins', or 'teams'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', or 'project'.`,
       );
     }
-    if (scope === 'personal' && input !== 'all') {
+    // 'project' is gated by project access (not the company tier), so it's
+    // allowed for personal accounts too — they can scope a skill to a project
+    // they own/belong to. 'admins'/'teams' stay company-only.
+    if (scope === 'personal' && input !== 'all' && input !== 'project') {
       throw new BadRequestException(
         'Restricted visibility requires a company profile — personal skills are owner-only.',
       );
@@ -136,6 +148,55 @@ export class SkillsService {
       );
     }
     return input;
+  }
+
+  /**
+   * Normalize + authorize the project IDs for 'project' visibility: non-empty,
+   * and (non-admin) every id must be a project the caller owns or is a member
+   * of. Mirrors resolveAssignableTeamIds.
+   */
+  private async resolveAssignableProjectIds(
+    input: string[] | undefined,
+    callerId: string,
+    isAdmin: boolean,
+  ): Promise<string[]> {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException(
+        '`projectIds` must be an array when visibility is "project".',
+      );
+    }
+    const unique = [
+      ...new Set(input.filter((p) => typeof p === 'string' && p)),
+    ];
+    if (unique.length === 0) {
+      throw new BadRequestException(
+        'Project visibility requires at least one project — otherwise no one could see the skill.',
+      );
+    }
+    if (isAdmin) return unique;
+    // Accessible = the caller owns the project (projects.userId) or is a
+    // member (project_members).
+    const rows = await this.db
+      .selectDistinct({ id: projects.id })
+      .from(projects)
+      .leftJoin(projectMembers, eq(projectMembers.projectId, projects.id))
+      .where(
+        and(
+          inArray(projects.id, unique),
+          or(
+            eq(projects.userId, callerId),
+            eq(projectMembers.userId, callerId),
+          ),
+        ),
+      );
+    const allowed = new Set(rows.map((r) => r.id));
+    const denied = unique.filter((p) => !allowed.has(p));
+    if (denied.length > 0) {
+      throw new ForbiddenException(
+        `You can only scope a skill to projects you own or belong to. No access to: ${denied.join(', ')}.`,
+      );
+    }
+    return unique;
   }
 
   /**
@@ -207,7 +268,23 @@ export class SkillsService {
       .from(skills)
       .where(and(eq(skills.id, id), eq(skills.userId, userId)));
     if (!row) throw new NotFoundException('Skill not found.');
-    return row;
+    // Surface the current team / project link sets so the edit dialog can
+    // prefill the pickers for 'teams' / 'project' visibility.
+    const [teamRows, projectRows] = await Promise.all([
+      this.db
+        .select({ teamId: skillTeams.teamId })
+        .from(skillTeams)
+        .where(eq(skillTeams.skillId, id)),
+      this.db
+        .select({ projectId: skillProjects.projectId })
+        .from(skillProjects)
+        .where(eq(skillProjects.skillId, id)),
+    ]);
+    return {
+      ...row,
+      teamIds: teamRows.map((r) => r.teamId),
+      projectIds: projectRows.map((r) => r.projectId),
+    };
   }
 
   /** Coerce an incoming source to a known value (default 'manual'). */
@@ -240,6 +317,14 @@ export class SkillsService {
       visibility === 'teams'
         ? await this.resolveAssignableTeamIds(input.teamIds, userId, isAdmin)
         : [];
+    const projectIds =
+      visibility === 'project'
+        ? await this.resolveAssignableProjectIds(
+            input.projectIds,
+            userId,
+            isAdmin,
+          )
+        : [];
 
     const [row] = await this.db
       .insert(skills)
@@ -260,6 +345,13 @@ export class SkillsService {
       await this.db
         .insert(skillTeams)
         .values(teamIds.map((teamId) => ({ skillId: row.id, teamId })));
+    }
+    if (projectIds.length > 0) {
+      await this.db
+        .insert(skillProjects)
+        .values(
+          projectIds.map((projectId) => ({ skillId: row.id, projectId })),
+        );
     }
 
     // Async — don't block the create response on the embedder.
@@ -310,6 +402,7 @@ export class SkillsService {
     userId: string,
     visibilityInput: string | undefined,
     teamIds: string[] | undefined,
+    projectIds: string[] | undefined,
   ) {
     const [existing] = await this.db
       .select({ id: skills.id, scope: skills.scope })
@@ -327,13 +420,26 @@ export class SkillsService {
       visibility === 'teams'
         ? await this.resolveAssignableTeamIds(teamIds, userId, isAdmin)
         : [];
+    const resolvedProjectIds =
+      visibility === 'project'
+        ? await this.resolveAssignableProjectIds(projectIds, userId, isAdmin)
+        : [];
 
-    // Replace the team link set wholesale — simplest correct semantics.
+    // Replace both link sets wholesale — simplest correct semantics. Whichever
+    // visibility we land on, the other tier's links are cleared.
     await this.db.delete(skillTeams).where(eq(skillTeams.skillId, id));
+    await this.db.delete(skillProjects).where(eq(skillProjects.skillId, id));
     if (resolvedTeamIds.length > 0) {
       await this.db
         .insert(skillTeams)
         .values(resolvedTeamIds.map((teamId) => ({ skillId: id, teamId })));
+    }
+    if (resolvedProjectIds.length > 0) {
+      await this.db
+        .insert(skillProjects)
+        .values(
+          resolvedProjectIds.map((projectId) => ({ skillId: id, projectId })),
+        );
     }
 
     const [row] = await this.db
