@@ -30,6 +30,7 @@ import {
   fetchKnowledgeFolders,
   fetchProjects,
   fetchRecentKnowledgeFiles,
+  fetchScheduledPrompts,
   fetchTeams,
   createKnowledgeFolder,
   deleteKnowledgeFolder,
@@ -466,6 +467,7 @@ export default function KnowledgeCorePage() {
   // selection doesn't leak into the next one.
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+  const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
   // Held between the first upload and the user's resolution choice.
   // Mirrors the per-folder page state — see the comment there for
   // the full lifecycle (`pendingConflicts` → dialog → re-upload).
@@ -476,6 +478,7 @@ export default function KnowledgeCorePage() {
     visibility: KnowledgeFileVisibility;
     teamIds: string[];
     projectIds: string[];
+    scheduleIds: string[];
   } | null>(null);
 
   // Pull the user's team list once; only meaningful for company
@@ -492,6 +495,11 @@ export default function KnowledgeCorePage() {
     queryKey: ["projects", "kc-upload"],
     queryFn: () => fetchProjects("all"),
   });
+  // Schedules for the 'schedule' visibility tier — same lazy pattern.
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "kc-upload"],
+    queryFn: fetchScheduledPrompts,
+  });
 
   const confirmUpload = async () => {
     if (stagedFiles.length === 0) return;
@@ -505,6 +513,10 @@ export default function KnowledgeCorePage() {
     }
     if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
       toast.error(t("knowledgeMain.toastNeedProjects"));
+      return;
+    }
+    if (stagedVisibility === "schedule" && stagedScheduleIds.length === 0) {
+      toast.error(t("knowledgeMain.toastNeedSchedules"));
       return;
     }
     setUploading(true);
@@ -525,12 +537,14 @@ export default function KnowledgeCorePage() {
           visibility: stagedVisibility,
           teamIds: stagedTeamIds,
           projectIds: stagedProjectIds,
+          scheduleIds: stagedScheduleIds,
         });
       }
       setStagedFiles([]);
       setStagedVisibility("all");
       setStagedTeamIds([]);
       setStagedProjectIds([]);
+      setStagedScheduleIds([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"));
     } finally {
@@ -560,6 +574,7 @@ export default function KnowledgeCorePage() {
       stagedTeamIds,
       stagedProjectIds,
       actions,
+      stagedScheduleIds,
     );
     await Promise.all([
       queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -629,6 +644,7 @@ export default function KnowledgeCorePage() {
         ctx.teamIds,
         ctx.projectIds,
         actions,
+        ctx.scheduleIds,
       );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -1201,6 +1217,7 @@ export default function KnowledgeCorePage() {
                 )}
                 <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
                 <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                <SelectItem value="schedule">{t("knowledgeCore.specificSchedule")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1210,7 +1227,9 @@ export default function KnowledgeCorePage() {
                   ? "Only members of the teams you pick below will see these files in chat / arena."
                   : stagedVisibility === "project"
                     ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
-                    : "Every user in the company can see these files in chat / arena."}
+                    : stagedVisibility === "schedule"
+                      ? "These files will only be used as context for the AI Cron schedule(s) you pick below — never in the org-wide RAG."
+                      : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
 
@@ -1312,6 +1331,49 @@ export default function KnowledgeCorePage() {
               )}
             </div>
           )}
+
+          {/* Schedule checkbox panel — shown only when
+              visibility='schedule'. Lists the caller's AI Cron
+              schedules; selected ones get the file as run context. */}
+          {stagedVisibility === "schedule" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                {t("knowledgeCore.schedulesWithAccess")}
+              </label>
+              {userSchedules.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  {t("knowledgeCore.noSchedules")}
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userSchedules.map((s) => {
+                    const checked = stagedScheduleIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploading}
+                          onChange={() => {
+                            setStagedScheduleIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1320,6 +1382,7 @@ export default function KnowledgeCorePage() {
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
                 setStagedProjectIds([]);
+                setStagedScheduleIds([]);
               }}
               disabled={uploading}
               className="cursor-pointer"

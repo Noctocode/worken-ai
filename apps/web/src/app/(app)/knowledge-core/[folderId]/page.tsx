@@ -55,6 +55,7 @@ import {
   fetchKnowledgeFolders,
   fetchAllKnowledgeFiles,
   fetchProjects,
+  fetchScheduledPrompts,
   fetchTeams,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
@@ -332,6 +333,7 @@ export default function FolderDetailPage({
     visibility: KnowledgeFileVisibility;
     teamIds: string[];
     projectIds: string[];
+    scheduleIds: string[];
   } | null>(null);
 
   const uploadMutation = useMutation({
@@ -340,12 +342,14 @@ export default function FolderDetailPage({
       visibility,
       teamIds,
       projectIds,
+      scheduleIds,
       nameConflictActions,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
       teamIds: string[];
       projectIds: string[];
+      scheduleIds: string[];
       nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
       uploadKnowledgeFiles(
@@ -355,6 +359,7 @@ export default function FolderDetailPage({
         teamIds,
         projectIds,
         nameConflictActions,
+        scheduleIds,
       ),
     onSuccess: ({ uploaded, duplicates, nameConflicts }, variables) => {
       queryClient.invalidateQueries({
@@ -411,6 +416,7 @@ export default function FolderDetailPage({
           visibility: variables.visibility,
           teamIds: variables.teamIds,
           projectIds: variables.projectIds,
+          scheduleIds: variables.scheduleIds,
         });
       }
     },
@@ -446,6 +452,7 @@ export default function FolderDetailPage({
       visibility: pendingConflicts.visibility,
       teamIds: pendingConflicts.teamIds,
       projectIds: pendingConflicts.projectIds,
+      scheduleIds: pendingConflicts.scheduleIds,
       nameConflictActions: actions,
     });
   };
@@ -576,6 +583,7 @@ export default function FolderDetailPage({
     useState<KnowledgeFileVisibility>("all");
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+  const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
 
   // Same user-teams list the root page renders. Cached by react-query
   // key 'teams' so navigating between KC pages reuses one fetch.
@@ -586,6 +594,10 @@ export default function FolderDetailPage({
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "kc-upload"],
     queryFn: () => fetchProjects("all"),
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "kc-upload"],
+    queryFn: fetchScheduledPrompts,
   });
 
   // Multi-select state for the bulk action bar. Set<string> over
@@ -746,16 +758,22 @@ export default function FolderDetailPage({
       toast.error(t("kcFolder.pickProject"));
       return;
     }
+    if (stagedVisibility === "schedule" && stagedScheduleIds.length === 0) {
+      toast.error(t("kcFolder.pickSchedule"));
+      return;
+    }
     uploadMutation.mutate({
       files: stagedFiles,
       visibility: stagedVisibility,
       teamIds: stagedTeamIds,
       projectIds: stagedProjectIds,
+      scheduleIds: stagedScheduleIds,
     });
     setStagedFiles([]);
     setStagedVisibility("all");
     setStagedTeamIds([]);
     setStagedProjectIds([]);
+    setStagedScheduleIds([]);
   };
 
   const removeStagedFile = (idx: number) =>
@@ -1511,6 +1529,7 @@ export default function FolderDetailPage({
                 )}
                 <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
                 <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
+                <SelectItem value="schedule">{t("kcFolder.specificSchedule")}</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1520,7 +1539,9 @@ export default function FolderDetailPage({
                   ? t("kcFolder.hintTeams")
                   : stagedVisibility === "project"
                     ? t("kcFolder.hintProject")
-                    : t("kcFolder.hintEveryone")}
+                    : stagedVisibility === "schedule"
+                      ? t("kcFolder.hintSchedule")
+                      : t("kcFolder.hintEveryone")}
             </p>
           </div>
 
@@ -1611,6 +1632,46 @@ export default function FolderDetailPage({
             </div>
           )}
 
+          {stagedVisibility === "schedule" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                {t("kcFolder.schedulesWithAccess")}
+              </label>
+              {userSchedules.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  {t("kcFolder.noSchedules")}
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userSchedules.map((s) => {
+                    const checked = stagedScheduleIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploadMutation.isPending}
+                          onChange={() => {
+                            setStagedScheduleIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1619,6 +1680,7 @@ export default function FolderDetailPage({
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
                 setStagedProjectIds([]);
+                setStagedScheduleIds([]);
               }}
               disabled={uploadMutation.isPending}
               className="cursor-pointer"

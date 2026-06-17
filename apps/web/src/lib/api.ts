@@ -2461,13 +2461,15 @@ export async function uploadKnowledgeFiles(
   // overwrite", and the BE will simply bounce conflicts back to the
   // FE again.
   nameConflictActions?: Record<string, NameConflictAction>,
+  scheduleIds: string[] = [],
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only
   // admins can set 'admins'; non-admin callers can pick 'all',
-  // 'teams', or 'project'. 'teams' requires teamIds non-empty;
-  // 'project' requires projectIds non-empty.
+  // 'teams', 'project', or 'schedule'. 'teams' requires teamIds
+  // non-empty; 'project' requires projectIds; 'schedule' requires
+  // scheduleIds.
   form.append("visibility", visibility);
   // Append each id as a repeated field — multer parses repeats into
   // an array on the body, matching the controller's expected
@@ -2477,6 +2479,9 @@ export async function uploadKnowledgeFiles(
   }
   if (visibility === "project") {
     projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (visibility === "schedule") {
+    scheduleIds.forEach((id) => form.append("scheduleIds", id));
   }
   if (nameConflictActions && Object.keys(nameConflictActions).length > 0) {
     // Multipart can't carry an object natively; serialise to JSON.

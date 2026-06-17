@@ -144,6 +144,7 @@ export class KnowledgeCoreController {
       visibility?: string;
       teamIds?: string | string[];
       projectIds?: string | string[];
+      scheduleIds?: string | string[];
       nameConflictActions?: string;
     },
   ) {
@@ -156,6 +157,11 @@ export class KnowledgeCoreController {
       ? body.projectIds
       : body?.projectIds
         ? [body.projectIds]
+        : [];
+    const scheduleIds = Array.isArray(body?.scheduleIds)
+      ? body.scheduleIds
+      : body?.scheduleIds
+        ? [body.scheduleIds]
         : [];
     let nameConflictActions: Record<string, NameConflictAction> | undefined;
     if (body?.nameConflictActions) {
@@ -189,6 +195,7 @@ export class KnowledgeCoreController {
       teamIds,
       projectIds,
       nameConflictActions,
+      scheduleIds,
     );
   }
 

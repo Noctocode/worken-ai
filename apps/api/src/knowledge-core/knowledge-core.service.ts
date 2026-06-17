@@ -724,6 +724,10 @@ export class KnowledgeCoreService {
     // not a silent overwrite. See the name-conflict block below for
     // the actions' semantics.
     nameConflictActions?: Record<string, NameConflictAction>,
+    // Schedule links for 'schedule' visibility. Added last so the existing
+    // positional callers (esp. ScheduleKnowledgeService.uploadAndAttach, which
+    // links separately and omits this) keep working unchanged.
+    scheduleIdsInput?: string[],
   ) {
     const [folder] = await this.db
       .select()
@@ -795,6 +799,17 @@ export class KnowledgeCoreService {
             userId,
             uploader?.role === 'admin',
           )
+        : [];
+
+    // Attach the upload to one or more AI Cron schedules. Like projects, the
+    // schedule_knowledge_files rows double as the run-time context grant.
+    // Only resolved when the caller passed schedule ids — 'schedule'
+    // visibility is also used by the schedule-form upload path, which links
+    // its own files afterwards and omits these, so it stays untouched.
+    const scheduleIdsToLink = scheduleIdsInput ?? [];
+    const allowedScheduleIds =
+      scheduleIdsToLink.length > 0
+        ? await this.resolveAssignableScheduleIds(scheduleIdsToLink, userId)
         : [];
 
     // Hash every uploaded file up front so we can dedupe within the
@@ -1083,6 +1098,20 @@ export class KnowledgeCoreService {
           inserted.flatMap((row) =>
             allowedProjectIds.map((projectId) => ({
               projectId,
+              fileId: row.id,
+              attachedBy: userId,
+            })),
+          ),
+        );
+      }
+
+      // schedule_knowledge_files is the schedule attach + run-context grant —
+      // same table the schedule form's "Files in this context" populates.
+      if (inserted.length > 0 && allowedScheduleIds.length > 0) {
+        await this.db.insert(scheduleKnowledgeFiles).values(
+          inserted.flatMap((row) =>
+            allowedScheduleIds.map((scheduledPromptId) => ({
+              scheduledPromptId,
               fileId: row.id,
               attachedBy: userId,
             })),
