@@ -1493,7 +1493,9 @@ export default function FolderDetailPage({
                 {!isPersonal && (
                   <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
                 )}
-                <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">

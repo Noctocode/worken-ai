@@ -875,7 +875,9 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 {!isPersonal && (
                   <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
                 )}
-                <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">

@@ -658,7 +658,9 @@ export function ImportFromOneDriveDialog({ open, onOpenChange }: Props) {
               {!isPersonal && (
                 <SelectItem value="teams">{t("odDlg.specificTeams")}</SelectItem>
               )}
-              <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
+              {!isPersonal && (
+                <SelectItem value="project">{t("odDlg.specificProject")}</SelectItem>
+              )}
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">

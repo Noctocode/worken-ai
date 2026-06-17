@@ -169,7 +169,9 @@ export function ChangeFileVisibilityDialog({
                 {!isPersonal && (
                   <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
                 )}
-                <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">

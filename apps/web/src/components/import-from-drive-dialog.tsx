@@ -777,9 +777,11 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                   {t("driveDlg.specificTeams")}
                 </SelectItem>
               )}
-              <SelectItem value="project">
-                {t("driveDlg.specificProject")}
-              </SelectItem>
+              {!isPersonal && (
+                <SelectItem value="project">
+                  {t("driveDlg.specificProject")}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">

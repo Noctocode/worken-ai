@@ -1188,7 +1188,9 @@ export default function KnowledgeCorePage() {
                 {!isPersonal && (
                   <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
                 )}
-                <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
