@@ -183,9 +183,20 @@ export class SkillRouterService {
         and(
           eq(skills.isActive, true),
           sql`${skills.descriptionEmbedding} IS NOT NULL`,
-          // Own skills (any scope) OR a company skill shared with the caller
-          // OR a project skill linked to the project being chatted in.
-          or(eq(skills.userId, userId), companyBranch, projectBranch),
+          // Own NON-project skills (any scope) are always routable; a project
+          // skill — even one you own — must only route inside its project, so
+          // it comes solely via projectBranch (mirrors KC project files, which
+          // don't surface outside their project for the owner either).
+          // Plus: a company skill shared with the caller, or a project skill
+          // linked to the project being chatted in.
+          or(
+            and(
+              eq(skills.userId, userId),
+              sql`${skills.visibility} != 'project'`,
+            ),
+            companyBranch,
+            projectBranch,
+          ),
         ),
       );
 
