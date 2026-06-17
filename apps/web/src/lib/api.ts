@@ -2155,6 +2155,28 @@ export async function fetchSkill(id: string): Promise<Skill> {
   return res.json();
 }
 
+/** A skill the caller may pin in a given context (composer picker). */
+export interface PinnableSkill {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * Skills pinnable in THIS context — own (non-project) + company-shared +
+ * project-scoped skills linked to `projectId`. Omit `projectId` for the
+ * project-less arena. Mirrors the router's accessible-skills query, so a
+ * project's skill never shows for pinning in a different project.
+ */
+export async function fetchPinnableSkills(
+  projectId?: string,
+): Promise<PinnableSkill[]> {
+  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  const res = await apiFetch(`/skills/pinnable${qs}`);
+  if (!res.ok) throw new Error("Failed to load skills");
+  return res.json();
+}
+
 export async function createSkill(input: SkillInput): Promise<Skill> {
   const res = await apiFetch(`/skills`, {
     method: "POST",
