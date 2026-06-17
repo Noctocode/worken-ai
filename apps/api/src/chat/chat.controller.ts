@@ -3,6 +3,7 @@ import {
   Controller,
   HttpException,
   Inject,
+  Logger,
   Post,
   Req,
   Res,
@@ -56,6 +57,8 @@ interface ChatRequestBody {
 
 @Controller('chat')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly chatService: ChatService,
     private readonly documentsService: DocumentsService,
@@ -315,7 +318,7 @@ export class ChatController {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(
+      this.logger.warn(
         `Skill selection failed; continuing without skills: ${msg}`,
       );
     }

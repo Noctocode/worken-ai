@@ -334,12 +334,7 @@ export class SkillRouterService {
       autoIds.push(r.skill.id);
     }
 
-    // 4. Persist fresh auto-selections as sticky for next turn.
-    if (conversationId && autoIds.length > 0) {
-      await this.persistSticky(conversationId, autoIds);
-    }
-
-    // 5. Assemble, respecting the char budget. Pins first, then sticky, then
+    // 4. Assemble, respecting the char budget. Pins first, then sticky, then
     //    auto, so the user's explicit choices survive truncation.
     const ordered: SelectedSkill[] = [];
     const pushIf = (id: string, reason: SelectedSkill['reason']) => {
@@ -356,6 +351,9 @@ export class SkillRouterService {
     for (const id of stickyIds) pushIf(id, 'sticky');
     for (const id of autoIds) pushIf(id, 'auto');
 
+    // The char budget is a HARD cap (protects the context window), so even a
+    // pinned skill that overflows it on its own is dropped. Pins still come
+    // first in `ordered`, so they get first claim on the budget.
     let budget = MAX_SKILL_CHARS;
     const kept: SelectedSkill[] = [];
     for (const s of ordered) {
@@ -368,6 +366,16 @@ export class SkillRouterService {
       budget -= s.instructions.length;
       kept.push(s);
     }
+
+    // 5. Persist as sticky only the freshly auto-selected skills that actually
+    //    made it into the context this turn — a skill the budget dropped
+    //    shouldn't reappear as "sticky" next turn having never influenced a
+    //    response. Arena passes no conversationId → no persistence.
+    if (conversationId) {
+      const keptAuto = kept.filter((s) => s.reason === 'auto').map((s) => s.id);
+      await this.persistSticky(conversationId, keptAuto);
+    }
+
     return kept;
   }
 
