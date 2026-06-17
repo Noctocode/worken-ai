@@ -8,6 +8,7 @@ import {
   Loader2,
   Paperclip,
   Send,
+  Sparkles,
   Square,
   X,
 } from "lucide-react";
@@ -15,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 
 import { PromptLibraryDialog } from "./prompt-library-dialog";
+import { SkillsDialog } from "./skills-dialog";
 import { useLanguage } from "@/lib/i18n";
 import type { ChatAttachment } from "@/lib/api";
 
@@ -34,6 +36,10 @@ interface Props {
   onAddFiles: (files: FileList) => void;
   onRemoveAttachment: (fileId: string) => void;
   attachmentUploading: boolean;
+  /** Skill ids the user pinned for this conversation — sent with each
+   *  message so the router force-includes them. */
+  pinnedSkillIds: string[];
+  onTogglePinnedSkill: (id: string) => void;
 }
 
 /**
@@ -64,6 +70,8 @@ export function ChatComposer({
   onAddFiles,
   onRemoveAttachment,
   attachmentUploading,
+  pinnedSkillIds,
+  onTogglePinnedSkill,
 }: Props) {
   const { t } = useLanguage();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -202,6 +210,19 @@ export function ChatComposer({
             <PromptLibraryDialog onPick={insertPromptBody}>
               <ComposerPill icon={BookOpen}>{t("chatComp.promptLibrary")}</ComposerPill>
             </PromptLibraryDialog>
+            <SkillsDialog
+              pinnedIds={pinnedSkillIds}
+              onTogglePin={onTogglePinnedSkill}
+            >
+              <ComposerPill icon={Sparkles}>
+                {t("chatComp.skills")}
+                {pinnedSkillIds.length > 0 && (
+                  <span className="rounded-full bg-primary-6 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+                    {pinnedSkillIds.length}
+                  </span>
+                )}
+              </ComposerPill>
+            </SkillsDialog>
           </div>
           {isSending ? (
             <Button

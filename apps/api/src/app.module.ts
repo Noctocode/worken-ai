@@ -30,6 +30,7 @@ import { OrgSettingsModule } from './org-settings/org-settings.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { SharePointModule } from './sharepoint/sharepoint.module';
 import { ShortcutsModule } from './shortcuts/shortcuts.module';
+import { SkillsModule } from './skills/skills.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
 import { UsersModule } from './users/users.module';
@@ -70,6 +71,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     PromptsModule,
     SharePointModule,
     ShortcutsModule,
+    SkillsModule,
     TeamsModule,
     TendersModule,
     UsersModule,

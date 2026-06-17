@@ -60,6 +60,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
+import { SkillsDialog } from "@/components/project-chat/skills-dialog";
 import {
   deleteArenaRun,
   fetchArenaRun,
@@ -363,6 +364,9 @@ export default function CompareModelsPage() {
     { name: string; content: string } | null
   >(null);
   const [promptLibraryOpen, setPromptLibraryOpen] = useState(false);
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  // Skills pinned for this comparison — injected into every panel's context.
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const deleteRunQuestion = useMemo(
     () => history.find((h) => h.id === deleteRunId)?.question ?? "",
     [history, deleteRunId],
@@ -499,6 +503,7 @@ export default function CompareModelsPage() {
         controller.signal,
         // Empty string → backend default judge model.
         selectedJudge || undefined,
+        pinnedSkillIds,
       )) {
         // Defensive: if the user pressed Stop, the abort signal is
         // set but BE-side bytes already on the wire still surface
@@ -1196,6 +1201,8 @@ export default function CompareModelsPage() {
               attachedFile={attachedFile}
               setAttachedFile={setAttachedFile}
               onOpenPromptLibrary={() => setPromptLibraryOpen(true)}
+              onOpenSkills={() => setSkillsOpen(true)}
+              pinnedSkillCount={pinnedSkillIds.length}
             />
           )}
         </section>
@@ -1301,6 +1308,17 @@ export default function CompareModelsPage() {
           });
           toast.success(t("compareModels.toastInsertedPrompt").replace("{title}", p.title));
         }}
+      />
+
+      <SkillsDialog
+        open={skillsOpen}
+        onOpenChange={setSkillsOpen}
+        pinnedIds={pinnedSkillIds}
+        onTogglePin={(id) =>
+          setPinnedSkillIds((prev) =>
+            prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+          )
+        }
       />
 
       <Dialog
@@ -1710,6 +1728,8 @@ function Composer({
   attachedFile,
   setAttachedFile,
   onOpenPromptLibrary,
+  onOpenSkills,
+  pinnedSkillCount,
 }: {
   question: string;
   setQuestion: (v: string) => void;
@@ -1725,6 +1745,8 @@ function Composer({
   attachedFile: { name: string; content: string } | null;
   setAttachedFile: (f: { name: string; content: string } | null) => void;
   onOpenPromptLibrary: () => void;
+  onOpenSkills: () => void;
+  pinnedSkillCount: number;
 }) {
   const { t } = useLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1911,6 +1933,16 @@ function Composer({
               icon={Library}
               label={t("arena.promptLibrary")}
               onClick={onOpenPromptLibrary}
+              disabled={loading}
+            />
+            <ComposerChip
+              icon={Sparkles}
+              label={
+                pinnedSkillCount > 0
+                  ? `${t("arena.skills")} (${pinnedSkillCount})`
+                  : t("arena.skills")
+              }
+              onClick={onOpenSkills}
               disabled={loading}
             />
             <ShortcutsPopover

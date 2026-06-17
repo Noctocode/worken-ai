@@ -3,6 +3,7 @@ import {
   Controller,
   HttpException,
   Inject,
+  Logger,
   Post,
   Req,
   Res,
@@ -26,6 +27,7 @@ import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
+import { SkillRouterService } from '../skills/skill-router.service.js';
 import { ChatService } from './chat.service.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { ChatGateway } from '../realtime/chat.gateway.js';
@@ -48,10 +50,15 @@ interface ChatRequestBody {
   /** KC files attached to THIS message (rendered as chips, downloadable;
    *  their content is fed to RAG via the project attachment path). */
   attachments?: ChatAttachment[];
+  /** Skills the user pinned in the composer for this conversation — always
+   *  injected, bypassing the router's embedding threshold. */
+  pinnedSkillIds?: string[];
 }
 
 @Controller('chat')
 export class ChatController {
+  private readonly logger = new Logger(ChatController.name);
+
   constructor(
     private readonly chatService: ChatService,
     private readonly documentsService: DocumentsService,
@@ -64,6 +71,7 @@ export class ChatController {
     private readonly projectKnowledge: ProjectKnowledgeService,
     private readonly modelSuggestions: ModelSuggestionService,
     private readonly chatGateway: ChatGateway,
+    private readonly skillRouter: SkillRouterService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -223,12 +231,21 @@ export class ChatController {
       content: m.content,
     }));
 
+    // Embed the user message ONCE and share the vector across every
+    // similarity lookup this turn (project docs, attached files, accessible
+    // KC chunks — and, later, the skill router). The embedder is local /
+    // in-process so this is CPU-only, but a project chat with attachments
+    // otherwise embeds the same prompt 3× per turn.
+    const [queryEmbedding] = await this.documentsService.embed([safePrompt]);
+
     const contextChunks: string[] = [];
     if (body.projectId) {
       // Project-scoped paste-text snippets (legacy + still active).
       const relevant = await this.documentsService.searchRelevant(
         body.projectId,
         safePrompt,
+        5,
+        queryEmbedding,
       );
       for (const doc of relevant) contextChunks.push(doc.content);
 
@@ -251,6 +268,8 @@ export class ChatController {
             user.id,
             attachedFileIds,
             safePrompt,
+            5,
+            queryEmbedding,
           );
         for (const chunk of attachedChunks) contextChunks.push(chunk.content);
       }
@@ -258,6 +277,8 @@ export class ChatController {
     const userKnowledge = await this.knowledgeIngestion.searchAccessibleChunks(
       user.id,
       safePrompt,
+      5,
+      queryEmbedding,
     );
     for (const chunk of userKnowledge) contextChunks.push(chunk.content);
 
@@ -276,6 +297,32 @@ export class ChatController {
         contextChunks.unshift(`Attached file "${f.name}":\n${f.text}`);
       }
     }
+
+    // Skills: the router picks 0–N relevant skills (sticky for this
+    // conversation + pinned + freshly matched) and we prepend their
+    // instructions so they lead the context. Reuses the per-turn query
+    // vector — no extra embed. Failures here must not break chat, so the
+    // whole step is best-effort.
+    let appliedSkills: { id: string; name: string }[] = [];
+    try {
+      const selected = await this.skillRouter.selectForMessage({
+        userId: user.id,
+        queryEmbedding,
+        messageText: safePrompt,
+        conversationId: body.conversationId,
+        pinnedSkillIds: body.pinnedSkillIds,
+      });
+      if (selected.length > 0) {
+        contextChunks.unshift(this.skillRouter.renderContextBlock(selected));
+        appliedSkills = selected.map((s) => ({ id: s.id, name: s.name }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Skill selection failed; continuing without skills: ${msg}`,
+      );
+    }
+
     const context =
       contextChunks.length > 0 ? contextChunks.join('\n\n---\n\n') : undefined;
 
@@ -708,6 +755,9 @@ export class ChatController {
     // fallback when it differs from the requested model) on reload.
     metadata.model = usedModel;
     if (usedModel !== requestedModel) metadata.requestedModel = requestedModel;
+    // Record which skills the router applied so the FE can show a
+    // "Skill applied" chip and the user understands why the style shifted.
+    if (appliedSkills.length > 0) metadata.skills = appliedSkills;
 
     await this.conversationsService.addMessage(
       body.conversationId,
@@ -741,6 +791,7 @@ export class ChatController {
         costEstimated,
         streamed: true,
         partial: clientDisconnected ? true : undefined,
+        skillsApplied: appliedSkills.length || undefined,
       },
     });
 

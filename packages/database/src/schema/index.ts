@@ -926,6 +926,97 @@ export const prompts = pgTable("prompts", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// Instructional "skills" — reusable Markdown "how we do X here" recipes
+// (e.g. "how we write client proposals") the chat/arena auto-selects per
+// turn and injects into the model's context. Ownership mirrors `prompts`;
+// scope/visibility mirror `knowledge_files` so org-provisioning through
+// Teams/Company admin comes for free. NO executable scripts/sandbox here —
+// that's a separate follow-up (see docs/skills-plan.md "Option #3").
+export const skills = pgTable(
+  "skills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // Short label, e.g. "Client proposal".
+    name: text("name").notNull(),
+    // The routing trigger — "use this skill when…". Embedded + matched
+    // against the user message; also shown in the skill picker.
+    description: text("description").notNull(),
+    // The SKILL.md body that gets injected into context when selected.
+    instructions: text("instructions").notNull(),
+    // Same semantics as knowledge_files.scope / visibility.
+    scope: text("scope").notNull().default("personal"), // personal | company
+    visibility: text("visibility").notNull().default("all"), // all | admins | teams
+    isActive: boolean("is_active").notNull().default(true),
+    source: text("source").notNull().default("manual"), // manual | import
+    // pgvector embedding of name+description for the Stage-1 prefilter.
+    // Dim 384 = Xenova/all-MiniLM-L6-v2 (the same model DocumentsService.embed
+    // uses for KC chunks — cosine is only meaningful within one model space).
+    // NULLABLE on purpose: filled asynchronously after create (like the KC
+    // ingest pipeline), and the router skips rows where it's still null
+    // rather than blocking skill creation on the embedder.
+    descriptionEmbedding: vector("description_embedding", { dimensions: 384 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // Accessible-filter probe (scope + company visibility gate). NOT a
+    // vector index — N (skills a user can see) is tiny, so the router
+    // pulls the accessible set and cosine-ranks in memory; ivfflat/hnsw
+    // would be needless complexity here.
+    index("skills_scope_visibility_idx").on(table.scope, table.visibility),
+    // Owner's "my skills" list (mirrors how prompts are listed per user).
+    index("skills_user_idx").on(table.userId),
+  ],
+);
+
+// Team gating for visibility='teams' — mirrors knowledge_file_teams.
+export const skillTeams = pgTable(
+  "skill_teams",
+  {
+    skillId: uuid("skill_id")
+      .references(() => skills.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.skillId, table.teamId] }),
+    // Reverse lookup: "which skills does team X get?" — used by the
+    // accessible-filter EXISTS probe at chat time.
+    index("skill_teams_team_idx").on(table.teamId),
+  ],
+);
+
+// Sticky skill selection per conversation. Skills are procedural ("how we
+// write proposals") so they must not flicker: once a skill is auto-selected
+// (or pinned) in a conversation it stays active for the rest of it, instead
+// of re-rolling the embedding match on every message and "forgetting" the
+// format mid-task. `pinned` distinguishes a user-forced skill (always
+// included, bypasses the embedding threshold) from one that triggered
+// automatically. Arena is stateless (single question) so it doesn't use
+// this table — it selects per question.
+export const conversationSkills = pgTable(
+  "conversation_skills",
+  {
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    skillId: uuid("skill_id")
+      .references(() => skills.id, { onDelete: "cascade" })
+      .notNull(),
+    pinned: boolean("pinned").notNull().default(false),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.conversationId, table.skillId] }),
+  ],
+);
+
 export const modelConfigs = pgTable("model_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: uuid("owner_id")

@@ -106,6 +106,10 @@ interface LocalMessage {
   /** KC files attached to this (user) message — rendered as
    *  downloadable chips. Hydrated from metadata.attachments on reload. */
   attachments?: ChatAttachment[];
+  /** Skills the router auto-applied to this answer. Hydrated from
+   *  metadata.skills; renders a "Skill applied" chip so the user
+   *  understands why the response follows a particular format. */
+  skills?: { id: string; name: string }[];
 }
 
 function getTimestamp() {
@@ -266,6 +270,9 @@ export default function ProjectChatPage() {
   const [attachmentUploading, setAttachmentUploading] = useState(false);
   const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [message, setMessage] = useState("");
+  // Skills the user pinned via the composer Skills dialog — sent with each
+  // message so the router force-includes them this conversation.
+  const [pinnedSkillIds, setPinnedSkillIds] = useState<string[]>([]);
   const [isSending, setIsSending] = useState(false);
   // Holds the AbortController for the in-flight stream so the Stop
   // button can cancel mid-token. Null when no stream is active.
@@ -348,6 +355,11 @@ export default function ProjectChatPage() {
           attachments: Array.isArray(meta?.attachments)
             ? (meta.attachments as ChatAttachment[]).filter(
                 (a) => a && typeof a.fileId === "string",
+              )
+            : undefined,
+          skills: Array.isArray(meta?.skills)
+            ? (meta.skills as { id: string; name: string }[]).filter(
+                (s) => s && typeof s.name === "string",
               )
             : undefined,
           userId: m.userId,
@@ -578,6 +590,7 @@ export default function ProjectChatPage() {
         projectId,
         controller.signal,
         attachments,
+        pinnedSkillIds,
       )) {
         // Defensive: BE-side bytes already buffered on the wire
         // surface here even after the user pressed Stop. Bail
@@ -1306,6 +1319,26 @@ export default function ProjectChatPage() {
                         </ol>
                       </div>
                     ) : null}
+                    {/* Skills the router auto-applied — makes the format
+                        shift legible ("why did it answer like this?"). */}
+                    {msg.role === "assistant" &&
+                    msg.skills &&
+                    msg.skills.length > 0 ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {msg.skills.map((s) => (
+                          <span
+                            key={s.id}
+                            className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-primary-7"
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            {t("projDetail.skillApplied").replace(
+                              "{name}",
+                              s.name,
+                            )}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
                     {/* Per-message action row (Figma `Icons` frame —
                         30:10464, 168:7221). Hidden mid-stream so we
                         don't expose Copy of a half-rendered bubble or
@@ -1429,6 +1462,14 @@ export default function ProjectChatPage() {
           onAddFiles={handleAddFiles}
           onRemoveAttachment={handleRemoveAttachment}
           attachmentUploading={attachmentUploading}
+          pinnedSkillIds={pinnedSkillIds}
+          onTogglePinnedSkill={(id) =>
+            setPinnedSkillIds((prev) =>
+              prev.includes(id)
+                ? prev.filter((x) => x !== id)
+                : [...prev, id],
+            )
+          }
         />
       </div>
 

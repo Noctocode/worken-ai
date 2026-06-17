@@ -31,6 +31,7 @@ export const common = {
   'appbar.title.promptBuilder': 'Prompt Builder',
   'appbar.title.promptImprover': 'Prompt Improver',
   'appbar.title.shortcuts': 'Shortcuts',
+  'appbar.title.skills': 'Skills',
   'appbar.title.howItWorks': 'How WorkenAI works',
   'appbar.title.guardrails': 'Guardrails',
   'appbar.title.observability': 'Observability',

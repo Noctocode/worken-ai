@@ -22,6 +22,7 @@ export const chat = {
   'chatComp.uploadImageSoon': 'Image upload is coming soon',
   'chatComp.comingSoon': 'Soon',
   'chatComp.promptLibrary': 'Prompt Library',
+  'chatComp.skills': 'Skills',
   'chatComp.stopGenerating': 'Stop generating',
   'chatComp.send': 'Send',
   'chatComp.generating': 'Generating — press Stop to cancel.',

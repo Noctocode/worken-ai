@@ -12,6 +12,7 @@ import { ModelsModule } from '../models/models.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { RealtimeModule } from '../realtime/realtime.module.js';
+import { SkillsModule } from '../skills/skills.module.js';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { RealtimeModule } from '../realtime/realtime.module.js';
     ModelsModule,
     OpenRouterModule,
     ProjectsModule, // ProjectKnowledgeService for project-attached KC RAG
+    SkillsModule, // SkillRouterService for per-turn skill selection
   ],
   controllers: [ChatController],
   providers: [ChatService, ModelSuggestionService],

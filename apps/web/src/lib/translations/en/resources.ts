@@ -9,6 +9,9 @@ export const resources = {
   'resources.promptImprover': 'Prompt Improver',
   'resources.learnAcademy': 'Learn Academy',
   'resources.shortcuts': 'Shortcuts',
+  'resources.skills': 'Skills',
+  'resources.skills.cardDesc':
+    'Capture how your team does a task once; the assistant applies it automatically when it fits.',
   'resources.quickStartGuide': 'Quick Start Guide',
   'resources.openTool': 'Open Tool',
   'resources.startWithBuilder': 'Start with Builder',

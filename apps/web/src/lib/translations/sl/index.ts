@@ -11,6 +11,7 @@ import { projects } from "./projects";
 import { arena } from "./arena";
 import { prompts } from "./prompts";
 import { shortcuts } from "./shortcuts";
+import { skills } from "./skills";
 import { learnAcademy } from "./learnAcademy";
 import { resources } from "./resources";
 import { docs } from "./docs";
@@ -38,6 +39,7 @@ export const sl: Record<TranslationKey, string> = {
   ...arena,
   ...prompts,
   ...shortcuts,
+  ...skills,
   ...learnAcademy,
   ...resources,
   ...docs,
