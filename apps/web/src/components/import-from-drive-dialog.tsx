@@ -27,6 +27,7 @@ import {
   type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { Button } from "@/components/ui/button";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
@@ -150,6 +151,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   const [scopeChoice, setScopeChoice] = useState<ImportScopeChoice>("all");
   const [entireDriveConfirmed, setEntireDriveConfirmed] = useState(false);
@@ -760,15 +762,21 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">{t("driveDlg.everyone")}</SelectItem>
+              <SelectItem value="all">
+                {isPersonal
+                  ? t("knowledgeCore.visibilityOnlyMe")
+                  : t("driveDlg.everyone")}
+              </SelectItem>
               {isAdmin && (
                 <SelectItem value="admins">
                   {t("driveDlg.adminsOnly")}
                 </SelectItem>
               )}
-              <SelectItem value="teams">
-                {t("driveDlg.specificTeams")}
-              </SelectItem>
+              {!isPersonal && (
+                <SelectItem value="teams">
+                  {t("driveDlg.specificTeams")}
+                </SelectItem>
+              )}
               <SelectItem value="project">
                 {t("driveDlg.specificProject")}
               </SelectItem>

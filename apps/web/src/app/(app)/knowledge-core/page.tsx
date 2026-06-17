@@ -45,6 +45,7 @@ import {
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { DriveSection } from "@/components/drive-section";
 import { OneDriveSection } from "@/components/onedrive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
@@ -237,6 +238,7 @@ export default function KnowledgeCorePage() {
   const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -1175,11 +1177,17 @@ export default function KnowledgeCorePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("onboarding.step6.visibilityAll")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("onboarding.step6.visibilityAll")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
+                )}
                 <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
               </SelectContent>
             </Select>

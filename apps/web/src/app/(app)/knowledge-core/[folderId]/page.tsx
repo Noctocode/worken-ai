@@ -70,6 +70,7 @@ import {
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
@@ -254,6 +255,7 @@ export default function FolderDetailPage({
   const [query, setQuery] = useState("");
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   const queryClient = useQueryClient();
 
@@ -1480,11 +1482,17 @@ export default function FolderDetailPage({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("kcFolder.everyoneOpt")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("kcFolder.everyoneOpt")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("kcFolder.adminsOpt")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
+                )}
                 <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
               </SelectContent>
             </Select>

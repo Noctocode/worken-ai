@@ -28,6 +28,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/lib/i18n";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 
 interface FileForVisibility {
   id: string;
@@ -63,6 +64,7 @@ export function ChangeFileVisibilityDialog({
   isAdmin,
 }: ChangeFileVisibilityDialogProps) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   const [visibility, setVisibility] =
     useState<KnowledgeFileVisibility>("all");
   const [teamIds, setTeamIds] = useState<string[]>([]);
@@ -148,16 +150,25 @@ export function ChangeFileVisibilityDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("visDlg.everyone")}</SelectItem>
-                {/* Always rendered so the trigger label still resolves
-                    for files an admin previously set to 'admins'.
-                    Disabled for non-admin so they can switch AWAY
-                    but never INTO that tier — privilege escalation
-                    block matches the BE gate. */}
-                <SelectItem value="admins" disabled={!isAdmin}>
-                  {t("visDlg.adminsOnly")}{!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("visDlg.everyone")}
                 </SelectItem>
-                <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
+                {/* Company accounts only. Rendered there even for a non-admin
+                    (disabled) so the trigger label still resolves for files an
+                    admin previously set to 'admins'; disabled blocks privilege
+                    escalation, matching the BE gate. A personal account can
+                    never have an 'admins' file, so it's hidden entirely. */}
+                {!isPersonal && (
+                  <SelectItem value="admins" disabled={!isAdmin}>
+                    {t("visDlg.adminsOnly")}
+                    {!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
+                  </SelectItem>
+                )}
+                {!isPersonal && (
+                  <SelectItem value="teams">{t("visDlg.specificTeams")}</SelectItem>
+                )}
                 <SelectItem value="project">{t("visDlg.specificProject")}</SelectItem>
               </SelectContent>
             </Select>

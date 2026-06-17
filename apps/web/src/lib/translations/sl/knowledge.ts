@@ -34,6 +34,7 @@ export const knowledge: Record<keyof typeof knowledgeEn, string> = {
   'knowledgeCore.specificTeams': 'Določene ekipe…',
   'knowledgeCore.specificProject': 'Določen projekt…',
   'knowledgeCore.everyone': 'Vsi',
+  'knowledgeCore.visibilityOnlyMe': 'Samo jaz',
   'knowledgeCore.moveFile': 'Premakni datoteko',
   'knowledgeCore.move': 'Premakni',
   'knowledgeCore.selectFolder': 'Izberi mapo',
