@@ -178,10 +178,12 @@ function VisibilityBadge({
   visibility,
   teams = [],
   projects = [],
+  schedules = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
+  schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
   if (visibility === "admins") {
@@ -228,13 +230,22 @@ function VisibilityBadge({
     );
   }
   if (visibility === "schedule") {
+    const names = schedules.map((s) => s.name).join(", ");
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={t("kcFolder.scheduleTitle")}
+        title={
+          names.length > 0
+            ? `${t("kcFolder.schedule")}: ${names}`
+            : t("kcFolder.scheduleTitle")
+        }
       >
         <CalendarClock className="h-3 w-3" strokeWidth={2} />
-        {t("kcFolder.schedule")}
+        {schedules.length === 1
+          ? schedules[0].name
+          : schedules.length > 1
+            ? `${t("kcFolder.schedule")} (${schedules.length})`
+            : t("kcFolder.schedule")}
       </span>
     );
   }
@@ -1117,6 +1128,7 @@ export default function FolderDetailPage({
                         visibility={f.visibility}
                         teams={f.teams}
                         projects={f.projects}
+                        schedules={f.schedules}
                       />
                     </div>
                   </td>
@@ -1277,6 +1289,7 @@ export default function FolderDetailPage({
                         visibility={f.visibility}
                         teams={f.teams}
                         projects={f.projects}
+                        schedules={f.schedules}
                       />
                 </div>
                 <span className="text-[12px] text-text-3">

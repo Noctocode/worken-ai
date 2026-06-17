@@ -169,10 +169,12 @@ function VisibilityBadge({
   visibility,
   teams = [],
   projects = [],
+  schedules = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
+  schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
   if (visibility === "admins") {
@@ -223,13 +225,22 @@ function VisibilityBadge({
     );
   }
   if (visibility === "schedule") {
+    const names = schedules.map((s) => s.name).join(", ");
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={t("knowledgeMain.titleSchedule")}
+        title={
+          names.length > 0
+            ? `${t("knowledgeCore.schedule")}: ${names}`
+            : t("knowledgeMain.titleSchedule")
+        }
       >
         <CalendarClock className="h-3 w-3" strokeWidth={2} />
-        {t("knowledgeCore.schedule")}
+        {schedules.length === 1
+          ? schedules[0].name
+          : schedules.length > 1
+            ? `${t("knowledgeCore.schedule")} (${schedules.length})`
+            : t("knowledgeCore.schedule")}
       </span>
     );
   }
@@ -886,6 +897,7 @@ export default function KnowledgeCorePage() {
                     visibility={file.visibility}
                     teams={file.teams}
                     projects={file.projects}
+                    schedules={file.schedules}
                   />
                 </div>
                 <span className="truncate text-[13px] text-text-3">

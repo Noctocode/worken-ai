@@ -2272,6 +2272,15 @@ export interface KnowledgeFileProjectRef {
   name: string;
 }
 
+/**
+ * Same shape again for the schedule visibility tier (AI Cron) — the row
+ * badge names the schedule(s) the file is attached to.
+ */
+export interface KnowledgeFileScheduleRef {
+  id: string;
+  name: string;
+}
+
 export interface KnowledgeFile {
   id: string;
   folderId: string;
@@ -2297,6 +2306,9 @@ export interface KnowledgeFile {
   // with access.
   teams: KnowledgeFileTeamRef[];
   projects: KnowledgeFileProjectRef[];
+  // Populated when the file is attached to AI Cron schedule(s); names the
+  // schedule(s). visibility='schedule' files are scoped to these.
+  schedules: KnowledgeFileScheduleRef[];
   createdAt: string;
 }
 
@@ -2329,6 +2341,7 @@ export interface KnowledgeRecentFile {
   visibility: KnowledgeFileVisibility;
   teams: KnowledgeFileTeamRef[];
   projects: KnowledgeFileProjectRef[];
+  schedules: KnowledgeFileScheduleRef[];
   createdAt: string;
 }
 

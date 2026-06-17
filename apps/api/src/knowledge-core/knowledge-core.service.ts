@@ -17,6 +17,8 @@ import {
   knowledgeChunks,
   projectKnowledgeFiles,
   projects,
+  scheduleKnowledgeFiles,
+  scheduledPrompts,
   teamMembers,
   teams,
   users,
@@ -252,14 +254,16 @@ export class KnowledgeCoreService {
       .orderBy(desc(knowledgeFiles.createdAt), desc(knowledgeFiles.id));
 
     const fileIds = files.map((f) => f.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     return files.map((f) => ({
       ...f,
       teams: teamLinks.get(f.id) ?? [],
       projects: projectLinks.get(f.id) ?? [],
+      schedules: scheduleLinks.get(f.id) ?? [],
     }));
   }
 
@@ -301,14 +305,16 @@ export class KnowledgeCoreService {
     // without an N+1. Two round-trips for the whole folder keeps
     // this O(1) regardless of file count.
     const fileIds = files.map((f) => f.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     const filesWithLinks = files.map((f) => ({
       ...f,
       teams: teamLinks.get(f.id) ?? [],
       projects: projectLinks.get(f.id) ?? [],
+      schedules: scheduleLinks.get(f.id) ?? [],
     }));
 
     // Subfolders living directly under this folder. Each row carries
@@ -435,6 +441,36 @@ export class KnowledgeCoreService {
     for (const link of links) {
       const arr = out.get(link.fileId) ?? [];
       arr.push({ id: link.projectId, name: link.projectName });
+      out.set(link.fileId, arr);
+    }
+    return out;
+  }
+
+  /**
+   * Mirror of hydrateProjectLinks but for schedule links (AI Cron) — used to
+   * stamp `schedules: [{id, name}]` onto files so the row badge can render
+   * the schedule name(s) the file is attached to, like the project badge.
+   */
+  private async hydrateScheduleLinks(
+    fileIds: string[],
+  ): Promise<Map<string, Array<{ id: string; name: string }>>> {
+    const out = new Map<string, Array<{ id: string; name: string }>>();
+    if (fileIds.length === 0) return out;
+    const links = await this.db
+      .select({
+        fileId: scheduleKnowledgeFiles.fileId,
+        scheduleId: scheduledPrompts.id,
+        scheduleName: scheduledPrompts.name,
+      })
+      .from(scheduleKnowledgeFiles)
+      .innerJoin(
+        scheduledPrompts,
+        eq(scheduledPrompts.id, scheduleKnowledgeFiles.scheduledPromptId),
+      )
+      .where(inArray(scheduleKnowledgeFiles.fileId, fileIds));
+    for (const link of links) {
+      const arr = out.get(link.fileId) ?? [];
+      arr.push({ id: link.scheduleId, name: link.scheduleName });
       out.set(link.fileId, arr);
     }
     return out;
@@ -1912,24 +1948,22 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
-      .where(
-        and(
-          eq(knowledgeFolders.ownerId, userId),
-          sql`${knowledgeFiles.visibility} <> 'schedule'`,
-        ),
-      )
+      // Schedule-scoped files (AI Cron) show in recents too — see findAllFiles.
+      .where(eq(knowledgeFolders.ownerId, userId))
       .orderBy(desc(knowledgeFiles.createdAt))
       .limit(10);
 
     const fileIds = rows.map((r) => r.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     return rows.map((r) => ({
       ...r,
       teams: teamLinks.get(r.id) ?? [],
       projects: projectLinks.get(r.id) ?? [],
+      schedules: scheduleLinks.get(r.id) ?? [],
     }));
   }
 }
