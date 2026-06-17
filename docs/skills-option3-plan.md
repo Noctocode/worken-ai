@@ -100,11 +100,13 @@ Verified before planning so the plan reflects reality, not assumptions:
   `SKILL.md` (name, language, entrypoint, content/ref). Script bodies are small and only
   read as a unit — JSONB is lighter than a table here.
 - **`skill_runs`** table: one row per execution — `id`, `skillId`, `userId`,
-  `conversationId?`, `status` (running/done/failed/cancelled), `turnId`, `costUsd`,
-  timing, error.
+  `conversationId?`, `status` (running/done/failed/cancelled), `costUsd`, timing, error.
+  The **run's `id` is the turn-correlation id** (written into
+  `observability_events.turn_id`) — no separate `turnId` column (one run == one turn).
 - **`skill_run_steps`** table (real table, not JSONB): per LLM/tool/script step —
-  `runId`, `stepType` (llm | tool | script), `tool`, input/output preview, tokens,
-  costUsd, latency. A table because steps are queried for observability dashboards.
+  `runId`, `stepIndex` (deterministic order), `stepType` (llm | tool | script), `tool`,
+  `model` (llm steps), input/output preview, tokens, costUsd, latency. A table because
+  steps are queried for observability dashboards.
 - **Observability:** add a nullable **`turnId`** column to the existing
   `observabilityEvents` table (extend, don't create a parallel table) so existing
   dashboards keep working and a multi-call turn rolls up by `turnId`.

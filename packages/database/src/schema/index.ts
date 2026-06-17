@@ -1054,7 +1054,9 @@ export const skillRuns = pgTable(
     }),
     // running | done | failed | cancelled
     status: text("status").notNull().default("running"),
-    turnId: uuid("turn_id"),
+    // The run's own id IS the turn-correlation id — it's written into
+    // observability_events.turn_id so a run's N calls roll up. No separate
+    // turn_id column (one run == one turn).
     costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
     error: text("error"),
     startedAt: timestamp("started_at").defaultNow().notNull(),
@@ -1075,9 +1077,14 @@ export const skillRunSteps = pgTable(
     runId: uuid("run_id")
       .references(() => skillRuns.id, { onDelete: "cascade" })
       .notNull(),
+    // Monotonic per-run order (created_at can tie within a ms).
+    stepIndex: integer("step_index").notNull().default(0),
     stepType: text("step_type").notNull(), // llm | tool | script
-    // tool name (tool steps) / model id (llm steps) / script name (script steps)
+    // tool name (tool steps) / script name (script steps); model id goes in
+    // `model` below, not here.
     tool: text("tool"),
+    // Model id for llm steps (dedicated column, mirrors observability_events).
+    model: text("model"),
     inputPreview: text("input_preview"),
     outputPreview: text("output_preview"),
     promptTokens: integer("prompt_tokens"),
@@ -1089,7 +1096,7 @@ export const skillRunSteps = pgTable(
     errorMessage: text("error_message"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
-  (table) => [index("skill_run_steps_run_idx").on(table.runId, table.createdAt)],
+  (table) => [index("skill_run_steps_run_idx").on(table.runId, table.stepIndex)],
 );
 
 // Files produced by a sandboxed run (Phase D). `expiresAt` drives the

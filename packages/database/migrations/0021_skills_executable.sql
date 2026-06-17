@@ -25,7 +25,6 @@ CREATE TABLE IF NOT EXISTS "skill_runs" (
 	"user_id" uuid NOT NULL,
 	"conversation_id" uuid,
 	"status" text DEFAULT 'running' NOT NULL,
-	"turn_id" uuid,
 	"cost_usd" numeric(12, 6),
 	"error" text,
 	"started_at" timestamp DEFAULT now() NOT NULL,
@@ -52,8 +51,10 @@ CREATE INDEX IF NOT EXISTS "skill_runs_skill_idx" ON "skill_runs" USING btree ("
 CREATE TABLE IF NOT EXISTS "skill_run_steps" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"run_id" uuid NOT NULL,
+	"step_index" integer DEFAULT 0 NOT NULL,
 	"step_type" text NOT NULL,
 	"tool" text,
+	"model" text,
 	"input_preview" text,
 	"output_preview" text,
 	"prompt_tokens" integer,
@@ -70,7 +71,7 @@ DO $$ BEGIN
 	ALTER TABLE "skill_run_steps" ADD CONSTRAINT "skill_run_steps_run_id_skill_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."skill_runs"("id") ON DELETE cascade ON UPDATE no action;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 --> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "skill_run_steps_run_idx" ON "skill_run_steps" USING btree ("run_id","created_at");
+CREATE INDEX IF NOT EXISTS "skill_run_steps_run_idx" ON "skill_run_steps" USING btree ("run_id","step_index");
 --> statement-breakpoint
 
 CREATE TABLE IF NOT EXISTS "skill_artifacts" (
