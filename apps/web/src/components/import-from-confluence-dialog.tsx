@@ -28,6 +28,7 @@ import {
   type KnowledgeFileVisibility,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { Button } from "@/components/ui/button";
 import { DisabledReasonTooltip } from "@/components/ui/tooltip";
 import {
@@ -145,6 +146,7 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   const [spaceId, setSpaceId] = useState<string>("");
   const [scopeChoice, setScopeChoice] = useState<ImportScopeChoice>("space");
@@ -740,19 +742,25 @@ export function ImportFromConfluenceDialog({ open, onOpenChange }: Props) {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">
-                {t("confluenceDlg.everyone")}
+                {isPersonal
+                  ? t("knowledgeCore.visibilityOnlyMe")
+                  : t("confluenceDlg.everyone")}
               </SelectItem>
               {isAdmin && (
                 <SelectItem value="admins">
                   {t("confluenceDlg.adminsOnly")}
                 </SelectItem>
               )}
-              <SelectItem value="teams">
-                {t("confluenceDlg.specificTeams")}
-              </SelectItem>
-              <SelectItem value="project">
-                {t("confluenceDlg.specificProject")}
-              </SelectItem>
+              {!isPersonal && (
+                <SelectItem value="teams">
+                  {t("confluenceDlg.specificTeams")}
+                </SelectItem>
+              )}
+              {!isPersonal && (
+                <SelectItem value="project">
+                  {t("confluenceDlg.specificProject")}
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
           <p className="text-[11px] text-text-3">

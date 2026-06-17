@@ -10,6 +10,7 @@ import {
   FolderInput,
   Folder,
   Loader2,
+  Lock,
   MoreVertical,
   RotateCw,
   Search,
@@ -72,6 +73,7 @@ import {
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
@@ -187,6 +189,7 @@ function VisibilityBadge({
   schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   const chipClass =
     "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
   if (visibility === "admins") {
@@ -243,14 +246,24 @@ function VisibilityBadge({
       </span>,
     );
   }
+  // No scope chips → broad base: "Everyone" for a company account, owner-only
+  // "Only me" for a personal one.
   if (visibility === "all" || chips.length === 0) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title={t("kcFolder.everyoneTitle")}
+        title={
+          isPersonal
+            ? t("knowledgeCore.visibilityOnlyMe")
+            : t("kcFolder.everyoneTitle")
+        }
       >
-        <Users className="h-3 w-3" strokeWidth={2} />
-        {t("kcFolder.everyone")}
+        {isPersonal ? (
+          <Lock className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <Users className="h-3 w-3" strokeWidth={2} />
+        )}
+        {isPersonal ? t("knowledgeCore.visibilityOnlyMe") : t("kcFolder.everyone")}
       </span>
     );
   }
@@ -276,6 +289,7 @@ export default function FolderDetailPage({
   const [query, setQuery] = useState("");
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   const queryClient = useQueryClient();
 
@@ -1541,11 +1555,17 @@ export default function FolderDetailPage({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("kcFolder.everyoneOpt")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("kcFolder.everyoneOpt")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("kcFolder.adminsOpt")}</SelectItem>
                 )}
-                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1553,7 +1573,9 @@ export default function FolderDetailPage({
                 ? t("kcFolder.hintAdmins")
                 : stagedVisibility === "none"
                   ? t("visDlg.hintSpecific")
-                  : t("kcFolder.hintEveryone")}
+                  : isPersonal
+                    ? t("visDlg.hintOnlyMe")
+                    : t("kcFolder.hintEveryone")}
             </p>
           </div>
 

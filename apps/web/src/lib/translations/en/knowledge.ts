@@ -34,6 +34,9 @@ export const knowledge = {
   'knowledgeCore.specificSchedule': 'Specific schedule…',
   'knowledgeCore.everyone': 'Everyone',
   'knowledgeCore.schedule': 'Schedule',
+  // Personal accounts are a single person — the only meaningful "everyone"
+  // tier is owner-only. Reused across every visibility picker.
+  'knowledgeCore.visibilityOnlyMe': 'Only me',
   'knowledgeCore.moveFile': 'Move File',
   'knowledgeCore.move': 'Move',
   'knowledgeCore.selectFolder': 'Select folder',
@@ -78,6 +81,7 @@ export const knowledge = {
   'visDlg.hintSchedule': 'This file will only be used as context for the AI Cron schedule(s) you pick below — never in the org-wide RAG.',
   'visDlg.specificScopes': 'Specific scopes…',
   'visDlg.hintSpecific': 'Pick any combination of teams, projects and schedules below — the file is reachable from all of them at once.',
+  'visDlg.hintOnlyMe': 'Only you can see this file in chat / arena.',
   'visDlg.pickAtLeastScope': 'Pick at least one team, project or schedule (or choose Everyone / Admins).',
   'visDlg.hintEveryone': 'Every user in the company can see this file in chat / arena.',
   'visDlg.teamsWithAccess': 'Teams with access',

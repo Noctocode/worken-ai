@@ -30,7 +30,15 @@ export const skills = {
   'skills.visibilityAll': 'Everyone in the company',
   'skills.visibilityAdmins': 'Admins only',
   'skills.visibilityTeams': 'Specific teams',
+  'skills.visibilityProject': 'Specific projects',
   'skills.visibilityPersonal': 'Only me (personal account)',
+  'skills.pickTeams': 'Teams that can use this skill',
+  'skills.pickProjects': 'Projects this skill applies in',
+  'skills.noTeams': 'You are not a member of any team.',
+  'skills.noProjects': 'You have no projects yet.',
+  'skills.errPickTeam': 'Pick at least one team for "Specific teams" visibility.',
+  'skills.errPickProject':
+    'Pick at least one project for "Specific projects" visibility.',
   'skills.importTitle': 'Import a SKILL.md',
   'skills.importDesc':
     'Paste agentskills.io SKILL.md content. The name and description are read from the frontmatter.',

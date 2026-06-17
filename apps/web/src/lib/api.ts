@@ -2114,7 +2114,7 @@ export async function deleteShortcut(id: string): Promise<void> {
 // Skills — instructional "how we do X here" recipes the chat/arena
 // auto-selects per turn and injects into the model's context.
 
-export type SkillVisibility = "all" | "admins" | "teams";
+export type SkillVisibility = "all" | "admins" | "teams" | "project";
 
 export interface Skill {
   id: string;
@@ -2128,6 +2128,10 @@ export interface Skill {
   source: "manual" | "import";
   createdAt: string;
   updatedAt: string;
+  /** Current link sets — only populated by fetchSkill (the detail endpoint),
+   *  used to prefill the edit dialog's team / project pickers. */
+  teamIds?: string[];
+  projectIds?: string[];
 }
 
 export interface SkillInput {
@@ -2136,6 +2140,7 @@ export interface SkillInput {
   instructions: string;
   visibility?: SkillVisibility;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 export async function fetchSkills(): Promise<Skill[]> {
@@ -2147,6 +2152,28 @@ export async function fetchSkills(): Promise<Skill[]> {
 export async function fetchSkill(id: string): Promise<Skill> {
   const res = await apiFetch(`/skills/${id}`);
   if (!res.ok) throw new Error("Failed to load skill");
+  return res.json();
+}
+
+/** A skill the caller may pin in a given context (composer picker). */
+export interface PinnableSkill {
+  id: string;
+  name: string;
+  description: string;
+}
+
+/**
+ * Skills pinnable in THIS context — own (non-project) + company-shared +
+ * project-scoped skills linked to `projectId`. Omit `projectId` for the
+ * project-less arena. Mirrors the router's accessible-skills query, so a
+ * project's skill never shows for pinning in a different project.
+ */
+export async function fetchPinnableSkills(
+  projectId?: string,
+): Promise<PinnableSkill[]> {
+  const qs = projectId ? `?projectId=${encodeURIComponent(projectId)}` : "";
+  const res = await apiFetch(`/skills/pinnable${qs}`);
+  if (!res.ok) throw new Error("Failed to load skills");
   return res.json();
 }
 
@@ -2196,11 +2223,12 @@ export async function updateSkillVisibility(
   id: string,
   visibility: SkillVisibility,
   teamIds?: string[],
+  projectIds?: string[],
 ): Promise<Skill> {
   const res = await apiFetch(`/skills/${id}/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ visibility, teamIds }),
+    body: JSON.stringify({ visibility, teamIds, projectIds }),
   });
   if (!res.ok) {
     throw new Error(

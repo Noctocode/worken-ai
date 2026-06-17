@@ -9,6 +9,7 @@ import {
   Folder,
   FolderInput,
   Loader2,
+  Lock,
   MoreVertical,
   Plus,
   Download,
@@ -47,6 +48,7 @@ import {
   type NameConflictAction,
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { DriveSection } from "@/components/drive-section";
 import { OneDriveSection } from "@/components/onedrive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
@@ -179,6 +181,7 @@ function VisibilityBadge({
   schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   const chipClass =
     "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
   // 'admins' / 'all' are exclusive broad tiers — render a single pill.
@@ -244,15 +247,26 @@ function VisibilityBadge({
       </span>,
     );
   }
-  // Base 'all' (or a file with no scopes at all) is company-wide.
+  // No scope chips → broad base. Company-wide ("Everyone") for a company
+  // account, owner-only ("Only me") for a personal one.
   if (visibility === "all" || chips.length === 0) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title={t("knowledgeMain.titleCompanyWide")}
+        title={
+          isPersonal
+            ? t("knowledgeCore.visibilityOnlyMe")
+            : t("knowledgeMain.titleCompanyWide")
+        }
       >
-        <Users className="h-3 w-3" strokeWidth={2} />
-        {t("knowledgeCore.everyone")}
+        {isPersonal ? (
+          <Lock className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <Users className="h-3 w-3" strokeWidth={2} />
+        )}
+        {isPersonal
+          ? t("knowledgeCore.visibilityOnlyMe")
+          : t("knowledgeCore.everyone")}
       </span>
     );
   }
@@ -265,6 +279,7 @@ export default function KnowledgeCorePage() {
   const { t } = useLanguage();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
   const [query, setQuery] = useState("");
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -1239,11 +1254,17 @@ export default function KnowledgeCorePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("onboarding.step6.visibilityAll")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("onboarding.step6.visibilityAll")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
-                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
@@ -1251,7 +1272,9 @@ export default function KnowledgeCorePage() {
                 ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
                 : stagedVisibility === "none"
                   ? t("visDlg.hintSpecific")
-                  : "Every user in the company can see these files in chat / arena."}
+                  : isPersonal
+                    ? t("visDlg.hintOnlyMe")
+                    : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
 

@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/lib/i18n";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 
 interface FileForVisibility {
   id: string;
@@ -69,6 +70,7 @@ export function ChangeFileVisibilityDialog({
   isAdmin,
 }: ChangeFileVisibilityDialogProps) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   const [base, setBase] = useState<VisibilityBase>("all");
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [projectIds, setProjectIds] = useState<string[]>([]);
@@ -168,24 +170,36 @@ export function ChangeFileVisibilityDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("visDlg.everyone")}</SelectItem>
-                {/* Always rendered so the trigger label still resolves
-                    for files an admin previously set to 'admins'.
-                    Disabled for non-admin so they can switch AWAY
-                    but never INTO that tier — privilege escalation
-                    block matches the BE gate. */}
-                <SelectItem value="admins" disabled={!isAdmin}>
-                  {t("visDlg.adminsOnly")}{!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("visDlg.everyone")}
                 </SelectItem>
-                <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                {/* Company accounts only. 'admins' rendered even for a
+                    non-admin (disabled) so the trigger label resolves for an
+                    admin-set file; disabled blocks privilege escalation
+                    (matches the BE gate). Personal accounts never have an
+                    'admins' file and can't scope to teams/projects/schedules,
+                    so they only get the "Only me" ('all') option above. */}
+                {!isPersonal && (
+                  <SelectItem value="admins" disabled={!isAdmin}>
+                    {t("visDlg.adminsOnly")}
+                    {!isAdmin ? t("visDlg.adminsOnlySuffix") : ""}
+                  </SelectItem>
+                )}
+                {!isPersonal && (
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
-              {base === "admins"
-                ? t("visDlg.hintAdmins")
-                : base === "none"
-                  ? t("visDlg.hintSpecific")
-                  : t("visDlg.hintEveryone")}
+              {isPersonal
+                ? t("visDlg.hintOnlyMe")
+                : base === "admins"
+                  ? t("visDlg.hintAdmins")
+                  : base === "none"
+                    ? t("visDlg.hintSpecific")
+                    : t("visDlg.hintEveryone")}
             </p>
           </div>
 

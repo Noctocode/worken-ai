@@ -9,10 +9,12 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
 } from '@nestjs/common';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { parseSkillMd } from './skill-md.parser.js';
+import { SkillRouterService } from './skill-router.service.js';
 import { SkillsService } from './skills.service.js';
 
 interface CreateSkillBody {
@@ -21,6 +23,7 @@ interface CreateSkillBody {
   instructions: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 type UpdateSkillBody = Partial<
@@ -30,6 +33,7 @@ type UpdateSkillBody = Partial<
 interface UpdateVisibilityBody {
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 interface ImportSkillBody {
@@ -40,15 +44,43 @@ interface ImportSkillBody {
   description?: string;
   visibility?: string;
   teamIds?: string[];
+  projectIds?: string[];
 }
 
 @Controller('skills')
 export class SkillsController {
-  constructor(private readonly skills: SkillsService) {}
+  constructor(
+    private readonly skills: SkillsService,
+    private readonly router: SkillRouterService,
+  ) {}
 
   @Get()
   async list(@CurrentUser() user: AuthenticatedUser) {
     return this.skills.list(user.id);
+  }
+
+  /**
+   * Skills the caller can pin in THIS context — own (non-project) skills,
+   * company-shared skills, and project-scoped skills linked to `projectId`
+   * (omit for the project-less arena). Backed by the same accessible-skills
+   * query the router uses, so the picker can't offer a skill that wouldn't
+   * actually apply here (e.g. another project's project-scoped skill).
+   * Declared before `:id` so the literal path wins over the param route.
+   */
+  @Get('pinnable')
+  async pinnable(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('projectId') projectId?: string,
+  ) {
+    const accessible = await this.router.getAccessibleSkills(
+      user.id,
+      projectId ?? null,
+    );
+    return accessible.map((s) => ({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+    }));
   }
 
   @Get(':id')
@@ -70,6 +102,7 @@ export class SkillsController {
       instructions: body.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: 'manual',
     });
   }
@@ -106,6 +139,7 @@ export class SkillsController {
       instructions: parsed.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
+      projectIds: body.projectIds,
       source: 'import',
     });
   }
@@ -130,6 +164,7 @@ export class SkillsController {
       user.id,
       body.visibility,
       body.teamIds,
+      body.projectIds,
     );
   }
 
