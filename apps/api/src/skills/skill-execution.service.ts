@@ -55,8 +55,10 @@ function preview(s: string): string {
 @Injectable()
 export class SkillExecutionService {
   private readonly logger = new Logger(SkillExecutionService.name);
-  /** One in-flight run per user (mirrors the import activeJobs guard). */
-  private readonly activeRuns = new Set<string>();
+  /** Active run per user → its AbortController. Doubles as the one-run-per-user
+   *  guard (a user is "running" iff they have an entry) and the handle the
+   *  cancel endpoint aborts. */
+  private readonly aborters = new Map<string, AbortController>();
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -88,7 +90,7 @@ export class SkillExecutionService {
   async *run(params: RunSkillParams): AsyncIterable<SkillRunEvent> {
     const { userId, skillId, modelIdentifier } = params;
 
-    if (this.activeRuns.has(userId)) {
+    if (this.aborters.has(userId)) {
       throw new ConflictException(
         'A skill is already running. Wait for it to finish or cancel it first.',
       );
@@ -106,7 +108,17 @@ export class SkillExecutionService {
       throw new BadRequestException('This skill is not executable.');
     }
 
-    this.activeRuns.add(userId);
+    // Own AbortController so an explicit cancel (different request) can stop
+    // this run; also tripped by client disconnect via the passed-in signal.
+    const ac = new AbortController();
+    if (params.signal) {
+      if (params.signal.aborted) ac.abort();
+      else
+        params.signal.addEventListener('abort', () => ac.abort(), {
+          once: true,
+        });
+    }
+    this.aborters.set(userId, ac);
     const [run] = await this.db
       .insert(skillRuns)
       .values({
@@ -142,7 +154,7 @@ export class SkillExecutionService {
         tools,
         dispatch,
         maxIterations: MAX_ITERATIONS,
-        signal: params.signal,
+        signal: ac.signal,
       })) {
         if (ev.type === 'tool_call') callInputs.set(ev.id, ev.input);
         if (ev.type === 'tool_result') {
@@ -176,7 +188,7 @@ export class SkillExecutionService {
       errorMessage = err instanceof Error ? err.message : String(err);
       yield { type: 'error', message: errorMessage };
     } finally {
-      this.activeRuns.delete(userId);
+      this.aborters.delete(userId);
       // Record the single LLM step's token usage as one summary step so the
       // trace + future billing (Phase C) have it; cost is backfilled later.
       await this.db.insert(skillRunSteps).values({
@@ -200,6 +212,16 @@ export class SkillExecutionService {
     }
 
     yield { type: 'run_done', runId, status: finalStatus };
+  }
+
+  /** Abort the caller's in-flight run, if any. Returns whether one was
+   *  running. The run loop observes the signal and finalizes the row as
+   *  'cancelled'. */
+  cancel(userId: string): boolean {
+    const ac = this.aborters.get(userId);
+    if (!ac) return false;
+    ac.abort();
+    return true;
   }
 
   /** The caller's recent runs (newest first), for the run-history UI. */

@@ -94,6 +94,13 @@ export class SkillsController {
     return this.execution.getRun(user.id, id);
   }
 
+  /** Cancel the caller's in-flight run (abort). */
+  @Delete('runs/active')
+  async cancelRun(@CurrentUser() user: AuthenticatedUser) {
+    await this.assertExecutableEnabled(user.id);
+    return { cancelled: this.execution.cancel(user.id) };
+  }
+
   /**
    * Run an executable skill, streaming the agent loop as SSE
    * (`run_started` / `text` / `tool_call` / `tool_result` / `usage` /
