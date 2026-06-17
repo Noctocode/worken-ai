@@ -21,8 +21,10 @@ type ScheduledPrompt = typeof scheduledPrompts.$inferSelect;
 // Webhook request budget. Kept tight — a webhook receiver should ack fast.
 const WEBHOOK_TIMEOUT_MS = 10_000;
 const WEBHOOK_MAX_RESPONSE_BYTES = 64 * 1024;
-// In-app notification body is a preview, not the full transcript.
-const NOTIFICATION_BODY_MAX = 500;
+// In-app notification stores the full run output so the bell popover can show
+// it (collapsed behind an accordion). Capped only to avoid pathologically huge
+// notification rows; typical cron outputs are well under this.
+const NOTIFICATION_BODY_MAX = 6000;
 
 /**
  * Reject IPs that point back into our own infrastructure. Blocks the cloud

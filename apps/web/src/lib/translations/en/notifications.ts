@@ -25,6 +25,8 @@ export const notifications = {
   'notifications.failedDecline': 'Failed to decline.',
   'notifPop.title': 'Notifications',
   'notifPop.viewAll': 'View all',
+  'notifPop.showMore': 'Show more',
+  'notifPop.showLess': 'Show less',
   'notifPop.loading': 'Loading…',
   'notifPop.allCaughtUp': "You're all caught up.",
   'notifPop.accept': 'Accept',
