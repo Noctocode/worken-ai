@@ -242,15 +242,10 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
-      // Schedule-scoped files (AI Cron) are managed from their schedule, not
-      // the general KC list, so they're hidden here (parallels their RAG
-      // exclusion).
-      .where(
-        and(
-          eq(knowledgeFolders.ownerId, userId),
-          sql`${knowledgeFiles.visibility} <> 'schedule'`,
-        ),
-      )
+      // Schedule-scoped files (AI Cron) show here too — they're regular KC
+      // files that happen to be attached to a schedule, so the owner can see
+      // and manage them in the general list like any other file.
+      .where(eq(knowledgeFolders.ownerId, userId))
       // `id` tiebreaker so files sharing a createdAt (a Drive import
       // stamps them in one transaction) keep a stable order across
       // refetches — otherwise excluding one would reshuffle the ties.
