@@ -100,13 +100,17 @@ export class SkillsController {
     if (!parsed.instructions) {
       throw new BadRequestException('SKILL.md has no instructions body.');
     }
+    // A SKILL.md carrying named script blocks is an executable skill (#3);
+    // otherwise it's an instructional import (#2).
+    const isExecutable = parsed.scripts.length > 0;
     return this.skills.create(user.id, {
       name,
       description,
       instructions: parsed.instructions,
       visibility: body.visibility,
       teamIds: body.teamIds,
-      source: 'import',
+      source: isExecutable ? 'executable' : 'import',
+      scripts: isExecutable ? parsed.scripts : undefined,
     });
   }
 
