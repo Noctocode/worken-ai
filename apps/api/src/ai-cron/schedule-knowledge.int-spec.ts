@@ -94,7 +94,11 @@ describe('AI Cron schedule knowledge (integration)', () => {
     return r.id;
   }
   /** A schedule-uploaded file: visibility='schedule', one chunk, owned by user. */
-  async function mkScheduleFile(opts: { folderId: string; ownerId: string }) {
+  async function mkScheduleFile(opts: {
+    folderId: string;
+    ownerId: string;
+    content?: string;
+  }) {
     const [file] = await t.db
       .insert(knowledgeFiles)
       .values({
@@ -110,7 +114,7 @@ describe('AI Cron schedule knowledge (integration)', () => {
       userId: opts.ownerId,
       fileId: file.id,
       chunkIndex: 0,
-      content: FILE_TEXT,
+      content: opts.content ?? FILE_TEXT,
       embedding: VEC,
       scope: 'company',
       visibility: 'schedule',
@@ -285,6 +289,37 @@ describe('AI Cron schedule knowledge (integration)', () => {
     // Still hidden from the broad chat/arena RAG.
     const broad = await ingestion.searchAccessibleChunks(owner, 'revenue', 50);
     expect(broad.map((r) => r.fileId)).not.toContain(file);
+  });
+
+  // Two schedules ask the same question ("what is noctomarmelada made of?").
+  // Only schedule A has the file that holds the answer ("…iz hrušk"). The test
+  // asserts the DETERMINISTIC core that drives the notifications: A's prompt
+  // context carries the answer, B's does not — so A's model can say "pears" and
+  // B's can't. (The actual LLM-written notification text is non-deterministic
+  // and needs a live model, so it's out of scope for an automated test.)
+  it("only the schedule holding the file gets the answer ('iz hrušk') in context", async () => {
+    const co = await mkCompany();
+    const owner = await mkUser(co);
+    const folder = await mkFolder(owner);
+    const scheduleWithFile = await mkSchedule(owner);
+    const scheduleWithoutFile = await mkSchedule(owner);
+
+    const file = await mkScheduleFile({
+      folderId: folder,
+      ownerId: owner,
+      content: 'Noctomarmelada je narejena iz hrušk.',
+    });
+    await scheduleKnowledge.attach(scheduleWithFile, [file], owner);
+
+    const ctxWith = (await gatherScheduleContext(scheduleWithFile, owner)).join(
+      ' ',
+    );
+    const ctxWithout = await gatherScheduleContext(scheduleWithoutFile, owner);
+
+    // Schedule A: the model receives the fact, so its notification can say pears.
+    expect(ctxWith).toContain('hrušk');
+    // Schedule B: no file attached → no such fact in context, can't know.
+    expect(ctxWithout).toEqual([]);
   });
 
   it('rejects attaching a file the caller does not own', async () => {
