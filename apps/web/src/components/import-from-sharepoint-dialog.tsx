@@ -31,6 +31,7 @@ import {
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/components/providers";
+import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -146,6 +147,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
   const isAdmin = currentUser?.role === "admin";
+  const isPersonal = useIsPersonal();
 
   // Site picker — required first step. Everything else stays disabled
   // until the user picks one.
@@ -862,12 +864,20 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">{t("spDlg.everyone")}</SelectItem>
+                <SelectItem value="all">
+                  {isPersonal
+                    ? t("knowledgeCore.visibilityOnlyMe")
+                    : t("spDlg.everyone")}
+                </SelectItem>
                 {isAdmin && (
                   <SelectItem value="admins">{t("spDlg.adminsOnly")}</SelectItem>
                 )}
-                <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
-                <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                {!isPersonal && (
+                  <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
+                )}
+                {!isPersonal && (
+                  <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">

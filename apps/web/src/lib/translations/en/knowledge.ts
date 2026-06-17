@@ -32,6 +32,9 @@ export const knowledge = {
   'knowledgeCore.specificTeams': 'Specific teams…',
   'knowledgeCore.specificProject': 'Specific project…',
   'knowledgeCore.everyone': 'Everyone',
+  // Personal accounts are a single person — the only meaningful "everyone"
+  // tier is owner-only. Reused across every visibility picker.
+  'knowledgeCore.visibilityOnlyMe': 'Only me',
   'knowledgeCore.moveFile': 'Move File',
   'knowledgeCore.move': 'Move',
   'knowledgeCore.selectFolder': 'Select folder',
