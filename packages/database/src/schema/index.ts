@@ -684,6 +684,20 @@ export const knowledgeFiles = pgTable("knowledge_files", {
   ingestionStatus: text("ingestion_status").notNull().default("pending"),
   ingestionError: text("ingestion_error"),
   ingestionCompletedAt: timestamp("ingestion_completed_at"),
+  // Set to now() each time a worker claims this row (pending → processing).
+  // The stalled-ingestion reaper reclaims `processing` rows whose claim is
+  // older than the stale window (or NULL, i.e. orphaned before this column
+  // existed) so a worker that died mid-ingest doesn't strand the file.
+  claimedAt: timestamp("claimed_at"),
+  // How many times the reaper has reclaimed this row. After a cap it goes
+  // terminal `failed` rather than looping forever on a poison-pill file.
+  attempts: integer("attempts").notNull().default(0),
+  // True while this file is part of an import whose completion notification
+  // hasn't fired yet. Set when an import-fed drain is kicked off; cleared
+  // (and the notification sent) by whichever instance drains the last
+  // flagged file. DB-backed rather than in-memory so it survives a
+  // cross-instance / reaper handoff and fires exactly once.
+  importNotify: boolean("import_notify").notNull().default(false),
   // RAG visibility at chat / arena time. Personal accounts →
   // uploader-only; company accounts → org-wide. Set from the
   // uploader's profileType at upload time.
