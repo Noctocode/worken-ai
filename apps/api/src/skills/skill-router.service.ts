@@ -134,7 +134,14 @@ export class SkillRouterService {
       : sql`FALSE`;
 
     const companyBranch = isAdmin
-      ? and(eq(skills.scope, 'company'), sameCompany)
+      ? and(
+          eq(skills.scope, 'company'),
+          sameCompany,
+          // Project-scoped skills route ONLY via projectBranch (inside their
+          // project) — even for an admin. Without this an admin sees every
+          // project's project-scoped skill in every chat + the arena.
+          sql`${skills.visibility} != 'project'`,
+        )
       : or(
           and(
             eq(skills.scope, 'company'),
