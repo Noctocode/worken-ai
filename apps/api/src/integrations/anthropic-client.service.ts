@@ -15,7 +15,60 @@ export interface AnthropicChatResponse {
   completionTokens?: number;
 }
 
+// ── Tool-calling agent loop (Option #3) ─────────────────────────────
+// Provider-neutral-ish shapes; commit 7 lifts these into a transport
+// abstraction. For the spike they live with the only implementation.
+
+/** A tool the model may call. `inputSchema` is a JSON Schema object. */
+export interface AgentToolDef {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+}
+
+/** Caller-supplied handler: runs a tool call, returns its result text.
+ *  Throwing is surfaced to the model as an error tool_result. */
+export type AgentToolDispatch = (call: {
+  id: string;
+  name: string;
+  input: unknown;
+}) => Promise<string>;
+
+/** Events streamed by the agent loop. */
+export type AgentLoopEvent =
+  | { type: 'text'; delta: string }
+  | { type: 'tool_call'; id: string; name: string; input: unknown }
+  | {
+      type: 'tool_result';
+      id: string;
+      name: string;
+      output: string;
+      isError: boolean;
+    }
+  | {
+      type: 'usage';
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }
+  | { type: 'done'; stopReason: string }
+  | { type: 'error'; message: string; status?: number };
+
+export interface StreamWithToolsParams {
+  model: string;
+  apiKey: string;
+  system?: string;
+  messages: ChatMessage[];
+  tools: AgentToolDef[];
+  dispatch: AgentToolDispatch;
+  /** Hard cap on model↔tool round-trips. Fail-closed on reaching it. */
+  maxIterations?: number;
+  maxTokens?: number;
+  signal?: AbortSignal;
+}
+
 const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_ITERATIONS = 8;
 
 /**
  * Native Anthropic SDK wrapper. Used when a user has a BYOK key for the
@@ -268,5 +321,150 @@ export class AnthropicClientService {
       totalTokens:
         inputTokens != null ? inputTokens + outputTokens : outputTokens,
     };
+  }
+
+  /**
+   * Agent loop with tool-calling (Option #3 spike). Runs
+   * model → tool_use → dispatch → tool_result → repeat until the model
+   * stops requesting tools or `maxIterations` is hit (fail-closed). Yields a
+   * provider-neutral {@link AgentLoopEvent} stream; the caller
+   * (SkillExecutionService) supplies `dispatch` to actually run each tool.
+   *
+   * Uses one `messages.create` per round (not token-level streaming within a
+   * round) — enough to validate the loop; token streaming is a later refinement.
+   * Honors an abort signal between/within rounds.
+   */
+  async *streamWithTools(
+    params: StreamWithToolsParams,
+  ): AsyncIterable<AgentLoopEvent> {
+    const { model, apiKey, system, tools, dispatch, signal } = params;
+    if (!apiKey) {
+      yield { type: 'error', message: 'Anthropic API key is required' };
+      return;
+    }
+    const client = new Anthropic({ apiKey });
+    const nativeModel = toAnthropicModelId(model);
+    const maxIterations = params.maxIterations ?? DEFAULT_MAX_ITERATIONS;
+    const maxTokens = params.maxTokens ?? DEFAULT_MAX_TOKENS;
+
+    // Anthropic requires the conversation to open with a user turn.
+    const seed = [...params.messages];
+    while (seed.length > 0 && seed[0].role !== 'user') seed.shift();
+    const msgs: Anthropic.MessageParam[] = seed.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
+
+    const anthropicTools: Anthropic.Tool[] = tools.map((t) => ({
+      name: t.name,
+      description: t.description,
+      input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
+    }));
+
+    let promptTokens = 0;
+    let completionTokens = 0;
+    const emitUsage = (): AgentLoopEvent => ({
+      type: 'usage',
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    });
+
+    for (let iter = 0; iter < maxIterations; iter++) {
+      if (signal?.aborted) {
+        yield emitUsage();
+        yield { type: 'done', stopReason: 'aborted' };
+        return;
+      }
+
+      let resp: Anthropic.Message;
+      try {
+        resp = await client.messages.create(
+          {
+            model: nativeModel,
+            max_tokens: maxTokens,
+            ...(system ? { system } : {}),
+            tools: anthropicTools,
+            messages: msgs,
+          },
+          { signal },
+        );
+      } catch (err) {
+        if (
+          signal?.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          yield emitUsage();
+          yield { type: 'done', stopReason: 'aborted' };
+          return;
+        }
+        yield {
+          type: 'error',
+          message: err instanceof Error ? err.message : String(err),
+          status:
+            err && typeof err === 'object' && 'status' in err
+              ? (err as { status?: number }).status
+              : undefined,
+        };
+        return;
+      }
+
+      promptTokens += resp.usage?.input_tokens ?? 0;
+      completionTokens += resp.usage?.output_tokens ?? 0;
+
+      for (const block of resp.content) {
+        if (block.type === 'text') yield { type: 'text', delta: block.text };
+      }
+
+      const toolUses = resp.content.filter(
+        (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
+      );
+      if (resp.stop_reason !== 'tool_use' || toolUses.length === 0) {
+        yield emitUsage();
+        yield { type: 'done', stopReason: resp.stop_reason ?? 'end_turn' };
+        return;
+      }
+
+      // Echo the assistant turn (incl. tool_use blocks) back into history,
+      // then answer every tool_use with a tool_result in one user turn.
+      msgs.push({
+        role: 'assistant',
+        content: resp.content as Anthropic.ContentBlockParam[],
+      });
+      const results: Anthropic.ToolResultBlockParam[] = [];
+      for (const tu of toolUses) {
+        yield { type: 'tool_call', id: tu.id, name: tu.name, input: tu.input };
+        let output: string;
+        let isError = false;
+        try {
+          output = await dispatch({
+            id: tu.id,
+            name: tu.name,
+            input: tu.input,
+          });
+        } catch (err) {
+          output = err instanceof Error ? err.message : String(err);
+          isError = true;
+        }
+        yield {
+          type: 'tool_result',
+          id: tu.id,
+          name: tu.name,
+          output,
+          isError,
+        };
+        results.push({
+          type: 'tool_result',
+          tool_use_id: tu.id,
+          content: output,
+          ...(isError ? { is_error: true } : {}),
+        });
+      }
+      msgs.push({ role: 'user', content: results });
+    }
+
+    // Iteration cap reached without a natural stop — fail closed.
+    yield emitUsage();
+    yield { type: 'done', stopReason: 'max_iterations' };
   }
 }
