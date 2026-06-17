@@ -113,6 +113,12 @@ export const companies = pgTable("companies", {
   // Teams override via `teams.web_search_enabled`; effective capability
   // is `team.webSearchEnabled ?? company.webSearchEnabled`.
   webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
+  // Per-tenant toggle for executable skills (Option #3). Default OFF — the
+  // subsystem stays dark until an admin opts the tenant in; an env
+  // kill-switch can force it off everywhere regardless.
+  executableSkillsEnabled: boolean("executable_skills_enabled")
+    .notNull()
+    .default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

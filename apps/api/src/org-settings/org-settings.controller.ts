@@ -35,7 +35,11 @@ export class OrgSettingsController {
   async update(
     @CurrentUser() caller: AuthenticatedUser,
     @Body()
-    body: { monthlyBudgetCents?: number | null; webSearchEnabled?: boolean },
+    body: {
+      monthlyBudgetCents?: number | null;
+      webSearchEnabled?: boolean;
+      executableSkillsEnabled?: boolean;
+    },
   ) {
     const [callerUser] = await this.db
       .select({ role: users.role })

@@ -23,6 +23,9 @@ export interface OrgSettingsView {
   /** Org-wide default for the web-search capability. Teams can override
    *  per-team; projects switch it on within whatever is allowed here. */
   webSearchEnabled: boolean;
+  /** Per-tenant toggle for executable skills (Option #3). Default OFF; an env
+   *  kill-switch can still force the effective capability off everywhere. */
+  executableSkillsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -52,6 +55,18 @@ export class OrgSettingsService {
     return toView(company);
   }
 
+  /**
+   * Effective executable-skills (Option #3) capability for the caller's tenant:
+   * the per-tenant `companies.executable_skills_enabled` flag AND the deployment
+   * not having the env kill-switch set. The single gate the run endpoints / UI
+   * check. Personal-profile / pre-tenant callers have no company → false.
+   */
+  async isExecutableSkillsEnabled(callerId: string): Promise<boolean> {
+    if (process.env['EXECUTABLE_SKILLS_KILL_SWITCH'] === 'true') return false;
+    const company = await this.fetchTenantCompany(callerId);
+    return company?.executableSkillsEnabled ?? false;
+  }
+
   async update(
     input: {
       /** undefined → leave the saved value alone; null → clear the
@@ -60,6 +75,8 @@ export class OrgSettingsService {
       monthlyBudgetCents?: number | null;
       /** Org-wide web-search capability toggle. undefined → leave as-is. */
       webSearchEnabled?: boolean;
+      /** Executable-skills tenant toggle (Option #3). undefined → leave as-is. */
+      executableSkillsEnabled?: boolean;
     },
     /** Caller user id. Resolves the tenant whose budget is being
      *  updated and feeds the threshold / announcement notification
@@ -85,6 +102,14 @@ export class OrgSettingsService {
         throw new BadRequestException('`webSearchEnabled` must be a boolean.');
       }
       updates.webSearchEnabled = input.webSearchEnabled;
+    }
+    if (input.executableSkillsEnabled !== undefined) {
+      if (typeof input.executableSkillsEnabled !== 'boolean') {
+        throw new BadRequestException(
+          '`executableSkillsEnabled` must be a boolean.',
+        );
+      }
+      updates.executableSkillsEnabled = input.executableSkillsEnabled;
     }
 
     const current = await this.fetchTenantCompany(callerUserId);
@@ -321,6 +346,7 @@ function toView(row: typeof companies.$inferSelect): OrgSettingsView {
     id: row.id,
     monthlyBudgetCents: row.monthlyBudgetCents,
     webSearchEnabled: row.webSearchEnabled,
+    executableSkillsEnabled: row.executableSkillsEnabled,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -336,6 +362,7 @@ function emptyView(): OrgSettingsView {
     id: '',
     monthlyBudgetCents: null,
     webSearchEnabled: false,
+    executableSkillsEnabled: false,
     createdAt: epoch,
     updatedAt: epoch,
   };
