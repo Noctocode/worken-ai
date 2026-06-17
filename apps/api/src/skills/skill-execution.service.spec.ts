@@ -1,0 +1,138 @@
+import { ConflictException } from '@nestjs/common';
+import { skillRuns } from '@worken/database/schema';
+import { SkillExecutionService } from './skill-execution.service.js';
+import type { AgentLoopEvent } from '../integrations/agent-tools.types.js';
+
+const SKILL = {
+  id: 's1',
+  userId: 'u1',
+  source: 'executable',
+  instructions: 'do it',
+  scripts: [],
+};
+
+/** Minimal chainable drizzle stub covering what run() touches. */
+function makeDb(skill: unknown) {
+  const steps: Record<string, unknown>[] = [];
+  const runUpdates: Record<string, unknown>[] = [];
+  const db = {
+    select: () => ({
+      from: () => ({ where: () => Promise.resolve(skill ? [skill] : []) }),
+    }),
+    insert: (table: unknown) => ({
+      values: (v: Record<string, unknown>) => {
+        if (table === skillRuns) {
+          return { returning: () => Promise.resolve([{ id: 'run-1' }]) };
+        }
+        steps.push(v);
+        return Promise.resolve(undefined);
+      },
+    }),
+    update: () => ({
+      set: (v: Record<string, unknown>) => ({
+        where: () => {
+          runUpdates.push(v);
+          return Promise.resolve(undefined);
+        },
+      }),
+    }),
+  };
+  return { db, steps, runUpdates };
+}
+
+const toolRegistry = {
+  build: () => ({ tools: [], dispatch: () => Promise.resolve('') }),
+};
+
+function scriptedProvider(events: AgentLoopEvent[]) {
+  return {
+    // eslint-disable-next-line @typescript-eslint/require-await
+    streamWithTools: async function* () {
+      for (const e of events) yield e;
+    },
+  };
+}
+
+async function drain(gen: AsyncIterable<unknown>) {
+  const out: unknown[] = [];
+  for await (const e of gen) out.push(e);
+  return out;
+}
+
+describe('SkillExecutionService.run', () => {
+  it('streams events, persists a tool + llm step, and finalizes the run as done', async () => {
+    const { db, steps, runUpdates } = makeDb(SKILL);
+    const provider = scriptedProvider([
+      { type: 'tool_call', id: 't1', name: 'kc_search', input: { query: 'x' } },
+      {
+        type: 'tool_result',
+        id: 't1',
+        name: 'kc_search',
+        output: 'res',
+        isError: false,
+      },
+      { type: 'usage', promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+    const svc = new SkillExecutionService(
+      db as never,
+      provider as never,
+      toolRegistry as never,
+    );
+
+    const events = (await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    )) as { type: string; status?: string }[];
+
+    expect(events[0].type).toBe('run_started');
+    expect(events.at(-1)).toMatchObject({ type: 'run_done', status: 'done' });
+    expect(steps.map((s) => s.stepType)).toEqual(['tool', 'llm']);
+    expect(runUpdates.at(-1)).toMatchObject({ status: 'done' });
+  });
+
+  it('rejects a second concurrent run for the same user (one-run-per-user)', async () => {
+    const { db } = makeDb(SKILL);
+    // A provider that yields once then blocks, keeping run #1 in flight.
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const provider = {
+      streamWithTools: async function* (): AsyncIterable<AgentLoopEvent> {
+        yield { type: 'text', delta: 'hi' };
+        await gate;
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    };
+    const svc = new SkillExecutionService(
+      db as never,
+      provider as never,
+      toolRegistry as never,
+    );
+
+    const gen1 = svc.run({
+      userId: 'u1',
+      skillId: 's1',
+      modelIdentifier: 'anthropic/x',
+    });
+    await gen1.next(); // run_started — registers the aborter
+    await gen1.next(); // into the loop (yields 'text', then awaits the gate)
+
+    await expect(
+      svc
+        .run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' })
+        .next(),
+    ).rejects.toBeInstanceOf(ConflictException);
+
+    release();
+    await drain(gen1);
+  });
+
+  it('cancel returns false when the user has no run in flight', () => {
+    const { db } = makeDb(SKILL);
+    const svc = new SkillExecutionService(
+      db as never,
+      scriptedProvider([]) as never,
+      toolRegistry as never,
+    );
+    expect(svc.cancel('u1')).toBe(false);
+  });
+});
