@@ -112,6 +112,12 @@ Verified before planning so the plan reflects reality, not assumptions:
   storagePath (`uploads/skill-artifacts/`), createdAt, **expiresAt** (retention).
   Cascade on run delete.
 
+> **All schema is front-loaded into the Phase-A migration (commit 1)** — including
+> columns only *used* later (`observabilityEvents.turnId`, `skill_artifacts.expiresAt`).
+> Intentional: later phases then need **no** new migration, so there's zero chance of
+> editing an already-pushed one (the hash-skip trap). Only add a new numbered migration if
+> a genuinely unforeseen column appears.
+
 ## 5. Backend components
 
 - **`SkillExecutionService`** — owns a single run: builds the system prompt + tool
@@ -141,7 +147,8 @@ Verified before planning so the plan reflects reality, not assumptions:
 - `POST /skills/:id/run` → SSE stream of: `run_started`, `llm_delta`, `tool_call`,
   `tool_result`, `artifact`, `run_done`, `run_error`. Mirrors the chat SSE framing so the
   FE transport is reused. 404 when the flag is off.
-- `GET /skills/runs/:id` — run + steps + artifacts (reload/history).
+- `GET /skills/runs` — list the caller's runs (run-history UI).
+- `GET /skills/runs/:id` — run + steps + artifacts (reload/detail).
 - `GET /skills/artifacts/:id/download` — stream the generated file (authz: run owner).
 - `DELETE /skills/runs/active` — cancel the running execution (abort, like chat Stop).
 
