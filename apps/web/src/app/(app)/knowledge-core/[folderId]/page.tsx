@@ -9,6 +9,7 @@ import {
   FolderInput,
   Folder,
   Loader2,
+  Lock,
   MoreVertical,
   RotateCw,
   Search,
@@ -184,6 +185,7 @@ function VisibilityBadge({
   projects?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
+  const isPersonal = useIsPersonal();
   if (visibility === "admins") {
     return (
       <span
@@ -224,6 +226,19 @@ function VisibilityBadge({
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
         {projects.length > 0 ? `${t("kcFolder.projects")} (${projects.length})` : t("kcFolder.project")}
+      </span>
+    );
+  }
+  // visibility === 'all'. Personal account → owner-only, so the badge reads
+  // "Only me" rather than the company-wide "Everyone".
+  if (isPersonal) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
+        title={t("knowledgeCore.visibilityOnlyMe")}
+      >
+        <Lock className="h-3 w-3" strokeWidth={2} />
+        {t("knowledgeCore.visibilityOnlyMe")}
       </span>
     );
   }
