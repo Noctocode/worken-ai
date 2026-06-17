@@ -18,13 +18,27 @@ import { DocumentsService } from '../documents/documents.service.js';
 
 export type SkillVisibility = 'all' | 'admins' | 'teams';
 
+/** A script/resource entry of an executable skill (Option #3), parsed from
+ *  SKILL.md. Persisted on `skills.scripts`; matches the schema JSONB shape. */
+export interface SkillScript {
+  name: string;
+  language: string;
+  entrypoint?: boolean;
+  content: string;
+}
+
+export type SkillSource = 'manual' | 'import' | 'executable';
+
 export interface CreateSkillInput {
   name: string;
   description: string;
   instructions: string;
   visibility?: string;
   teamIds?: string[];
-  source?: 'manual' | 'import';
+  source?: SkillSource;
+  /** Executable-skill scripts (Option #3). Required + persisted only when
+   *  source === 'executable'; ignored otherwise. */
+  scripts?: SkillScript[];
 }
 
 export type UpdateSkillInput = Partial<
@@ -196,6 +210,11 @@ export class SkillsService {
     return row;
   }
 
+  /** Coerce an incoming source to a known value (default 'manual'). */
+  private normalizeSource(input: SkillSource | undefined): SkillSource {
+    return input === 'import' || input === 'executable' ? input : 'manual';
+  }
+
   async create(userId: string, input: CreateSkillInput) {
     const name = input.name?.trim();
     const description = input.description?.trim();
@@ -205,6 +224,15 @@ export class SkillsService {
       throw new BadRequestException('`description` is required.');
     if (!instructions)
       throw new BadRequestException('`instructions` is required.');
+
+    const source = this.normalizeSource(input.source);
+    // An executable skill is defined by its scripts — reject one with none so
+    // we never persist a runnable skill that can't run.
+    if (source === 'executable' && !input.scripts?.length) {
+      throw new BadRequestException(
+        'An executable skill requires at least one script.',
+      );
+    }
 
     const { scope, isAdmin } = await this.readProfile(userId);
     const visibility = this.resolveVisibility(input.visibility, scope, isAdmin);
@@ -222,7 +250,9 @@ export class SkillsService {
         instructions,
         scope,
         visibility,
-        source: input.source === 'import' ? 'import' : 'manual',
+        source,
+        // Scripts only belong to executable skills.
+        scripts: source === 'executable' ? (input.scripts ?? null) : null,
       })
       .returning();
 
