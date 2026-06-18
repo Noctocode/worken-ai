@@ -149,6 +149,7 @@ export class KnowledgeCoreController {
       visibility?: string;
       teamIds?: string | string[];
       projectIds?: string | string[];
+      scheduleIds?: string | string[];
       nameConflictActions?: string;
     },
   ) {
@@ -161,6 +162,11 @@ export class KnowledgeCoreController {
       ? body.projectIds
       : body?.projectIds
         ? [body.projectIds]
+        : [];
+    const scheduleIds = Array.isArray(body?.scheduleIds)
+      ? body.scheduleIds
+      : body?.scheduleIds
+        ? [body.scheduleIds]
         : [];
     let nameConflictActions: Record<string, NameConflictAction> | undefined;
     if (body?.nameConflictActions) {
@@ -194,6 +200,7 @@ export class KnowledgeCoreController {
       teamIds,
       projectIds,
       nameConflictActions,
+      scheduleIds,
     );
   }
 
@@ -207,7 +214,12 @@ export class KnowledgeCoreController {
   updateFileVisibility(
     @Param('id') id: string,
     @Body()
-    body: { visibility: string; teamIds?: string[]; projectIds?: string[] },
+    body: {
+      visibility: string;
+      teamIds?: string[];
+      projectIds?: string[];
+      scheduleIds?: string[];
+    },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.updateFileVisibility(
@@ -216,6 +228,7 @@ export class KnowledgeCoreController {
       body?.visibility,
       body?.teamIds,
       body?.projectIds,
+      body?.scheduleIds,
     );
   }
 
@@ -260,8 +273,6 @@ export class KnowledgeCoreController {
     body: {
       fileIds: string[];
       visibility: string;
-      teamIds?: string[];
-      projectIds?: string[];
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -269,8 +280,6 @@ export class KnowledgeCoreController {
       body?.fileIds ?? [],
       user.id,
       body?.visibility,
-      body?.teamIds,
-      body?.projectIds,
     );
   }
 

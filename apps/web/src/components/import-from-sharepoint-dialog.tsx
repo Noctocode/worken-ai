@@ -21,6 +21,7 @@ import {
   fetchSharePointImportProgress,
   fetchSharePointSites,
   fetchSharePointSiteFileCount,
+  fetchScheduledPrompts,
   fetchTeams,
   importFromSharePoint,
   startSharePointImportAsync,
@@ -157,6 +158,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   // Drive (document library) picker. Auto-selects when the site has
   // exactly one drive (the common case) — we keep the state so the
@@ -176,6 +178,11 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "sharepoint-import"],
     queryFn: () => fetchProjects("all"),
+    enabled: open,
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "sharepoint-import"],
+    queryFn: fetchScheduledPrompts,
     enabled: open,
   });
 
@@ -433,8 +440,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
     mutationFn: async () => {
       const visibilityExtra = {
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "none" ? selectedScheduleIds : undefined,
       };
       return importFromSharePoint({
         kind: "folder",
@@ -488,8 +497,10 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         kind: "site",
         siteId: selectedSiteId,
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "none" ? selectedScheduleIds : undefined,
       }),
     onSuccess: () => {
       handledPhaseRef.current = null;
@@ -517,11 +528,12 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
   // shape parsed correctly only by accident of operator precedence —
   // a future edit could silently swap "OR" / "AND" precedence and
   // ship a broken submit gate. Keep one rule per visibility kind.
-  const teamsRuleSatisfied =
-    visibility !== "teams" || selectedTeamIds.length > 0;
-  const projectRuleSatisfied =
-    visibility !== "project" || selectedProjectIds.length > 0;
-  const visibilityValid = teamsRuleSatisfied && projectRuleSatisfied;
+  // UNION: under "Specific" base, require at least one scope selected.
+  const visibilityValid =
+    visibility !== "none" ||
+    selectedTeamIds.length > 0 ||
+    selectedProjectIds.length > 0 ||
+    selectedScheduleIds.length > 0;
 
   const canSubmit =
     !folderImportMutation.isPending &&
@@ -858,6 +870,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                 setVisibility(v as KnowledgeFileVisibility);
                 setSelectedTeamIds([]);
                 setSelectedProjectIds([]);
+                setSelectedScheduleIds([]);
               }}
             >
               <SelectTrigger className="h-10 w-full cursor-pointer">
@@ -873,27 +886,24 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                   <SelectItem value="admins">{t("spDlg.adminsOnly")}</SelectItem>
                 )}
                 {!isPersonal && (
-                  <SelectItem value="teams">{t("spDlg.specificTeams")}</SelectItem>
-                )}
-                {!isPersonal && (
-                  <SelectItem value="project">{t("spDlg.specificProject")}</SelectItem>
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
                 )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {visibility === "admins"
                 ? t("spDlg.visHintAdmins")
-                : visibility === "teams"
-                  ? t("spDlg.visHintTeams")
-                  : visibility === "project"
-                    ? t("spDlg.visHintProject")
+                : visibility === "none"
+                  ? t("visDlg.hintSpecific")
+                  : isPersonal
+                    ? t("visDlg.hintOnlyMe")
                     : t("spDlg.visHintEveryone")}
             </p>
           </div>
         )}
 
         {/* Team picker */}
-        {selectedSiteId && visibility === "teams" && (
+        {selectedSiteId && visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("spDlg.teamsWithAccess")}
@@ -931,7 +941,7 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
         )}
 
         {/* Project picker */}
-        {selectedSiteId && visibility === "project" && (
+        {selectedSiteId && visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("spDlg.projectsWithAccess")}
@@ -967,6 +977,44 @@ export function ImportFromSharePointDialog({ open, onOpenChange }: Props) {
                           </span>
                         )}
                       </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Schedule picker */}
+        {selectedSiteId && visibility === "none" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              {t("spDlg.schedulesWithAccess")}
+            </label>
+            {userSchedules.length === 0 ? (
+              <p className="text-[11px] text-text-3">{t("spDlg.noSchedules")}</p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userSchedules.map((s) => {
+                  const checked = selectedScheduleIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedScheduleIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== s.id)
+                              : [...prev, s.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">{s.name}</span>
                     </label>
                   );
                 })}

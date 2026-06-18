@@ -27,6 +27,8 @@ export const notifications: Record<keyof typeof notificationsEn, string> = {
   'notifications.failedDecline': 'Zavrnitev ni uspela.',
   'notifPop.title': 'Obvestila',
   'notifPop.viewAll': 'Prikaži vse',
+  'notifPop.showMore': 'Pokaži več',
+  'notifPop.showLess': 'Pokaži manj',
   'notifPop.loading': 'Nalaganje…',
   'notifPop.allCaughtUp': 'Vse je na tekočem.',
   'notifPop.accept': 'Sprejmi',

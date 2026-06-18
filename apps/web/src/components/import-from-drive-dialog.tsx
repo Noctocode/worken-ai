@@ -19,6 +19,7 @@ import {
   fetchDriveImportProgress,
   fetchDriveFolders,
   fetchProjects,
+  fetchScheduledPrompts,
   fetchTeams,
   importFromDrive,
   startDriveImportAsync,
@@ -158,6 +159,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const [visibility, setVisibility] = useState<KnowledgeFileVisibility>("all");
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
+  const [selectedScheduleIds, setSelectedScheduleIds] = useState<string[]>([]);
 
   // Whether an async Entire Drive job has been started (controls polling).
   const [asyncJobActive, setAsyncJobActive] = useState(false);
@@ -176,6 +178,11 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "drive-import"],
     queryFn: () => fetchProjects("all"),
+    enabled: open,
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "drive-import"],
+    queryFn: fetchScheduledPrompts,
     enabled: open,
   });
 
@@ -283,6 +290,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     setVisibility("all");
     setSelectedTeamIds([]);
     setSelectedProjectIds([]);
+    setSelectedScheduleIds([]);
     setRootFolders(null);
     setRootError(null);
     setChildren({});
@@ -366,8 +374,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
     mutationFn: async () => {
       const visibilityExtra = {
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "none" ? selectedScheduleIds : undefined,
       };
       return importFromDrive({
         kind: "folders",
@@ -412,8 +422,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
       startDriveImportAsync({
         kind: "all",
         visibility,
-        teamIds: visibility === "teams" ? selectedTeamIds : undefined,
-        projectIds: visibility === "project" ? selectedProjectIds : undefined,
+        teamIds: visibility === "none" ? selectedTeamIds : undefined,
+        projectIds: visibility === "none" ? selectedProjectIds : undefined,
+        scheduleIds:
+          visibility === "none" ? selectedScheduleIds : undefined,
       }),
     onSuccess: () => {
       handledPhaseRef.current = null;
@@ -451,9 +463,10 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
   });
 
   const visibilityValid =
-    visibility !== "teams" || selectedTeamIds.length > 0
-      ? visibility !== "project" || selectedProjectIds.length > 0
-      : false;
+    visibility !== "none" ||
+    selectedTeamIds.length > 0 ||
+    selectedProjectIds.length > 0 ||
+    selectedScheduleIds.length > 0;
 
   const canSubmit =
     !folderImportMutation.isPending &&
@@ -756,6 +769,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
               setVisibility(v as KnowledgeFileVisibility);
               setSelectedTeamIds([]);
               setSelectedProjectIds([]);
+              setSelectedScheduleIds([]);
             }}
           >
             <SelectTrigger className="h-10 w-full cursor-pointer">
@@ -773,13 +787,8 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                 </SelectItem>
               )}
               {!isPersonal && (
-                <SelectItem value="teams">
-                  {t("driveDlg.specificTeams")}
-                </SelectItem>
-              )}
-              {!isPersonal && (
-                <SelectItem value="project">
-                  {t("driveDlg.specificProject")}
+                <SelectItem value="none">
+                  {t("visDlg.specificScopes")}
                 </SelectItem>
               )}
             </SelectContent>
@@ -787,16 +796,16 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
           <p className="text-[11px] text-text-3">
             {visibility === "admins"
               ? t("driveDlg.visHintAdmins")
-              : visibility === "teams"
-                ? t("driveDlg.visHintTeams")
-                : visibility === "project"
-                  ? t("driveDlg.visHintProject")
+              : visibility === "none"
+                ? t("visDlg.hintSpecific")
+                : isPersonal
+                  ? t("visDlg.hintOnlyMe")
                   : t("driveDlg.visHintEveryone")}
           </p>
         </div>
 
         {/* Team picker */}
-        {visibility === "teams" && (
+        {visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("driveDlg.teamsWithAccess")}
@@ -836,7 +845,7 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
         )}
 
         {/* Project picker */}
-        {visibility === "project" && (
+        {visibility === "none" && (
           <div className="flex flex-col gap-1.5">
             <label className="text-[12px] font-medium text-text-1">
               {t("driveDlg.projectsWithAccess")}
@@ -874,6 +883,46 @@ export function ImportFromDriveDialog({ open, onOpenChange }: Props) {
                           </span>
                         )}
                       </span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Schedule picker */}
+        {visibility === "none" && (
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[12px] font-medium text-text-1">
+              {t("driveDlg.schedulesWithAccess")}
+            </label>
+            {userSchedules.length === 0 ? (
+              <p className="text-[11px] text-text-3">
+                {t("driveDlg.noSchedules")}
+              </p>
+            ) : (
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                {userSchedules.map((s) => {
+                  const checked = selectedScheduleIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() =>
+                          setSelectedScheduleIds((prev) =>
+                            checked
+                              ? prev.filter((id) => id !== s.id)
+                              : [...prev, s.id],
+                          )
+                        }
+                        className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                      />
+                      <span className="truncate">{s.name}</span>
                     </label>
                   );
                 })}

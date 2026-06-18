@@ -4,6 +4,7 @@ import {
   Activity,
   Bell,
   BookOpen,
+  CalendarClock,
   ChevronsLeft,
   ChevronsRight,
   Database,
@@ -119,6 +120,7 @@ export const SidebarContent = ({
     [
       { href: "/resources", label: t("sidebar.nav.resources"), icon: BookOpen, match: "prefix" },
       { href: "/resources/how-it-works", label: t("sidebar.nav.howItWorks"), icon: Network, match: "exact" },
+      { href: "/ai-cron", label: t("sidebar.nav.aiCron"), icon: CalendarClock, match: "prefix" },
     ],
   ];
 

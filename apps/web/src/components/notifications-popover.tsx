@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   Bell,
   CheckCheck,
+  ChevronDown,
   X,
   Users,
   CircleDollarSign,
@@ -147,6 +148,49 @@ interface NotificationsPopoverProps {
    * `asChild` happy.
    */
   children: (state: { unreadCount: number }) => React.ReactElement;
+}
+
+/**
+ * Notification body with a Show more / Show less accordion. Short bodies
+ * render inline; long ones (e.g. an AI Cron run's full answer) collapse to two
+ * lines and expand into a scrollable, whitespace-preserving panel so the whole
+ * message is readable without leaving the popover.
+ */
+function NotificationBody({ body }: { body: string }) {
+  const { t } = useLanguage();
+  const [expanded, setExpanded] = useState(false);
+  const isLong = body.length > 160 || body.includes("\n");
+
+  if (!isLong) {
+    return (
+      <p className="whitespace-pre-wrap text-[12px] text-text-2">{body}</p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <p
+        className={cn(
+          "whitespace-pre-wrap text-[12px] text-text-2",
+          expanded
+            ? "max-h-60 overflow-y-auto rounded-md bg-bg-2 p-2"
+            : "line-clamp-2",
+        )}
+      >
+        {body}
+      </p>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="inline-flex items-center gap-0.5 text-[11px] font-medium text-primary-6 hover:underline"
+      >
+        {expanded ? t("notifPop.showLess") : t("notifPop.showMore")}
+        <ChevronDown
+          className={cn("size-3 transition-transform", expanded && "rotate-180")}
+        />
+      </button>
+    </div>
+  );
 }
 
 /**
@@ -316,9 +360,7 @@ export function NotificationsPopover({ children }: NotificationsPopoverProps) {
                     <p className="text-[13px] font-medium text-text-1">
                       {n.title}
                     </p>
-                    {n.body && (
-                      <p className="text-[12px] text-text-2">{n.body}</p>
-                    )}
+                    {n.body && <NotificationBody body={n.body} />}
                     <span className="text-[11px] text-text-3">
                       {relativeTime(n.createdAt)}
                     </span>

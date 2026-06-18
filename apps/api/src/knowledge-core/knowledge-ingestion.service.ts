@@ -11,6 +11,7 @@ import {
   cosineDistance,
   desc,
   eq,
+  ilike,
   inArray,
   isNull,
   lt,
@@ -113,6 +114,34 @@ export interface IngestionAggregate {
  * DocumentsService so chunks are searchable with the same vector
  * shape as project documents.
  */
+// Common EN/SL words dropped from the keyword-boost so a generic question
+// ("what is X", "napiši povzetek") matches on its meaningful term, not noise.
+const STOPWORDS = new Set([
+  'what',
+  'which',
+  'this',
+  'that',
+  'with',
+  'from',
+  'your',
+  'please',
+  'about',
+  'summarize',
+  'summary',
+  'write',
+  'tell',
+  'explain',
+  'kako',
+  'kateri',
+  'katera',
+  'zakaj',
+  'prosim',
+  'napiši',
+  'povej',
+  'naredi',
+  'povzetek',
+]);
+
 @Injectable()
 export class KnowledgeIngestionService
   implements OnModuleInit, OnModuleDestroy
@@ -826,53 +855,112 @@ export class KnowledgeIngestionService
         )`
       : sql`FALSE`;
 
+    // UNION visibility model: a file's broad-RAG access is the OR of its
+    // independent scopes, NOT a single enum tier. The base `visibility`
+    // ('all' / 'admins' / anything-else-as-restricted) drives the company-wide
+    // grant; team access is purely link-based (knowledge_file_teams), so a
+    // file scoped to BOTH a project AND a team surfaces for that team's
+    // members here while ALSO being pinned to the project's chat. Project /
+    // schedule links intentionally grant NO broad access — they're reached
+    // only via searchProjectAttachedChunks / searchScheduleAttachedChunks.
+    const teamLinkForMember = sql`EXISTS (
+      SELECT 1
+      FROM ${knowledgeFileTeams} kft
+      INNER JOIN ${teamMembers} tm
+        ON tm.team_id = kft.team_id
+      WHERE kft.file_id = ${knowledgeChunks.fileId}
+        AND tm.user_id = ${userId}
+        AND tm.status = 'accepted'
+    )`;
     const companyBranch = isAdmin
       ? and(
           eq(knowledgeChunks.scope, 'company'),
-          sql`${knowledgeChunks.visibility} <> 'project'`,
           sameCompanyAsCaller,
-        )
-      : or(
-          and(
-            eq(knowledgeChunks.scope, 'company'),
+          // Admin sees company-wide + admin-only files, plus any team-scoped
+          // file (no membership needed — admins see across teams). Project /
+          // schedule-only files stay out of the broad path.
+          or(
             eq(knowledgeChunks.visibility, 'all'),
-            sameCompanyAsCaller,
-          ),
-          and(
-            eq(knowledgeChunks.scope, 'company'),
-            eq(knowledgeChunks.visibility, 'teams'),
-            sameCompanyAsCaller,
+            eq(knowledgeChunks.visibility, 'admins'),
             sql`EXISTS (
-              SELECT 1
-              FROM ${knowledgeFileTeams} kft
-              INNER JOIN ${teamMembers} tm
-                ON tm.team_id = kft.team_id
+              SELECT 1 FROM ${knowledgeFileTeams} kft
               WHERE kft.file_id = ${knowledgeChunks.fileId}
-                AND tm.user_id = ${userId}
-                AND tm.status = 'accepted'
             )`,
           ),
+        )
+      : and(
+          eq(knowledgeChunks.scope, 'company'),
+          sameCompanyAsCaller,
+          or(eq(knowledgeChunks.visibility, 'all'), teamLinkForMember),
         );
 
-    return this.db
-      .select({
-        id: knowledgeChunks.id,
-        fileId: knowledgeChunks.fileId,
-        content: knowledgeChunks.content,
-        similarity,
-      })
-      .from(knowledgeChunks)
-      .where(
-        or(
-          and(
-            eq(knowledgeChunks.userId, userId),
-            eq(knowledgeChunks.scope, 'personal'),
-          ),
-          companyBranch,
+    // Schedule-scoped files (AI Cron) never surface in the broad search —
+    // they're reachable only as their own schedule's context via
+    // searchScheduleAttachedChunks (parallels how 'project' is excluded).
+    const accessWhere = and(
+      sql`${knowledgeChunks.visibility} <> 'schedule'`,
+      or(
+        and(
+          eq(knowledgeChunks.userId, userId),
+          eq(knowledgeChunks.scope, 'personal'),
         ),
-      )
+        companyBranch,
+      ),
+    );
+    const cols = {
+      id: knowledgeChunks.id,
+      fileId: knowledgeChunks.fileId,
+      content: knowledgeChunks.content,
+      similarity,
+    };
+
+    // Semantic (vector) results.
+    const vectorRows = await this.db
+      .select(cols)
+      .from(knowledgeChunks)
+      .where(accessWhere)
       .orderBy(desc(similarity))
       .limit(limit);
+
+    // Keyword boost: a small embedding model often can't rank an exact term
+    // match (a rare word like a name) above generic chunks, so a specific
+    // question ("what is X?") can miss the one chunk that defines X. Pull
+    // chunks that literally contain the query's significant terms and surface
+    // them first — lexical recall on top of semantic recall.
+    const terms = Array.from(
+      new Set(
+        query
+          .toLowerCase()
+          .split(/[^\p{L}\p{N}]+/u)
+          .filter((w) => w.length >= 4 && !STOPWORDS.has(w)),
+      ),
+    ).slice(0, 6);
+
+    let keywordRows: typeof vectorRows = [];
+    if (terms.length > 0) {
+      keywordRows = await this.db
+        .select(cols)
+        .from(knowledgeChunks)
+        .where(
+          and(
+            accessWhere,
+            or(...terms.map((tm) => ilike(knowledgeChunks.content, `%${tm}%`))),
+          ),
+        )
+        .orderBy(desc(similarity))
+        .limit(limit);
+    }
+
+    // Keyword hits first (high-precision), then semantic, de-duped. Headroom
+    // over `limit` so a keyword hit isn't pushed out by the vector matches.
+    const merged: typeof vectorRows = [];
+    const seen = new Set<string>();
+    for (const row of [...keywordRows, ...vectorRows]) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      merged.push(row);
+    }
+    return merged.slice(0, limit + keywordRows.length);
   }
 
   /**
@@ -960,6 +1048,15 @@ export class KnowledgeIngestionService
             eq(knowledgeChunks.visibility, 'project'),
             sameCompanyAsCaller,
           ),
+          // UNION model: a project-scoped file now carries base
+          // visibility='none' + a project_knowledge_files link. Being in
+          // fileIds IS the access grant (same as the 'project' branch above),
+          // so allow 'none' too. 'admins' stays off-limits for non-admins.
+          and(
+            eq(knowledgeChunks.scope, 'company'),
+            eq(knowledgeChunks.visibility, 'none'),
+            sameCompanyAsCaller,
+          ),
         );
 
     return this.db
@@ -982,6 +1079,39 @@ export class KnowledgeIngestionService
             ),
             companyBranch,
           ),
+        ),
+      )
+      .orderBy(desc(similarity))
+      .limit(limit);
+  }
+
+  /**
+   * Semantic search over the files attached to an AI Cron schedule. Schedule
+   * files are uploaded + attached by the schedule owner (visibility
+   * 'schedule'), so access is simply owner + the explicit fileIds — no team /
+   * company visibility branches needed. Used by the scheduled-run RAG path.
+   */
+  async searchScheduleAttachedChunks(
+    userId: string,
+    fileIds: string[],
+    query: string,
+    limit = 5,
+  ) {
+    if (fileIds.length === 0) return [];
+    const [queryEmbedding] = await this.documentsService.embed([query]);
+    const similarity = sql<number>`1 - (${cosineDistance(knowledgeChunks.embedding, queryEmbedding)})`;
+    return this.db
+      .select({
+        id: knowledgeChunks.id,
+        fileId: knowledgeChunks.fileId,
+        content: knowledgeChunks.content,
+        similarity,
+      })
+      .from(knowledgeChunks)
+      .where(
+        and(
+          inArray(knowledgeChunks.fileId, fileIds),
+          eq(knowledgeChunks.userId, userId),
         ),
       )
       .orderBy(desc(similarity))

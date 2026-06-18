@@ -14,6 +14,7 @@ import {
   knowledgeFiles,
   knowledgeFolders,
   projectKnowledgeFiles,
+  scheduleKnowledgeFiles,
   users,
 } from '@worken/database/schema';
 import { UPLOAD_ALLOWED_EXTENSIONS } from './upload-allowlist.js';
@@ -176,6 +177,7 @@ export class SharePointImportService {
         visibility: scope.visibility,
         teamIds: scope.teamIds,
         projectIds: scope.projectIds,
+        scheduleIds: scope.scheduleIds,
       });
       this.mergeInsertedIntoResult(result, inserted, siteName);
     } else {
@@ -249,6 +251,7 @@ export class SharePointImportService {
           visibility: scope.visibility,
           teamIds: scope.teamIds,
           projectIds: scope.projectIds,
+          scheduleIds: scope.scheduleIds,
         });
         this.mergeInsertedIntoResult(result, inserted, entry.folderName);
       }
@@ -285,6 +288,7 @@ export class SharePointImportService {
       visibility: (source.visibility as SharePointVisibility) ?? undefined,
       teamIds: source.teamIds ?? undefined,
       projectIds: source.projectIds ?? undefined,
+      scheduleIds: source.scheduleIds ?? undefined,
     };
 
     if (source.scope === 'site') {
@@ -578,6 +582,7 @@ export class SharePointImportService {
             visibility,
             teamIds: scope.teamIds ?? null,
             projectIds: scope.projectIds ?? null,
+            scheduleIds: scope.scheduleIds ?? null,
           })
           .returning({ id: sharepointImportSources.id });
         sourceId = created.id;
@@ -616,7 +621,7 @@ export class SharePointImportService {
         totalInserted += insertedRows.length;
         job.progress.imported = totalInserted;
 
-        if (visibility === 'teams' && (scope.teamIds ?? []).length > 0) {
+        if ((scope.teamIds ?? []).length > 0) {
           await this.db.insert(knowledgeFileTeams).values(
             insertedRows.flatMap((row) =>
               (scope.teamIds ?? []).map((teamId) => ({
@@ -626,11 +631,22 @@ export class SharePointImportService {
             ),
           );
         }
-        if (visibility === 'project' && (scope.projectIds ?? []).length > 0) {
+        if ((scope.projectIds ?? []).length > 0) {
           await this.db.insert(projectKnowledgeFiles).values(
             insertedRows.flatMap((row) =>
               (scope.projectIds ?? []).map((projectId) => ({
                 projectId,
+                fileId: row.id,
+                attachedBy: userId,
+              })),
+            ),
+          );
+        }
+        if ((scope.scheduleIds ?? []).length > 0) {
+          await this.db.insert(scheduleKnowledgeFiles).values(
+            insertedRows.flatMap((row) =>
+              (scope.scheduleIds ?? []).map((scheduledPromptId) => ({
+                scheduledPromptId,
                 fileId: row.id,
                 attachedBy: userId,
               })),
@@ -846,6 +862,7 @@ export class SharePointImportService {
       visibility?: SharePointVisibility;
       teamIds?: string[];
       projectIds?: string[];
+      scheduleIds?: string[];
     },
   ): Promise<{
     sourceId: string;
@@ -949,6 +966,7 @@ export class SharePointImportService {
           visibility: args.visibility ?? 'all',
           teamIds: args.teamIds ?? null,
           projectIds: args.projectIds ?? null,
+          scheduleIds: args.scheduleIds ?? null,
         })
         .returning({ id: sharepointImportSources.id });
       sourceId = inserted.id;
@@ -984,8 +1002,7 @@ export class SharePointImportService {
       )
       .returning({ id: knowledgeFiles.id });
 
-    const visibility = args.visibility ?? 'all';
-    if (visibility === 'teams' && (args.teamIds ?? []).length > 0) {
+    if ((args.teamIds ?? []).length > 0) {
       await this.db.insert(knowledgeFileTeams).values(
         insertedFiles.flatMap((row) =>
           (args.teamIds ?? []).map((teamId) => ({
@@ -995,11 +1012,22 @@ export class SharePointImportService {
         ),
       );
     }
-    if (visibility === 'project' && (args.projectIds ?? []).length > 0) {
+    if ((args.projectIds ?? []).length > 0) {
       await this.db.insert(projectKnowledgeFiles).values(
         insertedFiles.flatMap((row) =>
           (args.projectIds ?? []).map((projectId) => ({
             projectId,
+            fileId: row.id,
+            attachedBy: userId,
+          })),
+        ),
+      );
+    }
+    if ((args.scheduleIds ?? []).length > 0) {
+      await this.db.insert(scheduleKnowledgeFiles).values(
+        insertedFiles.flatMap((row) =>
+          (args.scheduleIds ?? []).map((scheduledPromptId) => ({
+            scheduledPromptId,
             fileId: row.id,
             attachedBy: userId,
           })),

@@ -93,17 +93,22 @@ export const drive = {
   "driveDlg.adminsOnly": "Admins only",
   "driveDlg.specificTeams": "Specific teams…",
   "driveDlg.specificProject": "Specific project…",
+  "driveDlg.specificSchedule": "Specific schedule…",
   "driveDlg.visHintAdmins": "Only admins will see these files in chat / arena.",
   "driveDlg.visHintTeams":
     "Only members of the teams you pick below will see these files.",
   "driveDlg.visHintProject":
     "These files will only appear in the chat of the selected project(s).",
+  "driveDlg.visHintSchedule":
+    "These files will only be used as context for the selected AI Cron schedule(s).",
   "driveDlg.visHintEveryone":
     "Every user in the company can see these files in chat / arena.",
   "driveDlg.teamsWithAccess": "Teams with access",
   "driveDlg.notTeamMember": "You aren't a member of any team yet.",
   "driveDlg.projectsWithAccess": "Projects with access",
   "driveDlg.noProjectAccess": "You don't have access to any projects yet.",
+  "driveDlg.schedulesWithAccess": "Schedules with access",
+  "driveDlg.noSchedules": "You don't have any AI Cron schedules yet.",
   "driveDlg.cancel": "Cancel",
   "driveDlg.importEntire": "Import entire Drive",
   "driveDlg.pickFolder": "Pick at least one folder",

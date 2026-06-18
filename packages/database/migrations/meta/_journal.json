@@ -155,6 +155,27 @@
       "when": 1780070000000,
       "tag": "0021_skill_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1780080000000,
+      "tag": "0022_ai_cron",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1780090000000,
+      "tag": "0023_ai_cron_context_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780100000000,
+      "tag": "0024_import_schedule_ids",
+      "breakpoints": true
     }
   ]
 }

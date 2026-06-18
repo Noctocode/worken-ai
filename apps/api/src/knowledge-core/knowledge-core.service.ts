@@ -17,6 +17,8 @@ import {
   knowledgeChunks,
   projectKnowledgeFiles,
   projects,
+  scheduleKnowledgeFiles,
+  scheduledPrompts,
   teamMembers,
   teams,
   users,
@@ -242,6 +244,9 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
+      // Schedule-scoped files (AI Cron) show here too — they're regular KC
+      // files that happen to be attached to a schedule, so the owner can see
+      // and manage them in the general list like any other file.
       .where(eq(knowledgeFolders.ownerId, userId))
       // `id` tiebreaker so files sharing a createdAt (a Drive import
       // stamps them in one transaction) keep a stable order across
@@ -249,14 +254,16 @@ export class KnowledgeCoreService {
       .orderBy(desc(knowledgeFiles.createdAt), desc(knowledgeFiles.id));
 
     const fileIds = files.map((f) => f.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     return files.map((f) => ({
       ...f,
       teams: teamLinks.get(f.id) ?? [],
       projects: projectLinks.get(f.id) ?? [],
+      schedules: scheduleLinks.get(f.id) ?? [],
     }));
   }
 
@@ -298,14 +305,16 @@ export class KnowledgeCoreService {
     // without an N+1. Two round-trips for the whole folder keeps
     // this O(1) regardless of file count.
     const fileIds = files.map((f) => f.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     const filesWithLinks = files.map((f) => ({
       ...f,
       teams: teamLinks.get(f.id) ?? [],
       projects: projectLinks.get(f.id) ?? [],
+      schedules: scheduleLinks.get(f.id) ?? [],
     }));
 
     // Subfolders living directly under this folder. Each row carries
@@ -432,6 +441,36 @@ export class KnowledgeCoreService {
     for (const link of links) {
       const arr = out.get(link.fileId) ?? [];
       arr.push({ id: link.projectId, name: link.projectName });
+      out.set(link.fileId, arr);
+    }
+    return out;
+  }
+
+  /**
+   * Mirror of hydrateProjectLinks but for schedule links (AI Cron) — used to
+   * stamp `schedules: [{id, name}]` onto files so the row badge can render
+   * the schedule name(s) the file is attached to, like the project badge.
+   */
+  private async hydrateScheduleLinks(
+    fileIds: string[],
+  ): Promise<Map<string, Array<{ id: string; name: string }>>> {
+    const out = new Map<string, Array<{ id: string; name: string }>>();
+    if (fileIds.length === 0) return out;
+    const links = await this.db
+      .select({
+        fileId: scheduleKnowledgeFiles.fileId,
+        scheduleId: scheduledPrompts.id,
+        scheduleName: scheduledPrompts.name,
+      })
+      .from(scheduleKnowledgeFiles)
+      .innerJoin(
+        scheduledPrompts,
+        eq(scheduledPrompts.id, scheduleKnowledgeFiles.scheduledPromptId),
+      )
+      .where(inArray(scheduleKnowledgeFiles.fileId, fileIds));
+    for (const link of links) {
+      const arr = out.get(link.fileId) ?? [];
+      arr.push({ id: link.scheduleId, name: link.scheduleName });
       out.set(link.fileId, arr);
     }
     return out;
@@ -685,6 +724,10 @@ export class KnowledgeCoreService {
     // not a silent overwrite. See the name-conflict block below for
     // the actions' semantics.
     nameConflictActions?: Record<string, NameConflictAction>,
+    // Schedule links for 'schedule' visibility. Added last so the existing
+    // positional callers (esp. ScheduleKnowledgeService.uploadAndAttach, which
+    // links separately and omits this) keep working unchanged.
+    scheduleIdsInput?: string[],
   ) {
     const [folder] = await this.db
       .select()
@@ -719,13 +762,21 @@ export class KnowledgeCoreService {
       scope,
     );
 
-    // For 'teams' visibility: resolve the caller-supplied team IDs to
-    // a validated set the caller actually belongs to (admin bypass —
-    // any company team is fair game). Bail out before any file write
-    // if the input is empty or contains a team the caller can't
-    // assign to.
+    // UNION model: team / project links are independent additive scopes —
+    // resolve whichever the caller supplied, regardless of the base tier, so
+    // a file can be team- AND project-scoped at once. Team and project links
+    // are only meaningful for company-scope rows (personal files are
+    // owner-only at chat time), so reject those up front.
+    if (
+      ((teamIdsInput ?? []).length > 0 || (projectIdsInput ?? []).length > 0) &&
+      scope === 'personal'
+    ) {
+      throw new BadRequestException(
+        'Team / Project scopes require a company profile — personal-scope files are owner-only.',
+      );
+    }
     const allowedTeamIds =
-      visibility === 'teams'
+      (teamIdsInput ?? []).length > 0
         ? await this.resolveAssignableTeamIds(
             teamIdsInput ?? [],
             userId,
@@ -734,21 +785,9 @@ export class KnowledgeCoreService {
         : [];
 
     // Attach the upload to one or more projects. The link rows in
-    // project_knowledge_files double as the chat-time RAG grant —
-    // chunks only surface inside the linked project. This is decoupled
-    // from the KC `visibility` tier on purpose: a personal-profile
-    // user can attach an owner-only file to their own project's chat
-    // (scope stays 'personal', so the chunk is still owner-only — see
-    // searchProjectAttachedChunks), and a company user attaching with
-    // 'project' visibility behaves exactly as before. 'project'
-    // visibility still REQUIRES at least one project id (the link is
-    // its only access grant; without it the file would be unreadable).
+    // project_knowledge_files double as the chat-time RAG grant — chunks only
+    // surface inside the linked project (independent of the base tier).
     const projectIdsToLink = projectIdsInput ?? [];
-    if (visibility === 'project' && projectIdsToLink.length === 0) {
-      throw new BadRequestException(
-        'Pick at least one project for "Project" visibility.',
-      );
-    }
     const allowedProjectIds =
       projectIdsToLink.length > 0
         ? await this.resolveAssignableProjectIds(
@@ -756,6 +795,17 @@ export class KnowledgeCoreService {
             userId,
             uploader?.role === 'admin',
           )
+        : [];
+
+    // Attach the upload to one or more AI Cron schedules. Like projects, the
+    // schedule_knowledge_files rows double as the run-time context grant.
+    // Only resolved when the caller passed schedule ids — 'schedule'
+    // visibility is also used by the schedule-form upload path, which links
+    // its own files afterwards and omits these, so it stays untouched.
+    const scheduleIdsToLink = scheduleIdsInput ?? [];
+    const allowedScheduleIds =
+      scheduleIdsToLink.length > 0
+        ? await this.resolveAssignableScheduleIds(scheduleIdsToLink, userId)
         : [];
 
     // Hash every uploaded file up front so we can dedupe within the
@@ -1016,12 +1066,9 @@ export class KnowledgeCoreService {
       // Link every inserted file to the resolved team set so the
       // chat-time RAG filter (and the FE row badge) can see which
       // teams have access. Done in one INSERT regardless of how many
-      // files / teams to keep the upload path fast.
-      if (
-        visibility === 'teams' &&
-        inserted.length > 0 &&
-        allowedTeamIds.length > 0
-      ) {
+      // files / teams to keep the upload path fast. Independent of the
+      // base tier (UNION model) — link whenever teams were supplied.
+      if (inserted.length > 0 && allowedTeamIds.length > 0) {
         await this.db.insert(knowledgeFileTeams).values(
           inserted.flatMap((row) =>
             allowedTeamIds.map((teamId) => ({
@@ -1044,6 +1091,20 @@ export class KnowledgeCoreService {
           inserted.flatMap((row) =>
             allowedProjectIds.map((projectId) => ({
               projectId,
+              fileId: row.id,
+              attachedBy: userId,
+            })),
+          ),
+        );
+      }
+
+      // schedule_knowledge_files is the schedule attach + run-context grant —
+      // same table the schedule form's "Files in this context" populates.
+      if (inserted.length > 0 && allowedScheduleIds.length > 0) {
+        await this.db.insert(scheduleKnowledgeFiles).values(
+          inserted.flatMap((row) =>
+            allowedScheduleIds.map((scheduledPromptId) => ({
+              scheduledPromptId,
               fileId: row.id,
               attachedBy: userId,
             })),
@@ -1133,16 +1194,18 @@ export class KnowledgeCoreService {
     input: string | undefined,
     callerRole: string | null | undefined,
     scope?: 'personal' | 'company',
-  ): 'all' | 'admins' | 'teams' | 'project' {
+  ): 'all' | 'admins' | 'none' | 'teams' | 'project' | 'schedule' {
     if (input == null || input === '') return 'all';
     if (
       input !== 'all' &&
       input !== 'admins' &&
+      input !== 'none' &&
       input !== 'teams' &&
-      input !== 'project'
+      input !== 'project' &&
+      input !== 'schedule'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${input}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${input}". Must be 'all', 'admins', 'none', 'teams', 'project', or 'schedule'.`,
       );
     }
     if (input === 'admins' && callerRole !== 'admin') {
@@ -1346,6 +1409,49 @@ export class KnowledgeCoreService {
   }
 
   /**
+   * Validate + dedupe schedule IDs for 'schedule' visibility. A
+   * schedule-visibility file is pinned to specific AI Cron schedule(s) —
+   * searchable only as those schedules' run context, never via the org-wide
+   * RAG path (mirrors how 'project' works). The caller must own each
+   * schedule (scheduled_prompts.owner_id); there is no admin/team override
+   * because schedules are personal to their owner. Returns the validated
+   * array ready to insert into schedule_knowledge_files.
+   */
+  private async resolveAssignableScheduleIds(
+    input: string[],
+    callerId: string,
+  ): Promise<string[]> {
+    if (!Array.isArray(input)) {
+      throw new BadRequestException(
+        '`scheduleIds` must be an array when visibility is "schedule".',
+      );
+    }
+    const unique = Array.from(
+      new Set(input.filter((s) => typeof s === 'string' && s.length > 0)),
+    );
+    if (unique.length === 0) {
+      throw new BadRequestException(
+        'Pick at least one schedule for "Schedule" visibility.',
+      );
+    }
+    const rows = await this.db
+      .select({ id: scheduledPrompts.id })
+      .from(scheduledPrompts)
+      .where(
+        and(
+          eq(scheduledPrompts.ownerId, callerId),
+          inArray(scheduledPrompts.id, unique),
+        ),
+      );
+    const owned = new Set(rows.map((r) => r.id));
+    const denied = unique.filter((id) => !owned.has(id));
+    if (denied.length > 0) {
+      throw new ForbiddenException('You can only assign schedules you own.');
+    }
+    return unique;
+  }
+
+  /**
    * Force a fresh ingestion pass for a single file. The /knowledge-core
    * UI exposes this as a "Retrain" action on each row; useful after
    * we change the parser / chunker (or when an earlier run landed
@@ -1496,20 +1602,26 @@ export class KnowledgeCoreService {
     visibilityInput: string,
     teamIdsInput?: string[],
     projectIdsInput?: string[],
+    scheduleIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
       .from(users)
       .where(eq(users.id, callerId));
     const isAdmin = caller?.role === 'admin';
-    if (
-      visibilityInput !== 'all' &&
-      visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams' &&
-      visibilityInput !== 'project'
-    ) {
+    // UNION model: `visibility` is just the BROAD base tier — 'all'
+    // (company-wide), 'admins' (admin-only), or 'none' (no broad access).
+    // Team / project / schedule scopes are independent, additive link sets
+    // that can coexist with each other and the base, so a file can be in a
+    // project AND a team at the same time. Legacy single-scope values map to
+    // base 'none' (their access now comes purely from the link sets).
+    let base = visibilityInput;
+    if (base === 'teams' || base === 'project' || base === 'schedule') {
+      base = 'none';
+    }
+    if (base !== 'all' && base !== 'admins' && base !== 'none') {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${visibilityInput}". Base must be 'all', 'admins', or 'none'.`,
       );
     }
 
@@ -1530,83 +1642,82 @@ export class KnowledgeCoreService {
         "Only the file's uploader or an admin can change its visibility.",
       );
     }
-    if (visibilityInput === 'admins' && !isAdmin) {
+    if (base === 'admins' && !isAdmin) {
       throw new ForbiddenException(
         'Only admins can mark a file as admin-only.',
       );
     }
-    // Mirror the upload-path invariant: 'teams' / 'project' are only
-    // meaningful for company-scope rows. Personal files are owner-
-    // only at chat time, so a restricted personal file would just
-    // leave stray link rows nobody ever reads.
-    if (
-      (visibilityInput === 'teams' || visibilityInput === 'project') &&
-      file.scope === 'personal'
-    ) {
+    const wantsTeams = (teamIdsInput ?? []).length > 0;
+    const wantsProjects = (projectIdsInput ?? []).length > 0;
+    // Mirror the upload-path invariant: team / project links are only
+    // meaningful for company-scope rows. Personal files are owner-only at
+    // chat time, so the links would just be stray rows nobody reads.
+    // (Schedule links ARE valid for personal-scope files.)
+    if ((wantsTeams || wantsProjects) && file.scope === 'personal') {
       throw new BadRequestException(
-        `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
+        'Team / Project scopes require a company profile — personal-scope files are owner-only.',
       );
     }
-    // Block visibility flips while the worker is mid-ingestion.
-    // KnowledgeIngestionService captures `visibility` at claim time
-    // and inserts chunks with that captured value — if we updated the
-    // file row + (still-empty) chunks rowset here, the worker's later
-    // INSERT would land chunks at the stale visibility and leave
-    // file.visibility and chunks.visibility out of sync. Mirror the
-    // same guard reingestFile uses; the admin retries in a second.
+    // Block visibility flips while the worker is mid-ingestion (chunks
+    // capture `visibility` at claim time — see reingestFile).
     if (file.ingestionStatus === 'processing') {
       throw new BadRequestException(
         'This file is being added to context right now. Try again once the current run finishes.',
       );
     }
 
-    // Resolve link sets BEFORE the transaction so validation errors
-    // don't leave a half-applied state. Empty arrays for unrelated
-    // visibility levels are intentional — the transaction below wipes
-    // any pre-existing links regardless. isAdmin gates whether the
-    // caller can target arbitrary teams/projects; non-admin owners
-    // are limited to their own membership.
-    const teamIds =
-      visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(
-            teamIdsInput ?? [],
+    // Resolve every supplied link set BEFORE the transaction so a validation
+    // error can't leave a half-applied state. Each is independent — the
+    // caller can set any combination.
+    const teamIds = wantsTeams
+      ? await this.resolveAssignableTeamIds(
+          teamIdsInput ?? [],
+          callerId,
+          isAdmin,
+        )
+      : [];
+    const projectIds = wantsProjects
+      ? await this.resolveAssignableProjectIds(
+          projectIdsInput ?? [],
+          callerId,
+          isAdmin,
+        )
+      : [];
+    const scheduleIds =
+      (scheduleIdsInput ?? []).length > 0
+        ? await this.resolveAssignableScheduleIds(
+            scheduleIdsInput ?? [],
             callerId,
-            isAdmin,
-          )
-        : [];
-    const projectIds =
-      visibilityInput === 'project'
-        ? await this.resolveAssignableProjectIds(
-            projectIdsInput ?? [],
-            callerId,
-            isAdmin,
           )
         : [];
 
     await this.db.transaction(async (tx) => {
       await tx
         .update(knowledgeFiles)
-        .set({ visibility: visibilityInput })
+        .set({ visibility: base })
         .where(eq(knowledgeFiles.id, fileId));
       await tx
         .update(knowledgeChunks)
-        .set({ visibility: visibilityInput })
+        .set({ visibility: base })
         .where(eq(knowledgeChunks.fileId, fileId));
-      // Replace, not merge: wiping and re-inserting keeps the link
-      // sets authoritative — flipping away clears the prior links;
-      // flipping in replaces with the new set.
+      // Replace all three link sets authoritatively — the editor sends the
+      // complete intended set for each scope (pre-filled from the file's
+      // current links), so wipe-and-reinsert keeps them in sync.
       await tx
         .delete(knowledgeFileTeams)
         .where(eq(knowledgeFileTeams.fileId, fileId));
       await tx
         .delete(projectKnowledgeFiles)
         .where(eq(projectKnowledgeFiles.fileId, fileId));
-      if (visibilityInput === 'teams' && teamIds.length > 0) {
+      await tx
+        .delete(scheduleKnowledgeFiles)
+        .where(eq(scheduleKnowledgeFiles.fileId, fileId));
+      if (teamIds.length > 0) {
         await tx
           .insert(knowledgeFileTeams)
           .values(teamIds.map((teamId) => ({ fileId, teamId })));
       }
-      if (visibilityInput === 'project' && projectIds.length > 0) {
+      if (projectIds.length > 0) {
         await tx.insert(projectKnowledgeFiles).values(
           projectIds.map((projectId) => ({
             projectId,
@@ -1615,9 +1726,24 @@ export class KnowledgeCoreService {
           })),
         );
       }
+      if (scheduleIds.length > 0) {
+        await tx.insert(scheduleKnowledgeFiles).values(
+          scheduleIds.map((scheduledPromptId) => ({
+            scheduledPromptId,
+            fileId,
+            attachedBy: callerId,
+          })),
+        );
+      }
     });
 
-    return { id: fileId, visibility: visibilityInput, teamIds, projectIds };
+    return {
+      id: fileId,
+      visibility: base,
+      teamIds,
+      projectIds,
+      scheduleIds,
+    };
   }
 
   /**
@@ -1636,22 +1762,21 @@ export class KnowledgeCoreService {
     fileIds: string[],
     callerId: string,
     visibilityInput: string,
-    teamIdsInput?: string[],
-    projectIdsInput?: string[],
   ) {
     const [caller] = await this.db
       .select({ role: users.role })
       .from(users)
       .where(eq(users.id, callerId));
     const isAdmin = caller?.role === 'admin';
+    // Bulk only flips the base tier (UNION model) — Everyone / Admins / None.
+    // Per-file scope sets (teams/projects/schedules) are managed in the editor.
     if (
       visibilityInput !== 'all' &&
       visibilityInput !== 'admins' &&
-      visibilityInput !== 'teams' &&
-      visibilityInput !== 'project'
+      visibilityInput !== 'none'
     ) {
       throw new BadRequestException(
-        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', 'teams', or 'project'.`,
+        `Invalid visibility "${visibilityInput}". Must be 'all', 'admins', or 'none'.`,
       );
     }
     if (visibilityInput === 'admins' && !isAdmin) {
@@ -1662,26 +1787,6 @@ export class KnowledgeCoreService {
     if (!Array.isArray(fileIds) || fileIds.length === 0) {
       throw new BadRequestException('`fileIds` must be a non-empty array.');
     }
-
-    // Same pre-transaction link resolution as the per-file path —
-    // non-admin owners can only point to teams/projects they
-    // themselves can reach.
-    const teamIds =
-      visibilityInput === 'teams'
-        ? await this.resolveAssignableTeamIds(
-            teamIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
-    const projectIds =
-      visibilityInput === 'project'
-        ? await this.resolveAssignableProjectIds(
-            projectIdsInput ?? [],
-            callerId,
-            isAdmin,
-          )
-        : [];
 
     // Cheap dedupe in case the FE accidentally sends duplicates;
     // drizzle inArray would still work but we'd update twice.
@@ -1716,14 +1821,6 @@ export class KnowledgeCoreService {
         );
       }
     }
-    if (visibilityInput === 'teams' || visibilityInput === 'project') {
-      const personal = statuses.filter((r) => r.scope === 'personal');
-      if (personal.length > 0) {
-        throw new BadRequestException(
-          `${visibilityInput === 'teams' ? 'Team' : 'Project'} visibility requires a company profile — personal-scope files are owner-only.`,
-        );
-      }
-    }
     const eligibleIds: string[] = [];
     const skippedIds: string[] = [];
     for (const row of statuses) {
@@ -1749,44 +1846,16 @@ export class KnowledgeCoreService {
             .update(knowledgeChunks)
             .set({ visibility: visibilityInput })
             .where(inArray(knowledgeChunks.fileId, affectedIds));
-          // Replace team/project links for every affected row. Same
-          // shape as the per-file path — wipe-then-insert is cheaper
-          // than diffing for the bulk case and keeps the link sets
-          // authoritative regardless of prior state.
-          await tx
-            .delete(knowledgeFileTeams)
-            .where(inArray(knowledgeFileTeams.fileId, affectedIds));
-          await tx
-            .delete(projectKnowledgeFiles)
-            .where(inArray(projectKnowledgeFiles.fileId, affectedIds));
-          if (visibilityInput === 'teams' && teamIds.length > 0) {
-            await tx
-              .insert(knowledgeFileTeams)
-              .values(
-                affectedIds.flatMap((fileId) =>
-                  teamIds.map((teamId) => ({ fileId, teamId })),
-                ),
-              );
-          }
-          if (visibilityInput === 'project' && projectIds.length > 0) {
-            await tx.insert(projectKnowledgeFiles).values(
-              affectedIds.flatMap((fileId) =>
-                projectIds.map((projectId) => ({
-                  projectId,
-                  fileId,
-                  attachedBy: callerId,
-                })),
-              ),
-            );
-          }
+          // UNION model: bulk flips only the BASE tier (Everyone / Admins) and
+          // deliberately leaves each file's team / project / schedule links
+          // intact — a batch base-flip must never silently destroy per-file
+          // scopes. Clearing/changing scopes is done per file in the editor.
         }
       });
     }
 
     return {
       visibility: visibilityInput,
-      teamIds,
-      projectIds,
       affectedIds,
       skippedIds,
     };
@@ -1908,19 +1977,22 @@ export class KnowledgeCoreService {
         eq(knowledgeFolders.id, knowledgeFiles.folderId),
       )
       .leftJoin(users, eq(users.id, knowledgeFiles.uploadedById))
+      // Schedule-scoped files (AI Cron) show in recents too — see findAllFiles.
       .where(eq(knowledgeFolders.ownerId, userId))
       .orderBy(desc(knowledgeFiles.createdAt))
       .limit(10);
 
     const fileIds = rows.map((r) => r.id);
-    const [teamLinks, projectLinks] = await Promise.all([
+    const [teamLinks, projectLinks, scheduleLinks] = await Promise.all([
       this.hydrateTeamLinks(fileIds),
       this.hydrateProjectLinks(fileIds),
+      this.hydrateScheduleLinks(fileIds),
     ]);
     return rows.map((r) => ({
       ...r,
       teams: teamLinks.get(r.id) ?? [],
       projects: projectLinks.get(r.id) ?? [],
+      schedules: scheduleLinks.get(r.id) ?? [],
     }));
   }
 }

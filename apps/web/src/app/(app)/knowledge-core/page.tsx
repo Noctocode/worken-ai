@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
+  CalendarClock,
   FileText,
   Files,
   Folder,
@@ -30,6 +31,7 @@ import {
   fetchKnowledgeFolders,
   fetchProjects,
   fetchRecentKnowledgeFiles,
+  fetchScheduledPrompts,
   fetchTeams,
   createKnowledgeFolder,
   deleteKnowledgeFolder,
@@ -171,13 +173,18 @@ function VisibilityBadge({
   visibility,
   teams = [],
   projects = [],
+  schedules = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
+  schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
   const isPersonal = useIsPersonal();
+  const chipClass =
+    "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
+  // 'admins' / 'all' are exclusive broad tiers — render a single pill.
   if (visibility === "admins") {
     return (
       <span
@@ -189,63 +196,82 @@ function VisibilityBadge({
       </span>
     );
   }
-  if (visibility === "teams") {
-    const names = teams.map((tm) => tm.name).join(", ");
-    return (
+  // UNION model: a file can carry several scopes at once — render one chip
+  // per non-empty scope set (team(s) + project(s) + schedule(s) together).
+  const chips: ReactNode[] = [];
+  if (teams.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? t("knowledgeMain.titleTeamsList").replace("{names}", names)
-            : t("knowledgeMain.titleNoTeams")
-        }
+        key="teams"
+        className={chipClass}
+        title={t("knowledgeMain.titleTeamsList").replace(
+          "{names}",
+          teams.map((tm) => tm.name).join(", "),
+        )}
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0
-          ? t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))
-          : t("knowledgeMain.labelTeams")}
-      </span>
+        {teams.length === 1
+          ? teams[0].name
+          : t("knowledgeMain.labelTeamsCount").replace("{n}", String(teams.length))}
+      </span>,
     );
   }
-  if (visibility === "project") {
-    const names = projects.map((p) => p.name).join(", ");
-    return (
+  if (projects.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? t("knowledgeMain.titleProjectsList").replace("{names}", names)
-            : t("knowledgeMain.titleNoProjects")
-        }
+        key="projects"
+        className={chipClass}
+        title={t("knowledgeMain.titleProjectsList").replace(
+          "{names}",
+          projects.map((p) => p.name).join(", "),
+        )}
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0
-          ? t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))
-          : t("knowledgeMain.labelProject")}
-      </span>
+        {projects.length === 1
+          ? projects[0].name
+          : t("knowledgeMain.labelProjectsCount").replace("{n}", String(projects.length))}
+      </span>,
     );
   }
-  // visibility === 'all'. For a personal account this means owner-only, so the
-  // badge must read "Only me", not the company-wide "Everyone".
-  if (isPersonal) {
+  if (schedules.length > 0) {
+    chips.push(
+      <span
+        key="schedules"
+        className={chipClass}
+        title={`${t("knowledgeCore.schedule")}: ${schedules.map((s) => s.name).join(", ")}`}
+      >
+        <CalendarClock className="h-3 w-3" strokeWidth={2} />
+        {schedules.length === 1
+          ? schedules[0].name
+          : `${t("knowledgeCore.schedule")} (${schedules.length})`}
+      </span>,
+    );
+  }
+  // No scope chips → broad base. Company-wide ("Everyone") for a company
+  // account, owner-only ("Only me") for a personal one.
+  if (visibility === "all" || chips.length === 0) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title={t("knowledgeCore.visibilityOnlyMe")}
+        title={
+          isPersonal
+            ? t("knowledgeCore.visibilityOnlyMe")
+            : t("knowledgeMain.titleCompanyWide")
+        }
       >
-        <Lock className="h-3 w-3" strokeWidth={2} />
-        {t("knowledgeCore.visibilityOnlyMe")}
+        {isPersonal ? (
+          <Lock className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <Users className="h-3 w-3" strokeWidth={2} />
+        )}
+        {isPersonal
+          ? t("knowledgeCore.visibilityOnlyMe")
+          : t("knowledgeCore.everyone")}
       </span>
     );
   }
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title={t("knowledgeMain.titleCompanyWide")}
-    >
-      <Users className="h-3 w-3" strokeWidth={2} />
-      {t("knowledgeCore.everyone")}
-    </span>
+    <span className="inline-flex flex-wrap items-center gap-1">{chips}</span>
   );
 }
 
@@ -391,13 +417,30 @@ export default function KnowledgeCorePage() {
   // surfaces any 403 in toast for safety in case a future code path
   // exposes it.
   const visibilityMutation = useMutation({
+    // Quick base-tier flip (Everyone ↔ Admins). Forwards the file's existing
+    // scope links so the one-click toggle only changes the base and never
+    // silently drops the file's team / project / schedule scopes — clearing
+    // those stays a deliberate action in the full visibility editor.
     mutationFn: ({
       fileId,
       visibility,
+      teamIds,
+      projectIds,
+      scheduleIds,
     }: {
       fileId: string;
       visibility: KnowledgeFileVisibility;
-    }) => updateKnowledgeFileVisibility(fileId, visibility),
+      teamIds: string[];
+      projectIds: string[];
+      scheduleIds: string[];
+    }) =>
+      updateKnowledgeFileVisibility(
+        fileId,
+        visibility,
+        teamIds,
+        projectIds,
+        scheduleIds,
+      ),
     onSuccess: (_, { visibility }) => {
       queryClient.invalidateQueries({ queryKey: ["knowledge-folders"] });
       queryClient.invalidateQueries({ queryKey: ["knowledge-recent"] });
@@ -461,6 +504,7 @@ export default function KnowledgeCorePage() {
   // selection doesn't leak into the next one.
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+  const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
   // Held between the first upload and the user's resolution choice.
   // Mirrors the per-folder page state — see the comment there for
   // the full lifecycle (`pendingConflicts` → dialog → re-upload).
@@ -471,6 +515,7 @@ export default function KnowledgeCorePage() {
     visibility: KnowledgeFileVisibility;
     teamIds: string[];
     projectIds: string[];
+    scheduleIds: string[];
   } | null>(null);
 
   // Pull the user's team list once; only meaningful for company
@@ -487,6 +532,11 @@ export default function KnowledgeCorePage() {
     queryKey: ["projects", "kc-upload"],
     queryFn: () => fetchProjects("all"),
   });
+  // Schedules for the 'schedule' visibility tier — same lazy pattern.
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "kc-upload"],
+    queryFn: fetchScheduledPrompts,
+  });
 
   const confirmUpload = async () => {
     if (stagedFiles.length === 0) return;
@@ -494,12 +544,13 @@ export default function KnowledgeCorePage() {
     // selection but the picker is empty — the BE rejects this too,
     // but a client guard keeps the dialog from collapsing on a 400
     // with stale staged files.
-    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error(t("knowledgeMain.toastNeedTeams"));
-      return;
-    }
-    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error(t("knowledgeMain.toastNeedProjects"));
+    if (
+      stagedVisibility === "none" &&
+      stagedTeamIds.length === 0 &&
+      stagedProjectIds.length === 0 &&
+      stagedScheduleIds.length === 0
+    ) {
+      toast.error(t("visDlg.pickAtLeastScope"));
       return;
     }
     setUploading(true);
@@ -520,12 +571,14 @@ export default function KnowledgeCorePage() {
           visibility: stagedVisibility,
           teamIds: stagedTeamIds,
           projectIds: stagedProjectIds,
+          scheduleIds: stagedScheduleIds,
         });
       }
       setStagedFiles([]);
       setStagedVisibility("all");
       setStagedTeamIds([]);
       setStagedProjectIds([]);
+      setStagedScheduleIds([]);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : t("knowledgeMain.toastUploadFailed"));
     } finally {
@@ -548,13 +601,16 @@ export default function KnowledgeCorePage() {
     files: File[],
     actions: Record<string, NameConflictAction> | undefined,
   ) => {
+    // UNION model: only send scope links under the "Specific" base.
+    const specific = stagedVisibility === "none";
     const result = await uploadKnowledgeFiles(
       folderId,
       files,
       stagedVisibility,
-      stagedTeamIds,
-      stagedProjectIds,
+      specific ? stagedTeamIds : [],
+      specific ? stagedProjectIds : [],
       actions,
+      specific ? stagedScheduleIds : [],
     );
     await Promise.all([
       queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -617,13 +673,15 @@ export default function KnowledgeCorePage() {
     }
     setUploading(true);
     try {
+      const ctxSpecific = ctx.visibility === "none";
       const result = await uploadKnowledgeFiles(
         ctx.folderId,
         filesToResend,
         ctx.visibility,
-        ctx.teamIds,
-        ctx.projectIds,
+        ctxSpecific ? ctx.teamIds : [],
+        ctxSpecific ? ctx.projectIds : [],
         actions,
+        ctxSpecific ? ctx.scheduleIds : [],
       );
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["knowledge-folders"] }),
@@ -895,6 +953,7 @@ export default function KnowledgeCorePage() {
                     visibility={file.visibility}
                     teams={file.teams}
                     projects={file.projects}
+                    schedules={file.schedules}
                   />
                 </div>
                 <span className="truncate text-[13px] text-text-3">
@@ -962,6 +1021,9 @@ export default function KnowledgeCorePage() {
                           fileId: file.id,
                           visibility:
                             file.visibility === "admins" ? "all" : "admins",
+                          teamIds: file.teams.map((tm) => tm.id),
+                          projectIds: file.projects.map((p) => p.id),
+                          scheduleIds: file.schedules.map((s) => s.id),
                         })
                       }
                     >
@@ -1201,20 +1263,17 @@ export default function KnowledgeCorePage() {
                   <SelectItem value="admins">{t("onboarding.step6.visibilityAdmins")}</SelectItem>
                 )}
                 {!isPersonal && (
-                  <SelectItem value="teams">{t("knowledgeCore.specificTeams")}</SelectItem>
-                )}
-                {!isPersonal && (
-                  <SelectItem value="project">{t("knowledgeCore.specificProject")}</SelectItem>
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
                 )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {stagedVisibility === "admins"
                 ? "Only admins will see these files in chat / arena. You can change this later from the file's action menu."
-                : stagedVisibility === "teams"
-                  ? "Only members of the teams you pick below will see these files in chat / arena."
-                  : stagedVisibility === "project"
-                    ? "These files will only appear in the chat of the project(s) you pick below — never in the org-wide RAG."
+                : stagedVisibility === "none"
+                  ? t("visDlg.hintSpecific")
+                  : isPersonal
+                    ? t("visDlg.hintOnlyMe")
                     : "Every user in the company can see these files in chat / arena."}
             </p>
           </div>
@@ -1224,7 +1283,7 @@ export default function KnowledgeCorePage() {
               the BE rejects assignments to teams the user isn't in
               for non-admins, so listing them here would just route
               users to a 403. Empty state has its own copy. */}
-          {stagedVisibility === "teams" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("knowledgeCore.teamsWithAccess")}
@@ -1270,7 +1329,7 @@ export default function KnowledgeCorePage() {
               Lists every project the caller can access (their own
               + team projects). Empty state mirrors the teams case
               so the dialog stays consistent. */}
-          {stagedVisibility === "project" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("knowledgeCore.projectsWithAccess")}
@@ -1317,6 +1376,49 @@ export default function KnowledgeCorePage() {
               )}
             </div>
           )}
+
+          {/* Schedule checkbox panel — shown only when
+              visibility='schedule'. Lists the caller's AI Cron
+              schedules; selected ones get the file as run context. */}
+          {stagedVisibility === "none" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                {t("knowledgeCore.schedulesWithAccess")}
+              </label>
+              {userSchedules.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  {t("knowledgeCore.noSchedules")}
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userSchedules.map((s) => {
+                    const checked = stagedScheduleIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploading}
+                          onChange={() => {
+                            setStagedScheduleIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1325,6 +1427,7 @@ export default function KnowledgeCorePage() {
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
                 setStagedProjectIds([]);
+                setStagedScheduleIds([]);
               }}
               disabled={uploading}
               className="cursor-pointer"
