@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   MoreVertical,
   Pencil,
+  Play,
   Plus,
   RotateCcw,
   Search,
@@ -60,6 +61,7 @@ import {
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { SkillRunDialog } from "@/components/project-chat/skill-run-dialog";
 
 interface DraftSkill {
   name: string;
@@ -99,6 +101,8 @@ export default function SkillsPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [importText, setImportText] = useState("");
   const [importing, setImporting] = useState(false);
+  // Executable-skill (Option #3) run dialog target.
+  const [runTarget, setRunTarget] = useState<Skill | null>(null);
   // Picker sources for 'teams' / 'project' visibility. Loaded once; failures
   // are non-fatal (the picker just shows empty).
   const [teams, setTeams] = useState<TeamListItem[]>([]);
@@ -398,6 +402,21 @@ export default function SkillsPage() {
                       <span className="rounded bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-text-2">
                         {t("skills.badgeImported")}
                       </span>
+                    )}
+                    {s.source === "executable" && (
+                      <>
+                        <span className="rounded bg-primary-1 px-2 py-0.5 text-[11px] font-medium text-text-2">
+                          {t("skills.badgeExecutable")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setRunTarget(s)}
+                          className="inline-flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded border border-border-2 bg-bg-white px-2.5 text-[12px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                          {t("skills.run")}
+                        </button>
+                      </>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -708,6 +727,15 @@ export default function SkillsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Executable-skill run dialog (Option #3) */}
+      <SkillRunDialog
+        skill={runTarget}
+        open={runTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setRunTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -65,6 +65,24 @@ export const skills = {
   'skills.errImport': 'Failed to import skill.',
   'skills.errImportEmpty': 'Paste SKILL.md content first.',
   'skills.badgeImported': 'Imported',
+  'skills.badgeExecutable': 'Executable',
+  'skills.run': 'Run',
+
+  // Executable-skill run dialog (Option #3)
+  'skillRun.title': 'Run {name}',
+  'skillRun.desc':
+    "Runs this skill's agent loop: it can search your Knowledge Core and execute the skill's scripts in a sandbox, returning any files it produces.",
+  'skillRun.modelField': 'Model',
+  'skillRun.modelHint':
+    'Must be an Anthropic-native model (e.g. anthropic/claude-opus-4.7).',
+  'skillRun.messageField': 'Message (optional)',
+  'skillRun.messagePh': 'What should the skill do? Leave blank to just run it.',
+  'skillRun.estimate': 'Est.',
+  'skillRun.cost': 'Cost',
+  'skillRun.run': 'Run',
+  'skillRun.stop': 'Stop',
+  'skillRun.running': 'Running…',
+  'skillRun.cancelled': 'Run cancelled.',
 
   // Composer "Skills" dialog (browse + pin)
   'skillsDlg.title': 'Skills',

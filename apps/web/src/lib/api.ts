@@ -2125,7 +2125,7 @@ export interface Skill {
   scope: "personal" | "company";
   visibility: SkillVisibility;
   isActive: boolean;
-  source: "manual" | "import";
+  source: "manual" | "import" | "executable";
   createdAt: string;
   updatedAt: string;
   /** Current link sets — only populated by fetchSkill (the detail endpoint),
@@ -2241,6 +2241,162 @@ export async function updateSkillVisibility(
 export async function deleteSkill(id: string): Promise<void> {
   const res = await apiFetch(`/skills/${id}`, { method: "DELETE" });
   if (!res.ok) throw new Error("Failed to delete skill");
+}
+
+// ── Executable skills (Option #3) — run an agent-loop skill via SSE ──────
+
+/** A file produced by a sandboxed run_script step. */
+export interface SkillArtifact {
+  id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/** One event off the `POST /skills/:id/run` SSE stream. Mirrors the BE
+ *  SkillRunEvent union; unknown events are dropped for forward-compat. */
+export type SkillRunEvent =
+  | { type: "run_started"; runId: string }
+  | { type: "cost_estimate"; estimatedUsd: number | null }
+  | { type: "text"; delta: string }
+  | { type: "tool_call"; id: string; name: string; input: unknown }
+  | {
+      type: "tool_result";
+      id: string;
+      name: string;
+      output: string;
+      isError: boolean;
+    }
+  | { type: "artifact" } & SkillArtifact
+  | {
+      type: "usage";
+      promptTokens: number;
+      completionTokens: number;
+      totalTokens: number;
+    }
+  | { type: "done"; stopReason: string }
+  | {
+      type: "run_done";
+      runId: string;
+      status: "done" | "failed" | "cancelled";
+      costUsd: number;
+    }
+  | { type: "error"; message: string };
+
+export interface RunSkillOptions {
+  /** Model id — must route to an Anthropic-native model on the BE. */
+  model: string;
+  /** What to ask the skill to do; the BE defaults to a generic kick-off. */
+  message?: string;
+  conversationId?: string;
+  projectId?: string;
+}
+
+/**
+ * Run an executable skill, yielding {@link SkillRunEvent}s. Same
+ * fetch + ReadableStream + parseSSEFrames pattern as streamChatMessage. A
+ * pre-flight failure (flag off → 404, non-Anthropic model → 400, etc.)
+ * is surfaced as a thrown Error before the stream opens.
+ */
+export async function* streamSkillRun(
+  skillId: string,
+  opts: RunSkillOptions,
+  signal?: AbortSignal,
+): AsyncIterable<SkillRunEvent> {
+  const res = await apiFetch(`/skills/${skillId}/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: opts.model,
+      ...(opts.message ? { message: opts.message } : {}),
+      ...(opts.conversationId ? { conversationId: opts.conversationId } : {}),
+      ...(opts.projectId ? { projectId: opts.projectId } : {}),
+    }),
+    signal,
+  });
+
+  if (!res.ok) {
+    let detail: string | null = null;
+    try {
+      const body = await res.text();
+      try {
+        const parsed = JSON.parse(body) as { message?: string | string[] };
+        if (Array.isArray(parsed.message)) detail = parsed.message.join("; ");
+        else if (typeof parsed.message === "string") detail = parsed.message;
+        else if (body) detail = body;
+      } catch {
+        if (body) detail = body;
+      }
+    } catch {
+      /* keep null fallback */
+    }
+    throw new Error(
+      detail
+        ? `${res.status} ${res.statusText}: ${detail}`
+        : `${res.status} ${res.statusText}`,
+    );
+  }
+  if (!res.body) throw new Error("Streaming skill run has no body");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const { frames, rest } = parseSSEFrames(buf);
+    buf = rest;
+    for (const frame of frames) {
+      if (!frame.data) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(frame.data);
+      } catch {
+        continue;
+      }
+      // The BE tags each frame with the event name === the payload's `type`,
+      // so the payload already carries `type`; trust it as the discriminator.
+      const data = parsed as { type?: string };
+      if (typeof data.type === "string") yield data as SkillRunEvent;
+    }
+  }
+}
+
+export interface SkillRunSummary {
+  id: string;
+  skillId: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  error: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export async function fetchSkillRuns(): Promise<SkillRunSummary[]> {
+  const res = await apiFetch(`/skills/runs`);
+  if (!res.ok) throw new Error("Failed to load skill runs");
+  return res.json();
+}
+
+export async function fetchSkillRunArtifacts(
+  runId: string,
+): Promise<SkillArtifact[]> {
+  const res = await apiFetch(`/skills/runs/${runId}/artifacts`);
+  if (!res.ok) throw new Error("Failed to load artifacts");
+  return res.json();
+}
+
+/** Abort the caller's in-flight run. */
+export async function cancelActiveSkillRun(): Promise<{ cancelled: boolean }> {
+  const res = await apiFetch(`/skills/runs/active`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to cancel run");
+  return res.json();
+}
+
+/** Direct download URL for an artifact (cookie-auth; use as an <a> href). */
+export function skillArtifactDownloadUrl(artifactId: string): string {
+  return `${BASE_URL}/skills/artifacts/${artifactId}/download`;
 }
 
 // Tenders

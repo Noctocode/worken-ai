@@ -67,6 +67,24 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skills.errImport': 'Veščine ni bilo mogoče uvoziti.',
   'skills.errImportEmpty': 'Najprej prilepite vsebino SKILL.md.',
   'skills.badgeImported': 'Uvoženo',
+  'skills.badgeExecutable': 'Izvršljiva',
+  'skills.run': 'Zaženi',
+
+  // Pogovorno okno za zagon izvršljive veščine (Možnost #3)
+  'skillRun.title': 'Zaženi {name}',
+  'skillRun.desc':
+    'Zažene agentno zanko te veščine: lahko išče po vašem Knowledge Core in izvede skripte veščine v peskovniku ter vrne morebitne ustvarjene datoteke.',
+  'skillRun.modelField': 'Model',
+  'skillRun.modelHint':
+    'Mora biti izvorni model Anthropic (npr. anthropic/claude-opus-4.7).',
+  'skillRun.messageField': 'Sporočilo (neobvezno)',
+  'skillRun.messagePh': 'Kaj naj veščina naredi? Pustite prazno za zgolj zagon.',
+  'skillRun.estimate': 'Oc.',
+  'skillRun.cost': 'Strošek',
+  'skillRun.run': 'Zaženi',
+  'skillRun.stop': 'Ustavi',
+  'skillRun.running': 'Izvajanje…',
+  'skillRun.cancelled': 'Zagon preklican.',
 
   // Composer "Veščine" dialog (pregled + pripni)
   'skillsDlg.title': 'Veščine',
