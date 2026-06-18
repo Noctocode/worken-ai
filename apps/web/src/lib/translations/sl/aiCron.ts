@@ -99,6 +99,7 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   'aiCron.context.knowledgeCoreDesc': 'Pri iskanju konteksta upošteva vse datoteke, do katerih imaš dostop v Knowledge Core. Ko je izklopljeno, se uporabijo le datoteke v tem kontekstu.',
   'aiCron.context.webSearch': 'Spletno iskanje',
   'aiCron.context.webSearchDesc': 'Modelu dovoli iskanje po spletu (kjer je omogočeno za organizacijo).',
+  'aiCron.context.webSearchUnsupported': 'Ni na voljo za ta model — spletno iskanje ni podprto z BYOK, Custom LLM ali Azure modeli.',
 
   // Delivery
   'aiCron.delivery.inApp': 'Obvestilo v aplikaciji',
