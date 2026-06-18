@@ -958,6 +958,35 @@ describe('ChatTransportService.assertIntegrationLimitNotExceeded', () => {
     expect(db.transaction).not.toHaveBeenCalled();
   });
 
+  it('reserve:false checks the limit but inserts no reservation (returns null)', async () => {
+    const { svc, tx } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 1_000_000, providerId: 'openai' },
+      used: 1000,
+    });
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 1000, reserve: false },
+      ),
+    ).resolves.toBeNull();
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it('reserve:false still blocks when over the limit', async () => {
+    const { svc } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 100_000, providerId: 'openai' },
+      used: 99_000,
+    });
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 5000, reserve: false },
+      ),
+    ).rejects.toThrow(KEY_LIMIT_EXCEEDED_MARKER);
+  });
+
   it('releaseIntegrationReservation deletes the row; no-ops on null', async () => {
     const { svc, dbDelete } = makeLimitGateService({});
     await svc.releaseIntegrationReservation(null);
