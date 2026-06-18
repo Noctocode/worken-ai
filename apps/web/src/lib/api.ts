@@ -2267,7 +2267,7 @@ export type SkillRunEvent =
       output: string;
       isError: boolean;
     }
-  | { type: "artifact" } & SkillArtifact
+  | ({ type: "artifact" } & SkillArtifact)
   | {
       type: "usage";
       promptTokens: number;
@@ -2342,25 +2342,32 @@ export async function* streamSkillRun(
   const decoder = new TextDecoder();
   let buf = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    const { frames, rest } = parseSSEFrames(buf);
-    buf = rest;
-    for (const frame of frames) {
-      if (!frame.data) continue;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(frame.data);
-      } catch {
-        continue;
+  // try/finally so abandoning the iterator (component unmount), an abort, or a
+  // downstream throw still releases the lock and tears the stream down —
+  // mirrors streamChatMessage.
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const { frames, rest } = parseSSEFrames(buf);
+      buf = rest;
+      for (const frame of frames) {
+        if (!frame.data) continue;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(frame.data);
+        } catch {
+          continue;
+        }
+        // The BE tags each frame with the event name === the payload's `type`,
+        // so the payload already carries `type`; trust it as the discriminator.
+        const data = parsed as { type?: string };
+        if (typeof data.type === "string") yield data as SkillRunEvent;
       }
-      // The BE tags each frame with the event name === the payload's `type`,
-      // so the payload already carries `type`; trust it as the discriminator.
-      const data = parsed as { type?: string };
-      if (typeof data.type === "string") yield data as SkillRunEvent;
     }
+  } finally {
+    reader.releaseLock();
   }
 }
 

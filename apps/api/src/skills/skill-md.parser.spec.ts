@@ -182,4 +182,34 @@ describe('parseSkillMd — script extraction (Option #3)', () => {
     );
     expect(parsed.scripts).toEqual([]);
   });
+
+  it('de-duplicates scripts by name (first wins)', () => {
+    const raw = [
+      '```python name=run.py',
+      'first',
+      '```',
+      '',
+      '```python name=run.py',
+      'second',
+      '```',
+    ].join('\n');
+    const parsed = parseSkillMd(raw);
+    expect(parsed.scripts).toHaveLength(1);
+    expect(parsed.scripts[0].content).toBe('first');
+  });
+
+  it('keeps only the first entrypoint when several are marked', () => {
+    const raw = [
+      '```python name=a.py entrypoint',
+      'a',
+      '```',
+      '',
+      '```python name=b.py entrypoint',
+      'b',
+      '```',
+    ].join('\n');
+    const parsed = parseSkillMd(raw);
+    expect(parsed.scripts[0].entrypoint).toBe(true);
+    expect(parsed.scripts[1].entrypoint).toBeUndefined();
+  });
 });

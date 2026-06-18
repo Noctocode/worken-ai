@@ -84,6 +84,10 @@ export function SkillRunDialog({
     if (!models.some((m) => m.id === model)) setModel(models[0].id);
   }, [models, model]);
 
+  // Abort an in-flight run if the dialog unmounts mid-run, so the stream is
+  // torn down and we don't setState on an unmounted component.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const start = async () => {
     if (!skill || running) return;
     const ctrl = new AbortController();

@@ -90,6 +90,11 @@ function parseInfoString(info: string): {
 function extractScripts(body: string): ParsedSkillScript[] {
   const lines = body.split('\n');
   const scripts: ParsedSkillScript[] = [];
+  // Keep scripts well-formed for the runner: unique names (first wins) and at
+  // most one entrypoint (first marked wins) — a duplicate name or a second
+  // entrypoint would otherwise be ambiguous when run_script resolves a script.
+  const seenNames = new Set<string>();
+  let entrypointTaken = false;
   for (let i = 0; i < lines.length; i++) {
     const open = FENCE_OPEN.exec(lines[i]);
     if (!open) continue;
@@ -98,11 +103,14 @@ function extractScripts(body: string): ParsedSkillScript[] {
     if (j < lines.length) {
       // closing fence found
       const meta = parseInfoString(open[1].trim());
-      if (meta.name) {
+      if (meta.name && !seenNames.has(meta.name)) {
+        seenNames.add(meta.name);
+        const isEntrypoint = meta.entrypoint && !entrypointTaken;
+        if (isEntrypoint) entrypointTaken = true;
         scripts.push({
           name: meta.name,
           language: meta.language || 'text',
-          ...(meta.entrypoint ? { entrypoint: true } : {}),
+          ...(isEntrypoint ? { entrypoint: true } : {}),
           content: lines.slice(i + 1, j).join('\n'),
         });
       }
