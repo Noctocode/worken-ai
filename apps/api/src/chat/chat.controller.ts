@@ -21,7 +21,10 @@ import {
   GuardrailEvaluatorService,
   STREAM_REEVAL_CHUNK_BYTES,
 } from '../guardrails/guardrail-evaluator.service.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  ESTIMATED_COMPLETION_TOKENS,
+} from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -199,7 +202,7 @@ export class ChatController {
     const estimatedCostUsd = await this.catalogService.estimateCost(
       requestedModel,
       promptTokens,
-      4096,
+      ESTIMATED_COMPLETION_TOKENS,
     );
     // Web search adds an OpenRouter surcharge the catalog price doesn't
     // cover. Representative flat estimate = the Exa fallback rate of
@@ -227,12 +230,18 @@ export class ChatController {
       callerUserId: user.id,
     });
     // Per-key monthly token limit (BYOK / Custom only). Rough pre-flight
-    // estimate = prompt tokens + the same 4096-token completion ceiling
-    // the cost estimate uses; the gate no-ops for WorkenAI routes.
+    // estimate = prompt tokens + the shared completion ceiling the cost
+    // estimate uses; the gate no-ops for WorkenAI routes. Pre-flight CHECK
+    // only (reserve:false) so a clean 402 surfaces before SSE headers flush;
+    // the actual reservation is made per-candidate inside the stream
+    // generator (so it can't leak if the RAG / fallback prep below throws).
     await this.chatTransport.assertIntegrationLimitNotExceeded(
       transport,
       user.id,
-      { estimatedTokens: promptTokens + 4096 },
+      {
+        estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS,
+        reserve: false,
+      },
     );
 
     const apiMessages = conversationAfterPersist.messages.map((m) => ({
@@ -424,6 +433,10 @@ export class ChatController {
         // Reuse the primary transport (already resolved + budget-approved);
         // re-resolve + re-gate for fallbacks (they may route differently).
         let t = transport;
+        // Per-key token reservation for THIS attempt; released in the
+        // per-candidate finally below. Always made inside the generator
+        // (never before it) so it can't leak if pre-flight work throws.
+        let reservationId: string | null = null;
         if (i > 0) {
           t = await chatTransport.resolve({
             userId: user.id,
@@ -440,7 +453,7 @@ export class ChatController {
           const fbEstUsd = await catalogService.estimateCost(
             candidate,
             promptTokens,
-            4096,
+            ESTIMATED_COMPLETION_TOKENS,
           );
           const fbEstCents = Math.ceil(
             ((fbEstUsd ?? 0) + (fbWebSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
@@ -459,12 +472,16 @@ export class ChatController {
             estimatedCostCents: fbEstCents,
             callerUserId: user.id,
           });
-          // Per-key token limit for a BYOK/Custom fallback — without this a
-          // paused / over-limit shared key would still serve the fallback.
-          await chatTransport.assertIntegrationLimitNotExceeded(t, user.id, {
-            estimatedTokens: promptTokens + 4096,
-          });
         }
+        // Per-key token limit + reservation for the chosen candidate (every
+        // candidate, including the primary). The pre-flight gate before the
+        // stream only CHECKED (reserve:false); this is the authoritative
+        // reservation, released in the finally so it can't leak.
+        reservationId = await chatTransport.assertIntegrationLimitNotExceeded(
+          t,
+          user.id,
+          { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
+        );
         // Web search is OpenRouter-specific — re-gate per candidate (uses the
         // final resolved transport for this candidate).
         const candidateWebSearch = webSearch && t.source === 'openrouter';
@@ -527,6 +544,7 @@ export class ChatController {
           }
         } finally {
           if (timer) clearTimeout(timer);
+          await chatTransport.releaseIntegrationReservation(reservationId);
         }
 
         // The attempt's own abort fired (not the client) before any token →

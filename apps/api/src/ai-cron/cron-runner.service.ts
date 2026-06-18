@@ -3,7 +3,10 @@ import { eq } from 'drizzle-orm';
 import { scheduledPromptRuns, scheduledPrompts } from '@worken/database/schema';
 import { ChatService } from '../chat/chat.service.js';
 import { DATABASE, type Database } from '../database/database.module.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  ESTIMATED_COMPLETION_TOKENS,
+} from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -20,7 +23,8 @@ const HEARTBEAT_INTERVAL_MS = 60_000;
 const RAG_TOP_K = 5;
 // Upper-bound completion size used for the pre-flight cost estimate (matches
 // the chat path's budget pre-check).
-const MAX_COMPLETION_TOKENS_EST = 4096;
+// Shared pre-flight completion-token ceiling (single source of truth).
+const MAX_COMPLETION_TOKENS_EST = ESTIMATED_COMPLETION_TOKENS;
 // Flat surcharge added to the estimate when web search is on (mirrors chat).
 const WEB_SEARCH_SURCHARGE_USD = 0.005;
 
@@ -104,6 +108,9 @@ export class CronRunnerService {
     let transport:
       | Awaited<ReturnType<ChatTransportService['resolve']>>
       | undefined;
+    // Per-key token reservations made by the limit gate this run; released
+    // in the finally so reserved tokens free up immediately.
+    const reservationIds: string[] = [];
 
     try {
       transport = await this.chatTransport.resolve({
@@ -239,11 +246,13 @@ export class CronRunnerService {
           // so a paused or over-limit shared key can't be drained via a
           // scheduled prompt. Fall through to the next candidate on a block.
           try {
-            await this.chatTransport.assertIntegrationLimitNotExceeded(
-              t,
-              prompt.ownerId,
-              { estimatedTokens: promptTokens + MAX_COMPLETION_TOKENS_EST },
-            );
+            const resId =
+              await this.chatTransport.assertIntegrationLimitNotExceeded(
+                t,
+                prompt.ownerId,
+                { estimatedTokens: promptTokens + MAX_COMPLETION_TOKENS_EST },
+              );
+            if (resId) reservationIds.push(resId);
           } catch (gateErr) {
             lastError =
               gateErr instanceof Error ? gateErr.message : String(gateErr);
@@ -390,6 +399,11 @@ export class CronRunnerService {
       });
     } finally {
       clearInterval(heartbeat);
+      await Promise.all(
+        reservationIds.map((id) =>
+          this.chatTransport.releaseIntegrationReservation(id),
+        ),
+      );
     }
   }
 
