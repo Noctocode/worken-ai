@@ -107,9 +107,11 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   // off — the moment such a model is selected, and can't be turned back on
   // until an OpenRouter-routed model is picked.
   const webSearchSupported = useMemo(() => {
-    if (!modelIdentifier) return true; // nothing picked yet — don't pre-disable
+    // Enabled only once a model that actually supports web search is picked.
+    // No model selected (or an unknown one) → disabled, can't be turned on.
+    if (!modelIdentifier) return false;
     const m = effective.find((x) => x.id === modelIdentifier);
-    return !m || m.routing === "workenai";
+    return !!m && m.routing === "workenai";
   }, [effective, modelIdentifier]);
   useEffect(() => {
     if (!webSearchSupported && useWebSearch) setUseWebSearch(false);
