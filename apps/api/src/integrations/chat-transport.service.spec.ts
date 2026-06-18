@@ -794,55 +794,136 @@ describe('ChatTransportService.resolve (personal-scope shared key)', () => {
   });
 });
 
-/* ─── assertIntegrationLimitNotExceeded (with mocked db) ───────────── */
+/* ─── assertIntegrationLimitNotExceeded (with mocked db + tx) ───────── */
+
+/**
+ * The limit gate now runs a transaction (advisory lock → reap → usage agg
+ * → reserved agg → optional reservation insert), so its mock is richer
+ * than the select-only chainable above. `db.select` answers the integration
+ * fetch; `db.transaction(cb)` runs `cb(tx)` where `tx.select` answers the
+ * usage agg then the reserved agg in order, and `tx.insert(...).returning`
+ * yields the new reservation id.
+ */
+function makeLimitGateService(opts: {
+  integration?: { ownerId: string; limit: number | null; providerId: string };
+  used?: number;
+  cost?: number;
+  reserved?: number;
+  reservationId?: string;
+}) {
+  const chain = (rows: unknown[]) => {
+    const p: Record<string, unknown> & PromiseLike<unknown[]> = {
+      then: (f?: (v: unknown[]) => unknown) => Promise.resolve(rows).then(f),
+      catch: (f?: (r: unknown) => unknown) => Promise.resolve(rows).catch(f),
+    } as Record<string, unknown> & PromiseLike<unknown[]>;
+    for (const m of ['from', 'where', 'innerJoin', 'leftJoin', 'limit']) {
+      p[m] = jest.fn().mockReturnValue(p);
+    }
+    return p;
+  };
+  const tx = {
+    execute: jest.fn().mockResolvedValue(undefined),
+    delete: jest.fn().mockReturnValue({
+      where: jest.fn().mockResolvedValue(undefined),
+    }),
+    select: jest
+      .fn()
+      .mockImplementationOnce(() =>
+        chain([
+          { tokens: String(opts.used ?? 0), cost: String(opts.cost ?? 0) },
+        ]),
+      )
+      .mockImplementationOnce(() =>
+        chain([{ reserved: String(opts.reserved ?? 0) }]),
+      ),
+    insert: jest.fn().mockReturnValue({
+      values: jest.fn().mockReturnValue({
+        returning: jest
+          .fn()
+          .mockResolvedValue([{ id: opts.reservationId ?? 'resv-1' }]),
+      }),
+    }),
+  };
+  const dbDelete = jest.fn().mockReturnValue({
+    where: jest.fn().mockResolvedValue(undefined),
+  });
+  const db = {
+    select: jest
+      .fn()
+      .mockImplementation(() =>
+        chain(opts.integration ? [opts.integration] : []),
+      ),
+    transaction: jest.fn((cb: (t: typeof tx) => unknown) => cb(tx)),
+    delete: dbDelete,
+  };
+  const svc = new ChatTransportService(
+    db as unknown as Database,
+    { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
+    {} as unknown as KeyResolverService,
+    {
+      getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+      getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+      createIfNotExists: () => Promise.resolve(null),
+      create: () => Promise.resolve(null),
+    } as unknown as NotificationsService,
+  );
+  return { svc, db, tx, dbDelete };
+}
 
 describe('ChatTransportService.assertIntegrationLimitNotExceeded', () => {
   const USER_ID = 'user-id';
 
-  function makeService(rowSets: unknown[][]) {
-    const db = makeChainableDb(rowSets);
-    return new ChatTransportService(
-      db as unknown as Database,
-      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
-      {} as unknown as KeyResolverService,
-      {
-        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
-        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
-        createIfNotExists: () => Promise.resolve(null),
-        create: () => Promise.resolve(null),
-      } as unknown as NotificationsService,
-    );
-  }
-
-  it('skips non-BYOK/Custom routes entirely', async () => {
-    const svc = makeService([]); // no db calls expected
+  it('skips non-BYOK/Custom routes entirely (returns null)', async () => {
+    const { svc, db } = makeLimitGateService({});
     await expect(
       svc.assertIntegrationLimitNotExceeded(
         { source: 'openrouter', integrationId: undefined },
         USER_ID,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
+    expect(db.transaction).not.toHaveBeenCalled();
   });
 
-  it('passes when month-to-date tokens stay under the limit', async () => {
-    const svc = makeService([
-      [{ ownerId: 'owner', limit: 1_000_000, providerId: 'openai' }],
-      [{ tokens: '1000', cost: '0' }],
-    ]);
+  it('returns a reservation id when usage stays under the limit', async () => {
+    const { svc, tx } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 1_000_000, providerId: 'openai' },
+      used: 1000,
+      reservationId: 'resv-42',
+    });
     await expect(
       svc.assertIntegrationLimitNotExceeded(
         { source: 'byok', integrationId: 'int-1' },
         USER_ID,
         { estimatedTokens: 1000 },
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toBe('resv-42');
+    expect(tx.insert).toHaveBeenCalledTimes(1); // reserved this call
   });
 
-  it('throws KEY_LIMIT_EXCEEDED once usage reaches the limit', async () => {
-    const svc = makeService([
-      [{ ownerId: 'owner', limit: 100_000, providerId: 'openai' }],
-      [{ tokens: '95000', cost: '1.5' }],
-    ]);
+  it('throws KEY_LIMIT_EXCEEDED once usage + estimate reaches the limit', async () => {
+    const { svc, tx } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 100_000, providerId: 'openai' },
+      used: 95_000,
+      cost: 1.5,
+    });
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 10_000 },
+      ),
+    ).rejects.toThrow(KEY_LIMIT_EXCEEDED_MARKER);
+    expect(tx.insert).not.toHaveBeenCalled(); // blocked → no reservation
+  });
+
+  it('counts active reservations on top of recorded usage (TOCTOU guard)', async () => {
+    // used 50k + reserved 45k + estimate 10k = 105k ≥ 100k → blocked, even
+    // though recorded usage alone (50k) is well under the limit.
+    const { svc } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 100_000, providerId: 'openai' },
+      used: 50_000,
+      reserved: 45_000,
+    });
     await expect(
       svc.assertIntegrationLimitNotExceeded(
         { source: 'byok', integrationId: 'int-1' },
@@ -853,10 +934,9 @@ describe('ChatTransportService.assertIntegrationLimitNotExceeded', () => {
   });
 
   it('throws KEY_PAUSED when the limit is 0', async () => {
-    const svc = makeService([
-      [{ ownerId: 'owner', limit: 0, providerId: 'custom' }],
-      [{ tokens: '0', cost: '0' }],
-    ]);
+    const { svc } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 0, providerId: 'custom' },
+    });
     await expect(
       svc.assertIntegrationLimitNotExceeded(
         { source: 'custom', integrationId: 'int-1' },
@@ -865,15 +945,53 @@ describe('ChatTransportService.assertIntegrationLimitNotExceeded', () => {
     ).rejects.toThrow(KEY_PAUSED_MARKER);
   });
 
-  it('passes when no limit is configured (null)', async () => {
-    const svc = makeService([
-      [{ ownerId: 'owner', limit: null, providerId: 'openai' }],
-    ]);
+  it('returns null (no transaction) when no limit is configured', async () => {
+    const { svc, db } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: null, providerId: 'openai' },
+    });
     await expect(
       svc.assertIntegrationLimitNotExceeded(
         { source: 'byok', integrationId: 'int-1' },
         USER_ID,
       ),
-    ).resolves.toBeUndefined();
+    ).resolves.toBeNull();
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+
+  it('reserve:false checks the limit but inserts no reservation (returns null)', async () => {
+    const { svc, tx } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 1_000_000, providerId: 'openai' },
+      used: 1000,
+    });
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 1000, reserve: false },
+      ),
+    ).resolves.toBeNull();
+    expect(tx.insert).not.toHaveBeenCalled();
+  });
+
+  it('reserve:false still blocks when over the limit', async () => {
+    const { svc } = makeLimitGateService({
+      integration: { ownerId: 'owner', limit: 100_000, providerId: 'openai' },
+      used: 99_000,
+    });
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 5000, reserve: false },
+      ),
+    ).rejects.toThrow(KEY_LIMIT_EXCEEDED_MARKER);
+  });
+
+  it('releaseIntegrationReservation deletes the row; no-ops on null', async () => {
+    const { svc, dbDelete } = makeLimitGateService({});
+    await svc.releaseIntegrationReservation(null);
+    expect(dbDelete).not.toHaveBeenCalled();
+    await svc.releaseIntegrationReservation('resv-1');
+    expect(dbDelete).toHaveBeenCalledTimes(1);
   });
 });

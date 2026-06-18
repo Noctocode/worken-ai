@@ -1283,6 +1283,39 @@ export const teamIntegrationLinks = pgTable(
   ],
 );
 
+// Short-lived reservations against a key's monthly token limit, so the
+// pre-flight gate (assertIntegrationLimitNotExceeded) can't be raced by
+// concurrent calls. A row is inserted in the same transaction that
+// decides a call may proceed (reserving its upper-bound estimate), and
+// deleted once the call finishes (its real usage then lives in
+// observability_events). The gate counts these active reservations on
+// top of recorded usage, so two simultaneous calls near the limit can't
+// both read the same stale total and both pass.
+//
+// `created_at` drives self-reaping: the gate first deletes rows older
+// than a few minutes (a crashed / disconnected caller that never
+// released), so a leaked reservation can't permanently shrink the key's
+// available budget. Cascade on the integration so deleting a key drops
+// its reservations.
+export const integrationTokenReservations = pgTable(
+  "integration_token_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    integrationId: uuid("integration_id")
+      .references(() => integrations.id, { onDelete: "cascade" })
+      .notNull(),
+    estimatedTokens: integer("estimated_tokens").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // The gate sums reserved tokens per integration and reaps by age.
+    index("integration_token_reservations_integration_idx").on(
+      table.integrationId,
+      table.createdAt,
+    ),
+  ],
+);
+
 // Org-level singleton settings. The Company tab on the FE renders a
 // "Company Monthly Budget" target the admin sets here; future org-wide
 // flags (logo URL, default infraChoice, branding overrides…) will land
