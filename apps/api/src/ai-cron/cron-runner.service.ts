@@ -7,7 +7,6 @@ import {
   ChatTransportService,
   ESTIMATED_COMPLETION_TOKENS,
 } from '../integrations/chat-transport.service.js';
-import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
@@ -155,15 +154,12 @@ export class CronRunnerService {
         (prompt.prompt.length + (context?.length ?? 0)) / 4,
       );
 
-      // Web search is an org/team capability (model-independent); the
-      // OpenRouter-route check is applied per candidate below.
-      const webAllowed =
-        prompt.useWebSearch &&
-        (await resolveWebSearchCapability(
-          this.db,
-          prompt.ownerId,
-          prompt.teamId,
-        ));
+      // For a scheduled prompt the per-schedule web-search toggle is the
+      // sole authority — it is NOT gated by the org/team capability switch
+      // (unlike interactive chat). The form only lets the toggle turn on for
+      // models that support web search, and the route check below keeps it
+      // to the managed route where the plugin actually applies.
+      const webAllowed = prompt.useWebSearch;
 
       // 2. Candidates = the chosen model + its configured fallbacks (Models
       //    tab). On a retryable failure (dead/unavailable model) before any

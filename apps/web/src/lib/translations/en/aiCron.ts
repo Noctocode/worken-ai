@@ -97,6 +97,7 @@ export const aiCron = {
   'aiCron.context.knowledgeCoreDesc': 'Search every file you have access to in Knowledge Core for context. When off, only the files in this context are used.',
   'aiCron.context.webSearch': 'Web search',
   'aiCron.context.webSearchDesc': 'Let the model browse the live web (where enabled for your org).',
+  'aiCron.context.webSearchUnsupported': 'Not available for this model — web search is not supported with BYOK, Custom LLM or Azure models.',
 
   // Delivery
   'aiCron.delivery.inApp': 'In-app notification',

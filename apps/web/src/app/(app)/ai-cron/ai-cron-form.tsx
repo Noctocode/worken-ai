@@ -2,7 +2,7 @@
 
 import { Globe, KeySquare, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useLanguage } from "@/lib/i18n";
@@ -100,6 +100,22 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const [useWebSearch, setUseWebSearch] = useState(
     initial?.useWebSearch ?? false,
   );
+
+  // Web search only works for models routed through OpenRouter (it's an
+  // OpenRouter-only plugin). BYOK / Custom LLM / Azure models (routing
+  // 'byok' | 'custom') can't do it, so the toggle is disabled — and forced
+  // off — the moment such a model is selected, and can't be turned back on
+  // until an OpenRouter-routed model is picked.
+  const webSearchSupported = useMemo(() => {
+    // Enabled only once a model that actually supports web search is picked.
+    // No model selected (or an unknown one) → disabled, can't be turned on.
+    if (!modelIdentifier) return false;
+    const m = effective.find((x) => x.id === modelIdentifier);
+    return !!m && m.routing === "workenai";
+  }, [effective, modelIdentifier]);
+  useEffect(() => {
+    if (!webSearchSupported && useWebSearch) setUseWebSearch(false);
+  }, [webSearchSupported, useWebSearch]);
 
   const [deliverInApp, setDeliverInApp] = useState(
     initial?.deliverInApp ?? true,
@@ -377,10 +393,16 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
               {t("aiCron.context.webSearch")}
             </span>
             <span className="text-xs text-text-3">
-              {t("aiCron.context.webSearchDesc")}
+              {webSearchSupported
+                ? t("aiCron.context.webSearchDesc")
+                : t("aiCron.context.webSearchUnsupported")}
             </span>
           </span>
-          <Switch checked={useWebSearch} onCheckedChange={setUseWebSearch} />
+          <Switch
+            checked={useWebSearch && webSearchSupported}
+            onCheckedChange={setUseWebSearch}
+            disabled={!webSearchSupported}
+          />
         </label>
       </section>
 
