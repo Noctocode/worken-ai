@@ -172,6 +172,12 @@ jobs:
             # Authenticate to GHCR (read-only token, scoped to this repo).
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
 
+            # Reclaim disk BEFORE pulling so a near-full disk self-heals
+            # instead of failing the pull with "no space left on device".
+            # Safe: only removes images not used by a running container.
+            docker image prune -af
+            docker builder prune -af
+
             # Pull the new images.
             docker compose -f docker-compose.prod.yml --env-file .env --env-file .image_env pull api web
 
@@ -184,5 +190,10 @@ jobs:
             # Roll the API + Web; Postgres / Redis / Caddy stay untouched.
             docker compose -f docker-compose.prod.yml --env-file .env --env-file .image_env up -d --remove-orphans
 
-            # Prune dangling images so disk doesn't fill up over time.
-            docker image prune -f
+            # Reclaim disk so it doesn't fill up over time. Must be `-a`:
+            # each deploy leaves a `:sha-xxxx`-tagged image that is never
+            # dangling, so a plain `prune -f` never clears it and old images
+            # pile up (this filled the VPS to 98%). `-a` removes every image
+            # not used by a running container; the live stack is untouched.
+            docker image prune -af
+            docker builder prune -af
