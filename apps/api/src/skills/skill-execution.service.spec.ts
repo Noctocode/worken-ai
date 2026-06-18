@@ -47,9 +47,13 @@ const toolRegistry = {
 /** BYOK-Anthropic route: budget gate is a no-op, catalog prices each round. */
 function makeDeps(costPerCall = 0.01) {
   const recorded: Record<string, unknown>[] = [];
+  let gateCalls = 0;
   const transport = {
     resolve: () => Promise.resolve({ kind: 'anthropic-sdk', source: 'byok' }),
-    assertManagedBudgetApproved: () => Promise.resolve(undefined),
+    assertManagedBudgetApproved: () => {
+      gateCalls += 1;
+      return Promise.resolve(undefined);
+    },
   };
   const observability = {
     recordLLMCall: (input: Record<string, unknown>) => {
@@ -60,7 +64,48 @@ function makeDeps(costPerCall = 0.01) {
   const catalog = {
     estimateCost: () => Promise.resolve(costPerCall),
   };
-  return { transport, observability, catalog, recorded };
+  return {
+    transport,
+    observability,
+    catalog,
+    recorded,
+    gateCalls: () => gateCalls,
+  };
+}
+
+/**
+ * Faithfully mirrors the real Anthropic adapter's contract: before each round
+ * it calls onBeforeCall (throwing stops the loop with an `error` event), then
+ * emits that round's `usage`. Lets us drive per-call gating + accumulation.
+ */
+function gatingProvider(
+  rounds: { promptTokens: number; completionTokens: number }[],
+) {
+  return {
+    streamWithTools: async function* (req: {
+      onBeforeCall?: (i: number) => Promise<void>;
+    }): AsyncIterable<AgentLoopEvent> {
+      for (let i = 0; i < rounds.length; i++) {
+        try {
+          if (req.onBeforeCall) await req.onBeforeCall(i);
+        } catch (err) {
+          yield {
+            type: 'error',
+            message: err instanceof Error ? err.message : String(err),
+          };
+          return;
+        }
+        const r = rounds[i];
+        yield {
+          type: 'usage',
+          promptTokens: r.promptTokens,
+          completionTokens: r.completionTokens,
+          totalTokens: r.promptTokens + r.completionTokens,
+        };
+      }
+      yield { type: 'done', stopReason: 'end_turn' };
+    },
+  };
 }
 
 function makeSvc(
@@ -156,5 +201,86 @@ describe('SkillExecutionService.run', () => {
     const { db } = makeDb(SKILL);
     const svc = makeSvc(db, scriptedProvider([]));
     expect(svc.cancel('u1')).toBe(false);
+  });
+
+  it('aggregates spend across calls and tags each with the run id (turnId)', async () => {
+    const { db, steps, runUpdates } = makeDb(SKILL);
+    const deps = makeDeps(0.02);
+    const svc = makeSvc(
+      db,
+      gatingProvider([
+        { promptTokens: 100, completionTokens: 50 },
+        { promptTokens: 100, completionTokens: 50 },
+        { promptTokens: 100, completionTokens: 50 },
+      ]),
+      deps,
+    );
+
+    const events = (await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    )) as { type: string; status?: string; costUsd?: number }[];
+
+    // One observability event per upstream call, every one tagged turnId=runId.
+    expect(deps.recorded).toHaveLength(3);
+    expect(deps.recorded.every((r) => r.turnId === 'run-1')).toBe(true);
+    expect(deps.recorded.every((r) => r.eventType === 'skill_run_call')).toBe(
+      true,
+    );
+    // One llm step persisted per call.
+    expect(steps.filter((s) => s.stepType === 'llm')).toHaveLength(3);
+    // run_done + persisted run carry the rolled-up cost (3 × 0.02).
+    const done = events.at(-1)!;
+    expect(done).toMatchObject({ type: 'run_done', status: 'done' });
+    expect(done.costUsd).toBeCloseTo(0.06, 6);
+    expect(Number(runUpdates.at(-1)!.costUsd)).toBeCloseTo(0.06, 6);
+  });
+
+  it('re-gates the budget before every upstream call', async () => {
+    const { db } = makeDb(SKILL);
+    const deps = makeDeps(0.01);
+    const svc = makeSvc(
+      db,
+      gatingProvider([
+        { promptTokens: 10, completionTokens: 5 },
+        { promptTokens: 10, completionTokens: 5 },
+      ]),
+      deps,
+    );
+
+    await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    );
+
+    expect(deps.gateCalls()).toBe(2);
+  });
+
+  it('fails closed when the per-run cost ceiling is reached', async () => {
+    const { db, runUpdates } = makeDb(SKILL);
+    // 0.6/call vs the $1.00 ceiling: call 0 ok (acc→0.6), call 1 ok (acc→1.2),
+    // call 2's pre-flight gate sees acc≥1.0 and stops the loop.
+    const deps = makeDeps(0.6);
+    const svc = makeSvc(
+      db,
+      gatingProvider([
+        { promptTokens: 1, completionTokens: 1 },
+        { promptTokens: 1, completionTokens: 1 },
+        { promptTokens: 1, completionTokens: 1 },
+      ]),
+      deps,
+    );
+
+    const events = (await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    )) as { type: string; status?: string; message?: string }[];
+
+    // Only two calls were billed before the ceiling tripped.
+    expect(deps.recorded).toHaveLength(2);
+    const err = events.find((e) => e.type === 'error');
+    expect(err?.message).toMatch(/cost ceiling/i);
+    expect(events.at(-1)).toMatchObject({
+      type: 'run_done',
+      status: 'failed',
+    });
+    expect(runUpdates.at(-1)).toMatchObject({ status: 'failed' });
   });
 });
