@@ -250,11 +250,63 @@ export class ModelsService {
     const teamIds = scope ? (scope.teamId ? [scope.teamId] : []) : allTeamIds;
     const includePersonalProviders = !scope || scope.teamId === null;
 
+    // Personal-scope only: keys an admin explicitly shared for personal
+    // use. A team-linked integration with allow_personal_use=true lets
+    // members of that team pick it in their OWN personal projects/chats,
+    // not just inside the team. We only run this for the explicit
+    // personal scope (scope.teamId === null) — the no-scope union already
+    // surfaces every team key via `teamIds = allTeamIds`, and a team
+    // scope shows that team's keys regardless of the flag. Both the link
+    // and the underlying integration must be enabled, mirroring the team
+    // BYOK/custom gating below.
+    const personalUseSharedRaw =
+      scope?.teamId === null && allTeamIds.length > 0
+        ? await this.db
+            .select({
+              id: integrations.id,
+              providerId: integrations.providerId,
+              config: integrations.config,
+            })
+            .from(teamIntegrationLinks)
+            .innerJoin(
+              integrations,
+              eq(integrations.id, teamIntegrationLinks.integrationId),
+            )
+            .where(
+              and(
+                inArray(teamIntegrationLinks.teamId, allTeamIds),
+                eq(teamIntegrationLinks.isEnabled, true),
+                eq(integrations.isEnabled, true),
+                eq(integrations.allowPersonalUse, true),
+              ),
+            )
+        : [];
+    // An integration linked into several of the caller's teams comes back
+    // once per link — dedupe by integration id so it's counted once.
+    const personalUseShared = Array.from(
+      new Map(personalUseSharedRaw.map((r) => [r.id, r])).values(),
+    );
+    const sharedCustomIds = personalUseShared
+      .filter((r) => r.providerId === 'custom')
+      .map((r) => r.id);
+
     // Aliases the user can pick from, narrowed to `scope` when given
-    // (see the doc comment above). No scope = the full union.
+    // (see the doc comment above). No scope = the full union. For the
+    // personal scope we also pull in team-scoped aliases bound to a
+    // shared custom integration so the Custom LLM shows up with its
+    // proper name (predefined/BYOK providers surface via the catalog
+    // loop, so they don't need this).
     const aliasScopeFilter: SQL<unknown> | undefined = scope
       ? scope.teamId === null
-        ? and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
+        ? sharedCustomIds.length > 0
+          ? or(
+              and(
+                eq(modelConfigs.ownerId, userId),
+                isNull(modelConfigs.teamId),
+              ),
+              inArray(modelConfigs.integrationId, sharedCustomIds),
+            )
+          : and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
         : eq(modelConfigs.teamId, scope.teamId)
       : await this.resolveAliasScopeFilter(userId);
     const aliasRows = await this.db
@@ -311,7 +363,8 @@ export class ModelsService {
         : [];
     const enabledProviders = new Set(
       // personalEnabledRows is already empty unless includePersonalProviders.
-      [...personalEnabledRows, ...teamEnabledRows]
+      // personalUseShared is already empty unless this is the personal scope.
+      [...personalEnabledRows, ...teamEnabledRows, ...personalUseShared]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -355,6 +408,8 @@ export class ModelsService {
         );
       teamCustom.forEach((r) => enabledCustomIntegrationIds.add(r.id));
     }
+    // Custom keys shared for personal use (personal scope only).
+    sharedCustomIds.forEach((id) => enabledCustomIntegrationIds.add(id));
 
     // Azure has no OpenRouter catalog (it isn't an OpenRouter slug), so
     // its selectable models are the deployments the user configured on
@@ -397,9 +452,14 @@ export class ModelsService {
               )
           : [];
       // personalAzure is already empty unless includePersonalProviders.
+      // personalUseShared azure configs cover the personal-scope case
+      // where the user only reaches Azure through a shared team key.
       azureConfigs.push(
         ...personalAzure.map((r) => r.config),
         ...teamAzure.map((r) => r.config),
+        ...personalUseShared
+          .filter((r) => r.providerId === 'azure')
+          .map((r) => r.config),
       );
     }
 

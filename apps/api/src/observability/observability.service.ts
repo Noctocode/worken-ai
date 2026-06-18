@@ -62,6 +62,11 @@ function truncatePreview(prompt: string | null | undefined): string | null {
 export interface RecordLLMCallInput {
   userId: string;
   teamId?: string | null;
+  /** The BYOK / Custom integration that served the call, when one did
+   *  (chat-transport source 'byok' | 'custom'). NULL for WorkenAI /
+   *  OpenRouter routes. Lets the key-limit gate sum per-key usage and
+   *  the admin see who spent what on a shared key. */
+  integrationId?: string | null;
   // `string & {}` keeps IDE autocomplete on the known eventType
   // literals while still accepting future ad-hoc strings — plain
   // `| string` would let TS collapse the union into just `string`
@@ -566,6 +571,7 @@ export class ObservabilityService {
       await this.db.insert(observabilityEvents).values({
         userId: input.userId,
         teamId: input.teamId ?? null,
+        integrationId: input.integrationId ?? null,
         eventType: input.eventType,
         model: input.model ?? null,
         provider:

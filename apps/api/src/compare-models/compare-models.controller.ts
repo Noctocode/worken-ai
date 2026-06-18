@@ -437,6 +437,7 @@ export class CompareModelsController {
             await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
               teamId,
               estimatedCostCents,
+              source: t.source,
             });
             await this.chatTransport.assertTeamBudgetNotExceeded({
               teamId,
@@ -446,6 +447,11 @@ export class CompareModelsController {
               estimatedCostCents,
               callerUserId: user.id,
             });
+            await this.chatTransport.assertIntegrationLimitNotExceeded(
+              t,
+              user.id,
+              { estimatedTokens: promptTok + 4096 },
+            );
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             const status =
@@ -583,6 +589,7 @@ export class CompareModelsController {
             eventType: 'arena_call',
             model: usedModel,
             provider: transport.provider,
+            integrationId: transport.integrationId ?? null,
             latencyMs,
             success: false,
             errorMessage: errorPayload.message,
@@ -616,6 +623,7 @@ export class CompareModelsController {
             eventType: 'arena_call',
             model: usedModel,
             provider: transport.provider,
+            integrationId: transport.integrationId ?? null,
             latencyMs,
             success: false,
             errorMessage: 'Output guardrail blocked',
@@ -657,6 +665,7 @@ export class CompareModelsController {
           eventType: 'arena_call',
           model,
           provider: transport.provider,
+          integrationId: transport.integrationId ?? null,
           totalTokens,
           costUsd: resolvedCostUsd ?? null,
           latencyMs,
@@ -740,6 +749,7 @@ export class CompareModelsController {
             teamId,
             eventType: 'evaluator_call',
             model: judgeModel,
+            integrationId: judgeTransport.integrationId ?? null,
             latencyMs: Date.now() - evalStart,
             success: true,
             totalTokens: comparison.totalTokens,
@@ -772,6 +782,7 @@ export class CompareModelsController {
             teamId,
             eventType: 'evaluator_call',
             model: judgeModel,
+            integrationId: judgeTransport.integrationId ?? null,
             latencyMs: Date.now() - evalStart,
             success: false,
             errorMessage: msg,

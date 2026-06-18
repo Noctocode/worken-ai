@@ -296,6 +296,7 @@ export class CronRunnerService {
       await this.observability.recordLLMCall({
         userId: prompt.ownerId,
         teamId: prompt.teamId,
+        integrationId: usedTransport.integrationId ?? null,
         eventType: 'ai_cron_run',
         model: usedTransport.model,
         provider: usedTransport.provider,
@@ -338,6 +339,7 @@ export class CronRunnerService {
         .recordLLMCall({
           userId: prompt.ownerId,
           teamId: prompt.teamId,
+          integrationId: transport?.integrationId ?? null,
           eventType: 'ai_cron_run',
           model: transport?.model ?? null,
           provider: transport?.provider ?? null,

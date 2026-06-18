@@ -5,6 +5,9 @@ import type { EncryptionService } from '../openrouter/encryption.service.js';
 import type { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import {
   ChatTransportService,
+  KEY_LIMIT_EXCEEDED_MARKER,
+  KEY_LOW_BALANCE_TOKENS,
+  KEY_PAUSED_MARKER,
   MEMBER_CAP_REACHED_MARKER,
   MEMBER_SUSPENDED_MARKER,
   ORG_BUDGET_EXCEEDED_MARKER,
@@ -12,6 +15,7 @@ import {
   TEAM_BUDGET_EXCEEDED_MARKER,
   TEAM_SUSPENDED_MARKER,
   decideCapAction,
+  decideIntegrationLimit,
 } from './chat-transport.service.js';
 
 /* ─── decideCapAction (pure) ───────────────────────────────────────── */
@@ -120,6 +124,95 @@ describe('decideCapAction', () => {
       expect(decision.message).not.toContain('would push you');
       expect(decision.message).toContain('is reached');
     }
+  });
+});
+
+/* ─── decideIntegrationLimit (pure) ────────────────────────────────── */
+
+describe('decideIntegrationLimit', () => {
+  it('passes with no alerts when no limit is set', () => {
+    expect(
+      decideIntegrationLimit({
+        limitTokens: null,
+        usedTokens: 9_999_999,
+        estimatedTokens: 9_999_999,
+      }),
+    ).toEqual({ pass: true, alerts: [] });
+  });
+
+  it('blocks a paused key (limit=0) with KEY_PAUSED and no alerts', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 0,
+      usedTokens: 0,
+      estimatedTokens: 0,
+    });
+    expect(d.pass).toBe(false);
+    expect(d.marker).toBe(KEY_PAUSED_MARKER);
+    expect(d.alerts).toEqual([]);
+  });
+
+  it('passes quietly well under the limit', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 1_000_000,
+      usedTokens: 100_000,
+      estimatedTokens: 1_000,
+    });
+    expect(d).toEqual({ pass: true, marker: undefined, alerts: [] });
+  });
+
+  it('fires the 80% alert on the call that crosses 80%', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 1_000_000,
+      usedTokens: 790_000,
+      estimatedTokens: 20_000, // projected 810k ≥ 800k
+    });
+    expect(d.pass).toBe(true);
+    expect(d.alerts).toContain('80');
+  });
+
+  it('fires the low-balance alert as headroom crosses the band', () => {
+    // limit 1M, low band = min(KEY_LOW_BALANCE_TOKENS, 5% = 50k) = 50k.
+    // used leaves 60k headroom; estimate pushes headroom below 50k.
+    const d = decideIntegrationLimit({
+      limitTokens: 1_000_000,
+      usedTokens: 940_000,
+      estimatedTokens: 15_000, // remaining 60k → 45k, crosses 50k band
+    });
+    expect(d.alerts).toContain('low');
+    expect(KEY_LOW_BALANCE_TOKENS).toBeGreaterThan(0);
+  });
+
+  it('blocks and fires 100% on the call that reaches the limit', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 100_000,
+      usedTokens: 95_000,
+      estimatedTokens: 10_000, // projected 105k ≥ 100k
+    });
+    expect(d.pass).toBe(false);
+    expect(d.marker).toBe(KEY_LIMIT_EXCEEDED_MARKER);
+    expect(d.alerts).toContain('100');
+  });
+
+  it('blocks post-flight without re-firing 100% once already over', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 100_000,
+      usedTokens: 120_000, // already over
+      estimatedTokens: 0,
+    });
+    expect(d.pass).toBe(false);
+    expect(d.marker).toBe(KEY_LIMIT_EXCEEDED_MARKER);
+    // used is already past the limit, so the crossing alert does NOT fire
+    expect(d.alerts).not.toContain('100');
+  });
+
+  it('clamps negative usage/estimate so a bad caller cannot bypass', () => {
+    const d = decideIntegrationLimit({
+      limitTokens: 100_000,
+      usedTokens: -50_000,
+      estimatedTokens: -50_000,
+    });
+    expect(d.pass).toBe(true);
+    expect(d.alerts).toEqual([]);
   });
 });
 
@@ -438,6 +531,8 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
   it('routes azure/<deployment> through the AzureOpenAI client with endpoint + api-version', async () => {
     const svc = makeService([
       [], // user alias lookup — none
+      [], // personalUseTeamIds: accepted memberships — none
+      [], // personalUseTeamIds: owned teams — none (→ no shared-key lookups)
       [
         {
           apiKeyEncrypted: 'enc',
@@ -467,6 +562,8 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
   it('falls back to OpenRouter when the azure config is incomplete', async () => {
     const svc = makeService([
       [], // user alias lookup — none
+      [], // personalUseTeamIds: accepted memberships — none
+      [], // personalUseTeamIds: owned teams — none
       [{ apiKeyEncrypted: 'enc', config: { azureApiVersion: '2024-10-21' } }], // no endpoint
     ]);
 
@@ -632,5 +729,151 @@ describe('ChatTransportService.assertTeamBudgetNotExceeded', () => {
         estimatedCostCents: 500, // +$5 → $503
       }),
     ).rejects.toThrow(/would push the team past/);
+  });
+});
+
+/* ─── resolve: personal-scope shared key (allow_personal_use) ───────── */
+
+describe('ChatTransportService.resolve (personal-scope shared key)', () => {
+  const USER_ID = 'user-id';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as unknown as Database,
+      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
+      {
+        resolveUserKey: () => Promise.resolve('openrouter-key'),
+      } as unknown as KeyResolverService,
+      {
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
+      } as unknown as NotificationsService,
+    );
+  }
+
+  it('routes a personal chat through a team key shared for personal use', async () => {
+    const svc = makeService([
+      [], // user alias lookup — none
+      [{ teamId: 'team-1' }], // personalUseTeamIds: accepted membership
+      [], // personalUseTeamIds: owned teams — none
+      [], // shared custom alias — none (this is a BYOK provider)
+      [], // user personal BYOK — none
+      [{ id: 'int-9', apiKeyEncrypted: 'enc', config: {} }], // shared team BYOK
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: 'openai/gpt-4o',
+    });
+
+    expect(t.source).toBe('byok');
+    expect(t.kind).toBe('openai-sdk');
+    expect(t.integrationId).toBe('int-9');
+    expect(t.apiKey).toBe('plain:enc');
+    expect(t.model).toBe('gpt-4o');
+  });
+
+  it('falls back to OpenRouter when the user is in no team', async () => {
+    const svc = makeService([
+      [], // user alias lookup — none
+      [], // memberships — none
+      [], // owned teams — none (→ no shared lookups run)
+      [], // user personal BYOK — none
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: 'openai/gpt-4o',
+    });
+
+    expect(t.source).toBe('openrouter');
+    expect(t.integrationId).toBeUndefined();
+  });
+});
+
+/* ─── assertIntegrationLimitNotExceeded (with mocked db) ───────────── */
+
+describe('ChatTransportService.assertIntegrationLimitNotExceeded', () => {
+  const USER_ID = 'user-id';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as unknown as Database,
+      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
+      {} as unknown as KeyResolverService,
+      {
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
+      } as unknown as NotificationsService,
+    );
+  }
+
+  it('skips non-BYOK/Custom routes entirely', async () => {
+    const svc = makeService([]); // no db calls expected
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'openrouter', integrationId: undefined },
+        USER_ID,
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('passes when month-to-date tokens stay under the limit', async () => {
+    const svc = makeService([
+      [{ ownerId: 'owner', limit: 1_000_000, providerId: 'openai' }],
+      [{ tokens: '1000', cost: '0' }],
+    ]);
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 1000 },
+      ),
+    ).resolves.toBeUndefined();
+  });
+
+  it('throws KEY_LIMIT_EXCEEDED once usage reaches the limit', async () => {
+    const svc = makeService([
+      [{ ownerId: 'owner', limit: 100_000, providerId: 'openai' }],
+      [{ tokens: '95000', cost: '1.5' }],
+    ]);
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+        { estimatedTokens: 10_000 },
+      ),
+    ).rejects.toThrow(KEY_LIMIT_EXCEEDED_MARKER);
+  });
+
+  it('throws KEY_PAUSED when the limit is 0', async () => {
+    const svc = makeService([
+      [{ ownerId: 'owner', limit: 0, providerId: 'custom' }],
+      [{ tokens: '0', cost: '0' }],
+    ]);
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'custom', integrationId: 'int-1' },
+        USER_ID,
+      ),
+    ).rejects.toThrow(KEY_PAUSED_MARKER);
+  });
+
+  it('passes when no limit is configured (null)', async () => {
+    const svc = makeService([
+      [{ ownerId: 'owner', limit: null, providerId: 'openai' }],
+    ]);
+    await expect(
+      svc.assertIntegrationLimitNotExceeded(
+        { source: 'byok', integrationId: 'int-1' },
+        USER_ID,
+      ),
+    ).resolves.toBeUndefined();
   });
 });

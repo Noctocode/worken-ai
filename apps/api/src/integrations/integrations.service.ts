@@ -10,6 +10,7 @@ import {
   integrations,
   modelConfigs,
   observabilityEvents,
+  users,
   type IntegrationConfig,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
@@ -68,6 +69,18 @@ export interface IntegrationView {
    * Settings dialog edits. Never holds secrets.
    */
   config: IntegrationConfig;
+  /**
+   * When true, members of teams this key is linked into may also use it
+   * in their personal scope (personal projects / chats). Drives the
+   * "Access" selector on the Integration tab: owner-only (no team links)
+   * / team-only (links, flag off) / team + personal (links, flag on).
+   */
+  allowPersonalUse: boolean;
+  /**
+   * Monthly token usage cap for this key. null = no limit, 0 = paused,
+   * >0 = enforced. See the schema comment on `integrations`.
+   */
+  monthlyTokenLimit: number | null;
   stats: IntegrationStats;
   createdAt: string | null;
   updatedAt: string | null;
@@ -260,6 +273,8 @@ export class IntegrationsService {
         byokSupported: p.byokSupported,
         boundAliasCount: 0,
         config: row?.config ?? {},
+        allowPersonalUse: row?.allowPersonalUse ?? false,
+        monthlyTokenLimit: row?.monthlyTokenLimit ?? null,
         stats: buildStats(p.id),
         createdAt: row?.createdAt?.toISOString() ?? null,
         updatedAt: row?.updatedAt?.toISOString() ?? null,
@@ -293,6 +308,8 @@ export class IntegrationsService {
         byokSupported: true,
         boundAliasCount: aliasCountByIntegration.get(r.id) ?? 0,
         config: r.config ?? {},
+        allowPersonalUse: r.allowPersonalUse,
+        monthlyTokenLimit: r.monthlyTokenLimit,
         stats: buildStats('custom'),
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
@@ -329,6 +346,12 @@ export class IntegrationsService {
       /** Provider-specific config. Required (and validated) when
        *  providerId === "azure": endpoint + api-version + deployments. */
       config?: IntegrationConfig;
+      /** When true, members of teams this key is linked into may also use
+       *  it in personal scope. Defaults false on create. */
+      allowPersonalUse?: boolean;
+      /** Monthly token usage cap (null = no limit, 0 = paused, >0 =
+       *  enforced). Omit to leave unset / unchanged. */
+      monthlyTokenLimit?: number | null;
     },
   ): Promise<IntegrationView> {
     const isCustom = input.providerId === 'custom';
@@ -364,6 +387,8 @@ export class IntegrationsService {
       ? this.encryptionService.encrypt(input.apiKey.trim())
       : null;
 
+    const monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
+
     if (isCustom) {
       const customName = input.customName!.trim();
       const modelIdentifier = userCustomModelIdentifier(userId, customName);
@@ -397,6 +422,8 @@ export class IntegrationsService {
           apiUrl: input.apiUrl!,
           apiKeyEncrypted,
           isEnabled: input.isEnabled ?? true,
+          allowPersonalUse: input.allowPersonalUse ?? false,
+          monthlyTokenLimit,
         })
         .returning();
       // Bound alias is what makes the Custom LLM actually appear in
@@ -440,6 +467,12 @@ export class IntegrationsService {
       if (input.apiKey !== undefined) {
         conflictUpdates.apiKeyEncrypted = apiKeyEncrypted;
       }
+      if (input.allowPersonalUse !== undefined) {
+        conflictUpdates.allowPersonalUse = input.allowPersonalUse;
+      }
+      if (input.monthlyTokenLimit !== undefined) {
+        conflictUpdates.monthlyTokenLimit = monthlyTokenLimit;
+      }
       // Azure config is validated above; persist it on conflict too so
       // re-saving from the Settings dialog updates the endpoint /
       // deployments. Non-azure providers never carry a config.
@@ -457,6 +490,8 @@ export class IntegrationsService {
           apiKeyEncrypted,
           isEnabled: input.isEnabled ?? true,
           config: azureConfig,
+          allowPersonalUse: input.allowPersonalUse ?? false,
+          monthlyTokenLimit,
         })
         .onConflictDoUpdate({
           target: [integrations.ownerId, integrations.providerId],
@@ -479,6 +514,8 @@ export class IntegrationsService {
       isEnabled?: boolean;
       apiKey?: string | null;
       config?: IntegrationConfig;
+      allowPersonalUse?: boolean;
+      monthlyTokenLimit?: number | null;
     },
   ): Promise<IntegrationView> {
     const [row] = await this.db
@@ -509,6 +546,12 @@ export class IntegrationsService {
         ? this.encryptionService.encrypt(input.apiKey)
         : null;
     }
+    if (input.allowPersonalUse !== undefined) {
+      updates.allowPersonalUse = input.allowPersonalUse;
+    }
+    if (input.monthlyTokenLimit !== undefined) {
+      updates.monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
+    }
     // Azure config edits (endpoint / api-version / deployments) come
     // through here when the Settings dialog patches an existing row.
     // Validated against the same rules as upsert; ignored for providers
@@ -526,6 +569,85 @@ export class IntegrationsService {
     if (!view)
       throw new NotFoundException('Integration not found after update');
     return view;
+  }
+
+  /**
+   * Month-to-date usage of a single key (BYOK / Custom integration),
+   * broken down per user — so the owner can see who spent what on a key
+   * they shared. Tokens are always present; cost ($) only where the
+   * provider has catalog pricing (NULL for Custom LLMs → 0 here).
+   *
+   * Owner-only: a shared key's usage is the owner's to inspect. We don't
+   * widen this to team admins for now (keeps it simple; the owner is the
+   * one billed by the upstream provider). Throws if the caller isn't the
+   * owner, mirroring `update` / `remove`.
+   */
+  async keyUsage(
+    userId: string,
+    id: string,
+  ): Promise<{
+    integrationId: string;
+    monthlyTokenLimit: number | null;
+    totalTokens: number;
+    totalCostUsd: number;
+    perUser: Array<{
+      userId: string;
+      name: string | null;
+      email: string | null;
+      tokens: number;
+      costUsd: number;
+      calls: number;
+    }>;
+  }> {
+    const [row] = await this.db
+      .select({
+        ownerId: integrations.ownerId,
+        monthlyTokenLimit: integrations.monthlyTokenLimit,
+      })
+      .from(integrations)
+      .where(eq(integrations.id, id));
+    if (!row) throw new NotFoundException('Integration not found');
+    if (row.ownerId !== userId) {
+      throw new ForbiddenException('Not your integration');
+    }
+
+    const startOfMonth = sql`date_trunc('month', now())`;
+    const rows = await this.db
+      .select({
+        userId: observabilityEvents.userId,
+        name: users.name,
+        email: users.email,
+        tokens: sql<number>`coalesce(sum(${observabilityEvents.totalTokens}), 0)::int`,
+        cost: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)::text`,
+        calls: sql<number>`count(*)::int`,
+      })
+      .from(observabilityEvents)
+      .leftJoin(users, eq(users.id, observabilityEvents.userId))
+      .where(
+        and(
+          eq(observabilityEvents.integrationId, id),
+          eq(observabilityEvents.success, true),
+          gte(observabilityEvents.createdAt, startOfMonth),
+        ),
+      )
+      .groupBy(observabilityEvents.userId, users.name, users.email)
+      .orderBy(sql`sum(${observabilityEvents.totalTokens}) desc nulls last`);
+
+    const perUser = rows.map((r) => ({
+      userId: r.userId,
+      name: r.name,
+      email: r.email,
+      tokens: Number(r.tokens ?? 0),
+      costUsd: Number(r.cost ?? 0),
+      calls: Number(r.calls ?? 0),
+    }));
+    return {
+      integrationId: id,
+      monthlyTokenLimit: row.monthlyTokenLimit,
+      totalTokens: perUser.reduce((s, u) => s + u.tokens, 0),
+      totalCostUsd: perUser.reduce((s, u) => s + u.costUsd, 0),
+      perUser,
+    };
   }
 
   async remove(userId: string, id: string): Promise<void> {
@@ -582,6 +704,23 @@ export class IntegrationsService {
  * keeps two users with the same display name from colliding on
  * (ownerId, modelIdentifier) at the chat-transport lookup layer.
  */
+/**
+ * Normalize a caller-supplied monthly token limit to the column's
+ * tri-state contract: null = no limit, 0 = paused, >0 = enforced.
+ * `undefined` stays `undefined` so callers can distinguish "leave
+ * unchanged" from "clear" — only invoked when the field is present.
+ * Non-finite / negative values clamp to null (treated as "no limit")
+ * rather than throwing, so a stray FE value can't 500 the save.
+ */
+function normalizeTokenLimit(
+  value: number | null | undefined,
+): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.floor(value);
+}
+
 function userCustomModelIdentifier(userId: string, customName: string): string {
   const slug = customName
     .toLowerCase()
