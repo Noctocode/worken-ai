@@ -82,6 +82,12 @@ export interface RecordLLMCallInput {
   errorMessage?: string | null;
   prompt?: string | null;
   metadata?: Record<string, unknown> | null;
+  /**
+   * Correlation id for a multi-call turn (executable skills, Option #3): every
+   * upstream call of one run shares the run's id here so spend/usage rolls up
+   * per turn. Omit/null for single-shot calls — additive, no behavior change.
+   */
+  turnId?: string | null;
 }
 
 @Injectable()
@@ -583,6 +589,7 @@ export class ObservabilityService {
         errorMessage: input.errorMessage ?? null,
         promptPreview: truncatePreview(input.prompt),
         metadata: input.metadata ?? null,
+        turnId: input.turnId ?? null,
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -590,5 +597,36 @@ export class ObservabilityService {
         `Failed to record observability event for user ${input.userId} (${input.eventType}): ${msg}`,
       );
     }
+  }
+
+  /**
+   * Roll up the N upstream calls of one multi-call turn (executable skills,
+   * Option #3) by their shared `turnId`. Lets a run report total spend/usage
+   * across its agent-loop rounds without the caller re-summing per-call rows.
+   */
+  async getTurnRollup(turnId: string): Promise<{
+    calls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    costUsd: number;
+  }> {
+    const [row] = await this.db
+      .select({
+        calls: sql<string>`count(*)`,
+        promptTokens: sql<string>`coalesce(sum(${observabilityEvents.promptTokens}), 0)`,
+        completionTokens: sql<string>`coalesce(sum(${observabilityEvents.completionTokens}), 0)`,
+        totalTokens: sql<string>`coalesce(sum(${observabilityEvents.totalTokens}), 0)`,
+        costUsd: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)::text`,
+      })
+      .from(observabilityEvents)
+      .where(eq(observabilityEvents.turnId, turnId));
+    return {
+      calls: Number(row?.calls ?? 0),
+      promptTokens: Number(row?.promptTokens ?? 0),
+      completionTokens: Number(row?.completionTokens ?? 0),
+      totalTokens: Number(row?.totalTokens ?? 0),
+      costUsd: Number(row?.costUsd ?? 0),
+    };
   }
 }
