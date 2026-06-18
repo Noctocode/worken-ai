@@ -449,6 +449,7 @@ export class ChatController {
           await chatTransport.assertTeamMemberCapNotExceeded(user.id, {
             projectId: conversation.projectId,
             estimatedCostCents: fbEstCents,
+            source: t.source,
           });
           await chatTransport.assertTeamBudgetNotExceeded({
             projectId: conversation.projectId,
@@ -457,6 +458,11 @@ export class ChatController {
           await chatTransport.assertOrgBudgetNotExceeded({
             estimatedCostCents: fbEstCents,
             callerUserId: user.id,
+          });
+          // Per-key token limit for a BYOK/Custom fallback — without this a
+          // paused / over-limit shared key would still serve the fallback.
+          await chatTransport.assertIntegrationLimitNotExceeded(t, user.id, {
+            estimatedTokens: promptTokens + 4096,
           });
         }
         // Web search is OpenRouter-specific — re-gate per candidate (uses the
@@ -788,6 +794,7 @@ export class ChatController {
     void this.observabilityService.recordLLMCall({
       userId: user.id,
       teamId,
+      integrationId: transport.integrationId ?? null,
       eventType: 'chat_call',
       model: usedModel,
       provider: transport.provider,

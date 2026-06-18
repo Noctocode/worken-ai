@@ -780,6 +780,7 @@ export class ChatTransportService {
           .where(
             and(
               eq(modelConfigs.modelIdentifier, modelIdentifier),
+              eq(integrations.providerId, 'custom'),
               eq(integrations.isEnabled, true),
               eq(integrations.allowPersonalUse, true),
               eq(teamIntegrationLinks.isEnabled, true),

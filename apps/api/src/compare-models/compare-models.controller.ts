@@ -268,6 +268,13 @@ export class CompareModelsController {
         `AI gateway key unavailable: ${msg}`,
       );
     }
+    // If the judge resolves to a BYOK/Custom key, enforce that key's own
+    // monthly token limit before any SSE flushes (post-flight: blocks once
+    // usage crosses the limit, and immediately when the key is paused).
+    await this.chatTransport.assertIntegrationLimitNotExceeded(
+      judgeTransport,
+      user.id,
+    );
     // Surfaced to the FE so it can warn that the judge also graded its
     // own answer (possible self-evaluation bias) when the user put the
     // judge model into the comparison set.

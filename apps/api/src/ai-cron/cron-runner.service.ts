@@ -233,6 +233,26 @@ export class CronRunnerService {
             if (i < candidates.length - 1) continue;
             break;
           }
+        } else {
+          // BYOK / Custom: WorkenAI budgets don't apply, but the key's own
+          // monthly token limit does — same gate the chat / arena paths run,
+          // so a paused or over-limit shared key can't be drained via a
+          // scheduled prompt. Fall through to the next candidate on a block.
+          try {
+            await this.chatTransport.assertIntegrationLimitNotExceeded(
+              t,
+              prompt.ownerId,
+              { estimatedTokens: promptTokens + MAX_COMPLETION_TOKENS_EST },
+            );
+          } catch (gateErr) {
+            lastError =
+              gateErr instanceof Error ? gateErr.message : String(gateErr);
+            this.logger.warn(
+              `AI Cron run ${runId}: ${candidates[i]} blocked by key limit (${lastError}).`,
+            );
+            if (i < candidates.length - 1) continue;
+            break;
+          }
         }
 
         let attemptOutput = '';

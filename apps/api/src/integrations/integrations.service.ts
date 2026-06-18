@@ -718,7 +718,11 @@ function normalizeTokenLimit(
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (!Number.isFinite(value) || value < 0) return null;
-  return Math.floor(value);
+  // Clamp to the Postgres `integer` max so a huge FE value saves as the
+  // ceiling instead of throwing "value out of range for type integer"
+  // (a 500 on the save endpoint).
+  const PG_INT_MAX = 2_147_483_647;
+  return Math.min(Math.floor(value), PG_INT_MAX);
 }
 
 function userCustomModelIdentifier(userId: string, customName: string): string {
