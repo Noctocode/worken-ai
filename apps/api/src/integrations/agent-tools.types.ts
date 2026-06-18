@@ -55,4 +55,13 @@ export interface AgentLoopRequest {
   maxIterations?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /**
+   * Invoked just before each upstream model call (0-based round index). The
+   * gate for multi-call billing (Option #3, Phase C): the caller re-checks the
+   * budget and the per-run cost ceiling here. **Throwing stops the loop** —
+   * surfaced as an `error` event — so a runaway/over-budget run never makes the
+   * next call. A `usage` event is emitted per round so the caller can track
+   * accumulated spend between gates.
+   */
+  onBeforeCall?: (iteration: number) => Promise<void>;
 }

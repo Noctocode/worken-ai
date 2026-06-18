@@ -74,6 +74,7 @@ export class ToolCallingService {
       maxIterations: req.maxIterations,
       maxTokens: req.maxTokens,
       signal: req.signal,
+      onBeforeCall: req.onBeforeCall,
     });
   }
 }

@@ -109,9 +109,10 @@ export class SkillsController {
 
   /**
    * Run an executable skill, streaming the agent loop as SSE
-   * (`run_started` / `text` / `tool_call` / `tool_result` / `usage` /
-   * `done` / `run_done` / `error`). 404 when the tenant flag is off. The
-   * run aborts if the client disconnects.
+   * (`run_started` / `cost_estimate` / `text` / `tool_call` / `tool_result` /
+   * `usage` / `done` / `run_done` / `error`). `run_done` carries the run's
+   * rolled-up `costUsd`. 404 when the tenant flag is off. The run aborts if
+   * the client disconnects.
    */
   @Post(':id/run')
   async run(

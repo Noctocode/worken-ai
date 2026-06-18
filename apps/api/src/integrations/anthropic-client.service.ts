@@ -316,20 +316,29 @@ export class AnthropicClientService {
       input_schema: t.inputSchema as Anthropic.Tool.InputSchema,
     }));
 
-    let promptTokens = 0;
-    let completionTokens = 0;
-    const emitUsage = (): AgentLoopEvent => ({
-      type: 'usage',
-      promptTokens,
-      completionTokens,
-      totalTokens: promptTokens + completionTokens,
-    });
-
     for (let iter = 0; iter < maxIterations; iter++) {
       if (signal?.aborted) {
-        yield emitUsage();
         yield { type: 'done', stopReason: 'aborted' };
         return;
+      }
+
+      // Per-call gate (budget / cost ceiling). Runs BEFORE we spend on the
+      // next round; throwing here stops the loop fail-closed so an
+      // over-budget or runaway run never makes another upstream call.
+      if (params.onBeforeCall) {
+        try {
+          await params.onBeforeCall(iter);
+        } catch (err) {
+          yield {
+            type: 'error',
+            message: err instanceof Error ? err.message : String(err),
+            status:
+              err && typeof err === 'object' && 'status' in err
+                ? (err as { status?: number }).status
+                : undefined,
+          };
+          return;
+        }
       }
 
       let resp: Anthropic.Message;
@@ -349,7 +358,6 @@ export class AnthropicClientService {
           signal?.aborted ||
           (err instanceof Error && err.name === 'AbortError')
         ) {
-          yield emitUsage();
           yield { type: 'done', stopReason: 'aborted' };
           return;
         }
@@ -364,8 +372,17 @@ export class AnthropicClientService {
         return;
       }
 
-      promptTokens += resp.usage?.input_tokens ?? 0;
-      completionTokens += resp.usage?.output_tokens ?? 0;
+      // Per-round usage (this round's tokens, not cumulative) so the caller
+      // can meter accumulated spend between onBeforeCall gates and record one
+      // observability event per upstream call.
+      const roundIn = resp.usage?.input_tokens ?? 0;
+      const roundOut = resp.usage?.output_tokens ?? 0;
+      yield {
+        type: 'usage',
+        promptTokens: roundIn,
+        completionTokens: roundOut,
+        totalTokens: roundIn + roundOut,
+      };
 
       for (const block of resp.content) {
         if (block.type === 'text') yield { type: 'text', delta: block.text };
@@ -375,7 +392,6 @@ export class AnthropicClientService {
         (b): b is Anthropic.ToolUseBlock => b.type === 'tool_use',
       );
       if (resp.stop_reason !== 'tool_use' || toolUses.length === 0) {
-        yield emitUsage();
         yield { type: 'done', stopReason: resp.stop_reason ?? 'end_turn' };
         return;
       }
@@ -419,7 +435,6 @@ export class AnthropicClientService {
     }
 
     // Iteration cap reached without a natural stop — fail closed.
-    yield emitUsage();
     yield { type: 'done', stopReason: 'max_iterations' };
   }
 }

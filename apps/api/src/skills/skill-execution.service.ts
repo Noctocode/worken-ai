@@ -9,13 +9,28 @@ import {
 import { and, desc, eq } from 'drizzle-orm';
 import { skillRunSteps, skillRuns, skills } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { ToolCallingService } from '../integrations/tool-calling.service.js';
 import type { AgentLoopEvent } from '../integrations/agent-tools.types.js';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ObservabilityService } from '../observability/observability.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
 
 /** Hard cap on model↔tool round-trips per run (fail-closed). */
 const MAX_ITERATIONS = 8;
 const PREVIEW_CHARS = 1000;
+/**
+ * Hard per-run cost ceiling (USD). The real cost-blowup guard for a multi-call
+ * agent loop: checked before each upstream call against the run's accumulated
+ * spend, so a runaway loop fails closed instead of billing without bound. The
+ * v1 path bills the user's own Anthropic (BYOK) key, so this protects the
+ * user directly. Tune via config later (Phase F).
+ */
+const MAX_RUN_COST_USD = 1.0;
+/** Rough chars→tokens divisor for the informational pre-run estimate. */
+const CHARS_PER_TOKEN = 4;
+/** Completion tokens assumed per round for the pre-run estimate. */
+const ESTIMATE_COMPLETION_TOKENS = 1024;
 
 export interface RunSkillParams {
   userId: string;
@@ -32,10 +47,13 @@ export interface RunSkillParams {
 export type SkillRunEvent =
   | AgentLoopEvent
   | { type: 'run_started'; runId: string }
+  | { type: 'cost_estimate'; estimatedUsd: number | null }
   | {
       type: 'run_done';
       runId: string;
       status: 'done' | 'failed' | 'cancelled';
+      /** Rolled-up cost of the run's upstream calls (USD). */
+      costUsd: number;
     };
 
 function preview(s: string): string {
@@ -64,6 +82,9 @@ export class SkillExecutionService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly toolCalling: ToolCallingService,
     private readonly toolRegistry: ToolRegistryService,
+    private readonly transport: ChatTransportService,
+    private readonly observability: ObservabilityService,
+    private readonly catalog: OpenRouterCatalogService,
   ) {}
 
   /** Build the system prompt: skill instructions + reference scripts + tool note. */
@@ -134,27 +155,63 @@ export class SkillExecutionService {
     const { tools, dispatch } = this.toolRegistry.build({ userId });
     const callInputs = new Map<string, unknown>();
     let stepIndex = 0;
-    let promptTokens = 0;
-    let completionTokens = 0;
+    // Spend accumulated across the run's upstream calls. Read by onBeforeCall
+    // (the cost-ceiling gate) and persisted as the run's rolled-up cost.
+    let accumulatedCost = 0;
     let finalStatus: 'done' | 'failed' | 'cancelled' = 'done';
     let errorMessage: string | null = null;
 
     try {
+      const system = this.buildSystem(skill);
+      const userMessage = params.userMessage?.trim() || 'Run this skill.';
+
+      // Resolve the route once for per-call budget gating; reused every round.
+      const transport = await this.transport.resolve({
+        userId,
+        modelIdentifier,
+        projectId: params.projectId ?? null,
+      });
+
+      // Informational pre-run estimate (one round, rough) for the FE / caller.
+      const estPromptTokens = Math.ceil(
+        (system.length + userMessage.length) / CHARS_PER_TOKEN,
+      );
+      const estimatedUsd = await this.catalog.estimateCost(
+        modelIdentifier,
+        estPromptTokens,
+        ESTIMATE_COMPLETION_TOKENS,
+      );
+      yield { type: 'cost_estimate', estimatedUsd };
+
+      // Re-gated before EVERY upstream call (Phase C): managed-budget approval
+      // plus the hard per-run cost ceiling. Throwing fails the loop closed so a
+      // runaway / over-budget run never makes the next call.
+      const onBeforeCall = async (): Promise<void> => {
+        // No-op for the v1 BYOK-Anthropic route (returns early for non-
+        // OpenRouter sources); wired so managed routes re-gate correctly later.
+        await this.transport.assertManagedBudgetApproved(transport, userId, {
+          projectId: params.projectId ?? null,
+        });
+        if (accumulatedCost >= MAX_RUN_COST_USD) {
+          throw new Error(
+            `Skill run stopped: per-run cost ceiling of $${MAX_RUN_COST_USD.toFixed(
+              2,
+            )} reached.`,
+          );
+        }
+      };
+
       for await (const ev of this.toolCalling.streamWithTools({
         userId,
         modelIdentifier,
         projectId: params.projectId,
-        system: this.buildSystem(skill),
-        messages: [
-          {
-            role: 'user',
-            content: params.userMessage?.trim() || 'Run this skill.',
-          },
-        ],
+        system,
+        messages: [{ role: 'user', content: userMessage }],
         tools,
         dispatch,
         maxIterations: MAX_ITERATIONS,
         signal: ac.signal,
+        onBeforeCall,
       })) {
         if (ev.type === 'tool_call') callInputs.set(ev.id, ev.input);
         if (ev.type === 'tool_result') {
@@ -171,8 +228,37 @@ export class SkillExecutionService {
           });
         }
         if (ev.type === 'usage') {
-          promptTokens = ev.promptTokens;
-          completionTokens = ev.completionTokens;
+          // One observability event + one llm step per upstream call, tagged
+          // with the run id (turnId) so the multi-call turn rolls up.
+          const costDelta = await this.catalog.estimateCost(
+            modelIdentifier,
+            ev.promptTokens,
+            ev.completionTokens,
+          );
+          if (costDelta != null) accumulatedCost += costDelta;
+          await this.observability.recordLLMCall({
+            userId,
+            eventType: 'skill_run_call',
+            model: modelIdentifier,
+            promptTokens: ev.promptTokens,
+            completionTokens: ev.completionTokens,
+            totalTokens: ev.totalTokens,
+            costUsd: costDelta,
+            success: true,
+            turnId: runId,
+            metadata: { skillId, runId },
+          });
+          await this.db.insert(skillRunSteps).values({
+            runId,
+            stepIndex: stepIndex++,
+            stepType: 'llm',
+            model: modelIdentifier,
+            promptTokens: ev.promptTokens,
+            completionTokens: ev.completionTokens,
+            totalTokens: ev.totalTokens,
+            costUsd: costDelta != null ? String(costDelta) : null,
+            success: true,
+          });
         }
         if (ev.type === 'error') {
           finalStatus = 'failed';
@@ -189,29 +275,23 @@ export class SkillExecutionService {
       yield { type: 'error', message: errorMessage };
     } finally {
       this.aborters.delete(userId);
-      // Record the single LLM step's token usage as one summary step so the
-      // trace + future billing (Phase C) have it; cost is backfilled later.
-      await this.db.insert(skillRunSteps).values({
-        runId,
-        stepIndex: stepIndex++,
-        stepType: 'llm',
-        model: modelIdentifier,
-        promptTokens,
-        completionTokens,
-        totalTokens: promptTokens + completionTokens,
-        success: finalStatus !== 'failed',
-      });
       await this.db
         .update(skillRuns)
         .set({
           status: finalStatus,
           error: errorMessage,
+          costUsd: String(accumulatedCost),
           finishedAt: new Date(),
         })
         .where(eq(skillRuns.id, runId));
     }
 
-    yield { type: 'run_done', runId, status: finalStatus };
+    yield {
+      type: 'run_done',
+      runId,
+      status: finalStatus,
+      costUsd: accumulatedCost,
+    };
   }
 
   /** Abort the caller's in-flight run, if any. Returns whether one was

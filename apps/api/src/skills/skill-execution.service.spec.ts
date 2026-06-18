@@ -44,6 +44,40 @@ const toolRegistry = {
   build: () => ({ tools: [], dispatch: () => Promise.resolve('') }),
 };
 
+/** BYOK-Anthropic route: budget gate is a no-op, catalog prices each round. */
+function makeDeps(costPerCall = 0.01) {
+  const recorded: Record<string, unknown>[] = [];
+  const transport = {
+    resolve: () => Promise.resolve({ kind: 'anthropic-sdk', source: 'byok' }),
+    assertManagedBudgetApproved: () => Promise.resolve(undefined),
+  };
+  const observability = {
+    recordLLMCall: (input: Record<string, unknown>) => {
+      recorded.push(input);
+      return Promise.resolve(undefined);
+    },
+  };
+  const catalog = {
+    estimateCost: () => Promise.resolve(costPerCall),
+  };
+  return { transport, observability, catalog, recorded };
+}
+
+function makeSvc(
+  db: unknown,
+  provider: unknown,
+  deps = makeDeps(),
+): SkillExecutionService {
+  return new SkillExecutionService(
+    db as never,
+    provider as never,
+    toolRegistry as never,
+    deps.transport as never,
+    deps.observability as never,
+    deps.catalog as never,
+  );
+}
+
 function scriptedProvider(events: AgentLoopEvent[]) {
   return {
     // eslint-disable-next-line @typescript-eslint/require-await
@@ -74,11 +108,7 @@ describe('SkillExecutionService.run', () => {
       { type: 'usage', promptTokens: 10, completionTokens: 5, totalTokens: 15 },
       { type: 'done', stopReason: 'end_turn' },
     ]);
-    const svc = new SkillExecutionService(
-      db as never,
-      provider as never,
-      toolRegistry as never,
-    );
+    const svc = makeSvc(db, provider);
 
     const events = (await drain(
       svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
@@ -102,11 +132,7 @@ describe('SkillExecutionService.run', () => {
         yield { type: 'done', stopReason: 'end_turn' };
       },
     };
-    const svc = new SkillExecutionService(
-      db as never,
-      provider as never,
-      toolRegistry as never,
-    );
+    const svc = makeSvc(db, provider);
 
     const gen1 = svc.run({
       userId: 'u1',
@@ -128,11 +154,7 @@ describe('SkillExecutionService.run', () => {
 
   it('cancel returns false when the user has no run in flight', () => {
     const { db } = makeDb(SKILL);
-    const svc = new SkillExecutionService(
-      db as never,
-      scriptedProvider([]) as never,
-      toolRegistry as never,
-    );
+    const svc = makeSvc(db, scriptedProvider([]));
     expect(svc.cancel('u1')).toBe(false);
   });
 });

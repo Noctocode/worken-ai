@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { DocumentsModule } from '../documents/documents.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
+import { ModelsModule } from '../models/models.module.js';
+import { ObservabilityModule } from '../observability/observability.module.js';
 import { OrgSettingsModule } from '../org-settings/org-settings.module.js';
 import { SkillRouterService } from './skill-router.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
@@ -17,6 +19,8 @@ import { SkillsService } from './skills.service.js';
     DocumentsModule,
     IntegrationsModule,
     KnowledgeCoreModule,
+    ModelsModule,
+    ObservabilityModule,
     OrgSettingsModule,
   ],
   controllers: [SkillsController],
