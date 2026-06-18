@@ -8,6 +8,7 @@ import { OrgSettingsModule } from '../org-settings/org-settings.module.js';
 import { SkillRouterService } from './skill-router.service.js';
 import { ToolRegistryService } from './tool-registry.service.js';
 import { SkillExecutionService } from './skill-execution.service.js';
+import { ContainerSandbox } from './container-sandbox.js';
 import { SKILL_SANDBOX, UnavailableSandboxRuntime } from './skill-sandbox.js';
 import { SkillArtifactService } from './skill-artifact.service.js';
 import { SkillsController } from './skills.controller.js';
@@ -32,9 +33,16 @@ import { SkillsService } from './skills.service.js';
     ToolRegistryService,
     SkillExecutionService,
     SkillArtifactService,
-    // Deny-by-default sandbox: no untrusted code runs until a real runtime
-    // (Anthropic code-exec / self-hosted worker) is wired behind this token.
-    { provide: SKILL_SANDBOX, useClass: UnavailableSandboxRuntime },
+    // Sandbox runtime selection. Default OFF → deny-by-default (no untrusted
+    // code runs). Set SKILL_SANDBOX_DOCKER=true to enable the hardened
+    // self-hosted container runtime where a Docker daemon is available.
+    {
+      provide: SKILL_SANDBOX,
+      useFactory: () =>
+        process.env['SKILL_SANDBOX_DOCKER'] === 'true'
+          ? new ContainerSandbox()
+          : new UnavailableSandboxRuntime(),
+    },
   ],
   // Exported so the chat / arena paths can select + inject skills per turn.
   exports: [SkillsService, SkillRouterService],

@@ -28,6 +28,10 @@ export interface SandboxLimits {
   maxOutputBytes: number;
   /** Max total bytes of produced artifact files; the run fails past this. */
   maxArtifactBytes: number;
+  /** Memory cap (MiB). Swap is disabled so this is a hard ceiling. */
+  memoryMb: number;
+  /** CPU cap (fractional cores). */
+  cpus: number;
   /** Outbound network access. Default false — skills run offline. */
   network: boolean;
 }
@@ -37,6 +41,8 @@ export const DEFAULT_SANDBOX_LIMITS: SandboxLimits = {
   timeoutMs: 30_000,
   maxOutputBytes: 64 * 1024,
   maxArtifactBytes: 25 * 1024 * 1024,
+  memoryMb: 256,
+  cpus: 1,
   network: false,
 };
 
