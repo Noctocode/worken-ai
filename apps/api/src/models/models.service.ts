@@ -9,13 +9,12 @@ import {
   integrations,
   modelConfigs,
   teamIntegrationLinks,
-  teamMembers,
-  teams,
   users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { isAnthropicNativeSupported } from '../integrations/anthropic-client.service.js';
 import { providerOfModel } from '../integrations/native-endpoints.js';
+import { resolveUserTeamIds } from '../teams/team-membership.util.js';
 import {
   OpenRouterCatalogService,
   type CatalogModel,
@@ -95,25 +94,7 @@ export class ModelsService {
       .from(users)
       .where(eq(users.id, callerId));
 
-    const memberRows = await this.db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .where(
-        and(
-          eq(teamMembers.userId, callerId),
-          eq(teamMembers.status, 'accepted'),
-        ),
-      );
-    const ownedRows = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, callerId));
-    const teamIds = Array.from(
-      new Set([
-        ...memberRows.map((r) => r.teamId),
-        ...ownedRows.map((r) => r.id),
-      ]),
-    );
+    const teamIds = await resolveUserTeamIds(this.db, callerId);
 
     // Company-tenant callers get the `teamId IS NULL` pool, but
     // ONLY rows whose owner sits in the SAME tenant (`companyId`
@@ -219,22 +200,7 @@ export class ModelsService {
     // Resolve team membership up-front — it's needed both for the BYOK
     // branch and to authorize a team scope BEFORE running any alias /
     // provider queries, so an unauthorized scope costs nothing.
-    const teamMemberships = await this.db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
-      .where(
-        and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
-      );
-    const ownedTeams = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId));
-    const allTeamIds = Array.from(
-      new Set([
-        ...teamMemberships.map((r) => r.teamId),
-        ...ownedTeams.map((t) => t.id),
-      ]),
-    );
+    const allTeamIds = await resolveUserTeamIds(this.db, userId);
     // Defensive authz: an explicit team scope the caller isn't a member of
     // (or owner) — including a blank / malformed team id — returns nothing
     // rather than leaking another team's pool. Checked before any pool

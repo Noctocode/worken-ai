@@ -17,6 +17,7 @@ import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { isAnthropicNativeSupported } from './anthropic-client.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
+import { resolveUserTeamIds } from '../teams/team-membership.util.js';
 
 /**
  * Marker string the FE chat-error humanizer matches on to render the
@@ -320,7 +321,7 @@ export class ChatTransportService {
     let personalTeamIdsCache: string[] | undefined;
     const getPersonalTeamIds = async (): Promise<string[]> => {
       if (personalTeamIdsCache === undefined) {
-        personalTeamIdsCache = await this.personalUseTeamIds(userId);
+        personalTeamIdsCache = await resolveUserTeamIds(this.db, userId);
       }
       return personalTeamIdsCache;
     };
@@ -396,34 +397,15 @@ export class ChatTransportService {
     // enable are checked here, so the custom-route block's own team-link
     // check (which only fires for aliasViaTeam) is correctly skipped.
     if (!alias && !teamScopeId) {
-      const personalTeamIds = await getPersonalTeamIds();
-      if (personalTeamIds.length > 0) {
-        const [sharedAlias] = await this.db
-          .select({
-            integrationId: modelConfigs.integrationId,
-            upstreamModel: modelConfigs.upstreamModel,
-          })
-          .from(modelConfigs)
-          .innerJoin(
-            integrations,
-            eq(integrations.id, modelConfigs.integrationId),
-          )
-          .innerJoin(
-            teamIntegrationLinks,
-            eq(teamIntegrationLinks.integrationId, integrations.id),
-          )
-          .where(
-            and(
-              eq(modelConfigs.modelIdentifier, modelIdentifier),
-              eq(integrations.providerId, 'custom'),
-              eq(integrations.isEnabled, true),
-              eq(integrations.allowPersonalUse, true),
-              eq(teamIntegrationLinks.isEnabled, true),
-              inArray(teamIntegrationLinks.teamId, personalTeamIds),
-            ),
-          )
-          .limit(1);
-        if (sharedAlias) alias = sharedAlias;
+      const sharedAlias = await this.findSharedPersonalCustomAlias(
+        modelIdentifier,
+        await getPersonalTeamIds(),
+      );
+      if (sharedAlias) {
+        alias = {
+          integrationId: sharedAlias.integrationId,
+          upstreamModel: sharedAlias.upstreamModel,
+        };
       }
     }
 
@@ -762,34 +744,14 @@ export class ChatTransportService {
       if (userAlias) row = userAlias;
     }
     // Personal-scope shared Custom LLM (allow_personal_use) — mirror the
-    // alias resolution in `resolve` so its configured fallbacks apply too.
+    // alias resolution in `resolve` (same helper) so its configured
+    // fallbacks apply too.
     if (!row && !teamScopeId) {
-      const personalTeamIds = await this.personalUseTeamIds(userId);
-      if (personalTeamIds.length > 0) {
-        const [sharedAlias] = await this.db
-          .select({ fallbackModels: modelConfigs.fallbackModels })
-          .from(modelConfigs)
-          .innerJoin(
-            integrations,
-            eq(integrations.id, modelConfigs.integrationId),
-          )
-          .innerJoin(
-            teamIntegrationLinks,
-            eq(teamIntegrationLinks.integrationId, integrations.id),
-          )
-          .where(
-            and(
-              eq(modelConfigs.modelIdentifier, modelIdentifier),
-              eq(integrations.providerId, 'custom'),
-              eq(integrations.isEnabled, true),
-              eq(integrations.allowPersonalUse, true),
-              eq(teamIntegrationLinks.isEnabled, true),
-              inArray(teamIntegrationLinks.teamId, personalTeamIds),
-            ),
-          )
-          .limit(1);
-        if (sharedAlias) row = sharedAlias;
-      }
+      const sharedAlias = await this.findSharedPersonalCustomAlias(
+        modelIdentifier,
+        await resolveUserTeamIds(this.db, userId),
+      );
+      if (sharedAlias) row = sharedAlias;
     }
 
     const raw = Array.isArray(row?.fallbackModels)
@@ -1428,28 +1390,50 @@ export class ChatTransportService {
   }
 
   /**
-   * Team ids the user belongs to (accepted membership) or owns. Used by
-   * the personal-scope fallback to find a key an admin shared for
-   * personal use (allow_personal_use=true). Returns [] for users in no
-   * team — the caller then skips the shared-key lookup entirely.
+   * Personal-scope shared Custom LLM lookup, shared by `resolve` and
+   * `resolveFallbackModels` so the two can't drift (they once did — a
+   * missing `providerId='custom'` filter). Finds the team-scoped alias
+   * for `modelIdentifier` whose Custom integration is enabled, marked
+   * allow_personal_use, and linked-enabled into one of `teamIds`.
+   * Returns the alias row (integrationId + upstreamModel + fallbackModels)
+   * or undefined. `[]` teamIds short-circuits to undefined.
    */
-  private async personalUseTeamIds(userId: string): Promise<string[]> {
-    const memberRows = await this.db
-      .select({ teamId: teamMembers.teamId })
-      .from(teamMembers)
+  private async findSharedPersonalCustomAlias(
+    modelIdentifier: string,
+    teamIds: string[],
+  ): Promise<
+    | {
+        integrationId: string | null;
+        upstreamModel: string | null;
+        fallbackModels: unknown;
+      }
+    | undefined
+  > {
+    if (teamIds.length === 0) return undefined;
+    const [row] = await this.db
+      .select({
+        integrationId: modelConfigs.integrationId,
+        upstreamModel: modelConfigs.upstreamModel,
+        fallbackModels: modelConfigs.fallbackModels,
+      })
+      .from(modelConfigs)
+      .innerJoin(integrations, eq(integrations.id, modelConfigs.integrationId))
+      .innerJoin(
+        teamIntegrationLinks,
+        eq(teamIntegrationLinks.integrationId, integrations.id),
+      )
       .where(
-        and(eq(teamMembers.userId, userId), eq(teamMembers.status, 'accepted')),
-      );
-    const ownedRows = await this.db
-      .select({ id: teams.id })
-      .from(teams)
-      .where(eq(teams.ownerId, userId));
-    return Array.from(
-      new Set([
-        ...memberRows.map((r) => r.teamId),
-        ...ownedRows.map((r) => r.id),
-      ]),
-    );
+        and(
+          eq(modelConfigs.modelIdentifier, modelIdentifier),
+          eq(integrations.providerId, 'custom'),
+          eq(integrations.isEnabled, true),
+          eq(integrations.allowPersonalUse, true),
+          eq(teamIntegrationLinks.isEnabled, true),
+          inArray(teamIntegrationLinks.teamId, teamIds),
+        ),
+      )
+      .limit(1);
+    return row;
   }
 
   private safeDecrypt(encrypted: string, context: string): string {
