@@ -1,4 +1,4 @@
-// WorkenAI logo (full-logo.png, 106x29) inlined as base64 so brand emails
+// WorkenAI logo (full-logo.png, 128x17) inlined as base64 so brand emails
 // embed it as a CID attachment instead of a remote <img src> — the remote
 // URL (FRONTEND_URL/full-logo.png) is unreachable from a mail client when
 // FRONTEND_URL is localhost, and remote images are blocked by default in
