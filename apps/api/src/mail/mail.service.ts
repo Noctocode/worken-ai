@@ -156,11 +156,10 @@ export class MailService {
   }
 
   /**
-   * Brand header — logo image at 106×29 (matching Figma frame 4110-16154).
-   * Email clients fetch the image from the public assets bundle, so it
-   * needs FRONTEND_URL pointed at a publicly reachable host in prod.
-   * Falls back to a plain text wordmark when the image can't load (most
-   * desktop clients block remote images by default until the user opts in).
+   * Brand header — logo image at the asset's native 128×17 (full-logo.png).
+   * The previous 106×29 forced a 3.66 ratio onto a 7.53-ratio image, which
+   * stretched the wordmark vertically (the "distorted logo" bug). Rendered
+   * dimensions must match the asset's real aspect ratio.
    */
   private brandedHeader(): string {
     // The logo is embedded as a CID attachment (see logoAttachment) rather
@@ -169,7 +168,7 @@ export class MailService {
     // default in most clients. A CID image renders without either problem.
     return `
       <div style="height: 48px; margin-bottom: 30px;">
-        <img src="cid:workenai-logo" alt="WorkenAI" width="106" height="29" style="display: block; border: 0; outline: none; text-decoration: none; height: 29px; width: 106px;" />
+        <img src="cid:workenai-logo" alt="WorkenAI" width="128" height="17" style="display: block; border: 0; outline: none; text-decoration: none; height: 17px; width: 128px;" />
       </div>
     `;
   }

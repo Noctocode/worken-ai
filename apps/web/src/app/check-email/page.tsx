@@ -34,8 +34,8 @@ function CheckEmailContent() {
         <Image
           src="/full-logo.png"
           alt="WorkenAI"
-          width={106}
-          height={29}
+          width={128}
+          height={17}
           priority
         />
 
