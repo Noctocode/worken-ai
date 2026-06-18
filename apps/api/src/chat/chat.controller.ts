@@ -216,6 +216,7 @@ export class ChatController {
     await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
       projectId: conversation.projectId,
       estimatedCostCents,
+      source: transport.source,
     });
     await this.chatTransport.assertTeamBudgetNotExceeded({
       projectId: conversation.projectId,
@@ -225,6 +226,14 @@ export class ChatController {
       estimatedCostCents,
       callerUserId: user.id,
     });
+    // Per-key monthly token limit (BYOK / Custom only). Rough pre-flight
+    // estimate = prompt tokens + the same 4096-token completion ceiling
+    // the cost estimate uses; the gate no-ops for WorkenAI routes.
+    await this.chatTransport.assertIntegrationLimitNotExceeded(
+      transport,
+      user.id,
+      { estimatedTokens: promptTokens + 4096 },
+    );
 
     const apiMessages = conversationAfterPersist.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -440,6 +449,7 @@ export class ChatController {
           await chatTransport.assertTeamMemberCapNotExceeded(user.id, {
             projectId: conversation.projectId,
             estimatedCostCents: fbEstCents,
+            source: t.source,
           });
           await chatTransport.assertTeamBudgetNotExceeded({
             projectId: conversation.projectId,
@@ -448,6 +458,11 @@ export class ChatController {
           await chatTransport.assertOrgBudgetNotExceeded({
             estimatedCostCents: fbEstCents,
             callerUserId: user.id,
+          });
+          // Per-key token limit for a BYOK/Custom fallback — without this a
+          // paused / over-limit shared key would still serve the fallback.
+          await chatTransport.assertIntegrationLimitNotExceeded(t, user.id, {
+            estimatedTokens: promptTokens + 4096,
           });
         }
         // Web search is OpenRouter-specific — re-gate per candidate (uses the
@@ -633,6 +648,7 @@ export class ChatController {
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
+        integrationId: transport.integrationId ?? null,
         eventType: 'chat_call',
         model: usedModel,
         provider: transport.provider,
@@ -658,6 +674,7 @@ export class ChatController {
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
+        integrationId: transport.integrationId ?? null,
         eventType: 'chat_call',
         model: usedModel,
         provider: transport.provider,
@@ -695,6 +712,7 @@ export class ChatController {
       void this.observabilityService.recordLLMCall({
         userId: user.id,
         teamId,
+        integrationId: transport.integrationId ?? null,
         eventType: 'chat_call',
         model: usedModel,
         provider: transport.provider,
@@ -776,6 +794,7 @@ export class ChatController {
     void this.observabilityService.recordLLMCall({
       userId: user.id,
       teamId,
+      integrationId: transport.integrationId ?? null,
       eventType: 'chat_call',
       model: usedModel,
       provider: transport.provider,

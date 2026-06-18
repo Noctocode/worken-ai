@@ -3477,6 +3477,18 @@ export interface IntegrationCard {
   byokSupported: boolean;
   /** For custom rows: how many model_configs aliases reference this integration. */
   boundAliasCount: number;
+  /**
+   * When true, members of teams this key is linked into may also use it
+   * in their own personal projects/chats — not just inside the team.
+   */
+  allowPersonalUse: boolean;
+  /**
+   * Monthly usage cap for this key, counted in tokens. null = no limit,
+   * 0 = paused, >0 = enforced (chat blocked once month-to-date tokens
+   * cross it). $ figures are display-only and only known for providers
+   * with catalog pricing.
+   */
+  monthlyTokenLimit: number | null;
   stats: {
     successRate: number; // 0..1 over last 30 days
     /** Calls in the current calendar month. */
@@ -3516,6 +3528,10 @@ export async function upsertIntegration(input: {
   /** Required when providerId === "azure": endpoint + api-version +
    *  deployments. */
   config?: IntegrationConfig;
+  /** Allow members of linked teams to use this key in personal scope. */
+  allowPersonalUse?: boolean;
+  /** Monthly token usage cap (null = no limit, 0 = paused, >0 = enforced). */
+  monthlyTokenLimit?: number | null;
 }): Promise<IntegrationCard> {
   const res = await apiFetch("/integrations", {
     method: "POST",
@@ -3535,6 +3551,8 @@ export async function updateIntegration(
     isEnabled?: boolean;
     apiKey?: string | null;
     config?: IntegrationConfig;
+    allowPersonalUse?: boolean;
+    monthlyTokenLimit?: number | null;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {
@@ -3545,6 +3563,31 @@ export async function updateIntegration(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message || "Failed to update integration");
+  }
+  return res.json();
+}
+
+/** Month-to-date usage of a single key, broken down per user. Owner-only. */
+export interface KeyUsage {
+  integrationId: string;
+  monthlyTokenLimit: number | null;
+  totalTokens: number;
+  totalCostUsd: number;
+  perUser: Array<{
+    userId: string;
+    name: string | null;
+    email: string | null;
+    tokens: number;
+    costUsd: number;
+    calls: number;
+  }>;
+}
+
+export async function fetchKeyUsage(id: string): Promise<KeyUsage> {
+  const res = await apiFetch(`/integrations/${id}/usage`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch key usage");
   }
   return res.json();
 }

@@ -378,6 +378,15 @@ export const observabilityEvents = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    // Which BYOK / Custom LLM integration served this call, when the
+    // chat routed through one (source 'byok' | 'custom'). NULL for
+    // WorkenAI/OpenRouter-routed calls (no specific key). Lets the key-
+    // limit gate sum usage per integration and the admin see a per-user
+    // breakdown of who spent how much on a shared key. ON DELETE SET
+    // NULL so deleting a key doesn't wipe its historical usage rows.
+    integrationId: uuid("integration_id").references(() => integrations.id, {
+      onDelete: "set null",
+    }),
     eventType: text("event_type").notNull(), // 'arena_call' | 'evaluator_call' | 'guardrail_trigger' | future
     model: text("model"),
     provider: text("provider"), // 'openai' | 'anthropic' | 'google' | 'openrouter:other' | 'system'
@@ -407,6 +416,13 @@ export const observabilityEvents = pgTable(
     index("observability_events_success_created_idx")
       .on(table.createdAt)
       .where(sql`${table.success} = true`),
+    // Key-limit gate sums total_tokens (and cost_usd for display) per
+    // integration for the current month on every BYOK/Custom chat call.
+    // Partial index keeps that aggregate cheap and skips the bulk of
+    // rows (WorkenAI-routed) where integration_id is NULL.
+    index("observability_events_integration_created_idx")
+      .on(table.integrationId, table.createdAt)
+      .where(sql`${table.integrationId} IS NOT NULL`),
   ],
 );
 
@@ -1163,6 +1179,27 @@ export const integrations = pgTable(
     apiUrl: text("api_url"),
     apiKeyEncrypted: text("api_key_encrypted"),
     isEnabled: boolean("is_enabled").notNull().default(true),
+    // When true, members of any team this integration is linked into
+    // (team_integration_links) may also use this key in their PERSONAL
+    // scope — personal projects / personal chats — not just inside the
+    // team. When false (default), the key is usable only in team scope
+    // by linked teams. A key with no team links + this false is
+    // "owner-only" (the admin's private key). Decoupled from team
+    // linking so the admin's three sharing modes are: owner-only (no
+    // links), team-only (links, flag off), team+personal (links, flag
+    // on).
+    allowPersonalUse: boolean("allow_personal_use").notNull().default(false),
+    // Monthly usage limit for THIS key, counted in tokens (sum of
+    // observability_events.total_tokens for this integration in the
+    // current calendar month). Tokens are the unit because every route
+    // records them, whereas cost_usd is NULL for Custom LLMs (no catalog
+    // pricing). Tri-state, mirrors the budget columns elsewhere:
+    //   - NULL → no limit (gate is a silent pass)
+    //   - 0    → key paused (every call blocked — admin kill switch)
+    //   - >0   → enforced; chat blocked once month-to-date tokens >= limit
+    // The $ figures the admin sees are display-only and only populated
+    // for providers with catalog pricing.
+    monthlyTokenLimit: integer("monthly_token_limit"),
     // Provider-specific extras (Azure endpoint / api-version /
     // deployments). `{}` for every other provider. Azure keeps
     // `apiUrl` NULL so it stays covered by the predefined unique
