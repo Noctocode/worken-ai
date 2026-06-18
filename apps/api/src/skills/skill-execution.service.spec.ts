@@ -108,10 +108,17 @@ function gatingProvider(
   };
 }
 
+/** Deny-by-default sandbox (Phase B behavior) unless a test overrides. */
+const denySandbox = {
+  isAvailable: () => false,
+  run: () => Promise.reject(new Error('sandbox unavailable')),
+};
+
 function makeSvc(
   db: unknown,
   provider: unknown,
   deps = makeDeps(),
+  sandbox: unknown = denySandbox,
 ): SkillExecutionService {
   return new SkillExecutionService(
     db as never,
@@ -120,6 +127,7 @@ function makeSvc(
     deps.transport as never,
     deps.observability as never,
     deps.catalog as never,
+    sandbox as never,
   );
 }
 

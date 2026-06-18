@@ -14,7 +14,11 @@ import { ToolCallingService } from '../integrations/tool-calling.service.js';
 import type { AgentLoopEvent } from '../integrations/agent-tools.types.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
-import { ToolRegistryService } from './tool-registry.service.js';
+import {
+  ToolRegistryService,
+  type StoredArtifact,
+} from './tool-registry.service.js';
+import { SKILL_SANDBOX, type SkillSandboxRuntime } from './skill-sandbox.js';
 
 /** Hard cap on model↔tool round-trips per run (fail-closed). */
 const MAX_ITERATIONS = 8;
@@ -48,6 +52,13 @@ export type SkillRunEvent =
   | AgentLoopEvent
   | { type: 'run_started'; runId: string }
   | { type: 'cost_estimate'; estimatedUsd: number | null }
+  | {
+      type: 'artifact';
+      id: string;
+      filename: string;
+      mimeType: string;
+      sizeBytes: number;
+    }
   | {
       type: 'run_done';
       runId: string;
@@ -85,10 +96,16 @@ export class SkillExecutionService {
     private readonly transport: ChatTransportService,
     private readonly observability: ObservabilityService,
     private readonly catalog: OpenRouterCatalogService,
+    @Inject(SKILL_SANDBOX) private readonly sandbox: SkillSandboxRuntime,
   ) {}
 
-  /** Build the system prompt: skill instructions + reference scripts + tool note. */
-  private buildSystem(skill: typeof skills.$inferSelect): string {
+  /** Build the system prompt: skill instructions + scripts + tool note. When
+   *  scripts are executable (`canRunScripts`), they're presented as runnable
+   *  via run_script rather than as read-only reference. */
+  private buildSystem(
+    skill: typeof skills.$inferSelect,
+    canRunScripts: boolean,
+  ): string {
     const parts = [skill.instructions];
     const scripts = skill.scripts ?? [];
     if (scripts.length > 0) {
@@ -99,11 +116,15 @@ export class SkillExecutionService {
         )
         .join('\n\n');
       parts.push(
-        `\n\n## Reference scripts\nThese are the skill's scripts. They are NOT executed in this version — use them only to reason about how to complete the task.\n\n${rendered}`,
+        canRunScripts
+          ? `\n\n## Scripts\nThese are the skill's scripts. Run one with the run_script tool (by name, or omit the name for the entrypoint) to execute it in a sandbox and capture its output + any files it produces.\n\n${rendered}`
+          : `\n\n## Reference scripts\nThese are the skill's scripts. They are NOT executed in this version — use them only to reason about how to complete the task.\n\n${rendered}`,
       );
     }
     parts.push(
-      `\n\n## Tools\nUse kc_search and read_attached_file to gather what you need from the user's Knowledge Core, then produce the final answer.`,
+      canRunScripts
+        ? `\n\n## Tools\nUse kc_search and read_attached_file to gather what you need from the user's Knowledge Core, run_script to execute the skill's scripts, then produce the final answer.`
+        : `\n\n## Tools\nUse kc_search and read_attached_file to gather what you need from the user's Knowledge Core, then produce the final answer.`,
     );
     return parts.join('');
   }
@@ -152,7 +173,21 @@ export class SkillExecutionService {
     const runId = run.id;
     yield { type: 'run_started', runId };
 
-    const { tools, dispatch } = this.toolRegistry.build({ userId });
+    // Scripts run only when a real sandbox is configured (else they stay
+    // reference-only, the Phase-B behavior).
+    const canRunScripts =
+      this.sandbox.isAvailable() && (skill.scripts?.length ?? 0) > 0;
+    // Artifacts produced by run_script, collected as they're persisted and
+    // streamed to the client as `artifact` events.
+    const producedArtifacts: StoredArtifact[] = [];
+    let emittedArtifacts = 0;
+    const { tools, dispatch } = this.toolRegistry.build({
+      userId,
+      runId,
+      scripts: skill.scripts ?? [],
+      onArtifacts: (a) => producedArtifacts.push(...a),
+      signal: ac.signal,
+    });
     const callInputs = new Map<string, unknown>();
     let stepIndex = 0;
     // Spend accumulated across the run's upstream calls. Read by onBeforeCall
@@ -162,7 +197,7 @@ export class SkillExecutionService {
     let errorMessage: string | null = null;
 
     try {
-      const system = this.buildSystem(skill);
+      const system = this.buildSystem(skill, canRunScripts);
       const userMessage = params.userMessage?.trim() || 'Run this skill.';
 
       // Resolve the route once for per-call budget gating; reused every round.
@@ -268,6 +303,18 @@ export class SkillExecutionService {
           finalStatus = 'cancelled';
         }
         yield ev;
+        // Flush any artifacts run_script persisted during this event's
+        // dispatch (e.g. on the tool_result of a run_script call).
+        while (emittedArtifacts < producedArtifacts.length) {
+          const a = producedArtifacts[emittedArtifacts++];
+          yield {
+            type: 'artifact',
+            id: a.id,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            sizeBytes: a.sizeBytes,
+          };
+        }
       }
     } catch (err) {
       finalStatus = 'failed';
