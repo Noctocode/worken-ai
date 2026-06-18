@@ -21,6 +21,25 @@ const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 /** How often the retention reaper runs. */
 const REAP_INTERVAL_MS = 60 * 60 * 1000;
 
+/** Make `name` unique within `used` by suffixing " (2)", " (3)", … before the
+ *  extension, recording the result. */
+function uniqueName(name: string, used: Set<string>): string {
+  if (!used.has(name)) {
+    used.add(name);
+    return name;
+  }
+  const ext = path.extname(name);
+  const base = name.slice(0, name.length - ext.length);
+  let n = 2;
+  let candidate = `${base} (${n})${ext}`;
+  while (used.has(candidate)) {
+    n += 1;
+    candidate = `${base} (${n})${ext}`;
+  }
+  used.add(candidate);
+  return candidate;
+}
+
 /**
  * Owns the lifecycle of files produced by a sandboxed skill run (Option #3,
  * Phase D): store them on disk + index them in `skill_artifacts`, stream them
@@ -68,9 +87,16 @@ export class SkillArtifactService implements OnModuleInit, OnModuleDestroy {
     const expiresAt = new Date(now.getTime() + RETENTION_MS);
 
     const rows: (typeof skillArtifacts.$inferSelect)[] = [];
+    const used = new Set<string>();
     for (const file of files) {
-      // Never trust the producer's path — collapse to a basename.
-      const safeName = path.basename(file.filename) || 'artifact';
+      // Never trust the producer's path — collapse to a basename, and
+      // de-duplicate within the run so two files that share a basename don't
+      // overwrite each other on disk (which would leave a row pointing at the
+      // wrong bytes).
+      const safeName = uniqueName(
+        path.basename(file.filename) || 'artifact',
+        used,
+      );
       const storagePath = path.join(dir, safeName);
       await fs.writeFile(storagePath, file.content);
       const [row] = await this.db

@@ -35,6 +35,20 @@ const MAX_RUN_COST_USD = 1.0;
 const CHARS_PER_TOKEN = 4;
 /** Completion tokens assumed per round for the pre-run estimate. */
 const ESTIMATE_COMPLETION_TOKENS = 1024;
+/**
+ * Conservative fallback price (USD per 1k tokens) used when the OpenRouter
+ * catalog has no entry for the model — which is the common case on the v1
+ * BYOK Anthropic-native route (its translated id may be absent from the
+ * catalog). Without this the ceiling would never accrue and a run could loop
+ * "for free"; the estimate only needs to be high enough to keep the guard live.
+ */
+const FALLBACK_USD_PER_1K_TOKENS = 0.02;
+
+function fallbackCost(promptTokens: number, completionTokens: number): number {
+  return (
+    ((promptTokens + completionTokens) / 1000) * FALLBACK_USD_PER_1K_TOKENS
+  );
+}
 
 export interface RunSkillParams {
   userId: string;
@@ -138,39 +152,55 @@ export class SkillExecutionService {
       );
     }
 
-    // Owner-scoped load + validation (v1: run your own executable skill).
-    const [skill] = await this.db
-      .select()
-      .from(skills)
-      .where(eq(skills.id, skillId));
-    if (!skill || skill.userId !== userId) {
-      throw new NotFoundException('Skill not found.');
-    }
-    if (skill.source !== 'executable') {
-      throw new BadRequestException('This skill is not executable.');
-    }
-
-    // Own AbortController so an explicit cancel (different request) can stop
-    // this run; also tripped by client disconnect via the passed-in signal.
+    // Claim the one-run-per-user slot SYNCHRONOUSLY, before any await — else two
+    // near-simultaneous requests could both pass the has() check and run at
+    // once (the second clobbering the first's AbortController). The controller
+    // is the only entry point, so a placeholder here is the lock. Wired to the
+    // real signal once the skill validates; released if validation throws.
     const ac = new AbortController();
-    if (params.signal) {
-      if (params.signal.aborted) ac.abort();
-      else
-        params.signal.addEventListener('abort', () => ac.abort(), {
-          once: true,
-        });
-    }
     this.aborters.set(userId, ac);
-    const [run] = await this.db
-      .insert(skillRuns)
-      .values({
-        skillId,
-        userId,
-        conversationId: params.conversationId ?? null,
-        status: 'running',
-      })
-      .returning({ id: skillRuns.id });
-    const runId = run.id;
+
+    // Owner-scoped load + validation + run-row creation. Anything that throws
+    // here (bad skill, DB error) must release the slot, since the main
+    // try/finally below hasn't started yet.
+    let skill: typeof skills.$inferSelect;
+    let runId: string;
+    try {
+      const [row] = await this.db
+        .select()
+        .from(skills)
+        .where(eq(skills.id, skillId));
+      if (!row || row.userId !== userId) {
+        throw new NotFoundException('Skill not found.');
+      }
+      if (row.source !== 'executable') {
+        throw new BadRequestException('This skill is not executable.');
+      }
+      skill = row;
+
+      // The AbortController is also tripped by client disconnect via the
+      // passed-in signal.
+      if (params.signal) {
+        if (params.signal.aborted) ac.abort();
+        else
+          params.signal.addEventListener('abort', () => ac.abort(), {
+            once: true,
+          });
+      }
+      const [run] = await this.db
+        .insert(skillRuns)
+        .values({
+          skillId,
+          userId,
+          conversationId: params.conversationId ?? null,
+          status: 'running',
+        })
+        .returning({ id: skillRuns.id });
+      runId = run.id;
+    } catch (err) {
+      this.aborters.delete(userId);
+      throw err;
+    }
     yield { type: 'run_started', runId };
 
     // Scripts run only when a real sandbox is configured (else they stay
@@ -193,6 +223,10 @@ export class SkillExecutionService {
     // Spend accumulated across the run's upstream calls. Read by onBeforeCall
     // (the cost-ceiling gate) and persisted as the run's rolled-up cost.
     let accumulatedCost = 0;
+    // Cost of the most recent round — used to project whether ONE more round
+    // would breach the ceiling, so the loop stops before the overshoot rather
+    // than after it.
+    let lastRoundCost = 0;
     let finalStatus: 'done' | 'failed' | 'cancelled' = 'done';
     let errorMessage: string | null = null;
 
@@ -227,7 +261,10 @@ export class SkillExecutionService {
         await this.transport.assertManagedBudgetApproved(transport, userId, {
           projectId: params.projectId ?? null,
         });
-        if (accumulatedCost >= MAX_RUN_COST_USD) {
+        // Stop if spend has reached the ceiling, OR if one more round of the
+        // same size would breach it — projecting from the last round keeps a
+        // single late round from blowing well past the cap.
+        if (accumulatedCost + lastRoundCost >= MAX_RUN_COST_USD) {
           throw new Error(
             `Skill run stopped: per-run cost ceiling of $${MAX_RUN_COST_USD.toFixed(
               2,
@@ -265,12 +302,18 @@ export class SkillExecutionService {
         if (ev.type === 'usage') {
           // One observability event + one llm step per upstream call, tagged
           // with the run id (turnId) so the multi-call turn rolls up.
-          const costDelta = await this.catalog.estimateCost(
+          // Price the round from the catalog; fall back to a conservative
+          // token estimate when the model isn't in it (the BYOK case) so the
+          // ceiling always accrues and the run can never loop cost-blind.
+          const catalogCost = await this.catalog.estimateCost(
             modelIdentifier,
             ev.promptTokens,
             ev.completionTokens,
           );
-          if (costDelta != null) accumulatedCost += costDelta;
+          const roundCost =
+            catalogCost ?? fallbackCost(ev.promptTokens, ev.completionTokens);
+          accumulatedCost += roundCost;
+          lastRoundCost = roundCost;
           await this.observability.recordLLMCall({
             userId,
             eventType: 'skill_run_call',
@@ -278,10 +321,10 @@ export class SkillExecutionService {
             promptTokens: ev.promptTokens,
             completionTokens: ev.completionTokens,
             totalTokens: ev.totalTokens,
-            costUsd: costDelta,
+            costUsd: roundCost,
             success: true,
             turnId: runId,
-            metadata: { skillId, runId },
+            metadata: { skillId, runId, costEstimated: catalogCost == null },
           });
           await this.db.insert(skillRunSteps).values({
             runId,
@@ -291,7 +334,7 @@ export class SkillExecutionService {
             promptTokens: ev.promptTokens,
             completionTokens: ev.completionTokens,
             totalTokens: ev.totalTokens,
-            costUsd: costDelta != null ? String(costDelta) : null,
+            costUsd: String(roundCost),
             success: true,
           });
         }

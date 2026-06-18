@@ -122,7 +122,7 @@ export class ContainerSandbox implements SkillSandboxRuntime {
       '--cap-drop',
       'ALL',
       '--security-opt',
-      'no-new-privileges',
+      'no-new-privileges:true',
       '--user',
       '1000:1000',
       // Read-only root; writable scratch only via tmpfs + the /out mount.

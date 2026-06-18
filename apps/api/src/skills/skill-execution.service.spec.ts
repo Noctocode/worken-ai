@@ -264,8 +264,9 @@ describe('SkillExecutionService.run', () => {
 
   it('fails closed when the per-run cost ceiling is reached', async () => {
     const { db, runUpdates } = makeDb(SKILL);
-    // 0.6/call vs the $1.00 ceiling: call 0 ok (acc→0.6), call 1 ok (acc→1.2),
-    // call 2's pre-flight gate sees acc≥1.0 and stops the loop.
+    // 0.6/call vs the $1.00 ceiling. Call 0 runs (acc→0.6, last→0.6). Call 1's
+    // pre-flight gate projects acc+last = 1.2 ≥ 1.0 and stops BEFORE spending
+    // again — so only one call is billed (stop before the overshoot).
     const deps = makeDeps(0.6);
     const svc = makeSvc(
       db,
@@ -281,8 +282,8 @@ describe('SkillExecutionService.run', () => {
       svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
     )) as { type: string; status?: string; message?: string }[];
 
-    // Only two calls were billed before the ceiling tripped.
-    expect(deps.recorded).toHaveLength(2);
+    // Only the first call was billed before the projected ceiling tripped.
+    expect(deps.recorded).toHaveLength(1);
     const err = events.find((e) => e.type === 'error');
     expect(err?.message).toMatch(/cost ceiling/i);
     expect(events.at(-1)).toMatchObject({
@@ -290,5 +291,29 @@ describe('SkillExecutionService.run', () => {
       status: 'failed',
     });
     expect(runUpdates.at(-1)).toMatchObject({ status: 'failed' });
+  });
+
+  it('still accrues cost (and can hit the ceiling) when the catalog has no price', async () => {
+    const { db } = makeDb(SKILL);
+    // Catalog returns null → the run falls back to a token-based estimate, so
+    // the ceiling is NOT bypassed. ~1000 prompt+completion tokens at the
+    // $0.02/1k fallback ≈ $0.02/call.
+    const deps = makeDeps(0.02);
+    deps.catalog.estimateCost = () => Promise.resolve(null);
+    const svc = makeSvc(
+      db,
+      gatingProvider([{ promptTokens: 600, completionTokens: 400 }]),
+      deps,
+    );
+
+    const events = (await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    )) as { type: string; costUsd?: number }[];
+
+    // One call recorded with a non-zero fallback cost (not silently $0).
+    expect(deps.recorded).toHaveLength(1);
+    expect(Number(deps.recorded[0].costUsd)).toBeCloseTo(0.02, 6);
+    const done = events.at(-1)!;
+    expect(done.costUsd).toBeCloseTo(0.02, 6);
   });
 });

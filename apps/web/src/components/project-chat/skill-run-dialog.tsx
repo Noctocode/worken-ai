@@ -99,9 +99,20 @@ export function SkillRunDialog({
         setView((v) => reduceSkillRun(v, ev));
       }
     } catch (err) {
-      // Pre-flight failure (flag off, non-Anthropic model, …) or a dropped
-      // stream — surface it as a failed run unless the user aborted.
-      if (!ctrl.signal.aborted) {
+      if (ctrl.signal.aborted) {
+        // User hit Stop — the abort cut our stream before run_done arrived, so
+        // settle the view as cancelled rather than leaving it stuck "running".
+        setView((v) =>
+          reduceSkillRun(v, {
+            type: "run_done",
+            runId: v.runId ?? "",
+            status: "cancelled",
+            costUsd: v.costUsd ?? 0,
+          }),
+        );
+      } else {
+        // Pre-flight failure (flag off, non-Anthropic model, …) or a dropped
+        // stream — surface it as a failed run.
         const msg = err instanceof Error ? err.message : String(err);
         setView((v) => reduceSkillRun(v, { type: "error", message: msg }));
       }

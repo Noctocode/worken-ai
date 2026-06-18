@@ -72,7 +72,7 @@ describe('ContainerSandbox.buildDockerArgs (hardening)', () => {
     expect(joined).toContain('--pids-limit 256');
     // Privilege lockdown.
     expect(joined).toContain('--cap-drop ALL');
-    expect(joined).toContain('--security-opt no-new-privileges');
+    expect(joined).toContain('--security-opt no-new-privileges:true');
     expect(joined).toContain('--user 1000:1000');
     // Read-only root; inputs ro, outputs rw, tmpfs scratch.
     expect(joined).toContain('--read-only');

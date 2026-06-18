@@ -8,6 +8,7 @@ import { SkillArtifactService } from './skill-artifact.service.js';
 import {
   DEFAULT_SANDBOX_LIMITS,
   SKILL_SANDBOX,
+  type SandboxRunResult,
   type SkillSandboxRuntime,
 } from './skill-sandbox.js';
 
@@ -195,25 +196,41 @@ export class ToolRegistryService {
             const available = (ctx.scripts ?? []).map((s) => s.name).join(', ');
             return `Error: no matching script. Specify scriptName as one of: ${available || '(none)'}.`;
           }
-          const result = await this.sandbox.run({
-            language: script.language,
-            script: script.content,
-            limits: DEFAULT_SANDBOX_LIMITS,
-            signal: ctx.signal,
-          });
+          // Sandbox/store failures (daemon down, disk error) are infra issues,
+          // not the model's fault — return a concise corrective message rather
+          // than letting a raw exception become a confusing tool error the
+          // model retries against.
+          let result: SandboxRunResult;
+          try {
+            result = await this.sandbox.run({
+              language: script.language,
+              script: script.content,
+              limits: DEFAULT_SANDBOX_LIMITS,
+              signal: ctx.signal,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return `Error: could not run "${script.name}" — the execution sandbox is unavailable (${msg}). Do not retry.`;
+          }
           // Persist + surface any produced files.
           let artifactNote = 'No files were produced.';
           if (result.artifacts.length > 0) {
-            const stored = await this.artifacts.store(
-              ctx.runId,
-              result.artifacts,
-            );
-            const surfaced: StoredArtifact[] = stored.map((a) => ({
-              id: a.id,
-              filename: a.filename,
-              mimeType: a.mimeType,
-              sizeBytes: a.sizeBytes,
-            }));
+            let surfaced: StoredArtifact[];
+            try {
+              const stored = await this.artifacts.store(
+                ctx.runId,
+                result.artifacts,
+              );
+              surfaced = stored.map((a) => ({
+                id: a.id,
+                filename: a.filename,
+                mimeType: a.mimeType,
+                sizeBytes: a.sizeBytes,
+              }));
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              return `Ran "${script.name}" but its output files could not be saved (${msg}). The script itself succeeded; do not retry just to regenerate the files.`;
+            }
             ctx.onArtifacts?.(surfaced);
             artifactNote = `Produced ${surfaced.length} artifact(s): ${surfaced
               .map((a) => `${a.filename} (${a.sizeBytes} bytes)`)

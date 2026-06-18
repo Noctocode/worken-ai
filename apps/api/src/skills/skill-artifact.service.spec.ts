@@ -81,6 +81,33 @@ describe('SkillArtifactService', () => {
       expect(rows).toHaveLength(1);
     });
 
+    it('de-duplicates files that collapse to the same basename', async () => {
+      jest.spyOn(fs, 'mkdir').mockResolvedValue(undefined as never);
+      const write = jest
+        .spyOn(fs, 'writeFile')
+        .mockResolvedValue(undefined as never);
+      const { db, inserted } = makeDb();
+      const svc = new SkillArtifactService(db as never);
+
+      await svc.store('run-1', [
+        {
+          filename: 'a/r.csv',
+          mimeType: 'text/csv',
+          content: Buffer.from('1'),
+        },
+        {
+          filename: 'b/r.csv',
+          mimeType: 'text/csv',
+          content: Buffer.from('2'),
+        },
+      ]);
+
+      // Distinct on-disk paths → no overwrite; distinct row filenames.
+      const paths = write.mock.calls.map((c) => c[0] as string);
+      expect(new Set(paths).size).toBe(2);
+      expect(inserted.map((r) => r.filename)).toEqual(['r.csv', 'r (2).csv']);
+    });
+
     it('is a no-op for a run with no files', async () => {
       const mkdir = jest.spyOn(fs, 'mkdir');
       const { db } = makeDb();
