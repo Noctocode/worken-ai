@@ -34,6 +34,7 @@ import {
 } from '../guardrails/guardrail-evaluator.service.js';
 import {
   ChatTransportService,
+  ESTIMATED_COMPLETION_TOKENS,
   type ChatTransport,
 } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -419,6 +420,9 @@ export class CompareModelsController {
 
         for (let ci = 0; ci < candidates.length; ci++) {
           const candidate = candidates[ci];
+          // Per-key token reservation for this attempt; released in the
+          // stream finally below so reserved tokens free up promptly.
+          let reservationId: string | null = null;
 
           // Per-candidate pre-flight (transport + budget gates). A failure
           // here is a budget/approval problem, not model availability — it
@@ -437,7 +441,7 @@ export class CompareModelsController {
             const estimatedCostUsd = await this.catalogService.estimateCost(
               candidate,
               promptTok,
-              4096,
+              ESTIMATED_COMPLETION_TOKENS,
             );
             const estimatedCostCents =
               estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
@@ -454,11 +458,12 @@ export class CompareModelsController {
               estimatedCostCents,
               callerUserId: user.id,
             });
-            await this.chatTransport.assertIntegrationLimitNotExceeded(
-              t,
-              user.id,
-              { estimatedTokens: promptTok + 4096 },
-            );
+            reservationId =
+              await this.chatTransport.assertIntegrationLimitNotExceeded(
+                t,
+                user.id,
+                { estimatedTokens: promptTok + ESTIMATED_COMPLETION_TOKENS },
+              );
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             const status =
@@ -543,6 +548,9 @@ export class CompareModelsController {
             };
           } finally {
             if (timer) clearTimeout(timer);
+            await this.chatTransport.releaseIntegrationReservation(
+              reservationId,
+            );
           }
 
           // The attempt's own abort fired (not the run) before any token →

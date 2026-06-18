@@ -21,7 +21,10 @@ import {
   GuardrailEvaluatorService,
   STREAM_REEVAL_CHUNK_BYTES,
 } from '../guardrails/guardrail-evaluator.service.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  ESTIMATED_COMPLETION_TOKENS,
+} from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -179,6 +182,9 @@ export class ChatController {
       projectId: conversation.projectId,
     });
     let usedModel = requestedModel;
+    // Per-key token reservation for the primary candidate; released in the
+    // stream generator's per-candidate finally (candidate 0 carries this id).
+    let primaryReservationId: string | null = null;
 
     // Effective web search = the project switch AND the OpenRouter route AND
     // the org/team capability. The web plugin is OpenRouter-specific, so it
@@ -199,7 +205,7 @@ export class ChatController {
     const estimatedCostUsd = await this.catalogService.estimateCost(
       requestedModel,
       promptTokens,
-      4096,
+      ESTIMATED_COMPLETION_TOKENS,
     );
     // Web search adds an OpenRouter surcharge the catalog price doesn't
     // cover. Representative flat estimate = the Exa fallback rate of
@@ -227,13 +233,14 @@ export class ChatController {
       callerUserId: user.id,
     });
     // Per-key monthly token limit (BYOK / Custom only). Rough pre-flight
-    // estimate = prompt tokens + the same 4096-token completion ceiling
-    // the cost estimate uses; the gate no-ops for WorkenAI routes.
-    await this.chatTransport.assertIntegrationLimitNotExceeded(
-      transport,
-      user.id,
-      { estimatedTokens: promptTokens + 4096 },
-    );
+    // estimate = prompt tokens + the shared completion ceiling the cost
+    // estimate uses; the gate no-ops for WorkenAI routes.
+    primaryReservationId =
+      await this.chatTransport.assertIntegrationLimitNotExceeded(
+        transport,
+        user.id,
+        { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
+      );
 
     const apiMessages = conversationAfterPersist.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -424,6 +431,10 @@ export class ChatController {
         // Reuse the primary transport (already resolved + budget-approved);
         // re-resolve + re-gate for fallbacks (they may route differently).
         let t = transport;
+        // Candidate 0 carries the primary reservation made before the loop;
+        // fallbacks reserve their own below. Released in the finally.
+        let reservationId: string | null =
+          i === 0 ? primaryReservationId : null;
         if (i > 0) {
           t = await chatTransport.resolve({
             userId: user.id,
@@ -440,7 +451,7 @@ export class ChatController {
           const fbEstUsd = await catalogService.estimateCost(
             candidate,
             promptTokens,
-            4096,
+            ESTIMATED_COMPLETION_TOKENS,
           );
           const fbEstCents = Math.ceil(
             ((fbEstUsd ?? 0) + (fbWebSearch ? WEB_SEARCH_SURCHARGE_USD : 0)) *
@@ -461,9 +472,11 @@ export class ChatController {
           });
           // Per-key token limit for a BYOK/Custom fallback — without this a
           // paused / over-limit shared key would still serve the fallback.
-          await chatTransport.assertIntegrationLimitNotExceeded(t, user.id, {
-            estimatedTokens: promptTokens + 4096,
-          });
+          reservationId = await chatTransport.assertIntegrationLimitNotExceeded(
+            t,
+            user.id,
+            { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
+          );
         }
         // Web search is OpenRouter-specific — re-gate per candidate (uses the
         // final resolved transport for this candidate).
@@ -527,6 +540,7 @@ export class ChatController {
           }
         } finally {
           if (timer) clearTimeout(timer);
+          await chatTransport.releaseIntegrationReservation(reservationId);
         }
 
         // The attempt's own abort fired (not the client) before any token →
