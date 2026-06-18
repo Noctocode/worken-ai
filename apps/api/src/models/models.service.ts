@@ -333,6 +333,11 @@ export class ModelsService {
                 inArray(teamIntegrationLinks.teamId, teamIds),
                 eq(teamIntegrationLinks.isEnabled, true),
                 eq(integrations.isEnabled, true),
+                // Don't surface a key whose owner has left the linked team.
+                ownerStillOnTeam(
+                  teamIntegrationLinks.teamId,
+                  integrations.ownerId,
+                ),
               ),
             )
         : [];
@@ -379,6 +384,7 @@ export class ModelsService {
             eq(teamIntegrationLinks.isEnabled, true),
             eq(integrations.providerId, 'custom'),
             eq(integrations.isEnabled, true),
+            ownerStillOnTeam(teamIntegrationLinks.teamId, integrations.ownerId),
           ),
         );
       teamCustom.forEach((r) => enabledCustomIntegrationIds.add(r.id));
@@ -423,6 +429,10 @@ export class ModelsService {
                   eq(teamIntegrationLinks.isEnabled, true),
                   eq(integrations.providerId, 'azure'),
                   eq(integrations.isEnabled, true),
+                  ownerStillOnTeam(
+                    teamIntegrationLinks.teamId,
+                    integrations.ownerId,
+                  ),
                 ),
               )
           : [];

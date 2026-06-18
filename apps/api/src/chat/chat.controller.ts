@@ -182,9 +182,6 @@ export class ChatController {
       projectId: conversation.projectId,
     });
     let usedModel = requestedModel;
-    // Per-key token reservation for the primary candidate; released in the
-    // stream generator's per-candidate finally (candidate 0 carries this id).
-    let primaryReservationId: string | null = null;
 
     // Effective web search = the project switch AND the OpenRouter route AND
     // the org/team capability. The web plugin is OpenRouter-specific, so it
@@ -234,13 +231,18 @@ export class ChatController {
     });
     // Per-key monthly token limit (BYOK / Custom only). Rough pre-flight
     // estimate = prompt tokens + the shared completion ceiling the cost
-    // estimate uses; the gate no-ops for WorkenAI routes.
-    primaryReservationId =
-      await this.chatTransport.assertIntegrationLimitNotExceeded(
-        transport,
-        user.id,
-        { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
-      );
+    // estimate uses; the gate no-ops for WorkenAI routes. Pre-flight CHECK
+    // only (reserve:false) so a clean 402 surfaces before SSE headers flush;
+    // the actual reservation is made per-candidate inside the stream
+    // generator (so it can't leak if the RAG / fallback prep below throws).
+    await this.chatTransport.assertIntegrationLimitNotExceeded(
+      transport,
+      user.id,
+      {
+        estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS,
+        reserve: false,
+      },
+    );
 
     const apiMessages = conversationAfterPersist.messages.map((m) => ({
       role: m.role as 'user' | 'assistant',
@@ -431,10 +433,10 @@ export class ChatController {
         // Reuse the primary transport (already resolved + budget-approved);
         // re-resolve + re-gate for fallbacks (they may route differently).
         let t = transport;
-        // Candidate 0 carries the primary reservation made before the loop;
-        // fallbacks reserve their own below. Released in the finally.
-        let reservationId: string | null =
-          i === 0 ? primaryReservationId : null;
+        // Per-key token reservation for THIS attempt; released in the
+        // per-candidate finally below. Always made inside the generator
+        // (never before it) so it can't leak if pre-flight work throws.
+        let reservationId: string | null = null;
         if (i > 0) {
           t = await chatTransport.resolve({
             userId: user.id,
@@ -470,14 +472,16 @@ export class ChatController {
             estimatedCostCents: fbEstCents,
             callerUserId: user.id,
           });
-          // Per-key token limit for a BYOK/Custom fallback — without this a
-          // paused / over-limit shared key would still serve the fallback.
-          reservationId = await chatTransport.assertIntegrationLimitNotExceeded(
-            t,
-            user.id,
-            { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
-          );
         }
+        // Per-key token limit + reservation for the chosen candidate (every
+        // candidate, including the primary). The pre-flight gate before the
+        // stream only CHECKED (reserve:false); this is the authoritative
+        // reservation, released in the finally so it can't leak.
+        reservationId = await chatTransport.assertIntegrationLimitNotExceeded(
+          t,
+          user.id,
+          { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
+        );
         // Web search is OpenRouter-specific — re-gate per candidate (uses the
         // final resolved transport for this candidate).
         const candidateWebSearch = webSearch && t.source === 'openrouter';

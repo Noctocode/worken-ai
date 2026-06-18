@@ -431,7 +431,8 @@ export class ChatTransportService {
 
       // A team-shared custom LLM must also have its per-team link enabled —
       // mirrors the team BYOK branch below and the model picker, so pausing
-      // a team's link actually stops routing here (not just hides it).
+      // a team's link actually stops routing here (not just hides it). The
+      // key owner must also still be on the team (stale-link guard).
       let teamLinkEnabled = true;
       if (aliasViaTeam && teamScopeId) {
         const [link] = await this.db
@@ -441,6 +442,10 @@ export class ChatTransportService {
             and(
               eq(teamIntegrationLinks.teamId, teamScopeId),
               eq(teamIntegrationLinks.integrationId, alias.integrationId),
+              ownerStillOnTeam(
+                sql`${teamScopeId}`,
+                sql`${integration?.ownerId ?? null}`,
+              ),
             ),
           )
           .limit(1);
@@ -520,6 +525,11 @@ export class ChatTransportService {
               eq(integrations.providerId, provider),
               eq(integrations.isEnabled, true),
               isNull(integrations.apiUrl),
+              // Key owner must still be on the team (stale-link guard).
+              ownerStillOnTeam(
+                teamIntegrationLinks.teamId,
+                integrations.ownerId,
+              ),
             ),
           )
           .limit(1);
@@ -1318,7 +1328,7 @@ export class ChatTransportService {
   async assertIntegrationLimitNotExceeded(
     transport: Pick<ChatTransport, 'source' | 'integrationId'>,
     userId: string,
-    options: { estimatedTokens?: number } = {},
+    options: { estimatedTokens?: number; reserve?: boolean } = {},
   ): Promise<string | null> {
     if (transport.source !== 'byok' && transport.source !== 'custom') {
       return null;
@@ -1345,7 +1355,7 @@ export class ChatTransportService {
     // leaked reservations (crashed / disconnected callers) older than 10
     // minutes so a never-released reservation can't permanently shrink the
     // key's budget.
-    const { decision, usedTokens, spentUsd, reservationId } =
+    const { decision, alerts, usedTokens, spentUsd, reservationId } =
       await this.db.transaction(async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(hashtext(${integrationId}))`,
@@ -1387,18 +1397,29 @@ export class ChatTransportService {
           .where(eq(integrationTokenReservations.integrationId, integrationId));
         const reserved = resvAgg ? parseInt(resvAgg.reserved, 10) || 0 : 0;
 
+        // Block decision counts recorded usage + in-flight reservations:
+        // the concurrency guard.
         const d = decideIntegrationLimit({
           limitTokens: limit,
-          // Recorded usage + in-flight reservations: the concurrency guard.
           usedTokens: used + reserved,
+          estimatedTokens: estimate,
+        });
+        // Alerts are decided on RECORDED usage only — transient reservations
+        // must not fire a false "80% / hit limit" notification that real
+        // usage never reaches.
+        const alertDecision = decideIntegrationLimit({
+          limitTokens: limit,
+          usedTokens: used,
           estimatedTokens: estimate,
         });
 
         // Reserve this call's estimate so concurrent callers see it.
-        // Nothing to reserve when blocked, or when the caller passed no
-        // estimate (post-flight-only gate, e.g. the arena judge).
+        // Skipped when blocked, when the caller passed no estimate
+        // (post-flight-only gate, e.g. the arena judge), or when the caller
+        // only wants a pre-flight check (reserve:false — the chat pre-flight
+        // gate; the per-candidate generator gate does the real reservation).
         let resId: string | null = null;
-        if (d.pass && estimate > 0) {
+        if (d.pass && estimate > 0 && options.reserve !== false) {
           const [row] = await tx
             .insert(integrationTokenReservations)
             .values({ integrationId, estimatedTokens: estimate })
@@ -1409,6 +1430,7 @@ export class ChatTransportService {
         // transient reserved total.
         return {
           decision: d,
+          alerts: alertDecision.alerts,
           usedTokens: used,
           spentUsd: cost,
           reservationId: resId,
@@ -1417,13 +1439,13 @@ export class ChatTransportService {
 
     // Fan out any crossed alerts to the key owner + the caller. Advisory
     // only — never let a notification failure abort the chat path.
-    if (decision.alerts.length > 0) {
+    if (alerts.length > 0) {
       const recipients = Array.from(new Set([integration.ownerId, userId]));
       const limitTokens = integration.limit;
       const usedStr = usedTokens.toLocaleString('en-US');
       const limitStr = limitTokens.toLocaleString('en-US');
       const costNote = spentUsd > 0 ? ` (~$${spentUsd.toFixed(2)} spent)` : '';
-      for (const threshold of decision.alerts) {
+      for (const threshold of alerts) {
         const pct = threshold === 'low' ? 'low' : threshold;
         const title =
           threshold === '100'
