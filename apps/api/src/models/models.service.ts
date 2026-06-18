@@ -14,7 +14,10 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { isAnthropicNativeSupported } from '../integrations/anthropic-client.service.js';
 import { providerOfModel } from '../integrations/native-endpoints.js';
-import { resolveUserTeamIds } from '../teams/team-membership.util.js';
+import {
+  ownerStillOnTeam,
+  resolveUserTeamIds,
+} from '../teams/team-membership.util.js';
 import {
   OpenRouterCatalogService,
   type CatalogModel,
@@ -244,6 +247,12 @@ export class ModelsService {
                 eq(teamIntegrationLinks.isEnabled, true),
                 eq(integrations.isEnabled, true),
                 eq(integrations.allowPersonalUse, true),
+                // Hide the shared key once its owner is no longer on the
+                // linked team (stale link), mirroring chat-transport.
+                ownerStillOnTeam(
+                  teamIntegrationLinks.teamId,
+                  integrations.ownerId,
+                ),
               ),
             )
         : [];
@@ -324,6 +333,11 @@ export class ModelsService {
                 inArray(teamIntegrationLinks.teamId, teamIds),
                 eq(teamIntegrationLinks.isEnabled, true),
                 eq(integrations.isEnabled, true),
+                // Don't surface a key whose owner has left the linked team.
+                ownerStillOnTeam(
+                  teamIntegrationLinks.teamId,
+                  integrations.ownerId,
+                ),
               ),
             )
         : [];
@@ -370,6 +384,7 @@ export class ModelsService {
             eq(teamIntegrationLinks.isEnabled, true),
             eq(integrations.providerId, 'custom'),
             eq(integrations.isEnabled, true),
+            ownerStillOnTeam(teamIntegrationLinks.teamId, integrations.ownerId),
           ),
         );
       teamCustom.forEach((r) => enabledCustomIntegrationIds.add(r.id));
@@ -414,6 +429,10 @@ export class ModelsService {
                   eq(teamIntegrationLinks.isEnabled, true),
                   eq(integrations.providerId, 'azure'),
                   eq(integrations.isEnabled, true),
+                  ownerStillOnTeam(
+                    teamIntegrationLinks.teamId,
+                    integrations.ownerId,
+                  ),
                 ),
               )
           : [];
