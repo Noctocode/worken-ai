@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
 
 /**
  * Lightweight heuristic that nudges the user toward a better-suited
@@ -13,6 +14,12 @@ import { Injectable } from '@nestjs/common';
  * renders a "we think X would work better — Try It" bubble below the
  * assistant message; the `done` shape change is purely additive, so
  * older FE builds that don't read the field just ignore it.
+ *
+ * The suggested id is **resolved against the live OpenRouter catalog**
+ * before it's returned: clicking "Try It" persists the id as the
+ * project's model with no further validation, so suggesting a
+ * delisted/renamed id would silently poison the project (every later
+ * turn 404s). A model that isn't in the catalog is never suggested.
  */
 export interface ModelSuggestion {
   /** Slug the user can pass back to /chat/stream as `model`. */
@@ -35,55 +42,76 @@ interface Rule {
 const RULES: Rule[] = [
   // Coding intent — keywords picked from real prompt logs (the top-
   // 20 user phrases on chat where the user followed up with "this
-  // doesn't compile"). Sonnet's the BE recommendation for code.
+  // doesn't compile"). Claude is the BE recommendation for code.
   {
     pattern:
       /\b(code|function|debug|stack ?trace|typescript|javascript|python|refactor|implement|algorithm)\b/i,
     skipIfCurrentMatches: ['anthropic/'],
     suggestion: {
-      id: 'anthropic/claude-3-5-sonnet-20241022',
-      label: 'Claude 3.5 Sonnet',
+      id: 'anthropic/claude-opus-4.7',
+      label: 'Claude Opus 4.7',
       reason:
-        'Sonnet handles structured code tasks better — fewer hallucinated API calls.',
+        'Claude handles structured code tasks better — fewer hallucinated API calls.',
     },
   },
-  // Creative writing — divergent prose / story / poem. GPT-4o has
-  // the smoothest style for long-form creative output today.
+  // Creative writing — divergent prose / story / poem. GPT has the
+  // smoothest style for long-form creative output today.
   {
     pattern: /\b(story|poem|creative|essay|narrative|character|dialogue)\b/i,
     skipIfCurrentMatches: ['openai/'],
     suggestion: {
-      id: 'openai/gpt-4o',
-      label: 'GPT-4o',
-      reason: 'GPT-4o has a smoother voice for long-form creative prose.',
+      id: 'openai/gpt-5.5',
+      label: 'GPT-5.5',
+      reason: 'GPT has a smoother voice for long-form creative prose.',
     },
   },
 ];
 
 @Injectable()
 export class ModelSuggestionService {
+  private readonly logger = new Logger(ModelSuggestionService.name);
+
+  constructor(private readonly catalog: OpenRouterCatalogService) {}
+
   /**
-   * Return a suggestion for this turn, or null. Pure function — no
-   * DB or external calls, so it adds <1ms to the chat-stream tail.
+   * Return a suggestion for this turn, or null. The keyword match is a
+   * cheap in-memory rule scan; the only async work is the catalog
+   * resolve below, against a Redis-cached list, on the chat-stream tail.
    *
-   * Always opt-in for the caller: the FE bubble only renders when
-   * the field is present, so wiring this in without rules ready
-   * (e.g. behind a flag) is a no-op for users.
+   * Always opt-in for the caller: the FE bubble only renders when the
+   * field is present, so a null is a no-op for users.
    */
-  suggest(input: {
+  async suggest(input: {
     prompt: string;
     currentModel: string;
-  }): ModelSuggestion | null {
+  }): Promise<ModelSuggestion | null> {
     const prompt = (input.prompt ?? '').slice(0, 4000); // cap to keep regex cheap
     const current = input.currentModel ?? '';
 
+    let matched: ModelSuggestion | null = null;
     for (const rule of RULES) {
       if (rule.skipIfCurrentMatches.some((p) => current.startsWith(p)))
         continue;
       if (rule.pattern.test(prompt)) {
-        return rule.suggestion;
+        matched = rule.suggestion;
+        break;
       }
     }
-    return null;
+    if (!matched) return null;
+    const chosen = matched;
+
+    // Never suggest a model the user can't actually switch to: clicking
+    // "Try It" persists the id with no validation. Fail-safe — if the
+    // catalog is unreachable, drop the suggestion rather than risk
+    // surfacing a delisted id or breaking the chat `done` event.
+    try {
+      const catalog = await this.catalog.list();
+      if (!catalog.some((m) => m.id === chosen.id)) return null;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`Suggestion catalog check failed; dropping: ${msg}`);
+      return null;
+    }
+    return chosen;
   }
 }

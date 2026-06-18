@@ -32,6 +32,7 @@ import { ObservabilityService } from '../observability/observability.service.js'
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { SkillRouterService } from '../skills/skill-router.service.js';
 import { ChatService } from './chat.service.js';
+import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { ChatGateway } from '../realtime/chat.gateway.js';
 
@@ -172,7 +173,7 @@ export class ChatController {
       user.id,
     );
 
-    const requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
+    const requestedModel = body.model ?? DEFAULT_CHAT_MODEL;
     // `transport` / `usedModel` are reassigned once the stream commits to the
     // model that actually answered (the requested one, or a fallback) so all
     // post-stream cost / observability / persistence follows the real model.
@@ -841,7 +842,7 @@ export class ChatController {
       // that don't read it just ignore it.
       const alternativeModel = clientDisconnected
         ? null
-        : this.modelSuggestions.suggest({
+        : await this.modelSuggestions.suggest({
             prompt: safePrompt,
             currentModel: body.model ?? '',
           });
