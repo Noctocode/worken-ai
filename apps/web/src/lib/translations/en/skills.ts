@@ -73,8 +73,12 @@ export const skills = {
   'skillRun.desc':
     "Runs this skill's agent loop: it can search your Knowledge Core and execute the skill's scripts in a sandbox, returning any files it produces.",
   'skillRun.modelField': 'Model',
+  'skillRun.modelPh': 'Select a model…',
+  'skillRun.modelsLoading': 'Loading models…',
+  'skillRun.noModels':
+    'No eligible model. Connect an Anthropic key in Models — executable skills run only on Anthropic-native (BYOK) models.',
   'skillRun.modelHint':
-    'Must be an Anthropic-native model (e.g. anthropic/claude-opus-4.7).',
+    'Only your Anthropic-native models with a connected key can run skills.',
   'skillRun.messageField': 'Message (optional)',
   'skillRun.messagePh': 'What should the skill do? Leave blank to just run it.',
   'skillRun.estimate': 'Est.',

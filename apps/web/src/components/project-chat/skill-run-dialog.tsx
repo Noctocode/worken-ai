@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,23 +20,28 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   cancelActiveSkillRun,
+  fetchEffectiveModels,
   skillArtifactDownloadUrl,
   streamSkillRun,
   type Skill,
 } from "@/lib/api";
+import { eligibleExecutableModels } from "@/lib/executable-model";
 import {
   initialSkillRunView,
   reduceSkillRun,
   type SkillRunView,
 } from "@/lib/skill-run-reducer";
 import { useLanguage } from "@/lib/i18n";
-
-/** Sensible Anthropic-native default; executable skills require one. */
-const DEFAULT_MODEL = "anthropic/claude-opus-4.7";
 
 function fmtUsd(n: number): string {
   return `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
@@ -51,11 +57,32 @@ export function SkillRunDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useLanguage();
-  const [model, setModel] = useState(DEFAULT_MODEL);
+  const [model, setModel] = useState("");
   const [message, setMessage] = useState("");
   const [view, setView] = useState<SkillRunView>(initialSkillRunView);
   const [running, setRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Only the user's Anthropic-native BYOK models can run an executable skill
+  // (the BE rejects every other route). Fetched lazily while the dialog is open.
+  const { data: allModels = [], isLoading: modelsLoading } = useQuery({
+    queryKey: ["models", "effective", "executable"],
+    queryFn: () => fetchEffectiveModels(),
+    enabled: open,
+  });
+  const models = useMemo(
+    () => eligibleExecutableModels(allModels),
+    [allModels],
+  );
+
+  // Default to the first eligible model; clear if the current pick disappears.
+  useEffect(() => {
+    if (models.length === 0) {
+      if (model) setModel("");
+      return;
+    }
+    if (!models.some((m) => m.id === model)) setModel(models[0].id);
+  }, [models, model]);
 
   const start = async () => {
     if (!skill || running) return;
@@ -121,12 +148,30 @@ export function SkillRunDialog({
             <label className="text-xs font-medium text-text-2">
               {t("skillRun.modelField")}
             </label>
-            <Input
-              value={model}
-              onChange={(e) => setModel(e.target.value)}
-              disabled={running}
-              className="h-10 rounded border-border-2 font-mono text-[13px]"
-            />
+            {modelsLoading ? (
+              <div className="flex h-10 items-center gap-2 rounded border border-border-2 px-3 text-[13px] text-text-3">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("skillRun.modelsLoading")}
+              </div>
+            ) : models.length === 0 ? (
+              <div className="flex items-start gap-2 rounded border border-border-2 bg-bg-1 px-3 py-2 text-[12px] text-text-2">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-3" />
+                <span>{t("skillRun.noModels")}</span>
+              </div>
+            ) : (
+              <Select value={model} onValueChange={setModel} disabled={running}>
+                <SelectTrigger className="h-10 rounded border-border-2 text-[13px]">
+                  <SelectValue placeholder={t("skillRun.modelPh")} />
+                </SelectTrigger>
+                <SelectContent>
+                  {models.map((m) => (
+                    <SelectItem key={m.id} value={m.id}>
+                      {m.name} (BYOK)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <p className="text-[11px] text-text-3">{t("skillRun.modelHint")}</p>
           </div>
           <div className="flex flex-col gap-1">

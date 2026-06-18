@@ -75,8 +75,12 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skillRun.desc':
     'Zažene agentno zanko te veščine: lahko išče po vašem Knowledge Core in izvede skripte veščine v peskovniku ter vrne morebitne ustvarjene datoteke.',
   'skillRun.modelField': 'Model',
+  'skillRun.modelPh': 'Izberite model…',
+  'skillRun.modelsLoading': 'Nalaganje modelov…',
+  'skillRun.noModels':
+    'Ni primernega modela. Povežite ključ Anthropic v Modelih — izvršljive veščine tečejo le na izvornih modelih Anthropic (BYOK).',
   'skillRun.modelHint':
-    'Mora biti izvorni model Anthropic (npr. anthropic/claude-opus-4.7).',
+    'Veščine lahko poženejo le vaši izvorni modeli Anthropic s povezanim ključem.',
   'skillRun.messageField': 'Sporočilo (neobvezno)',
   'skillRun.messagePh': 'Kaj naj veščina naredi? Pustite prazno za zgolj zagon.',
   'skillRun.estimate': 'Oc.',
