@@ -19,6 +19,7 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { OrgSettingsService } from '../org-settings/org-settings.service.js';
 import { parseSkillMd } from './skill-md.parser.js';
+import { SkillArtifactService } from './skill-artifact.service.js';
 import { SkillExecutionService } from './skill-execution.service.js';
 import { SkillRouterService } from './skill-router.service.js';
 import { SkillsService } from './skills.service.js';
@@ -69,6 +70,7 @@ export class SkillsController {
     private readonly execution: SkillExecutionService,
     private readonly orgSettings: OrgSettingsService,
     private readonly router: SkillRouterService,
+    private readonly artifacts: SkillArtifactService,
   ) {}
 
   /** 404 the executable-skills surface unless the tenant flag is on. */
@@ -105,6 +107,29 @@ export class SkillsController {
   async cancelRun(@CurrentUser() user: AuthenticatedUser) {
     await this.assertExecutableEnabled(user.id);
     return { cancelled: this.execution.cancel(user.id) };
+  }
+
+  /** The owner's generated artifacts for one run. */
+  @Get('runs/:id/artifacts')
+  async listArtifacts(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.assertExecutableEnabled(user.id);
+    return this.artifacts.listForRun(user.id, id);
+  }
+
+  /** Stream a generated artifact to its run owner. Always an attachment — the
+   *  bytes were authored by untrusted skill code, never rendered inline. */
+  @Get('artifacts/:id/download')
+  async downloadArtifact(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Res() res: Response,
+  ): Promise<void> {
+    await this.assertExecutableEnabled(user.id);
+    const artifact = await this.artifacts.getForDownload(user.id, id);
+    res.download(artifact.storagePath, artifact.filename);
   }
 
   /**
