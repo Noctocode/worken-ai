@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { skillSandboxConfig } from './skill-config.js';
 
 /**
  * Pluggable execution backend for executable skills (Option #3, Phase D / 3b).
@@ -36,13 +37,10 @@ export interface SandboxLimits {
   network: boolean;
 }
 
-/** Conservative defaults — offline, short, small. Tune in config (Phase F). */
+/** Conservative defaults — offline, short, small. Numeric caps are
+ *  env-overridable via {@link skillSandboxConfig}; network is always off. */
 export const DEFAULT_SANDBOX_LIMITS: SandboxLimits = {
-  timeoutMs: 30_000,
-  maxOutputBytes: 64 * 1024,
-  maxArtifactBytes: 25 * 1024 * 1024,
-  memoryMb: 256,
-  cpus: 1,
+  ...skillSandboxConfig,
   network: false,
 };
 

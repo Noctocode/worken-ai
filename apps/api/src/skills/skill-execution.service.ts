@@ -19,34 +19,33 @@ import {
   type StoredArtifact,
 } from './tool-registry.service.js';
 import { SKILL_SANDBOX, type SkillSandboxRuntime } from './skill-sandbox.js';
+import { skillExecutionConfig } from './skill-config.js';
 
-/** Hard cap on model↔tool round-trips per run (fail-closed). */
-const MAX_ITERATIONS = 8;
-const PREVIEW_CHARS = 1000;
 /**
- * Hard per-run cost ceiling (USD). The real cost-blowup guard for a multi-call
- * agent loop: checked before each upstream call against the run's accumulated
- * spend, so a runaway loop fails closed instead of billing without bound. The
- * v1 path bills the user's own Anthropic (BYOK) key, so this protects the
- * user directly. Tune via config later (Phase F).
+ * Agent-loop + billing caps. `maxIterations` (model↔tool round-trips) and
+ * `maxRunCostUsd` (the per-run cost ceiling — the real cost-blowup guard,
+ * checked before each upstream call so a runaway loop fails closed) are
+ * env-overridable; see {@link skillExecutionConfig}. The v1 path bills the
+ * user's own BYOK Anthropic key, so the ceiling protects the user directly.
  */
-const MAX_RUN_COST_USD = 1.0;
+const MAX_ITERATIONS = skillExecutionConfig.maxIterations;
+const MAX_RUN_COST_USD = skillExecutionConfig.maxRunCostUsd;
+const PREVIEW_CHARS = 1000;
 /** Rough chars→tokens divisor for the informational pre-run estimate. */
 const CHARS_PER_TOKEN = 4;
 /** Completion tokens assumed per round for the pre-run estimate. */
 const ESTIMATE_COMPLETION_TOKENS = 1024;
-/**
- * Conservative fallback price (USD per 1k tokens) used when the OpenRouter
- * catalog has no entry for the model — which is the common case on the v1
- * BYOK Anthropic-native route (its translated id may be absent from the
- * catalog). Without this the ceiling would never accrue and a run could loop
- * "for free"; the estimate only needs to be high enough to keep the guard live.
- */
-const FALLBACK_USD_PER_1K_TOKENS = 0.02;
 
+/**
+ * Conservative fallback price when the OpenRouter catalog has no entry for the
+ * model — common on the v1 BYOK Anthropic-native route (its translated id may
+ * be absent). Without this the ceiling would never accrue and a run could loop
+ * "for free"; the estimate only needs to keep the guard live.
+ */
 function fallbackCost(promptTokens: number, completionTokens: number): number {
   return (
-    ((promptTokens + completionTokens) / 1000) * FALLBACK_USD_PER_1K_TOKENS
+    ((promptTokens + completionTokens) / 1000) *
+    skillExecutionConfig.fallbackUsdPer1kTokens
   );
 }
 

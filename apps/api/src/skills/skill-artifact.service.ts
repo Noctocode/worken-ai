@@ -12,12 +12,14 @@ import { promises as fs } from 'node:fs';
 import * as path from 'node:path';
 import { skillArtifacts, skillRuns } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { skillArtifactConfig } from './skill-config.js';
 import type { SandboxFile } from './skill-sandbox.js';
 
 /** Root for generated artifact files. One subdir per run. */
 const ARTIFACT_DIR = path.join(process.cwd(), 'uploads', 'skill-artifacts');
-/** How long a generated artifact is kept before the reaper deletes it. */
-const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+/** How long a generated artifact is kept before the reaper deletes it
+ *  (env-overridable via SKILL_ARTIFACT_RETENTION_MS). */
+const RETENTION_MS = skillArtifactConfig.retentionMs;
 /** How often the retention reaper runs. */
 const REAP_INTERVAL_MS = 60 * 60 * 1000;
 
