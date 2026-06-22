@@ -103,21 +103,36 @@ export class DeliveryService {
       raw.length > NOTIFICATION_BODY_MAX
         ? `${raw.slice(0, NOTIFICATION_BODY_MAX)}…`
         : raw;
-    const view = await this.notifications.create({
-      userId: prompt.ownerId,
-      type: 'ai_cron_run',
-      title: succeeded
-        ? `AI Cron: ${prompt.name}`
-        : `AI Cron failed: ${prompt.name}`,
-      body,
-      data: {
-        scheduledPromptId: prompt.id,
-        runId: payload.runId,
-        status: payload.status,
-      },
-    });
-    // create() swallows its own errors and returns null on failure.
-    return view ? 'sent' : 'failed';
+    const title = succeeded
+      ? `AI Cron: ${prompt.name}`
+      : `AI Cron failed: ${prompt.name}`;
+    const data = {
+      scheduledPromptId: prompt.id,
+      runId: payload.runId,
+      status: payload.status,
+    };
+
+    // Owner always gets it; plus any extra company members the schedule
+    // names (validated on save). Dedupe so the owner isn't notified twice
+    // if they're somehow also in the list.
+    const recipients = Array.from(
+      new Set([prompt.ownerId, ...(prompt.notifyUserIds ?? [])]),
+    );
+    const results = await Promise.all(
+      recipients.map((userId) =>
+        this.notifications.create({
+          userId,
+          type: 'ai_cron_run',
+          title,
+          body,
+          data,
+        }),
+      ),
+    );
+    // create() swallows its own errors and returns null on failure. Report
+    // 'sent' if the owner's notification (first) landed; the extras are
+    // best-effort fan-out.
+    return results[0] ? 'sent' : 'failed';
   }
 
   private async deliverEmail(

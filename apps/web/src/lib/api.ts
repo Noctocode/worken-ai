@@ -4794,6 +4794,8 @@ export interface ScheduledPrompt {
   deliverEmail: boolean;
   deliverWebhook: boolean;
   emailRecipients: string[] | null;
+  /** Extra in-app notification recipients (company member user ids). */
+  notifyUserIds: string[] | null;
   webhookUrl: string | null;
   isEnabled: boolean;
   lastRunAt: string | null;
@@ -4837,6 +4839,8 @@ export interface ScheduledPromptInput {
   deliverEmail?: boolean;
   deliverWebhook?: boolean;
   emailRecipients?: string[];
+  /** Extra in-app notification recipients (company member user ids). */
+  notifyUserIds?: string[];
   webhookUrl?: string | null;
   isEnabled?: boolean;
 }

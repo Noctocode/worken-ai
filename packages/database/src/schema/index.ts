@@ -1697,6 +1697,10 @@ export const scheduledPrompts = pgTable(
     // Recipient addresses for the email channel (the user can type extra
     // addresses on the form besides their own).
     emailRecipients: jsonb("email_recipients").$type<string[]>(),
+    // Extra in-app notification recipients besides the owner: user ids that
+    // must share the owner's company (validated on save). NULL / empty =
+    // owner only (the default — the owner always gets the run notification).
+    notifyUserIds: jsonb("notify_user_ids").$type<string[]>(),
     webhookUrl: text("webhook_url"),
     // Pause flag — disabled jobs are skipped by the scanner without losing
     // their schedule/history.

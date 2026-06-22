@@ -7,12 +7,13 @@ import {
 } from '@nestjs/common';
 import { CronExpressionParser } from 'cron-parser';
 import cronstrue from 'cronstrue';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import {
   scheduledPromptRuns,
   scheduledPrompts,
   teamMembers,
   teams,
+  users,
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
@@ -56,6 +57,9 @@ export interface CreateScheduledPromptInput {
   deliverInApp?: boolean;
   deliverEmail?: boolean;
   emailRecipients?: string[];
+  /** Extra in-app notification recipients (besides the owner): user ids in
+   *  the owner's company. Ids outside the company are dropped on save. */
+  notifyUserIds?: string[];
   deliverWebhook?: boolean;
   webhookUrl?: string | null;
   isEnabled?: boolean;
@@ -332,6 +336,12 @@ export class AiCronService {
     if (input.emailRecipients !== undefined) {
       out.emailRecipients = this.normalizeEmails(input.emailRecipients);
     }
+    if (input.notifyUserIds !== undefined) {
+      out.notifyUserIds = await this.normalizeNotifyUserIds(
+        userId,
+        input.notifyUserIds,
+      );
+    }
     if (input.deliverWebhook !== undefined) {
       out.deliverWebhook = !!input.deliverWebhook;
     }
@@ -511,6 +521,43 @@ export class AiCronService {
       }
     }
     return Array.from(new Set(cleaned));
+  }
+
+  /**
+   * Validate extra in-app notification recipients: keep only ids that are
+   * real users sharing the owner's company, deduped and with the owner
+   * removed (the owner always gets the run notification anyway). Personal-
+   * profile owners (no company) have no colleagues, so everything is
+   * dropped. Ids outside the company are filtered silently rather than
+   * 400'd — a stale id from the client shouldn't fail the whole save.
+   */
+  private async normalizeNotifyUserIds(
+    ownerId: string,
+    ids: unknown,
+  ): Promise<string[]> {
+    if (!Array.isArray(ids)) {
+      throw new BadRequestException('`notifyUserIds` must be an array.');
+    }
+    const cleaned = Array.from(
+      new Set(
+        ids.filter((x): x is string => typeof x === 'string' && x.length > 0),
+      ),
+    ).filter((id) => id !== ownerId);
+    if (cleaned.length === 0) return [];
+
+    const [owner] = await this.db
+      .select({ companyId: users.companyId, profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, ownerId));
+    const companyId = owner?.profileType === 'company' ? owner.companyId : null;
+    if (!companyId) return [];
+
+    const members = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(and(inArray(users.id, cleaned), eq(users.companyId, companyId)));
+    const validIds = new Set(members.map((m) => m.id));
+    return cleaned.filter((id) => validIds.has(id));
   }
 
   /**
