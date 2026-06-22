@@ -164,21 +164,27 @@ describe('SkillArtifactService', () => {
   });
 
   describe('reapExpired', () => {
-    it('deletes each expired artifact row (file ENOENT is tolerated)', async () => {
+    it('deletes each expired row + cleans the now-empty run dir', async () => {
       jest
         .spyOn(fs, 'unlink')
         .mockRejectedValue(
           Object.assign(new Error('missing'), { code: 'ENOENT' }),
         );
+      const rmdir = jest
+        .spyOn(fs, 'rmdir')
+        .mockResolvedValue(undefined as never);
       const { db, deletes } = makeDb([
         [
-          { id: 'a1', storagePath: '/x/1' },
-          { id: 'a2', storagePath: '/x/2' },
+          { id: 'a1', storagePath: '/runs/r1/a' },
+          { id: 'a2', storagePath: '/runs/r1/b' },
         ],
       ]);
       const svc = new SkillArtifactService(db as never);
       expect(await svc.reapExpired()).toBe(2);
       expect(deletes()).toBe(2);
+      // The two files share one run dir → rmdir attempted once, for that dir.
+      const dirs = rmdir.mock.calls.map((c) => c[0]);
+      expect(new Set(dirs)).toEqual(new Set(['/runs/r1']));
     });
 
     it('returns 0 when nothing is expired', async () => {

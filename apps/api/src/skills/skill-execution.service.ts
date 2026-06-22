@@ -460,6 +460,10 @@ export class SkillExecutionService {
       .from(skillRunSteps)
       .where(eq(skillRunSteps.runId, runId))
       .orderBy(skillRunSteps.stepIndex);
-    return { ...run, steps };
+    // Authoritative per-turn rollup from the recorded observability rows
+    // (the run id IS the turn id) — calls + tokens + cost, alongside the run's
+    // own persisted tally.
+    const usage = await this.observability.getTurnRollup(runId);
+    return { ...run, steps, usage };
   }
 }

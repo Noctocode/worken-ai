@@ -204,7 +204,12 @@ export class ContainerSandbox implements SkillSandboxRuntime {
           ? `Sandbox run exceeded ${input.limits.timeoutMs}ms and was killed.`
           : exec.exitCode === 0
             ? null
-            : `Script exited with code ${exec.exitCode}.`,
+            : // exitCode -1 means docker itself never ran the script (daemon
+              // down / image missing / binary not found) — an infra failure, not
+              // a script bug. Surface the captured reason instead of a code.
+              exec.exitCode === -1
+              ? `Sandbox could not start: ${exec.stderr.trim() || 'docker unavailable'}`
+              : `Script exited with code ${exec.exitCode}.`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -292,10 +297,15 @@ export class ContainerSandbox implements SkillSandboxRuntime {
 
       child.on('error', (err) => {
         clearTimeout(timer);
+        const e = err as NodeJS.ErrnoException;
+        const reason =
+          e?.code === 'ENOENT'
+            ? `docker binary not found ('${this.dockerBin}') — is Docker installed and on PATH?`
+            : String(err);
         resolve({
           exitCode: -1,
           stdout,
-          stderr: stderr || String(err),
+          stderr: stderr || reason,
           outputTruncated: truncated,
           timedOut,
         });

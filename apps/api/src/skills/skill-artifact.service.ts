@@ -178,6 +178,7 @@ export class SkillArtifactService implements OnModuleInit, OnModuleDestroy {
       .from(skillArtifacts)
       .where(lt(skillArtifacts.expiresAt, now));
 
+    const dirs = new Set<string>();
     for (const row of expired) {
       try {
         await fs.unlink(row.storagePath);
@@ -190,7 +191,15 @@ export class SkillArtifactService implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
+      dirs.add(path.dirname(row.storagePath));
       await this.db.delete(skillArtifacts).where(eq(skillArtifacts.id, row.id));
+    }
+
+    // Remove now-empty per-run dirs so they don't accumulate. rmdir fails on a
+    // non-empty dir (a run with some artifacts still live) — that's fine,
+    // swallow it; only truly empty dirs get cleaned.
+    for (const dir of dirs) {
+      await fs.rmdir(dir).catch(() => undefined);
     }
     return expired.length;
   }
