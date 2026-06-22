@@ -1,10 +1,29 @@
 "use client";
 
-import { Plus, Users, Loader2, Bot, PlugZap } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import {
+  Plus,
+  Users,
+  Loader2,
+  Bot,
+  PlugZap,
+  Trash2,
+  Power,
+  PowerOff,
+} from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   PageTabs,
   PageTabsList,
@@ -21,7 +40,10 @@ import {
   fetchOrgUsers,
   fetchModels,
   fetchOrgSettings,
+  deleteModel,
+  updateModel,
 } from "@/lib/api";
+import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { SearchInput } from "@/components/ui/search-input";
 import { TeamRow } from "@/components/management/team-row";
 import { TeamCard } from "@/components/management/team-card";
@@ -161,6 +183,129 @@ export default function TeamsPage() {
       m.customName.toLowerCase().includes(modelSearch.toLowerCase()) ||
       m.modelIdentifier.toLowerCase().includes(modelSearch.toLowerCase()),
   );
+
+  // ── Bulk select + delete for the Models table (admin-only) ──────────
+  // Selection is keyed by model id and survives search-filter changes;
+  // the header checkbox only acts on the currently-filtered rows so
+  // toggling "select all" while a search is active never silently
+  // selects hidden models.
+  const queryClient = useQueryClient();
+  const [selectedModelIds, setSelectedModelIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const clearModelSelection = () => setSelectedModelIds(new Set());
+  const toggleModelSelected = (modelId: string) =>
+    setSelectedModelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+
+  const allFilteredModelsSelected =
+    filteredModels.length > 0 &&
+    filteredModels.every((m) => selectedModelIds.has(m.id));
+  const someFilteredModelsSelected =
+    !allFilteredModelsSelected &&
+    filteredModels.some((m) => selectedModelIds.has(m.id));
+  const modelHeaderCheckboxState: boolean | "indeterminate" =
+    allFilteredModelsSelected
+      ? true
+      : someFilteredModelsSelected
+        ? "indeterminate"
+        : false;
+  const toggleSelectAllModels = (checked: boolean | "indeterminate") =>
+    setSelectedModelIds((prev) => {
+      const next = new Set(prev);
+      if (checked === true) {
+        for (const m of filteredModels) next.add(m.id);
+      } else {
+        for (const m of filteredModels) next.delete(m.id);
+      }
+      return next;
+    });
+
+  const bulkDeleteModelsMutation = useMutation({
+    mutationFn: async () => {
+      const results = await Promise.allSettled(
+        Array.from(selectedModelIds).map((modelId) => deleteModel(modelId)),
+      );
+      const fulfilled = results.filter(
+        (r) => r.status === "fulfilled",
+      ).length;
+      const rejected = results.length - fulfilled;
+      return { fulfilled, rejected };
+    },
+    onSuccess: ({ fulfilled, rejected }) => {
+      invalidateModelMutations(queryClient);
+      setBulkDeleteOpen(false);
+      clearModelSelection();
+      if (rejected === 0) {
+        toast.success(
+          t("teams.modelsDeletedToast").replace("{n}", String(fulfilled)),
+        );
+      } else if (fulfilled === 0) {
+        toast.error(t("teams.modelsDeleteFailedAll"));
+      } else {
+        toast.warning(
+          t("teams.modelsDeletePartial")
+            .replace("{n}", String(fulfilled))
+            .replace("{m}", String(rejected)),
+        );
+      }
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("teams.modelsDeleteFailedAll")),
+  });
+
+  // Bulk enable / disable — flips isActive on the selected models. Same
+  // fan-out + aggregated-toast pattern as bulk delete; the `active`
+  // flag picks the success/partial copy so one mutation serves both.
+  const bulkSetActiveMutation = useMutation({
+    mutationFn: async (active: boolean) => {
+      const results = await Promise.allSettled(
+        Array.from(selectedModelIds).map((modelId) =>
+          updateModel(modelId, { isActive: active }),
+        ),
+      );
+      const fulfilled = results.filter(
+        (r) => r.status === "fulfilled",
+      ).length;
+      const rejected = results.length - fulfilled;
+      return { active, fulfilled, rejected };
+    },
+    onSuccess: ({ active, fulfilled, rejected }) => {
+      invalidateModelMutations(queryClient);
+      clearModelSelection();
+      const doneKey = active
+        ? "teams.modelsEnabledToast"
+        : "teams.modelsDisabledToast";
+      const failKey = active
+        ? "teams.modelsEnableFailedAll"
+        : "teams.modelsDisableFailedAll";
+      if (rejected === 0) {
+        toast.success(t(doneKey).replace("{n}", String(fulfilled)));
+      } else if (fulfilled === 0) {
+        toast.error(t(failKey));
+      } else {
+        toast.warning(
+          t("teams.modelsUpdatePartial")
+            .replace("{n}", String(fulfilled))
+            .replace("{m}", String(rejected)),
+        );
+      }
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("teams.modelsUpdateFailed")),
+  });
+
+  const bulkModelsBusy =
+    bulkDeleteModelsMutation.isPending || bulkSetActiveMutation.isPending;
+
+  // Column count for the models table's loading / error / empty rows —
+  // the select column only renders for admins.
+  const modelColSpan = isAdmin ? 6 : 5;
 
   return (
     <PageTabs value={activeTab} onValueChange={setActiveTab}>
@@ -576,6 +721,61 @@ export default function TeamsPage() {
           />
         </div>
 
+        {/* Bulk-action bar — appears once one or more models are
+            selected (admin-only, since the checkboxes are admin-gated). */}
+        {isAdmin && selectedModelIds.size > 0 && (
+          <div className="mb-2.5 flex flex-wrap items-center gap-3 rounded-lg border border-primary-2 bg-primary-1/40 px-4 py-3">
+            <span className="text-[13px] font-semibold text-text-1">
+              {selectedModelIds.size}{" "}
+              {selectedModelIds.size !== 1
+                ? t("teams.modelMany")
+                : t("teams.modelOne")}{" "}
+              {t("teams.modelsSelected")}
+            </span>
+            <div className="ml-auto flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => bulkSetActiveMutation.mutate(true)}
+                disabled={bulkModelsBusy}
+                className="cursor-pointer gap-1.5"
+              >
+                <Power className="h-3.5 w-3.5" />
+                {t("teams.bulkEnableModels")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => bulkSetActiveMutation.mutate(false)}
+                disabled={bulkModelsBusy}
+                className="cursor-pointer gap-1.5"
+              >
+                <PowerOff className="h-3.5 w-3.5" />
+                {t("teams.bulkDisableModels")}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setBulkDeleteOpen(true)}
+                disabled={bulkModelsBusy}
+                className="cursor-pointer gap-1.5 border-danger-3 text-danger-6 hover:bg-danger-1"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t("teams.bulkDeleteModels")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearModelSelection}
+                disabled={bulkModelsBusy}
+                className="cursor-pointer"
+              >
+                {t("teams.bulkCancel")}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Mobile card list (<lg) — the 5-col table doesn't survive
             once a model identifier + BYOK badge + fallback chips stack
             up at 375px wide. */}
@@ -601,7 +801,13 @@ export default function TeamsPage() {
             </div>
           )}
           {filteredModels.map((model) => (
-            <ModelCard key={model.id} model={model} />
+            <ModelCard
+              key={model.id}
+              model={model}
+              selectable={isAdmin}
+              selected={selectedModelIds.has(model.id)}
+              onToggleSelected={() => toggleModelSelected(model.id)}
+            />
           ))}
         </div>
 
@@ -609,6 +815,16 @@ export default function TeamsPage() {
           <table className="w-full min-w-[700px]">
             <thead>
               <tr className="h-[33px] border-b border-bg-1">
+                {isAdmin && (
+                  <th className="px-4 align-middle w-10">
+                    <Checkbox
+                      aria-label={t("teams.selectAllModels")}
+                      checked={modelHeaderCheckboxState}
+                      onCheckedChange={toggleSelectAllModels}
+                      disabled={filteredModels.length === 0}
+                    />
+                  </th>
+                )}
                 <th className="px-4 text-left align-middle text-[13px] font-normal text-black-700">
                   {t("teams.customName")}
                 </th>
@@ -629,7 +845,10 @@ export default function TeamsPage() {
             <tbody>
               {modelsLoading && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center align-middle">
+                  <td
+                    colSpan={modelColSpan}
+                    className="py-12 text-center align-middle"
+                  >
                     <Loader2 className="mx-auto h-6 w-6 animate-spin text-text-3" />
                   </td>
                 </tr>
@@ -637,7 +856,7 @@ export default function TeamsPage() {
               {modelsError && (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={modelColSpan}
                     className="py-12 text-center align-middle text-sm text-danger-6"
                   >
                     {t("teams.failedToLoadModels")}
@@ -645,11 +864,20 @@ export default function TeamsPage() {
                 </tr>
               )}
               {filteredModels.map((model) => (
-                <ModelRow key={model.id} model={model} />
+                <ModelRow
+                  key={model.id}
+                  model={model}
+                  selectable={isAdmin}
+                  selected={selectedModelIds.has(model.id)}
+                  onToggleSelected={() => toggleModelSelected(model.id)}
+                />
               ))}
               {!modelsLoading && !modelsError && filteredModels.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center align-middle">
+                  <td
+                    colSpan={modelColSpan}
+                    className="py-12 text-center align-middle"
+                  >
                     <Bot className="mx-auto h-10 w-10 text-text-3" />
                     <p className="mt-3 text-sm text-text-2">
                       {modelSearch
@@ -675,6 +903,57 @@ export default function TeamsPage() {
           </p>
           <IntegrationTab />
         </div>
+
+        {/* Bulk delete confirmation — destructive and irreversible, so a
+            full dialog (not an inline action) keeps the consequences hard
+            to skip. Mirrors the per-row delete-model dialog. */}
+        <Dialog
+          open={bulkDeleteOpen}
+          onOpenChange={(open) =>
+            !bulkDeleteModelsMutation.isPending && setBulkDeleteOpen(open)
+          }
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("teams.bulkDeleteTitle")}</DialogTitle>
+              <DialogDescription>
+                {t("teams.bulkDeleteDesc1")}{" "}
+                <strong>
+                  {selectedModelIds.size}{" "}
+                  {selectedModelIds.size !== 1
+                    ? t("teams.modelMany")
+                    : t("teams.modelOne")}
+                </strong>
+                {t("teams.bulkDeleteDesc2")}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setBulkDeleteOpen(false)}
+                disabled={bulkDeleteModelsMutation.isPending}
+                className="cursor-pointer"
+              >
+                {t("teams.bulkCancel")}
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={() => bulkDeleteModelsMutation.mutate()}
+                disabled={bulkDeleteModelsMutation.isPending}
+                className="cursor-pointer"
+              >
+                {bulkDeleteModelsMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    {t("teams.bulkDeleting")}
+                  </>
+                ) : (
+                  t("teams.bulkDeleteConfirm")
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </PageTabsContent>
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}

@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   deleteModel,
   fetchIntegrations,
@@ -50,7 +51,18 @@ function providerOf(modelId: string): string | null {
  * + fallback chips show up. Rendered at `<lg`; desktop keeps the
  * existing table.
  */
-export function ModelCard({ model }: { model: ModelConfig }) {
+export function ModelCard({
+  model,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
+}: {
+  model: ModelConfig;
+  // Bulk-select is admin-only; the parent gates `selectable`.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const [editOpen, setEditOpen] = useState(false);
@@ -92,12 +104,28 @@ export function ModelCard({ model }: { model: ModelConfig }) {
       : null;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border-2 bg-bg-white p-3.5">
+    <div
+      className={`flex flex-col gap-2.5 rounded-xl border p-3.5 ${
+        selectable && selected
+          ? "border-primary-3 bg-primary-1/30"
+          : "border-border-2 bg-bg-white"
+      }`}
+    >
       {/* Row 1: Custom Name + kebab */}
       <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-1">
-          {model.customName}
-        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          {selectable && (
+            <Checkbox
+              aria-label={`${t("mgmt.rows.actionsFor")} ${model.customName}`}
+              checked={selected}
+              onCheckedChange={() => onToggleSelected?.()}
+              className="shrink-0"
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-1">
+            {model.customName}
+          </span>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button

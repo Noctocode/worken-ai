@@ -81,10 +81,11 @@ export class ModelsService {
    * user across the whole deployment, which leaked model aliases
    * across distinct tenants.
    *
-   * Edit / delete permissions are not relaxed by this — they
-   * still gate on `ownerId === caller` in `update` / `remove`.
-   * Company users can SEE every model_config in their tenant, but
-   * only the owner (or admin in a follow-up PR) can mutate it.
+   * Edit / delete permissions are handled separately in `update` /
+   * `remove` via `assertCanMutateModel`: the owner, or a company
+   * admin acting within the same tenant, may mutate a model. Company
+   * users can SEE every model_config in their tenant but basic
+   * members can't mutate ones they don't own.
    */
   private async resolveAliasScopeFilter(
     callerId: string,
@@ -638,6 +639,49 @@ export class ModelsService {
     return model;
   }
 
+  /**
+   * Mutation guard for a single model_config. The owner can always
+   * edit/delete their own alias. Beyond that, a company admin manages
+   * the whole tenant's model catalog (the /teams "Models" tab is an
+   * admin surface), so an admin may mutate any model whose owner sits
+   * in the SAME company tenant. Personal profiles have no tenant, so
+   * they fall back to owner-only.
+   */
+  private async assertCanMutateModel(
+    model: typeof modelConfigs.$inferSelect,
+    userId: string,
+    action: 'update' | 'delete',
+  ): Promise<void> {
+    if (model.ownerId === userId) return;
+
+    const [caller] = await this.db
+      .select({
+        role: users.role,
+        companyId: users.companyId,
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (
+      caller?.role === 'admin' &&
+      caller.profileType === 'company' &&
+      caller.companyId
+    ) {
+      const [owner] = await this.db
+        .select({ companyId: users.companyId })
+        .from(users)
+        .where(eq(users.id, model.ownerId));
+      if (owner?.companyId && owner.companyId === caller.companyId) return;
+    }
+
+    throw new ForbiddenException(
+      action === 'delete'
+        ? 'Only the owner or a company admin can delete this model'
+        : 'Only the owner or a company admin can update this model',
+    );
+  }
+
   async update(
     id: string,
     userId: string,
@@ -655,9 +699,7 @@ export class ModelsService {
       .where(eq(modelConfigs.id, id));
 
     if (!model) throw new NotFoundException('Model config not found');
-    if (model.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can update this model');
-    }
+    await this.assertCanMutateModel(model, userId, 'update');
 
     const updates: Record<string, unknown> = {};
     if (data.customName !== undefined) updates.customName = data.customName;
@@ -687,9 +729,7 @@ export class ModelsService {
       .where(eq(modelConfigs.id, id));
 
     if (!model) throw new NotFoundException('Model config not found');
-    if (model.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can delete this model');
-    }
+    await this.assertCanMutateModel(model, userId, 'delete');
 
     await this.db.delete(modelConfigs).where(eq(modelConfigs.id, id));
     return { success: true };
