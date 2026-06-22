@@ -51,8 +51,9 @@ export function AgentGrid({
   const routingSuffix = (modelId: string): string => {
     const m = effectiveModels.find((x) => x.id === modelId);
     if (!m) return "";
-    if (m.routing === "byok") return " (BYOK)";
-    if (m.routing === "custom") return " (Custom)";
+    // Own key / endpoint (BYOK or Custom LLM) → "(custom)"; managed default
+    // route → no marker.
+    if (m.routing === "byok" || m.routing === "custom") return " (custom)";
     return "";
   };
 

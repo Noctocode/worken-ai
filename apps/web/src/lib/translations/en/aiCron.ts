@@ -80,7 +80,7 @@ export const aiCron = {
   // Model picker
   'aiCron.model.placeholder': 'Select a model',
   'aiCron.model.byok': 'BYOK',
-  'aiCron.model.custom': 'Custom',
+  'aiCron.model.custom': 'custom',
 
   // Schedule context (free text) + attached files
   'aiCron.scheduleContext.title': 'Schedule Context',

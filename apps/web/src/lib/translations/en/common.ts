@@ -87,7 +87,7 @@ export const common = {
   'dashboard.changeModelPickAgent': 'Choose the model for',
   'dashboard.changeModelNextMessage': "Pick a Recommended agent or one of your team's Custom models — the first becomes active, the rest are switchable from the project header.",
   'dashboard.byokNote': 'uses your own provider key.',
-  'dashboard.customNote': 'uses a Custom LLM endpoint. Agents without a marker route through the WorkenAI default key.',
+  'dashboard.customNote': 'uses your own provider key or Custom LLM endpoint. Models without a marker route through the WorkenAI default key.',
   'dashboard.saving': 'Saving...',
   'dashboard.aiChat': 'AI Chat',
   'dashboard.search': 'Search',

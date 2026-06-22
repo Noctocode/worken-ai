@@ -1,6 +1,6 @@
 "use client";
 
-import { Globe, KeySquare, X } from "lucide-react";
+import { KeySquare, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -362,15 +362,9 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
               <SelectItem key={m.id} value={m.id}>
                 <span className="flex items-center gap-2">
                   {m.name}
-                  {m.routing === "byok" && (
+                  {(m.routing === "byok" || m.routing === "custom") && (
                     <span className="inline-flex items-center gap-1 text-xs text-text-3">
                       <KeySquare className="size-3" />
-                      {t("aiCron.model.byok")}
-                    </span>
-                  )}
-                  {m.routing === "custom" && (
-                    <span className="inline-flex items-center gap-1 text-xs text-text-3">
-                      <Globe className="size-3" />
                       {t("aiCron.model.custom")}
                     </span>
                   )}

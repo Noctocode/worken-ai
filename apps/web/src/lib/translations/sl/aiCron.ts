@@ -82,7 +82,7 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   // Model picker
   'aiCron.model.placeholder': 'Izberite model',
   'aiCron.model.byok': 'BYOK',
-  'aiCron.model.custom': 'Custom',
+  'aiCron.model.custom': 'custom',
 
   // Schedule context (free text) + attached files
   'aiCron.scheduleContext.title': 'Kontekst urnika',

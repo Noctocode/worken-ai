@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Users, Loader2, Bot } from "lucide-react";
+import { Plus, Users, Loader2, Bot, PlugZap } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -662,6 +662,19 @@ export default function TeamsPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Subsection 2: provider API keys + Custom LLMs (moved here from the
+            former Integrations tab). Everything model-related lives under one
+            tab now; nothing is configured under Integrations anymore. */}
+        <div className="mt-8 border-t border-border-2 pt-6">
+          <h3 className="text-[16px] font-semibold text-black-900 lg:text-[18px] lg:font-bold">
+            {t("teams.keysSection")}
+          </h3>
+          <p className="mt-1 text-[13px] text-text-3">
+            {t("teams.keysSectionDesc")}
+          </p>
+          <IntegrationTab />
+        </div>
       </PageTabsContent>
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}
@@ -678,7 +691,17 @@ export default function TeamsPage() {
         <BillingTab />
       </PageTabsContent>
       <PageTabsContent value="integration">
-        <IntegrationTab />
+        {/* Provider keys + Custom LLMs moved under the Models tab. This tab
+            is reserved for upcoming integrations — placeholder for now. */}
+        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-3 bg-bg-white py-20 text-center">
+          <PlugZap className="h-10 w-10 text-text-3" />
+          <p className="text-sm font-medium text-text-2">
+            {t("teams.integrationWip")}
+          </p>
+          <p className="max-w-md text-xs text-text-3">
+            {t("teams.integrationWipDesc")}
+          </p>
+        </div>
       </PageTabsContent>
     </PageTabs>
   );

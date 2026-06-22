@@ -89,7 +89,7 @@ export const common: Record<keyof typeof commonEn, string> = {
   'dashboard.changeModelPickAgent': 'Izberi model za',
   'dashboard.changeModelNextMessage': 'Izberi priporočenega agenta ali enega od modelov svoje ekipe — prvi postane aktivni, ostali so preklopljivi v glavi projekta.',
   'dashboard.byokNote': 'uporablja vaš lastni ključ ponudnika.',
-  'dashboard.customNote': 'uporablja lasten LLM endpoint. Agenti brez oznake usmerjajo prek privzetega ključa WorkenAI.',
+  'dashboard.customNote': 'uporablja vaš lastni ključ ponudnika ali Custom LLM endpoint. Modeli brez oznake usmerjajo prek privzetega ključa WorkenAI.',
   'dashboard.saving': 'Shranjevanje...',
   'dashboard.aiChat': 'AI Pogovor',
   'dashboard.search': 'Išči',
