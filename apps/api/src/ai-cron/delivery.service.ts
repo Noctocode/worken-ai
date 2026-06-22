@@ -1,7 +1,9 @@
 import { promises as dnsPromises } from 'node:dns';
 import { request as httpsRequest } from 'node:https';
-import { Injectable, Logger } from '@nestjs/common';
-import { scheduledPrompts } from '@worken/database/schema';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { and, eq, inArray } from 'drizzle-orm';
+import { scheduledPrompts, users } from '@worken/database/schema';
+import { DATABASE, type Database } from '../database/database.module.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 
@@ -64,6 +66,7 @@ export class DeliveryService {
   private readonly logger = new Logger(DeliveryService.name);
 
   constructor(
+    @Inject(DATABASE) private readonly db: Database,
     private readonly notifications: NotificationsService,
     private readonly mail: MailService,
   ) {}
@@ -112,12 +115,16 @@ export class DeliveryService {
       status: payload.status,
     };
 
-    // Owner always gets it; plus any extra company members the schedule
-    // names (validated on save). Dedupe so the owner isn't notified twice
-    // if they're somehow also in the list.
-    const recipients = Array.from(
-      new Set([prompt.ownerId, ...(prompt.notifyUserIds ?? [])]),
+    // Owner always gets it; plus any extra members the schedule names —
+    // RE-VALIDATED against current company membership at send time (not just
+    // on save), so a member who has since left the owner's company no longer
+    // receives the (potentially sensitive) output. Dedupe so the owner isn't
+    // notified twice.
+    const extra = await this.currentCompanyRecipients(
+      prompt.ownerId,
+      prompt.notifyUserIds ?? [],
     );
+    const recipients = Array.from(new Set([prompt.ownerId, ...extra]));
     const results = await Promise.all(
       recipients.map((userId) =>
         this.notifications.create({
@@ -133,6 +140,34 @@ export class DeliveryService {
     // 'sent' if the owner's notification (first) landed; the extras are
     // best-effort fan-out.
     return results[0] ? 'sent' : 'failed';
+  }
+
+  /**
+   * Filter saved extra-recipient ids down to users who STILL share the
+   * owner's company at send time. Closes the gap where a member named on a
+   * schedule later leaves the company but their id lingers in
+   * notify_user_ids — they must not keep receiving the run output. Personal-
+   * profile owners (no company) have no valid extras.
+   */
+  private async currentCompanyRecipients(
+    ownerId: string,
+    candidateIds: string[],
+  ): Promise<string[]> {
+    if (candidateIds.length === 0) return [];
+    const [owner] = await this.db
+      .select({ companyId: users.companyId, profileType: users.profileType })
+      .from(users)
+      .where(eq(users.id, ownerId));
+    const companyId =
+      owner?.profileType === 'company' ? owner.companyId : null;
+    if (!companyId) return [];
+    const rows = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(inArray(users.id, candidateIds), eq(users.companyId, companyId)),
+      );
+    return rows.map((r) => r.id);
   }
 
   private async deliverEmail(
