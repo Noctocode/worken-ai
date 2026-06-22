@@ -16,6 +16,7 @@ import {
   Pencil,
   ScrollText,
   Sparkles,
+  Trash2,
   Unplug,
   Users,
   Wrench,
@@ -33,6 +34,7 @@ import {
 } from "@/components/ui/sheet";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import {
+  deleteDocumentGroup,
   detachKnowledgeFile,
   downloadKnowledgeFile,
   fetchDocuments,
@@ -160,29 +162,43 @@ function Section({
 
 function DocumentGroupCard({
   group,
+  onDelete,
+  deleting,
 }: {
   group: { groupId: string; title: string; chunks: { id: string; content: string }[] };
+  onDelete: () => void;
+  deleting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   return (
-    <div className="rounded-lg border border-border-2 bg-bg-1 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left"
-      >
-        {expanded ? (
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-3" />
-        ) : (
-          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-3" />
-        )}
-        <span className="flex-1 truncate text-[12px] font-medium text-text-1">
-          {group.title}
-        </span>
-        <span className="shrink-0 text-[11px] text-text-3">
-          {group.chunks.length} chunk{group.chunks.length !== 1 ? "s" : ""}
-        </span>
-      </button>
+    <div className="group/card rounded-lg border border-border-2 bg-bg-1 overflow-hidden">
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex flex-1 min-w-0 cursor-pointer items-center gap-2 px-2.5 py-2 text-left"
+        >
+          {expanded ? (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-3" />
+          ) : (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-3" />
+          )}
+          <span className="flex-1 truncate text-[12px] font-medium text-text-1">
+            {group.title}
+          </span>
+          <span className="shrink-0 text-[11px] text-text-3">
+            {group.chunks.length} chunk{group.chunks.length !== 1 ? "s" : ""}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          className="mr-1.5 flex h-5 w-5 shrink-0 cursor-pointer items-center justify-center rounded text-text-3 opacity-0 transition-opacity hover:text-danger-6 group-hover/card:opacity-100 disabled:cursor-not-allowed"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </div>
       {expanded && (
         <div className="border-t border-border-2 px-2.5 py-2 space-y-2">
           {group.chunks.map((chunk) => (
@@ -280,6 +296,17 @@ export function ProjectDetailsPanel({
     },
     onError: (err: Error) =>
       toast.error(err.message || t("projDetails.contextSaveFailed")),
+  });
+
+  /* Delete a pasted-text document group (removes all its chunks). */
+  const deleteGroupMutation = useMutation({
+    mutationFn: (groupId: string) => deleteDocumentGroup(projectId, groupId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["documents", projectId] });
+      toast.success("Text removed from the project");
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("projDetails.detachFailed")),
   });
 
   /* Detach a file from the project (removes the project_knowledge_files
@@ -407,7 +434,12 @@ export function ProjectDetailsPanel({
             ) : (
               <div className="space-y-2">
                 {documentGroups.map((group) => (
-                  <DocumentGroupCard key={group.groupId} group={group} />
+                  <DocumentGroupCard
+                    key={group.groupId}
+                    group={group}
+                    onDelete={() => deleteGroupMutation.mutate(group.groupId)}
+                    deleting={deleteGroupMutation.isPending}
+                  />
                 ))}
               </div>
             )}
