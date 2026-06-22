@@ -64,10 +64,16 @@ function makeDeps(costPerCall = 0.01) {
   const catalog = {
     estimateCost: () => Promise.resolve(costPerCall),
   };
+  // Non-blocking output guardrail by default; tests override evaluate to block.
+  const guardrails = {
+    evaluate: (i: { text: string }) =>
+      Promise.resolve({ blocked: null, text: i.text }),
+  };
   return {
     transport,
     observability,
     catalog,
+    guardrails,
     recorded,
     gateCalls: () => gateCalls,
   };
@@ -127,6 +133,7 @@ function makeSvc(
     deps.transport as never,
     deps.observability as never,
     deps.catalog as never,
+    deps.guardrails as never,
     sandbox as never,
   );
 }
@@ -203,6 +210,30 @@ describe('SkillExecutionService.run', () => {
 
     release();
     await drain(gen1);
+  });
+
+  it('fails the run when the output guardrail blocks the result', async () => {
+    const { db, runUpdates } = makeDb(SKILL);
+    const deps = makeDeps();
+    deps.guardrails.evaluate = () =>
+      Promise.resolve({
+        blocked: { ruleName: 'No PII', validator: 'regex' },
+        text: 'redacted',
+      });
+    const provider = scriptedProvider([
+      { type: 'text', delta: 'here is the answer' },
+      { type: 'done', stopReason: 'end_turn' },
+    ]);
+    const svc = makeSvc(db, provider, deps);
+
+    const events = (await drain(
+      svc.run({ userId: 'u1', skillId: 's1', modelIdentifier: 'anthropic/x' }),
+    )) as { type: string; status?: string; message?: string }[];
+
+    const err = events.find((e) => e.type === 'error');
+    expect(err?.message).toMatch(/output withheld/i);
+    expect(events.at(-1)).toMatchObject({ type: 'run_done', status: 'failed' });
+    expect(runUpdates.at(-1)).toMatchObject({ status: 'failed' });
   });
 
   it('cancel returns false when the user has no run in flight', () => {

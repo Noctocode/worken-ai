@@ -7,8 +7,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq } from 'drizzle-orm';
-import { skillRunSteps, skillRuns, skills } from '@worken/database/schema';
+import {
+  projects,
+  skillRunSteps,
+  skillRuns,
+  skills,
+} from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { GuardrailEvaluatorService } from '../guardrails/guardrail-evaluator.service.js';
 import { ChatTransportService } from '../integrations/chat-transport.service.js';
 import { ToolCallingService } from '../integrations/tool-calling.service.js';
 import type { AgentLoopEvent } from '../integrations/agent-tools.types.js';
@@ -109,6 +115,7 @@ export class SkillExecutionService {
     private readonly transport: ChatTransportService,
     private readonly observability: ObservabilityService,
     private readonly catalog: OpenRouterCatalogService,
+    private readonly guardrails: GuardrailEvaluatorService,
     @Inject(SKILL_SANDBOX) private readonly sandbox: SkillSandboxRuntime,
   ) {}
 
@@ -226,6 +233,9 @@ export class SkillExecutionService {
     // would breach the ceiling, so the loop stops before the overshoot rather
     // than after it.
     let lastRoundCost = 0;
+    // Assistant text accumulated across rounds — gated through the output
+    // guardrail once the run completes.
+    let finalText = '';
     let finalStatus: 'done' | 'failed' | 'cancelled' = 'done';
     let errorMessage: string | null = null;
 
@@ -284,6 +294,7 @@ export class SkillExecutionService {
         signal: ac.signal,
         onBeforeCall,
       })) {
+        if (ev.type === 'text') finalText += ev.delta;
         if (ev.type === 'tool_call') callInputs.set(ev.id, ev.input);
         if (ev.type === 'tool_result') {
           await this.db.insert(skillRunSteps).values({
@@ -356,6 +367,33 @@ export class SkillExecutionService {
             mimeType: a.mimeType,
             sizeBytes: a.sizeBytes,
           };
+        }
+      }
+
+      // Output guardrail on the completed result, mirroring chat's output gate.
+      // The text already streamed live, so this can't redact mid-stream — but a
+      // policy hit marks the run failed so the client surfaces that the result
+      // was withheld. Skipped for non-completed (errored/cancelled) runs.
+      if (finalStatus === 'done' && finalText.trim()) {
+        let teamId: string | null = null;
+        if (params.projectId) {
+          const [proj] = await this.db
+            .select({ teamId: projects.teamId })
+            .from(projects)
+            .where(eq(projects.id, params.projectId))
+            .limit(1);
+          teamId = proj?.teamId ?? null;
+        }
+        const decision = await this.guardrails.evaluate({
+          text: finalText,
+          target: 'output',
+          userId,
+          teamId,
+        });
+        if (decision.blocked) {
+          finalStatus = 'failed';
+          errorMessage = `Output withheld: "${decision.blocked.ruleName}" blocked the result (${decision.blocked.validator}).`;
+          yield { type: 'error', message: errorMessage };
         }
       }
     } catch (err) {
