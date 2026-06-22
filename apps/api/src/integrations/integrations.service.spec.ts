@@ -1,6 +1,7 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import type { Database } from '../database/database.module.js';
 import type { EncryptionService } from '../openrouter/encryption.service.js';
+import type { ModelsService } from '../models/models.service.js';
 import { IntegrationsService } from './integrations.service.js';
 
 /* Minimal chainable drizzle mock: each select() shifts the next row set off
@@ -27,6 +28,9 @@ function makeService(rowSets: unknown[][]) {
   return new IntegrationsService(
     db as unknown as Database,
     {} as unknown as EncryptionService,
+    {
+      syncProviderCatalogAliases: jest.fn().mockResolvedValue(undefined),
+    } as unknown as ModelsService,
   );
 }
 

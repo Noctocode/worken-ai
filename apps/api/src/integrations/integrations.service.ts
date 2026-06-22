@@ -15,6 +15,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+import { ModelsService } from '../models/models.service.js';
 import {
   PREDEFINED_PROVIDERS,
   isPredefinedProvider,
@@ -103,6 +104,7 @@ export class IntegrationsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryptionService: EncryptionService,
+    private readonly modelsService: ModelsService,
   ) {}
 
   /**
@@ -520,6 +522,19 @@ export class IntegrationsService {
           targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
           set: conflictUpdates,
         });
+
+      // Enabling a provider auto-provisions its whole catalog into the
+      // Models tab; disabling removes those auto rows. Only act when the
+      // caller explicitly set the enabled state (a toggle / first save),
+      // not on unrelated edits (e.g. token-limit only) that leave
+      // isEnabled untouched. Azure/custom are no-ops in the sync.
+      if (input.isEnabled !== undefined) {
+        await this.modelsService.syncProviderCatalogAliases(
+          userId,
+          input.providerId,
+          input.isEnabled,
+        );
+      }
     }
 
     const all = await this.listForUser(userId);
@@ -586,6 +601,17 @@ export class IntegrationsService {
       .update(integrations)
       .set(updates)
       .where(eq(integrations.id, id));
+
+    // Toggling a predefined provider on/off syncs its catalog into (or
+    // out of) the Models tab. Custom rows are no-ops in the sync (they
+    // route via their own bound alias, not a provider catalog).
+    if (input.isEnabled !== undefined) {
+      await this.modelsService.syncProviderCatalogAliases(
+        userId,
+        row.providerId,
+        input.isEnabled,
+      );
+    }
 
     const all = await this.listForUser(userId);
     const view = all.find((v) => v.id === id);

@@ -1076,6 +1076,12 @@ export const modelConfigs = pgTable("model_configs", {
   // `modelIdentifier` IS already the upstream model id.
   upstreamModel: text("upstream_model"),
   isActive: boolean("is_active").notNull().default(true),
+  // True when this alias was auto-provisioned by enabling a predefined
+  // provider (BYOK key) — the whole provider catalog gets added to the
+  // Models tab on enable, and only these auto rows are removed again on
+  // disable. Manually-added aliases (false) are never touched by the
+  // provider enable/disable sync.
+  autoProvisioned: boolean("auto_provisioned").notNull().default(false),
   fallbackModels: jsonb("fallback_models").notNull().default([]),
   // When set, chat calls for this alias route through the linked
   // integration (a Custom LLM the user registered in Management →

@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams, DuplicateProjectNameError } from "@/lib/api";
-import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
@@ -41,7 +41,9 @@ export function CreateProjectDialog({
   const [nameTaken, setNameTaken] = useState(false);
 
   const queryClient = useQueryClient();
-  const { models, isLoading: modelsLoading } = useAvailableModels();
+  // Only models enabled in the Models tab (effective list), so the
+  // picker never offers a model the admin hasn't curated.
+  const { models, isLoading: modelsLoading } = useUserModels();
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],

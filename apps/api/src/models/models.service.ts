@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { type SQL, and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { type SQL, and, asc, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -623,6 +623,74 @@ export class ModelsService {
       .returning();
 
     return model;
+  }
+
+  /**
+   * Sync a predefined provider's whole catalog into the Models tab when
+   * its BYOK key is enabled, and remove it again when disabled. Driven
+   * by the provider enable/disable toggle in integrations.
+   *
+   *  - enable  → insert one active alias per catalog model of `providerId`
+   *              that the owner doesn't already have (auto_provisioned=true).
+   *              Manually-added aliases for the same model are left as-is.
+   *  - disable → delete only the auto-provisioned aliases for that
+   *              provider; manual aliases (auto_provisioned=false) survive.
+   *
+   * Custom and Azure are skipped: 'custom' has no catalog (it routes via
+   * a bound alias) and Azure's selectable models are explicit deployments,
+   * not a catalog. No-ops for any provider with no catalog entries.
+   */
+  async syncProviderCatalogAliases(
+    ownerId: string,
+    providerId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    if (providerId === 'custom' || providerId === 'azure') return;
+
+    if (!enabled) {
+      await this.db
+        .delete(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, ownerId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.autoProvisioned, true),
+            like(modelConfigs.modelIdentifier, `${providerId}/%`),
+          ),
+        );
+      return;
+    }
+
+    const catalog = await this.catalogService.list();
+    const providerModels = catalog.filter(
+      (m) => providerOfModel(m.id) === providerId,
+    );
+    if (providerModels.length === 0) return;
+
+    // Skip identifiers the owner already has (manual OR previously
+    // auto-provisioned) so re-enabling never duplicates a row.
+    const existing = await this.db
+      .select({ modelIdentifier: modelConfigs.modelIdentifier })
+      .from(modelConfigs)
+      .where(
+        and(eq(modelConfigs.ownerId, ownerId), isNull(modelConfigs.teamId)),
+      );
+    const existingIds = new Set(existing.map((e) => e.modelIdentifier));
+
+    const toInsert = providerModels
+      .filter((m) => !existingIds.has(m.id))
+      .map((m) => ({
+        ownerId,
+        teamId: null,
+        customName: m.name,
+        modelIdentifier: m.id,
+        integrationId: null,
+        isActive: true,
+        autoProvisioned: true,
+      }));
+    if (toInsert.length > 0) {
+      await this.db.insert(modelConfigs).values(toInsert);
+    }
   }
 
   /**
