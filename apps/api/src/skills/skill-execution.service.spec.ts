@@ -1,4 +1,8 @@
-import { ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { skillRuns } from '@worken/database/schema';
 import { SkillExecutionService } from './skill-execution.service.js';
 import type { AgentLoopEvent } from '../integrations/agent-tools.types.js';
@@ -234,6 +238,44 @@ describe('SkillExecutionService.run', () => {
     expect(err?.message).toMatch(/output withheld/i);
     expect(events.at(-1)).toMatchObject({ type: 'run_done', status: 'failed' });
     expect(runUpdates.at(-1)).toMatchObject({ status: 'failed' });
+  });
+
+  describe('estimate', () => {
+    it('returns the catalog estimate for the owner', async () => {
+      const { db } = makeDb(SKILL);
+      const svc = makeSvc(db, scriptedProvider([]), makeDeps(0.02));
+      await expect(
+        svc.estimate({
+          userId: 'u1',
+          skillId: 's1',
+          modelIdentifier: 'anthropic/x',
+        }),
+      ).resolves.toEqual({ estimatedUsd: 0.02 });
+    });
+
+    it('404s for a non-owner', async () => {
+      const { db } = makeDb(SKILL);
+      const svc = makeSvc(db, scriptedProvider([]));
+      await expect(
+        svc.estimate({
+          userId: 'someone-else',
+          skillId: 's1',
+          modelIdentifier: 'anthropic/x',
+        }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('400s for a non-executable skill', async () => {
+      const { db } = makeDb({ ...SKILL, source: 'manual' });
+      const svc = makeSvc(db, scriptedProvider([]));
+      await expect(
+        svc.estimate({
+          userId: 'u1',
+          skillId: 's1',
+          modelIdentifier: 'anthropic/x',
+        }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
   });
 
   it('cancel returns false when the user has no run in flight', () => {
