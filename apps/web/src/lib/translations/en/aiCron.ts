@@ -101,6 +101,8 @@ export const aiCron = {
 
   // Delivery
   'aiCron.delivery.inApp': 'In-app notification',
+  'aiCron.delivery.notifyMembers': 'Also notify',
+  'aiCron.delivery.notifyMembersHint': 'Pick teammates who should also get the in-app notification. You always get it.',
   'aiCron.delivery.email': 'Email',
   'aiCron.delivery.emailRecipients': 'Recipients',
   'aiCron.delivery.emailRecipientsPlaceholder': 'Type an email and press Enter',

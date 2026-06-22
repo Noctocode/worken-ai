@@ -195,14 +195,21 @@
       "idx": 27,
       "version": "7",
       "when": 1780130000000,
-      "tag": "0027_skills_executable",
+      "tag": "0027_scheduled_prompt_notify_users",
       "breakpoints": true
     },
     {
       "idx": 28,
       "version": "7",
       "when": 1780140000000,
-      "tag": "0028_executable_skills_flag",
+      "tag": "0028_skills_executable",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1780150000000,
+      "tag": "0029_executable_skills_flag",
       "breakpoints": true
     }
   ]

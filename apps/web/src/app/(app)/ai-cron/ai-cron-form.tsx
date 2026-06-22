@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/lib/i18n";
+import { useAuth } from "@/components/providers";
 import {
+  fetchOrgUsers,
   uploadScheduleFiles,
   type ScheduledPrompt,
   type ScheduledPromptInput,
@@ -120,6 +123,26 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   const [deliverInApp, setDeliverInApp] = useState(
     initial?.deliverInApp ?? true,
   );
+  // Extra in-app notification recipients (company members besides the
+  // owner). Default empty — only the schedule creator is notified.
+  const [notifyUserIds, setNotifyUserIds] = useState<string[]>(
+    initial?.notifyUserIds ?? [],
+  );
+  const { user } = useAuth();
+  const { data: orgUsers } = useQuery({
+    queryKey: ["org-users"],
+    queryFn: fetchOrgUsers,
+  });
+  // Colleagues = company members other than the current user (the owner is
+  // always notified, so they're not listed as a selectable extra).
+  const colleagues = useMemo(
+    () => (orgUsers ?? []).filter((u) => u.id !== user?.id),
+    [orgUsers, user?.id],
+  );
+  const toggleNotify = (id: string) =>
+    setNotifyUserIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   const [deliverEmail, setDeliverEmail] = useState(
     initial?.deliverEmail ?? false,
   );
@@ -198,6 +221,7 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
       useKnowledgeCore,
       useWebSearch,
       deliverInApp,
+      notifyUserIds,
       deliverEmail,
       emailRecipients,
       deliverWebhook,
@@ -424,6 +448,41 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             }}
           />
         </label>
+
+        {/* Extra company members who also get the in-app notification.
+            Owner is always notified, so they're not listed. */}
+        {deliverInApp && colleagues.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <Label>{t("aiCron.delivery.notifyMembers")}</Label>
+            <p className="text-xs text-text-3">
+              {t("aiCron.delivery.notifyMembersHint")}
+            </p>
+            <div className="flex max-h-48 flex-col gap-0.5 overflow-auto rounded-lg border border-border-2 p-1.5">
+              {colleagues.map((u) => {
+                const checked = notifyUserIds.includes(u.id);
+                return (
+                  <label
+                    key={u.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 hover:bg-bg-2"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleNotify(u.id)}
+                      className="size-4 accent-primary-6"
+                    />
+                    <span className="text-sm text-text-1">
+                      {u.name ?? u.email}
+                    </span>
+                    {u.name && (
+                      <span className="text-xs text-text-3">{u.email}</span>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         <label className="flex items-center justify-between gap-3">
           <span className="text-sm text-text-1">
