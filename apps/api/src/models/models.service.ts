@@ -670,6 +670,25 @@ export class ModelsService {
     throw this.modelUnavailableError(modelId);
   }
 
+  /**
+   * Gate model creation. Models are admin-managed at the company level
+   * (the /teams "Models" tab is an admin surface), so a company member
+   * must be an admin to add one — mirrors integrations' assertCanManageKeys
+   * and the owner-or-admin rule in assertCanMutateModel. Personal / solo
+   * accounts (no company tenant) manage their own models, so they're
+   * always allowed.
+   */
+  private async assertCanCreateModel(userId: string): Promise<void> {
+    const [u] = await this.db
+      .select({ role: users.role, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (u?.companyId && u.role !== 'admin') {
+      throw new ForbiddenException('Only an admin can add company models.');
+    }
+  }
+
   async create(
     ownerId: string,
     data: {
@@ -679,6 +698,7 @@ export class ModelsService {
       integrationId?: string | null;
     },
   ) {
+    await this.assertCanCreateModel(ownerId);
     const [model] = await this.db
       .insert(modelConfigs)
       .values({

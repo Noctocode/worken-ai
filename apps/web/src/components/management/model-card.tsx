@@ -37,6 +37,7 @@ import {
 } from "@/lib/api";
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 
 function providerOf(modelId: string): string | null {
@@ -65,6 +66,8 @@ export function ModelCard({
 }) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
@@ -141,6 +144,8 @@ export function ModelCard({
             <DropdownMenuItem
               className="gap-2"
               onClick={() => setEditOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : t("mgmt.rows.editModelsAdmin")}
             >
               <Pencil className="h-4 w-4" />
               {t("mgmt.rows.editModel")}
@@ -148,6 +153,8 @@ export function ModelCard({
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
               onClick={() => setDeleteConfirmOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : t("mgmt.rows.deleteModelsAdmin")}
             >
               <Trash2 className="h-4 w-4" />
               {t("mgmt.rows.removeModel")}
@@ -163,7 +170,9 @@ export function ModelCard({
           <Switch
             checked={model.isActive}
             onCheckedChange={() => toggleMutation.mutate()}
-            disabled={toggleMutation.isPending}
+            disabled={toggleMutation.isPending || !isAdmin}
+            title={isAdmin ? undefined : t("mgmt.rows.changeModelsAdmin")}
+            className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
           />
           <span className="text-[13px] font-medium text-text-1">
             {model.isActive ? t("mgmt.rows.active") : t("mgmt.rows.inactive")}
