@@ -43,6 +43,14 @@ const emailTracker = (req: Request): string => {
   return ipTracker(req);
 };
 
+/** Authenticated user id (set by the JWT / API-key guard), falling back to IP.
+ *  Used for per-user limits on authenticated endpoints so users behind one NAT
+ *  don't share a bucket. */
+const userTracker = (req: Request): string => {
+  const id = (req as { user?: { id?: unknown } }).user?.id;
+  return typeof id === 'string' && id ? `user:${id}` : ipTracker(req);
+};
+
 /** Every named throttler, in one place so the decorators can opt in by
  *  name and skip the rest. */
 export const THROTTLER_NAMES = {
@@ -54,6 +62,7 @@ export const THROTTLER_NAMES = {
   resendIp: 'auth-resend-ip',
   forgotEmail: 'auth-forgot-email',
   forgotIp: 'auth-forgot-ip',
+  skillRun: 'skill-run',
 } as const;
 
 export const ALL_THROTTLER_NAMES: string[] = Object.values(THROTTLER_NAMES);
@@ -126,6 +135,15 @@ export function buildThrottlerOptions(
         ttl: seconds(num('RL_FORGOT_IP_TTL', 3600)),
         limit: num('RL_FORGOT_IP_LIMIT', 10),
         getTracker: ipTracker,
+      },
+      {
+        // Executable-skill runs: each is a multi-call LLM loop + a sandbox
+        // launch, so cap how fast one user can fire them (the one-run-per-user
+        // guard already blocks concurrency; this bounds rapid sequential runs).
+        name: N.skillRun,
+        ttl: seconds(num('RL_SKILL_RUN_TTL', 60)),
+        limit: num('RL_SKILL_RUN_LIMIT', 10),
+        getTracker: userTracker,
       },
     ],
   };

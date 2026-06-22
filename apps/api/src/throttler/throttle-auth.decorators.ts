@@ -34,3 +34,6 @@ export const ThrottleResendVerification = () =>
 /** /auth/forgot-password — 3/hour/email + 10/hour/IP (mail spam). */
 export const ThrottleForgotPassword = () =>
   only(THROTTLER_NAMES.forgotEmail, THROTTLER_NAMES.forgotIp);
+
+/** POST /skills/:id/run — 10/min/user (executable-skill run flood). */
+export const ThrottleSkillRun = () => only(THROTTLER_NAMES.skillRun);

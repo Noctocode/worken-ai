@@ -22,6 +22,7 @@ import { projects } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { DATABASE, type Database } from '../database/database.module.js';
+import { ThrottleSkillRun } from '../throttler/throttle-auth.decorators.js';
 import {
   GUARDRAIL_BLOCKED_MARKER,
   GuardrailEvaluatorService,
@@ -171,6 +172,7 @@ export class SkillsController {
    * is off. The run aborts if the client disconnects.
    */
   @Post(':id/run')
+  @ThrottleSkillRun()
   async run(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: RunSkillBody,
