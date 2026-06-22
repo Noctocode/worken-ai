@@ -39,7 +39,8 @@ export type NotificationType =
   | 'project_deleted'
   | 'project_invite'
   | 'project_removed'
-  | 'guardrail_added';
+  | 'guardrail_added'
+  | 'ai_cron_run';
 
 export type NotificationStatus = 'pending' | 'acted' | 'dismissed';
 

@@ -93,18 +93,23 @@ export const drive: Record<keyof typeof driveEn, string> = {
   "driveDlg.adminsOnly": "Samo skrbniki",
   "driveDlg.specificTeams": "Določene ekipe…",
   "driveDlg.specificProject": "Določen projekt…",
+  "driveDlg.specificSchedule": "Določen urnik…",
   "driveDlg.visHintAdmins":
     "Samo skrbniki bodo videli te datoteke v klepetu / areni.",
   "driveDlg.visHintTeams":
     "Samo člani ekip, ki jih izberete, bodo videli te datoteke.",
   "driveDlg.visHintProject":
     "Te datoteke se bodo prikazale samo v klepetu izbranih projektov.",
+  "driveDlg.visHintSchedule":
+    "Te datoteke bodo uporabljene samo kot kontekst za izbrane urnike AI Cron.",
   "driveDlg.visHintEveryone":
     "Vsak uporabnik v podjetju lahko vidi te datoteke v klepetu / areni.",
   "driveDlg.teamsWithAccess": "Ekipe z dostopom",
   "driveDlg.notTeamMember": "Niste član nobene ekipe.",
   "driveDlg.projectsWithAccess": "Projekti z dostopom",
   "driveDlg.noProjectAccess": "Nimate dostopa do nobenega projekta.",
+  "driveDlg.schedulesWithAccess": "Urniki z dostopom",
+  "driveDlg.noSchedules": "Nimate še nobenega urnika AI Cron.",
   "driveDlg.cancel": "Prekliči",
   "driveDlg.importEntire": "Uvozi celoten Drive",
   "driveDlg.pickFolder": "Izberite vsaj eno mapo",

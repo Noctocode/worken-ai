@@ -22,6 +22,7 @@ import { SettingsDialog } from "@/components/settings-dialog";
 import {
   deleteIntegration,
   fetchIntegrations,
+  fetchKeyUsage,
   updateIntegration,
   upsertIntegration,
   type AzureDeployment,
@@ -120,6 +121,31 @@ function ProviderSettingsDialog({
   // Avoids the user typing over an already-good key by accident.
   const [editingKey, setEditingKey] = useState(!card.hasApiKey);
 
+  // Sharing + per-key limit. allowPersonalUse lets members of teams this
+  // key is linked into use it in their own personal projects/chats; the
+  // token limit caps the key's total monthly usage (empty = no limit,
+  // 0 = paused).
+  const [allowPersonalUse, setAllowPersonalUse] = useState(
+    card.allowPersonalUse,
+  );
+  const [tokenLimitInput, setTokenLimitInput] = useState(
+    card.monthlyTokenLimit == null ? "" : String(card.monthlyTokenLimit),
+  );
+  const parsedTokenLimit = (() => {
+    const trimmed = tokenLimitInput.trim();
+    if (trimmed === "") return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : null;
+  })();
+
+  // Month-to-date usage of this key, per user. Owner-only on the BE;
+  // only fetched once the card has a DB row (saved key).
+  const { data: keyUsage } = useQuery({
+    queryKey: ["integration-usage", card.id],
+    queryFn: () => fetchKeyUsage(card.id!),
+    enabled: !!card.id,
+  });
+
   // Azure carries extra config (endpoint / api-version / deployments)
   // the other providers express through a single key. Seeded from the
   // saved config so re-opening the dialog round-trips it.
@@ -192,6 +218,8 @@ function ProviderSettingsDialog({
               ? apiKey
               : undefined,
           config,
+          allowPersonalUse,
+          monthlyTokenLimit: parsedTokenLimit,
         });
       }
       return upsertIntegration({
@@ -199,6 +227,8 @@ function ProviderSettingsDialog({
         apiKey: useOwnKey && apiKey ? apiKey : undefined,
         isEnabled: enabled,
         config,
+        allowPersonalUse,
+        monthlyTokenLimit: parsedTokenLimit,
       });
     },
     onSuccess: () => {
@@ -390,6 +420,90 @@ function ProviderSettingsDialog({
             </>
           )}
         </div>
+
+        {/* Sharing + per-key monthly limit. Only meaningful once a key
+            is actually set (otherwise calls route through WorkenAI and
+            there's nothing key-scoped to share or cap) — so hide it for
+            untouched predefined providers with no own key. */}
+        {(card.isCustom || card.hasApiKey || (useOwnKey && apiKey)) && (
+        <div className="space-y-4 rounded-lg border border-border-2 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[14px] font-semibold text-text-1">
+                {t("mgmt.integ.allowPersonalTitle")}
+              </p>
+              <p className="mt-0.5 text-[12px] leading-snug text-text-3">
+                {t("mgmt.integ.allowPersonalHint")}
+              </p>
+            </div>
+            <Switch
+              checked={allowPersonalUse}
+              onCheckedChange={setAllowPersonalUse}
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[13px] text-text-2">
+              {t("mgmt.integ.tokenLimitLabel")}
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              value={tokenLimitInput}
+              onChange={(e) => setTokenLimitInput(e.target.value)}
+              placeholder={t("mgmt.integ.tokenLimitPlaceholder")}
+              className="w-full h-11 rounded-lg border border-border-3 bg-transparent px-3 text-[15px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            />
+            <p className="text-[12px] leading-snug text-text-3">
+              {t("mgmt.integ.tokenLimitHint")}
+            </p>
+          </div>
+
+          {/* Month-to-date usage of this key, per user. */}
+          {keyUsage && (
+            <div className="space-y-2 border-t border-border-2 pt-3">
+              <div className="flex items-baseline justify-between">
+                <p className="text-[13px] font-semibold text-text-1">
+                  {t("mgmt.integ.usageThisMonth")}
+                </p>
+                <p className="text-[13px] text-text-2">
+                  {keyUsage.totalTokens.toLocaleString()}
+                  {keyUsage.monthlyTokenLimit != null
+                    ? ` / ${keyUsage.monthlyTokenLimit.toLocaleString()}`
+                    : ""}{" "}
+                  {t("mgmt.integ.tokensWord")}
+                  {keyUsage.totalCostUsd > 0
+                    ? ` · ~$${keyUsage.totalCostUsd.toFixed(2)}`
+                    : ""}
+                </p>
+              </div>
+              {keyUsage.perUser.length > 0 ? (
+                <div className="space-y-1">
+                  {keyUsage.perUser.map((u) => (
+                    <div
+                      key={u.userId}
+                      className="flex items-center justify-between text-[12px] text-text-2"
+                    >
+                      <span className="truncate">
+                        {u.name ?? u.email ?? u.userId}
+                      </span>
+                      <span className="shrink-0 text-text-3">
+                        {u.tokens.toLocaleString()} {t("mgmt.integ.tokensWord")}
+                        {u.costUsd > 0 ? ` · ~$${u.costUsd.toFixed(2)}` : ""}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[12px] text-text-3">
+                  {t("mgmt.integ.noUsageYet")}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        )}
 
         {/* Azure OpenAI resource config. Unlike a single-key provider,
             Azure needs the per-resource endpoint, an api-version, and at

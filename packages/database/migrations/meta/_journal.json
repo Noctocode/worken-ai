@@ -160,14 +160,49 @@
       "idx": 22,
       "version": "7",
       "when": 1780080000000,
-      "tag": "0022_skills_executable",
+      "tag": "0022_ai_cron",
       "breakpoints": true
     },
     {
       "idx": 23,
       "version": "7",
       "when": 1780090000000,
-      "tag": "0023_executable_skills_flag",
+      "tag": "0023_ai_cron_context_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1780100000000,
+      "tag": "0024_import_schedule_ids",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1780110000000,
+      "tag": "0025_byok_key_sharing_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1780120000000,
+      "tag": "0026_integration_token_reservations",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1780130000000,
+      "tag": "0027_skills_executable",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1780140000000,
+      "tag": "0028_executable_skills_flag",
       "breakpoints": true
     }
   ]

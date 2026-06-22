@@ -1,7 +1,8 @@
 import { HttpException, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm';
 import {
   companies,
+  integrationTokenReservations,
   integrations,
   modelConfigs,
   observabilityEvents,
@@ -17,6 +18,10 @@ import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { isAnthropicNativeSupported } from './anthropic-client.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
+import {
+  ownerStillOnTeam,
+  resolveUserTeamIds,
+} from '../teams/team-membership.util.js';
 
 /**
  * Marker string the FE chat-error humanizer matches on to render the
@@ -54,6 +59,38 @@ export const TEAM_SUSPENDED_MARKER = 'TEAM_SUSPENDED';
  */
 export const ORG_BUDGET_EXCEEDED_MARKER = 'ORG_BUDGET_EXCEEDED';
 export const ORG_SUSPENDED_MARKER = 'ORG_SUSPENDED';
+
+/**
+ * Markers for the per-key (BYOK / Custom integration) monthly token
+ * limit gate. Unlike the budget gates above this one is counted in
+ * tokens — every route records total_tokens, whereas cost_usd is NULL
+ * for Custom LLMs. Shape mirrors the budget markers:
+ *   - KEY_LIMIT_EXCEEDED → limit > 0 and (used + estimate) >= limit
+ *   - KEY_PAUSED         → limit === 0 (admin paused the key)
+ * limit === null is "no limit" → silent pass, no marker.
+ */
+export const KEY_LIMIT_EXCEEDED_MARKER = 'KEY_LIMIT_EXCEEDED';
+export const KEY_PAUSED_MARKER = 'KEY_PAUSED';
+
+/**
+ * Token headroom below which we fire the near-exhaustion ("low
+ * balance") alert — the rough token equivalent of the "< ~$2 left"
+ * heads-up. Tokens, not dollars, because Custom LLM calls have no
+ * catalog price; for keys that DO have pricing the notification body
+ * also surfaces the $ spent. Capped at 5% of the limit so a small
+ * limit still gets a proportional warning instead of one that can
+ * never fire.
+ */
+export const KEY_LOW_BALANCE_TOKENS = 50_000;
+
+/**
+ * Upper-bound completion-token estimate used for pre-flight cost / limit
+ * gating when the request carries no explicit `max_tokens`. Matches the
+ * AnthropicClientService DEFAULT_MAX_TOKENS so the estimate lines up with
+ * the actual generation ceiling. Single source of truth so chat, arena,
+ * and ai-cron all reserve the same conservative amount (issue #226 #2).
+ */
+export const ESTIMATED_COMPLETION_TOKENS = 4096;
 
 /**
  * Pure decision function for the per-member cap gate. Returns either
@@ -104,6 +141,67 @@ export function decideCapAction(input: {
   };
 }
 
+/**
+ * Pure decision function for the per-key monthly token-limit gate.
+ * Keeps the policy unit-testable without a database. Returns whether
+ * the call may proceed and which alerts (if any) crossed their
+ * threshold ON THIS call, so the IO caller can fan out notifications
+ * exactly once per crossing (the NotificationsService month-dedupe is a
+ * second backstop).
+ *
+ * Thresholds, all in tokens:
+ *   - limit === null → no limit, pass, no alerts.
+ *   - limit === 0   → key paused, block (KEY_PAUSED), no alerts.
+ *   - limit > 0     → projected = used + max(estimate, 0).
+ *       * '80'  fires when used < 80% and projected >= 80%.
+ *       * 'low' fires when remaining headroom crosses below
+ *               min(KEY_LOW_BALANCE_TOKENS, 5% of limit).
+ *       * '100' fires when used < limit and projected >= limit.
+ *       Block (KEY_LIMIT_EXCEEDED) when projected >= limit.
+ */
+export function decideIntegrationLimit(input: {
+  limitTokens: number | null;
+  usedTokens: number;
+  estimatedTokens: number;
+  lowBalanceTokens?: number;
+}): {
+  pass: boolean;
+  marker?: string;
+  alerts: Array<'80' | 'low' | '100'>;
+} {
+  const { limitTokens } = input;
+  if (limitTokens == null) return { pass: true, alerts: [] };
+  if (limitTokens === 0) {
+    return { pass: false, marker: KEY_PAUSED_MARKER, alerts: [] };
+  }
+
+  const used = Math.max(input.usedTokens, 0);
+  const estimate = Math.max(input.estimatedTokens, 0);
+  const projected = used + estimate;
+  const alerts: Array<'80' | 'low' | '100'> = [];
+
+  const eighty = Math.floor(limitTokens * 0.8);
+  if (used < eighty && projected >= eighty) alerts.push('80');
+
+  const lowBand = Math.min(
+    input.lowBalanceTokens ?? KEY_LOW_BALANCE_TOKENS,
+    Math.floor(limitTokens * 0.05),
+  );
+  const remainingBefore = limitTokens - used;
+  const remainingAfter = limitTokens - projected;
+  if (remainingBefore > lowBand && remainingAfter <= lowBand) {
+    alerts.push('low');
+  }
+
+  if (used < limitTokens && projected >= limitTokens) alerts.push('100');
+
+  return {
+    pass: projected < limitTokens,
+    marker: projected < limitTokens ? undefined : KEY_LIMIT_EXCEEDED_MARKER,
+    alerts,
+  };
+}
+
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 export type ChatRoutingSource = 'openrouter' | 'byok' | 'custom';
@@ -136,6 +234,11 @@ export interface ChatTransport {
   azureEndpoint?: string;
   /** Azure only ('azure-sdk'): api-version query param, e.g. 2024-10-21. */
   azureApiVersion?: string;
+  /** The BYOK / Custom integration row that served this call, when one
+   *  did (source 'byok' | 'custom'). Undefined for the OpenRouter
+   *  fallback. Carried so the chat layer can stamp observability with
+   *  the key and the key-limit gate can sum usage per integration. */
+  integrationId?: string;
 }
 
 /**
@@ -225,6 +328,17 @@ export class ChatTransportService {
   }): Promise<ChatTransport> {
     const { userId, modelIdentifier, projectId, teamId } = input;
 
+    // Lazily resolve (once) the teams the user belongs to, for the
+    // personal-scope shared-key fallbacks below. Memoised so the alias
+    // and BYOK shared lookups share a single membership query.
+    let personalTeamIdsCache: string[] | undefined;
+    const getPersonalTeamIds = async (): Promise<string[]> => {
+      if (personalTeamIdsCache === undefined) {
+        personalTeamIdsCache = await resolveUserTeamIds(this.db, userId);
+      }
+      return personalTeamIdsCache;
+    };
+
     // Resolve team scope ONCE up-front — used by Custom LLM alias
     // lookup, BYOK lookup, and the OpenRouter fallback billing
     // decision. Pulled out of the BYOK section because alias lookup
@@ -287,6 +401,27 @@ export class ChatTransportService {
       if (userAlias) alias = userAlias;
     }
 
+    // Personal-scope (no team context) shared Custom LLM: the user picked
+    // a team's Custom LLM that the admin marked allow_personal_use. The
+    // alias is team-scoped (teamId set), so the lookups above miss it.
+    // Resolve it through the team link, gated on membership + both enable
+    // flags + allow_personal_use, so a paused link / disabled key / flag
+    // off all fall through to OpenRouter. The integration enable + link
+    // enable are checked here, so the custom-route block's own team-link
+    // check (which only fires for aliasViaTeam) is correctly skipped.
+    if (!alias && !teamScopeId) {
+      const sharedAlias = await this.findSharedPersonalCustomAlias(
+        modelIdentifier,
+        await getPersonalTeamIds(),
+      );
+      if (sharedAlias) {
+        alias = {
+          integrationId: sharedAlias.integrationId,
+          upstreamModel: sharedAlias.upstreamModel,
+        };
+      }
+    }
+
     if (alias?.integrationId) {
       const [integration] = await this.db
         .select()
@@ -296,7 +431,8 @@ export class ChatTransportService {
 
       // A team-shared custom LLM must also have its per-team link enabled —
       // mirrors the team BYOK branch below and the model picker, so pausing
-      // a team's link actually stops routing here (not just hides it).
+      // a team's link actually stops routing here (not just hides it). The
+      // key owner must also still be on the team (stale-link guard).
       let teamLinkEnabled = true;
       if (aliasViaTeam && teamScopeId) {
         const [link] = await this.db
@@ -306,6 +442,10 @@ export class ChatTransportService {
             and(
               eq(teamIntegrationLinks.teamId, teamScopeId),
               eq(teamIntegrationLinks.integrationId, alias.integrationId),
+              ownerStillOnTeam(
+                sql`${teamScopeId}`,
+                sql`${integration?.ownerId ?? null}`,
+              ),
             ),
           )
           .limit(1);
@@ -332,6 +472,7 @@ export class ChatTransportService {
           provider: 'custom',
           source: 'custom',
           kind: 'openai-sdk',
+          integrationId: alias.integrationId,
         };
       }
 
@@ -349,6 +490,10 @@ export class ChatTransportService {
     const provider = providerOfModel(modelIdentifier);
     if (provider) {
       let byokRow: typeof integrations.$inferSelect | undefined;
+      // Which integration row the key came from — stamped onto the
+      // returned transport so observability/the key-limit gate can
+      // attribute usage to the right key.
+      let byokIntegrationId: string | undefined;
 
       if (teamScopeId) {
         // Predefined providers only — apiUrl IS NULL filter mirrors
@@ -362,6 +507,7 @@ export class ChatTransportService {
         // the user's own BYOK.
         const [teamByok] = await this.db
           .select({
+            id: integrations.id,
             apiKeyEncrypted: integrations.apiKeyEncrypted,
             // Azure needs the endpoint / api-version / deployments that
             // live in `config`; harmless ({}) for every other provider.
@@ -379,6 +525,11 @@ export class ChatTransportService {
               eq(integrations.providerId, provider),
               eq(integrations.isEnabled, true),
               isNull(integrations.apiUrl),
+              // Key owner must still be on the team (stale-link guard).
+              ownerStillOnTeam(
+                teamIntegrationLinks.teamId,
+                integrations.ownerId,
+              ),
             ),
           )
           .limit(1);
@@ -387,6 +538,7 @@ export class ChatTransportService {
             apiKeyEncrypted: teamByok.apiKeyEncrypted,
             config: teamByok.config,
           } as typeof integrations.$inferSelect;
+          byokIntegrationId = teamByok.id;
         }
       }
 
@@ -403,7 +555,55 @@ export class ChatTransportService {
             ),
           )
           .limit(1);
-        if (userByok?.apiKeyEncrypted) byokRow = userByok;
+        if (userByok?.apiKeyEncrypted) {
+          byokRow = userByok;
+          byokIntegrationId = userByok.id;
+        }
+      }
+
+      // Personal-scope (no team context) shared BYOK: an admin enabled a
+      // predefined provider key, linked it into a team the user is in,
+      // and marked allow_personal_use. Resolve it the same way team scope
+      // does — through the link, both enable flags + allow_personal_use
+      // required, apiUrl IS NULL to stay on predefined rows. Only runs
+      // when the user has no personal key for this provider.
+      if (!byokRow && !teamScopeId) {
+        const personalTeamIds = await getPersonalTeamIds();
+        if (personalTeamIds.length > 0) {
+          const [sharedByok] = await this.db
+            .select({
+              id: integrations.id,
+              apiKeyEncrypted: integrations.apiKeyEncrypted,
+              config: integrations.config,
+            })
+            .from(teamIntegrationLinks)
+            .innerJoin(
+              integrations,
+              eq(integrations.id, teamIntegrationLinks.integrationId),
+            )
+            .where(
+              and(
+                inArray(teamIntegrationLinks.teamId, personalTeamIds),
+                eq(teamIntegrationLinks.isEnabled, true),
+                eq(integrations.providerId, provider),
+                eq(integrations.isEnabled, true),
+                eq(integrations.allowPersonalUse, true),
+                isNull(integrations.apiUrl),
+                ownerStillOnTeam(
+                  teamIntegrationLinks.teamId,
+                  integrations.ownerId,
+                ),
+              ),
+            )
+            .limit(1);
+          if (sharedByok?.apiKeyEncrypted) {
+            byokRow = {
+              apiKeyEncrypted: sharedByok.apiKeyEncrypted,
+              config: sharedByok.config,
+            } as typeof integrations.$inferSelect;
+            byokIntegrationId = sharedByok.id;
+          }
+        }
       }
 
       if (byokRow?.apiKeyEncrypted) {
@@ -434,6 +634,7 @@ export class ChatTransportService {
               kind: 'azure-sdk',
               azureEndpoint: endpoint,
               azureApiVersion: apiVersion,
+              integrationId: byokIntegrationId,
             };
           }
           this.logger.warn(
@@ -453,6 +654,7 @@ export class ChatTransportService {
             provider,
             source: 'byok',
             kind: 'openai-sdk',
+            integrationId: byokIntegrationId,
           };
         }
 
@@ -478,6 +680,7 @@ export class ChatTransportService {
             provider,
             source: 'byok',
             kind: 'anthropic-sdk',
+            integrationId: byokIntegrationId,
           };
         }
         if (native?.nativeSdkAvailable && provider === 'anthropic') {
@@ -566,6 +769,16 @@ export class ChatTransportService {
         )
         .limit(1);
       if (userAlias) row = userAlias;
+    }
+    // Personal-scope shared Custom LLM (allow_personal_use) — mirror the
+    // alias resolution in `resolve` (same helper) so its configured
+    // fallbacks apply too.
+    if (!row && !teamScopeId) {
+      const sharedAlias = await this.findSharedPersonalCustomAlias(
+        modelIdentifier,
+        await resolveUserTeamIds(this.db, userId),
+      );
+      if (sharedAlias) row = sharedAlias;
     }
 
     const raw = Array.isArray(row?.fallbackModels)
@@ -710,8 +923,20 @@ export class ChatTransportService {
        * gate stays decoupled from the model catalog service.
        */
       estimatedCostCents?: number;
+      /**
+       * Routing source of the call. BYOK / Custom routes are NOT subject
+       * to the per-user team cap — they're governed by the key's own
+       * monthly token limit (assertIntegrationLimitNotExceeded) instead,
+       * which bills the key owner's external account, not the team's
+       * WorkenAI budget. So we skip the cap entirely for them (including
+       * the cap=0 suspension), per product decision. Omit / 'openrouter'
+       * keeps the cap enforced for WorkenAI-routed calls.
+       */
+      source?: ChatRoutingSource;
     } = {},
   ): Promise<void> {
+    // BYOK / Custom usage is limited per-key, not per-user — skip the cap.
+    if (options.source === 'byok' || options.source === 'custom') return;
     // Custom routes don't have catalog pricing, so observability
     // logs cost=null — the spend SUM below naturally counts $0 for
     // them and the cap-exceeded branch never trips. We still RUN the
@@ -1078,6 +1303,261 @@ export class ChatTransportService {
       `${ORG_BUDGET_EXCEEDED_MARKER}: Your company's monthly AI budget of $${targetUsd} ${detail}`,
       402,
     );
+  }
+
+  /**
+   * Per-key monthly token-limit gate. Fires only for BYOK / Custom
+   * routes that resolved to a specific integration (transport carries
+   * its id). Sums month-to-date total_tokens for that key and compares
+   * against `integrations.monthly_token_limit`:
+   *   - null → no limit, silent pass
+   *   - 0    → key paused, block (KEY_PAUSED)
+   *   - >0   → block once used + estimate >= limit (KEY_LIMIT_EXCEEDED);
+   *            fan out 80% / low-balance / 100% alerts to the key owner
+   *            and the calling user on the call that crosses each.
+   *
+   * Tokens are the unit because every route records them; cost_usd is
+   * NULL for Custom LLMs. The $ figure (where catalog pricing exists) is
+   * surfaced in the alert body for context only, never gates.
+   *
+   * This is what REPLACES per-user limiting for BYOK/Custom: those
+   * sources skip the team-member cap entirely (see
+   * assertTeamMemberCapNotExceeded) and are governed solely by this
+   * per-key limit.
+   */
+  async assertIntegrationLimitNotExceeded(
+    transport: Pick<ChatTransport, 'source' | 'integrationId'>,
+    userId: string,
+    options: { estimatedTokens?: number; reserve?: boolean } = {},
+  ): Promise<string | null> {
+    if (transport.source !== 'byok' && transport.source !== 'custom') {
+      return null;
+    }
+    if (!transport.integrationId) return null;
+    const integrationId = transport.integrationId;
+
+    const [integration] = await this.db
+      .select({
+        ownerId: integrations.ownerId,
+        limit: integrations.monthlyTokenLimit,
+        providerId: integrations.providerId,
+      })
+      .from(integrations)
+      .where(eq(integrations.id, integrationId))
+      .limit(1);
+    if (!integration || integration.limit == null) return null;
+    const limit = integration.limit;
+    const estimate = Math.max(options.estimatedTokens ?? 0, 0);
+
+    // Serialize the check + reservation per key (advisory xact lock) so two
+    // concurrent calls can't both read the same stale total and both pass.
+    // We count active reservations on top of recorded usage, and reap
+    // leaked reservations (crashed / disconnected callers) older than 10
+    // minutes so a never-released reservation can't permanently shrink the
+    // key's budget.
+    const { decision, alerts, usedTokens, spentUsd, reservationId } =
+      await this.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${integrationId}))`,
+        );
+        await tx
+          .delete(integrationTokenReservations)
+          .where(
+            and(
+              eq(integrationTokenReservations.integrationId, integrationId),
+              lt(
+                integrationTokenReservations.createdAt,
+                sql`now() - interval '10 minutes'`,
+              ),
+            ),
+          );
+
+        const startOfMonth = sql`date_trunc('month', now())`;
+        const [agg] = await tx
+          .select({
+            tokens: sql<string>`coalesce(sum(${observabilityEvents.totalTokens}), 0)`,
+            cost: sql<string>`coalesce(sum(${observabilityEvents.costUsd}), 0)`,
+          })
+          .from(observabilityEvents)
+          .where(
+            and(
+              eq(observabilityEvents.integrationId, integrationId),
+              eq(observabilityEvents.success, true),
+              gte(observabilityEvents.createdAt, startOfMonth),
+            ),
+          );
+        const used = agg ? parseInt(agg.tokens, 10) || 0 : 0;
+        const cost = agg ? parseFloat(agg.cost) || 0 : 0;
+
+        const [resvAgg] = await tx
+          .select({
+            reserved: sql<string>`coalesce(sum(${integrationTokenReservations.estimatedTokens}), 0)`,
+          })
+          .from(integrationTokenReservations)
+          .where(eq(integrationTokenReservations.integrationId, integrationId));
+        const reserved = resvAgg ? parseInt(resvAgg.reserved, 10) || 0 : 0;
+
+        // Block decision counts recorded usage + in-flight reservations:
+        // the concurrency guard.
+        const d = decideIntegrationLimit({
+          limitTokens: limit,
+          usedTokens: used + reserved,
+          estimatedTokens: estimate,
+        });
+        // Alerts are decided on RECORDED usage only — transient reservations
+        // must not fire a false "80% / hit limit" notification that real
+        // usage never reaches.
+        const alertDecision = decideIntegrationLimit({
+          limitTokens: limit,
+          usedTokens: used,
+          estimatedTokens: estimate,
+        });
+
+        // Reserve this call's estimate so concurrent callers see it.
+        // Skipped when blocked, when the caller passed no estimate
+        // (post-flight-only gate, e.g. the arena judge), or when the caller
+        // only wants a pre-flight check (reserve:false — the chat pre-flight
+        // gate; the per-candidate generator gate does the real reservation).
+        let resId: string | null = null;
+        if (d.pass && estimate > 0 && options.reserve !== false) {
+          const [row] = await tx
+            .insert(integrationTokenReservations)
+            .values({ integrationId, estimatedTokens: estimate })
+            .returning({ id: integrationTokenReservations.id });
+          resId = row?.id ?? null;
+        }
+        // Alert display uses recorded `used` (the real number), not the
+        // transient reserved total.
+        return {
+          decision: d,
+          alerts: alertDecision.alerts,
+          usedTokens: used,
+          spentUsd: cost,
+          reservationId: resId,
+        };
+      });
+
+    // Fan out any crossed alerts to the key owner + the caller. Advisory
+    // only — never let a notification failure abort the chat path.
+    if (alerts.length > 0) {
+      const recipients = Array.from(new Set([integration.ownerId, userId]));
+      const limitTokens = integration.limit;
+      const usedStr = usedTokens.toLocaleString('en-US');
+      const limitStr = limitTokens.toLocaleString('en-US');
+      const costNote = spentUsd > 0 ? ` (~$${spentUsd.toFixed(2)} spent)` : '';
+      for (const threshold of alerts) {
+        const pct = threshold === 'low' ? 'low' : threshold;
+        const title =
+          threshold === '100'
+            ? 'A shared AI key has hit its monthly token limit'
+            : threshold === 'low'
+              ? 'A shared AI key is almost out of tokens'
+              : 'A shared AI key has used 80% of its monthly tokens';
+        const body =
+          threshold === '100'
+            ? `${usedStr} / ${limitStr} tokens used${costNote}. Calls on this key are blocked until the limit is raised or next month resets.`
+            : `${usedStr} / ${limitStr} tokens used${costNote}.`;
+        await this.fanoutBudgetAlert(
+          recipients,
+          'budget_alert',
+          `${this.periodKey()}:integration:${transport.integrationId}:${pct}`,
+          title,
+          body,
+          {
+            scope: 'integration',
+            integrationId: transport.integrationId,
+            providerId: integration.providerId,
+            threshold: threshold === 'low' ? 'low' : Number(threshold),
+            limitTokens,
+            usedTokens,
+            spentUsd,
+          },
+        );
+      }
+    }
+
+    if (!decision.pass) {
+      const limitStr = limit.toLocaleString('en-US');
+      const message =
+        decision.marker === KEY_PAUSED_MARKER
+          ? `${KEY_PAUSED_MARKER}: This AI key is paused by its owner. Ask them to raise its monthly token limit.`
+          : `${KEY_LIMIT_EXCEEDED_MARKER}: This AI key has reached its monthly limit of ${limitStr} tokens. It resets on the 1st of next month, or the key owner can raise the limit.`;
+      throw new HttpException(message, 402);
+    }
+    return reservationId;
+  }
+
+  /**
+   * Release a reservation made by `assertIntegrationLimitNotExceeded`,
+   * called once the gated call finishes (success or failure) so the
+   * reserved tokens free up immediately rather than waiting for the
+   * 10-minute reaper. Best-effort: a no-op for null ids and never throws,
+   * since a failed release self-heals via the reaper.
+   */
+  async releaseIntegrationReservation(
+    reservationId: string | null | undefined,
+  ): Promise<void> {
+    if (!reservationId) return;
+    try {
+      await this.db
+        .delete(integrationTokenReservations)
+        .where(eq(integrationTokenReservations.id, reservationId));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Failed to release integration reservation ${reservationId}: ${msg}`,
+      );
+    }
+  }
+
+  /**
+   * Personal-scope shared Custom LLM lookup, shared by `resolve` and
+   * `resolveFallbackModels` so the two can't drift (they once did — a
+   * missing `providerId='custom'` filter). Finds the team-scoped alias
+   * for `modelIdentifier` whose Custom integration is enabled, marked
+   * allow_personal_use, and linked-enabled into one of `teamIds`.
+   * Returns the alias row (integrationId + upstreamModel + fallbackModels)
+   * or undefined. `[]` teamIds short-circuits to undefined.
+   */
+  private async findSharedPersonalCustomAlias(
+    modelIdentifier: string,
+    teamIds: string[],
+  ): Promise<
+    | {
+        integrationId: string | null;
+        upstreamModel: string | null;
+        fallbackModels: unknown;
+      }
+    | undefined
+  > {
+    if (teamIds.length === 0) return undefined;
+    const [row] = await this.db
+      .select({
+        integrationId: modelConfigs.integrationId,
+        upstreamModel: modelConfigs.upstreamModel,
+        fallbackModels: modelConfigs.fallbackModels,
+      })
+      .from(modelConfigs)
+      .innerJoin(integrations, eq(integrations.id, modelConfigs.integrationId))
+      .innerJoin(
+        teamIntegrationLinks,
+        eq(teamIntegrationLinks.integrationId, integrations.id),
+      )
+      .where(
+        and(
+          eq(modelConfigs.modelIdentifier, modelIdentifier),
+          eq(integrations.providerId, 'custom'),
+          eq(integrations.isEnabled, true),
+          eq(integrations.allowPersonalUse, true),
+          eq(teamIntegrationLinks.isEnabled, true),
+          inArray(teamIntegrationLinks.teamId, teamIds),
+          // Key owner must still be on the linked team — a stale link
+          // left after the owner leaves must not keep the key reachable.
+          ownerStillOnTeam(teamIntegrationLinks.teamId, integrations.ownerId),
+        ),
+      )
+      .limit(1);
+    return row;
   }
 
   private safeDecrypt(encrypted: string, context: string): string {

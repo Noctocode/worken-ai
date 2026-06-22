@@ -384,6 +384,15 @@ export const observabilityEvents = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     teamId: uuid("team_id").references(() => teams.id, { onDelete: "set null" }),
+    // Which BYOK / Custom LLM integration served this call, when the
+    // chat routed through one (source 'byok' | 'custom'). NULL for
+    // WorkenAI/OpenRouter-routed calls (no specific key). Lets the key-
+    // limit gate sum usage per integration and the admin see a per-user
+    // breakdown of who spent how much on a shared key. ON DELETE SET
+    // NULL so deleting a key doesn't wipe its historical usage rows.
+    integrationId: uuid("integration_id").references(() => integrations.id, {
+      onDelete: "set null",
+    }),
     eventType: text("event_type").notNull(), // 'arena_call' | 'evaluator_call' | 'guardrail_trigger' | future
     model: text("model"),
     provider: text("provider"), // 'openai' | 'anthropic' | 'google' | 'openrouter:other' | 'system'
@@ -418,6 +427,13 @@ export const observabilityEvents = pgTable(
     index("observability_events_success_created_idx")
       .on(table.createdAt)
       .where(sql`${table.success} = true`),
+    // Key-limit gate sums total_tokens (and cost_usd for display) per
+    // integration for the current month on every BYOK/Custom chat call.
+    // Partial index keeps that aggregate cheap and skips the bulk of
+    // rows (WorkenAI-routed) where integration_id is NULL.
+    index("observability_events_integration_created_idx")
+      .on(table.integrationId, table.createdAt)
+      .where(sql`${table.integrationId} IS NOT NULL`),
   ],
 );
 
@@ -1273,6 +1289,27 @@ export const integrations = pgTable(
     apiUrl: text("api_url"),
     apiKeyEncrypted: text("api_key_encrypted"),
     isEnabled: boolean("is_enabled").notNull().default(true),
+    // When true, members of any team this integration is linked into
+    // (team_integration_links) may also use this key in their PERSONAL
+    // scope — personal projects / personal chats — not just inside the
+    // team. When false (default), the key is usable only in team scope
+    // by linked teams. A key with no team links + this false is
+    // "owner-only" (the admin's private key). Decoupled from team
+    // linking so the admin's three sharing modes are: owner-only (no
+    // links), team-only (links, flag off), team+personal (links, flag
+    // on).
+    allowPersonalUse: boolean("allow_personal_use").notNull().default(false),
+    // Monthly usage limit for THIS key, counted in tokens (sum of
+    // observability_events.total_tokens for this integration in the
+    // current calendar month). Tokens are the unit because every route
+    // records them, whereas cost_usd is NULL for Custom LLMs (no catalog
+    // pricing). Tri-state, mirrors the budget columns elsewhere:
+    //   - NULL → no limit (gate is a silent pass)
+    //   - 0    → key paused (every call blocked — admin kill switch)
+    //   - >0   → enforced; chat blocked once month-to-date tokens >= limit
+    // The $ figures the admin sees are display-only and only populated
+    // for providers with catalog pricing.
+    monthlyTokenLimit: integer("monthly_token_limit"),
     // Provider-specific extras (Azure endpoint / api-version /
     // deployments). `{}` for every other provider. Azure keeps
     // `apiUrl` NULL so it stays covered by the predefined unique
@@ -1353,6 +1390,39 @@ export const teamIntegrationLinks = pgTable(
     // the constraint depends on the JOINed integrations.provider_id,
     // which can't be expressed in a single partial index. Service-side
     // it's a select-then-throw inside the link-set transaction.
+  ],
+);
+
+// Short-lived reservations against a key's monthly token limit, so the
+// pre-flight gate (assertIntegrationLimitNotExceeded) can't be raced by
+// concurrent calls. A row is inserted in the same transaction that
+// decides a call may proceed (reserving its upper-bound estimate), and
+// deleted once the call finishes (its real usage then lives in
+// observability_events). The gate counts these active reservations on
+// top of recorded usage, so two simultaneous calls near the limit can't
+// both read the same stale total and both pass.
+//
+// `created_at` drives self-reaping: the gate first deletes rows older
+// than a few minutes (a crashed / disconnected caller that never
+// released), so a leaked reservation can't permanently shrink the key's
+// available budget. Cascade on the integration so deleting a key drops
+// its reservations.
+export const integrationTokenReservations = pgTable(
+  "integration_token_reservations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    integrationId: uuid("integration_id")
+      .references(() => integrations.id, { onDelete: "cascade" })
+      .notNull(),
+    estimatedTokens: integer("estimated_tokens").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // The gate sums reserved tokens per integration and reaps by age.
+    index("integration_token_reservations_integration_idx").on(
+      table.integrationId,
+      table.createdAt,
+    ),
   ],
 );
 
@@ -1529,6 +1599,9 @@ export const driveImportSources = pgTable(
     // 'teams' or 'project'.
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1611,6 +1684,9 @@ export const sharepointImportSources = pgTable(
     visibility: text("visibility").notNull().default("all"),
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1663,6 +1739,9 @@ export const onedriveImportSources = pgTable(
     visibility: text("visibility").notNull().default("all"),
     teamIds: jsonb("team_ids").$type<string[]>(),
     projectIds: jsonb("project_ids").$type<string[]>(),
+    // Schedule ids (AI Cron) this source's files should be linked to. NULL
+    // unless visibility='schedule'. Persisted so re-sync reproduces it.
+    scheduleIds: jsonb("schedule_ids").$type<string[]>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1677,6 +1756,163 @@ export const onedriveImportSources = pgTable(
     uniqueIndex("onedrive_import_sources_owner_all_unique")
       .on(table.ownerId)
       .where(sql`${table.scope} = 'all'`),
+  ],
+);
+
+/**
+ * AI Cron — a recurring AI prompt the user schedules. The scheduler scans
+ * this table every minute (see ai-cron module) for due jobs, runs the prompt
+ * through the same ChatTransportService the chat/arena uses, and delivers the
+ * result. Each definition produces one `scheduledPromptRuns` row per fire.
+ */
+export const scheduledPrompts = pgTable(
+  "scheduled_prompts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    ownerId: uuid("owner_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    // Team scope for model/key resolution. NULL = personal. This maps 1:1
+    // to ChatTransportService.resolve({ userId, modelIdentifier, teamId }) —
+    // we deliberately store ONLY teamId (no separate `scope` column) so the
+    // runner passes it straight through with no translation layer. The FE
+    // picker's "personal" | "<teamId>" scope string is collapsed to
+    // null/teamId at the controller boundary on save.
+    teamId: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // The prompt sent to the model on each run ("what").
+    prompt: text("prompt").notNull(),
+    // Free-form "Schedule Context" — extra framing prepended to the model
+    // context on every run (mirrors conversations.context). Distinct from the
+    // prompt; optional.
+    context: text("context"),
+    // Effective model id from /models/effective — catalog, BYOK, Custom LLM,
+    // or Azure deployment. Resolution at run time is delegated to
+    // ChatTransportService, so every supported source works unchanged.
+    modelIdentifier: text("model_identifier").notNull(),
+    // Standard 5-field cron expression ("when") evaluated in `timezone`.
+    cronExpression: text("cron_expression").notNull(),
+    timezone: text("timezone").notNull().default("UTC"),
+    // Optional context injected before the prompt.
+    useKnowledgeCore: boolean("use_knowledge_core").notNull().default(false),
+    knowledgeFolderId: uuid("knowledge_folder_id").references(
+      () => knowledgeFolders.id,
+      { onDelete: "set null" },
+    ),
+    useWebSearch: boolean("use_web_search").notNull().default(false),
+    // Delivery channels for the run output.
+    deliverInApp: boolean("deliver_in_app").notNull().default(true),
+    deliverEmail: boolean("deliver_email").notNull().default(false),
+    deliverWebhook: boolean("deliver_webhook").notNull().default(false),
+    // Recipient addresses for the email channel (the user can type extra
+    // addresses on the form besides their own).
+    emailRecipients: jsonb("email_recipients").$type<string[]>(),
+    webhookUrl: text("webhook_url"),
+    // Pause flag — disabled jobs are skipped by the scanner without losing
+    // their schedule/history.
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    // Next due time, precomputed from cronExpression+timezone. The scanner's
+    // hot query filters on this, and the two-phase claim advances it to the
+    // next future occurrence inside the claim transaction so a job is never
+    // double-fired.
+    nextRunAt: timestamp("next_run_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // Scanner hot path: WHERE is_enabled AND next_run_at <= now(). Composite
+    // so the minute tick is an index scan, not a seq scan, as jobs grow.
+    index("scheduled_prompts_enabled_next_run_idx").on(
+      table.isEnabled,
+      table.nextRunAt,
+    ),
+    index("scheduled_prompts_owner_idx").on(table.ownerId),
+  ],
+);
+
+/**
+ * One execution of a `scheduledPrompts` job (scheduled or manual run-now).
+ * Holds status, the AI output, usage/cost metrics (mirroring observability),
+ * a per-channel delivery status, and a heartbeat used by the reaper.
+ */
+export const scheduledPromptRuns = pgTable(
+  "scheduled_prompt_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    scheduledPromptId: uuid("scheduled_prompt_id")
+      .references(() => scheduledPrompts.id, { onDelete: "cascade" })
+      .notNull(),
+    // pending | running | success | failed
+    status: text("status").notNull().default("pending"),
+    // schedule | manual — manual (run-now) runs are excluded from the
+    // per-owner concurrency cap since they're an explicit user test.
+    triggeredBy: text("triggered_by").notNull().default("schedule"),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    // Refreshed periodically by the runner while the model call is in
+    // flight. The reaper marks runs with a stale heartbeat (no update for
+    // a few minutes) as failed — heartbeat-based rather than absolute time
+    // from startedAt so legitimately slow runs (large RAG context + web
+    // search + long output) aren't killed prematurely.
+    lastHeartbeatAt: timestamp("last_heartbeat_at", { withTimezone: true }),
+    output: text("output"),
+    errorMessage: text("error_message"),
+    // Usage/cost — mirrors observability_events. costUsd is null for Custom
+    // routes (no catalog pricing).
+    model: text("model"),
+    provider: text("provider"),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    totalTokens: integer("total_tokens"),
+    costUsd: numeric("cost_usd", { precision: 12, scale: 6 }),
+    latencyMs: integer("latency_ms"),
+    // Per-channel delivery outcome, e.g. { inApp: 'sent', email: 'failed' }.
+    deliveryStatus: jsonb("delivery_status").$type<Record<string, string>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    // History view: most recent runs for a job.
+    index("scheduled_prompt_runs_prompt_created_idx").on(
+      table.scheduledPromptId,
+      table.createdAt,
+    ),
+    // Reaper sweep: find stuck `running` rows by heartbeat age.
+    index("scheduled_prompt_runs_status_heartbeat_idx").on(
+      table.status,
+      table.lastHeartbeatAt,
+    ),
+  ],
+);
+
+/**
+ * Links knowledge_files attached to a specific AI Cron schedule (mirrors
+ * project_knowledge_files). Files attached here are uploaded into Knowledge
+ * Core with visibility='schedule', so they surface only as context for this
+ * schedule's runs, not in the general KC view. Cascade on both sides.
+ */
+export const scheduleKnowledgeFiles = pgTable(
+  "schedule_knowledge_files",
+  {
+    scheduledPromptId: uuid("scheduled_prompt_id")
+      .references(() => scheduledPrompts.id, { onDelete: "cascade" })
+      .notNull(),
+    fileId: uuid("file_id")
+      .references(() => knowledgeFiles.id, { onDelete: "cascade" })
+      .notNull(),
+    attachedBy: uuid("attached_by").references(() => users.id),
+    attachedAt: timestamp("attached_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.scheduledPromptId, table.fileId] }),
+    // Reverse lookup: "which schedules reference this KC file?"
+    index("schedule_knowledge_files_file_idx").on(table.fileId),
   ],
 );
 

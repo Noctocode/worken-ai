@@ -34,6 +34,7 @@ import {
 } from '../guardrails/guardrail-evaluator.service.js';
 import {
   ChatTransportService,
+  ESTIMATED_COMPLETION_TOKENS,
   type ChatTransport,
 } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -268,6 +269,13 @@ export class CompareModelsController {
         `AI gateway key unavailable: ${msg}`,
       );
     }
+    // If the judge resolves to a BYOK/Custom key, enforce that key's own
+    // monthly token limit before any SSE flushes (post-flight: blocks once
+    // usage crosses the limit, and immediately when the key is paused).
+    await this.chatTransport.assertIntegrationLimitNotExceeded(
+      judgeTransport,
+      user.id,
+    );
     // Surfaced to the FE so it can warn that the judge also graded its
     // own answer (possible self-evaluation bias) when the user put the
     // judge model into the comparison set.
@@ -412,6 +420,9 @@ export class CompareModelsController {
 
         for (let ci = 0; ci < candidates.length; ci++) {
           const candidate = candidates[ci];
+          // Per-key token reservation for this attempt; released in the
+          // stream finally below so reserved tokens free up promptly.
+          let reservationId: string | null = null;
 
           // Per-candidate pre-flight (transport + budget gates). A failure
           // here is a budget/approval problem, not model availability — it
@@ -430,13 +441,14 @@ export class CompareModelsController {
             const estimatedCostUsd = await this.catalogService.estimateCost(
               candidate,
               promptTok,
-              4096,
+              ESTIMATED_COMPLETION_TOKENS,
             );
             const estimatedCostCents =
               estimatedCostUsd != null ? Math.ceil(estimatedCostUsd * 100) : 0;
             await this.chatTransport.assertTeamMemberCapNotExceeded(user.id, {
               teamId,
               estimatedCostCents,
+              source: t.source,
             });
             await this.chatTransport.assertTeamBudgetNotExceeded({
               teamId,
@@ -446,6 +458,12 @@ export class CompareModelsController {
               estimatedCostCents,
               callerUserId: user.id,
             });
+            reservationId =
+              await this.chatTransport.assertIntegrationLimitNotExceeded(
+                t,
+                user.id,
+                { estimatedTokens: promptTok + ESTIMATED_COMPLETION_TOKENS },
+              );
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
             const status =
@@ -530,6 +548,9 @@ export class CompareModelsController {
             };
           } finally {
             if (timer) clearTimeout(timer);
+            await this.chatTransport.releaseIntegrationReservation(
+              reservationId,
+            );
           }
 
           // The attempt's own abort fired (not the run) before any token →
@@ -583,6 +604,7 @@ export class CompareModelsController {
             eventType: 'arena_call',
             model: usedModel,
             provider: transport.provider,
+            integrationId: transport.integrationId ?? null,
             latencyMs,
             success: false,
             errorMessage: errorPayload.message,
@@ -616,6 +638,7 @@ export class CompareModelsController {
             eventType: 'arena_call',
             model: usedModel,
             provider: transport.provider,
+            integrationId: transport.integrationId ?? null,
             latencyMs,
             success: false,
             errorMessage: 'Output guardrail blocked',
@@ -657,6 +680,7 @@ export class CompareModelsController {
           eventType: 'arena_call',
           model,
           provider: transport.provider,
+          integrationId: transport.integrationId ?? null,
           totalTokens,
           costUsd: resolvedCostUsd ?? null,
           latencyMs,
@@ -740,6 +764,7 @@ export class CompareModelsController {
             teamId,
             eventType: 'evaluator_call',
             model: judgeModel,
+            integrationId: judgeTransport.integrationId ?? null,
             latencyMs: Date.now() - evalStart,
             success: true,
             totalTokens: comparison.totalTokens,
@@ -772,6 +797,7 @@ export class CompareModelsController {
             teamId,
             eventType: 'evaluator_call',
             model: judgeModel,
+            integrationId: judgeTransport.integrationId ?? null,
             latencyMs: Date.now() - evalStart,
             success: false,
             errorMessage: msg,

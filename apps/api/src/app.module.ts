@@ -1,9 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import type Redis from 'ioredis';
+import { AiCronModule } from './ai-cron/ai-cron.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -39,6 +41,10 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
 @Module({
   imports: [
     ConfigModule.forRoot({ envFilePath: '../../.env', isGlobal: true }),
+    // Registered once here (not in the ai-cron module) so the
+    // SchedulerRegistry is a single app-wide instance. The AI Cron feature's
+    // minute-tick scanner is the only @Cron consumer for now.
+    ScheduleModule.forRoot(),
     DatabaseModule,
     RedisModule,
     // Rate limiting for the public password-auth endpoints (issue #23).
@@ -50,6 +56,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
       useFactory: (redis: Redis) =>
         buildThrottlerOptions(new ThrottlerStorageRedisService(redis)),
     }),
+    AiCronModule,
     ApiKeysModule,
     AuthModule,
     ChatModule,

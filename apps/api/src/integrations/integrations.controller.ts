@@ -53,6 +53,10 @@ export class IntegrationsController {
       customModel?: string;
       /** Azure only: endpoint + api-version + deployments. */
       config?: IntegrationConfig;
+      /** Allow members of linked teams to use this key in personal scope. */
+      allowPersonalUse?: boolean;
+      /** Monthly token usage cap (null = no limit, 0 = paused, >0 = enforced). */
+      monthlyTokenLimit?: number | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -67,6 +71,8 @@ export class IntegrationsController {
       customName: body.customName,
       customModel: body.customModel,
       config: body.config,
+      allowPersonalUse: body.allowPersonalUse,
+      monthlyTokenLimit: body.monthlyTokenLimit,
     });
   }
 
@@ -79,10 +85,21 @@ export class IntegrationsController {
       isEnabled?: boolean;
       apiKey?: string | null;
       config?: IntegrationConfig;
+      allowPersonalUse?: boolean;
+      monthlyTokenLimit?: number | null;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.integrationsService.update(user.id, id, body);
+  }
+
+  /** Month-to-date usage of this key, per user (owner-only). */
+  @Get(':id/usage')
+  usage(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.integrationsService.keyUsage(user.id, id);
   }
 
   /** Custom LLMs only — predefined rows can be disabled but not removed. */

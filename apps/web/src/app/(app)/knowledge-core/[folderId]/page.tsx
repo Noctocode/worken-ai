@@ -1,8 +1,9 @@
 "use client";
 
-import { use, useEffect, useMemo, useState } from "react";
+import { use, useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import {
+  CalendarClock,
   Download,
   FileText,
   Files,
@@ -55,6 +56,7 @@ import {
   fetchKnowledgeFolders,
   fetchAllKnowledgeFiles,
   fetchProjects,
+  fetchScheduledPrompts,
   fetchTeams,
   uploadKnowledgeFiles,
   updateKnowledgeFileVisibility,
@@ -179,13 +181,17 @@ function VisibilityBadge({
   visibility,
   teams = [],
   projects = [],
+  schedules = [],
 }: {
   visibility: KnowledgeFileVisibility;
   teams?: { id: string; name: string }[];
   projects?: { id: string; name: string }[];
+  schedules?: { id: string; name: string }[];
 }) {
   const { t } = useLanguage();
   const isPersonal = useIsPersonal();
+  const chipClass =
+    "inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7";
   if (visibility === "admins") {
     return (
       <span
@@ -197,59 +203,72 @@ function VisibilityBadge({
       </span>
     );
   }
-  if (visibility === "teams") {
-    const names = teams.map((team) => team.name).join(", ");
-    return (
+  // UNION model: render one chip per non-empty scope set (teams + projects +
+  // schedules can coexist on the same file).
+  const chips: ReactNode[] = [];
+  if (teams.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("kcFolder.teamsTooltipPrefix")} ${names}.`
-            : t("kcFolder.teamsEmptyTooltip")
-        }
+        key="teams"
+        className={chipClass}
+        title={`${t("kcFolder.teamsTooltipPrefix")} ${teams.map((tm) => tm.name).join(", ")}.`}
       >
         <Users className="h-3 w-3" strokeWidth={2} />
-        {teams.length > 0 ? `${t("kcFolder.teams")} (${teams.length})` : t("kcFolder.teams")}
-      </span>
+        {teams.length === 1 ? teams[0].name : `${t("kcFolder.teams")} (${teams.length})`}
+      </span>,
     );
   }
-  if (visibility === "project") {
-    const names = projects.map((p) => p.name).join(", ");
-    return (
+  if (projects.length > 0) {
+    chips.push(
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-primary-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary-7"
-        title={
-          names.length > 0
-            ? `${t("kcFolder.projectsTooltipPrefix")} ${names}.`
-            : t("kcFolder.projectsEmptyTooltip")
-        }
+        key="projects"
+        className={chipClass}
+        title={`${t("kcFolder.projectsTooltipPrefix")} ${projects.map((p) => p.name).join(", ")}.`}
       >
         <Folder className="h-3 w-3" strokeWidth={2} />
-        {projects.length > 0 ? `${t("kcFolder.projects")} (${projects.length})` : t("kcFolder.project")}
-      </span>
+        {projects.length === 1
+          ? projects[0].name
+          : `${t("kcFolder.projects")} (${projects.length})`}
+      </span>,
     );
   }
-  // visibility === 'all'. Personal account → owner-only, so the badge reads
-  // "Only me" rather than the company-wide "Everyone".
-  if (isPersonal) {
+  if (schedules.length > 0) {
+    chips.push(
+      <span
+        key="schedules"
+        className={chipClass}
+        title={`${t("kcFolder.schedule")}: ${schedules.map((s) => s.name).join(", ")}`}
+      >
+        <CalendarClock className="h-3 w-3" strokeWidth={2} />
+        {schedules.length === 1
+          ? schedules[0].name
+          : `${t("kcFolder.schedule")} (${schedules.length})`}
+      </span>,
+    );
+  }
+  // No scope chips → broad base: "Everyone" for a company account, owner-only
+  // "Only me" for a personal one.
+  if (visibility === "all" || chips.length === 0) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-        title={t("knowledgeCore.visibilityOnlyMe")}
+        title={
+          isPersonal
+            ? t("knowledgeCore.visibilityOnlyMe")
+            : t("kcFolder.everyoneTitle")
+        }
       >
-        <Lock className="h-3 w-3" strokeWidth={2} />
-        {t("knowledgeCore.visibilityOnlyMe")}
+        {isPersonal ? (
+          <Lock className="h-3 w-3" strokeWidth={2} />
+        ) : (
+          <Users className="h-3 w-3" strokeWidth={2} />
+        )}
+        {isPersonal ? t("knowledgeCore.visibilityOnlyMe") : t("kcFolder.everyone")}
       </span>
     );
   }
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded-full bg-bg-1 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-text-3"
-      title={t("kcFolder.everyoneTitle")}
-    >
-      <Users className="h-3 w-3" strokeWidth={2} />
-      {t("kcFolder.everyone")}
-    </span>
+    <span className="inline-flex flex-wrap items-center gap-1">{chips}</span>
   );
 }
 
@@ -326,6 +345,7 @@ export default function FolderDetailPage({
     visibility: KnowledgeFileVisibility;
     teamIds: string[];
     projectIds: string[];
+    scheduleIds: string[];
   } | null>(null);
 
   const uploadMutation = useMutation({
@@ -334,12 +354,14 @@ export default function FolderDetailPage({
       visibility,
       teamIds,
       projectIds,
+      scheduleIds,
       nameConflictActions,
     }: {
       files: File[];
       visibility: KnowledgeFileVisibility;
       teamIds: string[];
       projectIds: string[];
+      scheduleIds: string[];
       nameConflictActions?: Record<string, NameConflictAction>;
     }) =>
       uploadKnowledgeFiles(
@@ -349,6 +371,7 @@ export default function FolderDetailPage({
         teamIds,
         projectIds,
         nameConflictActions,
+        scheduleIds,
       ),
     onSuccess: ({ uploaded, duplicates, nameConflicts }, variables) => {
       queryClient.invalidateQueries({
@@ -405,6 +428,7 @@ export default function FolderDetailPage({
           visibility: variables.visibility,
           teamIds: variables.teamIds,
           projectIds: variables.projectIds,
+          scheduleIds: variables.scheduleIds,
         });
       }
     },
@@ -440,6 +464,7 @@ export default function FolderDetailPage({
       visibility: pendingConflicts.visibility,
       teamIds: pendingConflicts.teamIds,
       projectIds: pendingConflicts.projectIds,
+      scheduleIds: pendingConflicts.scheduleIds,
       nameConflictActions: actions,
     });
   };
@@ -484,13 +509,29 @@ export default function FolderDetailPage({
   // Admin-only PATCH to flip visibility post-upload. BE rejects
   // non-admin with 403 — UI hides the menu item entirely below.
   const visibilityMutation = useMutation({
+    // Quick base-tier flip — forwards existing scope links so the one-click
+    // toggle never silently drops the file's team / project / schedule scopes
+    // (clearing those stays a deliberate action in the full editor).
     mutationFn: ({
       fileId,
       visibility,
+      teamIds,
+      projectIds,
+      scheduleIds,
     }: {
       fileId: string;
       visibility: KnowledgeFileVisibility;
-    }) => updateKnowledgeFileVisibility(fileId, visibility),
+      teamIds: string[];
+      projectIds: string[];
+      scheduleIds: string[];
+    }) =>
+      updateKnowledgeFileVisibility(
+        fileId,
+        visibility,
+        teamIds,
+        projectIds,
+        scheduleIds,
+      ),
     onSuccess: (_, { visibility }) => {
       queryClient.invalidateQueries({
         queryKey: ["knowledge-folder", folderId],
@@ -570,6 +611,7 @@ export default function FolderDetailPage({
     useState<KnowledgeFileVisibility>("all");
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
+  const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
 
   // Same user-teams list the root page renders. Cached by react-query
   // key 'teams' so navigating between KC pages reuses one fetch.
@@ -580,6 +622,10 @@ export default function FolderDetailPage({
   const { data: userProjects = [] } = useQuery({
     queryKey: ["projects", "kc-upload"],
     queryFn: () => fetchProjects("all"),
+  });
+  const { data: userSchedules = [] } = useQuery({
+    queryKey: ["ai-cron", "kc-upload"],
+    queryFn: fetchScheduledPrompts,
   });
 
   // Multi-select state for the bulk action bar. Set<string> over
@@ -732,24 +778,28 @@ export default function FolderDetailPage({
 
   const confirmUpload = () => {
     if (stagedFiles.length === 0) return;
-    if (stagedVisibility === "teams" && stagedTeamIds.length === 0) {
-      toast.error(t("kcFolder.pickTeam"));
-      return;
-    }
-    if (stagedVisibility === "project" && stagedProjectIds.length === 0) {
-      toast.error(t("kcFolder.pickProject"));
+    const specific = stagedVisibility === "none";
+    if (
+      specific &&
+      stagedTeamIds.length === 0 &&
+      stagedProjectIds.length === 0 &&
+      stagedScheduleIds.length === 0
+    ) {
+      toast.error(t("visDlg.pickAtLeastScope"));
       return;
     }
     uploadMutation.mutate({
       files: stagedFiles,
       visibility: stagedVisibility,
-      teamIds: stagedTeamIds,
-      projectIds: stagedProjectIds,
+      teamIds: specific ? stagedTeamIds : [],
+      projectIds: specific ? stagedProjectIds : [],
+      scheduleIds: specific ? stagedScheduleIds : [],
     });
     setStagedFiles([]);
     setStagedVisibility("all");
     setStagedTeamIds([]);
     setStagedProjectIds([]);
+    setStagedScheduleIds([]);
   };
 
   const removeStagedFile = (idx: number) =>
@@ -1122,6 +1172,7 @@ export default function FolderDetailPage({
                         visibility={f.visibility}
                         teams={f.teams}
                         projects={f.projects}
+                        schedules={f.schedules}
                       />
                     </div>
                   </td>
@@ -1199,6 +1250,9 @@ export default function FolderDetailPage({
                                 fileId: f.id,
                                 visibility:
                                   f.visibility === "admins" ? "all" : "admins",
+                                teamIds: f.teams.map((tm) => tm.id),
+                                projectIds: f.projects.map((p) => p.id),
+                                scheduleIds: f.schedules.map((s) => s.id),
                               })
                             }
                           >
@@ -1282,6 +1336,7 @@ export default function FolderDetailPage({
                         visibility={f.visibility}
                         teams={f.teams}
                         projects={f.projects}
+                        schedules={f.schedules}
                       />
                 </div>
                 <span className="text-[12px] text-text-3">
@@ -1337,6 +1392,9 @@ export default function FolderDetailPage({
                           fileId: f.id,
                           visibility:
                             f.visibility === "admins" ? "all" : "admins",
+                          teamIds: f.teams.map((tm) => tm.id),
+                          projectIds: f.projects.map((p) => p.id),
+                          scheduleIds: f.schedules.map((s) => s.id),
                         })
                       }
                     >
@@ -1506,25 +1564,22 @@ export default function FolderDetailPage({
                   <SelectItem value="admins">{t("kcFolder.adminsOpt")}</SelectItem>
                 )}
                 {!isPersonal && (
-                  <SelectItem value="teams">{t("kcFolder.specificTeams")}</SelectItem>
-                )}
-                {!isPersonal && (
-                  <SelectItem value="project">{t("kcFolder.specificProject")}</SelectItem>
+                  <SelectItem value="none">{t("visDlg.specificScopes")}</SelectItem>
                 )}
               </SelectContent>
             </Select>
             <p className="text-[11px] text-text-3">
               {stagedVisibility === "admins"
                 ? t("kcFolder.hintAdmins")
-                : stagedVisibility === "teams"
-                  ? t("kcFolder.hintTeams")
-                  : stagedVisibility === "project"
-                    ? t("kcFolder.hintProject")
+                : stagedVisibility === "none"
+                  ? t("visDlg.hintSpecific")
+                  : isPersonal
+                    ? t("visDlg.hintOnlyMe")
                     : t("kcFolder.hintEveryone")}
             </p>
           </div>
 
-          {stagedVisibility === "teams" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("kcFolder.teamsWithAccess")}
@@ -1564,7 +1619,7 @@ export default function FolderDetailPage({
             </div>
           )}
 
-          {stagedVisibility === "project" && (
+          {stagedVisibility === "none" && (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] font-medium text-text-1">
                 {t("kcFolder.projectsWithAccess")}
@@ -1611,6 +1666,46 @@ export default function FolderDetailPage({
             </div>
           )}
 
+          {stagedVisibility === "none" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[12px] font-medium text-text-1">
+                {t("kcFolder.schedulesWithAccess")}
+              </label>
+              {userSchedules.length === 0 ? (
+                <p className="text-[11px] text-text-3">
+                  {t("kcFolder.noSchedules")}
+                </p>
+              ) : (
+                <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded border border-border-3 p-2">
+                  {userSchedules.map((s) => {
+                    const checked = stagedScheduleIds.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[13px] text-text-1 hover:bg-bg-1"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={uploadMutation.isPending}
+                          onChange={() => {
+                            setStagedScheduleIds((prev) =>
+                              checked
+                                ? prev.filter((id) => id !== s.id)
+                                : [...prev, s.id],
+                            );
+                          }}
+                          className="h-3.5 w-3.5 cursor-pointer accent-primary-6"
+                        />
+                        <span className="truncate">{s.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <DialogFooter className="gap-2">
             <Button
               variant="outline"
@@ -1619,6 +1714,7 @@ export default function FolderDetailPage({
                 setStagedVisibility("all");
                 setStagedTeamIds([]);
                 setStagedProjectIds([]);
+                setStagedScheduleIds([]);
               }}
               disabled={uploadMutation.isPending}
               className="cursor-pointer"

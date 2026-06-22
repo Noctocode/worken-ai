@@ -2552,8 +2552,10 @@ export interface KnowledgeFolder {
 export type KnowledgeFileVisibility =
   | "all"
   | "admins"
+  | "none"
   | "teams"
-  | "project";
+  | "project"
+  | "schedule";
 
 /**
  * Compact representation of a team link on a knowledge file. Carries
@@ -2571,6 +2573,15 @@ export interface KnowledgeFileTeamRef {
  * round-trip.
  */
 export interface KnowledgeFileProjectRef {
+  id: string;
+  name: string;
+}
+
+/**
+ * Same shape again for the schedule visibility tier (AI Cron) — the row
+ * badge names the schedule(s) the file is attached to.
+ */
+export interface KnowledgeFileScheduleRef {
   id: string;
   name: string;
 }
@@ -2600,6 +2611,9 @@ export interface KnowledgeFile {
   // with access.
   teams: KnowledgeFileTeamRef[];
   projects: KnowledgeFileProjectRef[];
+  // Populated when the file is attached to AI Cron schedule(s); names the
+  // schedule(s). visibility='schedule' files are scoped to these.
+  schedules: KnowledgeFileScheduleRef[];
   createdAt: string;
 }
 
@@ -2632,6 +2646,7 @@ export interface KnowledgeRecentFile {
   visibility: KnowledgeFileVisibility;
   teams: KnowledgeFileTeamRef[];
   projects: KnowledgeFileProjectRef[];
+  schedules: KnowledgeFileScheduleRef[];
   createdAt: string;
 }
 
@@ -2751,13 +2766,15 @@ export async function uploadKnowledgeFiles(
   // overwrite", and the BE will simply bounce conflicts back to the
   // FE again.
   nameConflictActions?: Record<string, NameConflictAction>,
+  scheduleIds: string[] = [],
 ): Promise<KnowledgeUploadResult> {
   const form = new FormData();
   files.forEach((f) => form.append("files", f));
   // Multipart field for the visibility flag. BE enforces that only
   // admins can set 'admins'; non-admin callers can pick 'all',
-  // 'teams', or 'project'. 'teams' requires teamIds non-empty;
-  // 'project' requires projectIds non-empty.
+  // 'teams', 'project', or 'schedule'. 'teams' requires teamIds
+  // non-empty; 'project' requires projectIds; 'schedule' requires
+  // scheduleIds.
   form.append("visibility", visibility);
   // Append each id as a repeated field — multer parses repeats into
   // an array on the body, matching the controller's expected
@@ -2767,6 +2784,9 @@ export async function uploadKnowledgeFiles(
   }
   if (visibility === "project") {
     projectIds.forEach((id) => form.append("projectIds", id));
+  }
+  if (visibility === "schedule") {
+    scheduleIds.forEach((id) => form.append("scheduleIds", id));
   }
   if (nameConflictActions && Object.keys(nameConflictActions).length > 0) {
     // Multipart can't carry an object natively; serialise to JSON.
@@ -2793,26 +2813,23 @@ export async function updateKnowledgeFileVisibility(
   visibility: KnowledgeFileVisibility,
   teamIds: string[] = [],
   projectIds: string[] = [],
+  scheduleIds: string[] = [],
 ): Promise<{
   id: string;
   visibility: KnowledgeFileVisibility;
   teamIds: string[];
   projectIds: string[];
+  scheduleIds: string[];
 }> {
   const res = await apiFetch(
     `/knowledge-core/files/${fileId}/visibility`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      // Only ship the id array that matches the chosen visibility —
-      // for 'all' / 'admins' the BE clears any prior links anyway.
-      body: JSON.stringify(
-        visibility === "teams"
-          ? { visibility, teamIds }
-          : visibility === "project"
-            ? { visibility, projectIds }
-            : { visibility },
-      ),
+      // UNION model: `visibility` is the base tier ('all'/'admins'/'none')
+      // and the three link sets are independent + additive, so ship them all.
+      // The BE replaces each set authoritatively (empty array = clear).
+      body: JSON.stringify({ visibility, teamIds, projectIds, scheduleIds }),
     },
   );
   if (!res.ok) {
@@ -2874,12 +2891,8 @@ export async function untrainKnowledgeFile(
 export async function updateKnowledgeFilesVisibilityBulk(
   fileIds: string[],
   visibility: KnowledgeFileVisibility,
-  teamIds: string[] = [],
-  projectIds: string[] = [],
 ): Promise<{
   visibility: KnowledgeFileVisibility;
-  teamIds: string[];
-  projectIds: string[];
   affectedIds: string[];
   /** Files skipped because they were mid-ingestion at the time of the
    *  call — BE refuses to flip during processing to avoid leaving
@@ -2887,16 +2900,11 @@ export async function updateKnowledgeFilesVisibilityBulk(
    *  worker is about to insert. Admin can retry once they finish. */
   skippedIds: string[];
 }> {
+  // Bulk only flips the base tier (UNION model); per-file scopes stay intact.
   const res = await apiFetch(`/knowledge-core/files/visibility`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(
-      visibility === "teams"
-        ? { fileIds, visibility, teamIds }
-        : visibility === "project"
-          ? { fileIds, visibility, projectIds }
-          : { fileIds, visibility },
-    ),
+    body: JSON.stringify({ fileIds, visibility }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -3632,6 +3640,18 @@ export interface IntegrationCard {
   byokSupported: boolean;
   /** For custom rows: how many model_configs aliases reference this integration. */
   boundAliasCount: number;
+  /**
+   * When true, members of teams this key is linked into may also use it
+   * in their own personal projects/chats — not just inside the team.
+   */
+  allowPersonalUse: boolean;
+  /**
+   * Monthly usage cap for this key, counted in tokens. null = no limit,
+   * 0 = paused, >0 = enforced (chat blocked once month-to-date tokens
+   * cross it). $ figures are display-only and only known for providers
+   * with catalog pricing.
+   */
+  monthlyTokenLimit: number | null;
   stats: {
     successRate: number; // 0..1 over last 30 days
     /** Calls in the current calendar month. */
@@ -3671,6 +3691,10 @@ export async function upsertIntegration(input: {
   /** Required when providerId === "azure": endpoint + api-version +
    *  deployments. */
   config?: IntegrationConfig;
+  /** Allow members of linked teams to use this key in personal scope. */
+  allowPersonalUse?: boolean;
+  /** Monthly token usage cap (null = no limit, 0 = paused, >0 = enforced). */
+  monthlyTokenLimit?: number | null;
 }): Promise<IntegrationCard> {
   const res = await apiFetch("/integrations", {
     method: "POST",
@@ -3690,6 +3714,8 @@ export async function updateIntegration(
     isEnabled?: boolean;
     apiKey?: string | null;
     config?: IntegrationConfig;
+    allowPersonalUse?: boolean;
+    monthlyTokenLimit?: number | null;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {
@@ -3700,6 +3726,31 @@ export async function updateIntegration(
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.message || "Failed to update integration");
+  }
+  return res.json();
+}
+
+/** Month-to-date usage of a single key, broken down per user. Owner-only. */
+export interface KeyUsage {
+  integrationId: string;
+  monthlyTokenLimit: number | null;
+  totalTokens: number;
+  totalCostUsd: number;
+  perUser: Array<{
+    userId: string;
+    name: string | null;
+    email: string | null;
+    tokens: number;
+    costUsd: number;
+    calls: number;
+  }>;
+}
+
+export async function fetchKeyUsage(id: string): Promise<KeyUsage> {
+  const res = await apiFetch(`/integrations/${id}/usage`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.message || "Failed to fetch key usage");
   }
   return res.json();
 }
@@ -4038,6 +4089,7 @@ export type DriveImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchDriveStatus(): Promise<DriveStatus> {
@@ -4163,6 +4215,7 @@ export async function startDriveImportAsync(
     visibility?: KnowledgeFileVisibility;
     teamIds?: string[];
     projectIds?: string[];
+    scheduleIds?: string[];
   },
 ): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/drive/import/async", {
@@ -4483,6 +4536,7 @@ export type SharePointImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchSharePointStatus(): Promise<SharePointStatus> {
@@ -4660,6 +4714,7 @@ export async function startSharePointImportAsync(scope: {
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 }): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/sharepoint/import/async", {
     method: "POST",
@@ -4735,6 +4790,7 @@ export type OneDriveImportScope = (
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 };
 
 export async function fetchOneDriveStatus(): Promise<OneDriveStatus> {
@@ -4849,6 +4905,7 @@ export async function startOneDriveImportAsync(scope: {
   visibility?: KnowledgeFileVisibility;
   teamIds?: string[];
   projectIds?: string[];
+  scheduleIds?: string[];
 }): Promise<{ started: true }> {
   const res = await apiFetch("/knowledge-core/onedrive/import/async", {
     method: "POST",
@@ -4876,5 +4933,212 @@ export async function cancelOneDriveImport(): Promise<{ cancelled: true }> {
     method: "DELETE",
   });
   if (!res.ok) throw new Error("Failed to cancel OneDrive import");
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// AI Cron — scheduled prompts
+// ---------------------------------------------------------------------------
+
+export interface ScheduledPrompt {
+  id: string;
+  ownerId: string;
+  teamId: string | null;
+  name: string;
+  prompt: string;
+  context: string | null;
+  modelIdentifier: string;
+  cronExpression: string;
+  timezone: string;
+  useKnowledgeCore: boolean;
+  knowledgeFolderId: string | null;
+  useWebSearch: boolean;
+  deliverInApp: boolean;
+  deliverEmail: boolean;
+  deliverWebhook: boolean;
+  emailRecipients: string[] | null;
+  webhookUrl: string | null;
+  isEnabled: boolean;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ScheduledPromptRun {
+  id: string;
+  scheduledPromptId: string;
+  status: "pending" | "running" | "success" | "failed";
+  triggeredBy: "schedule" | "manual";
+  startedAt: string | null;
+  finishedAt: string | null;
+  output: string | null;
+  errorMessage: string | null;
+  model: string | null;
+  provider: string | null;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  totalTokens: number | null;
+  costUsd: string | null;
+  latencyMs: number | null;
+  deliveryStatus: Record<string, string> | null;
+  createdAt: string;
+}
+
+export interface ScheduledPromptInput {
+  name: string;
+  prompt: string;
+  context?: string | null;
+  modelIdentifier: string;
+  cronExpression: string;
+  timezone?: string;
+  teamId?: string | null;
+  useKnowledgeCore?: boolean;
+  knowledgeFolderId?: string | null;
+  useWebSearch?: boolean;
+  deliverInApp?: boolean;
+  deliverEmail?: boolean;
+  deliverWebhook?: boolean;
+  emailRecipients?: string[];
+  webhookUrl?: string | null;
+  isEnabled?: boolean;
+}
+
+export interface CronDescription {
+  valid: boolean;
+  error?: string;
+  description?: string;
+  nextRuns?: string[];
+  minIntervalMinutes?: number;
+}
+
+export async function fetchScheduledPrompts(): Promise<ScheduledPrompt[]> {
+  const res = await apiFetch("/ai-cron");
+  if (!res.ok) throw new Error("Failed to fetch scheduled prompts");
+  return res.json();
+}
+
+export async function fetchScheduledPrompt(
+  id: string,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}`);
+  if (!res.ok) throw new Error("Failed to fetch scheduled prompt");
+  return res.json();
+}
+
+export async function createScheduledPrompt(
+  data: ScheduledPromptInput,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch("/ai-cron", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to create scheduled prompt");
+  return res.json();
+}
+
+export async function updateScheduledPrompt(
+  id: string,
+  data: Partial<ScheduledPromptInput>,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update scheduled prompt");
+  return res.json();
+}
+
+export async function deleteScheduledPrompt(id: string): Promise<void> {
+  const res = await apiFetch(`/ai-cron/${id}`, { method: "DELETE" });
+  if (!res.ok) throw new Error("Failed to delete scheduled prompt");
+}
+
+export async function toggleScheduledPrompt(
+  id: string,
+  isEnabled: boolean,
+): Promise<ScheduledPrompt> {
+  const res = await apiFetch(`/ai-cron/${id}/toggle`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ isEnabled }),
+  });
+  if (!res.ok) throw new Error("Failed to toggle scheduled prompt");
+  return res.json();
+}
+
+export async function runScheduledPromptNow(
+  id: string,
+): Promise<ScheduledPromptRun> {
+  const res = await apiFetch(`/ai-cron/${id}/run-now`, { method: "POST" });
+  if (!res.ok) throw new Error("Failed to run scheduled prompt");
+  return res.json();
+}
+
+export async function fetchScheduledPromptRuns(
+  id: string,
+  limit = 50,
+  offset = 0,
+): Promise<ScheduledPromptRun[]> {
+  const res = await apiFetch(
+    `/ai-cron/${id}/runs?limit=${limit}&offset=${offset}`,
+  );
+  if (!res.ok) throw new Error("Failed to fetch run history");
+  return res.json();
+}
+
+export async function validateCronExpression(
+  cronExpression: string,
+  timezone?: string,
+): Promise<CronDescription> {
+  const res = await apiFetch("/ai-cron/validate-cron", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cronExpression, timezone }),
+  });
+  if (!res.ok) throw new Error("Failed to validate cron expression");
+  return res.json();
+}
+
+export interface ScheduleFile {
+  fileId: string;
+  name: string;
+  fileType: string | null;
+  sizeBytes: number;
+  ingestionStatus: string;
+  ingestionError: string | null;
+  attachedAt: string;
+}
+
+export async function fetchScheduleFiles(id: string): Promise<ScheduleFile[]> {
+  const res = await apiFetch(`/ai-cron/${id}/files`);
+  if (!res.ok) throw new Error("Failed to fetch schedule files");
+  return res.json();
+}
+
+export async function detachScheduleFile(
+  id: string,
+  fileId: string,
+): Promise<void> {
+  const res = await apiFetch(`/ai-cron/${id}/files/${fileId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to detach file");
+}
+
+export async function uploadScheduleFiles(
+  id: string,
+  files: File[],
+): Promise<{ uploaded: { id: string; name: string }[] }> {
+  const form = new FormData();
+  for (const f of files) form.append("files", f);
+  // No explicit Content-Type — the browser sets the multipart boundary.
+  const res = await apiFetch(`/ai-cron/${id}/files/upload`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) throw new Error("Failed to upload files");
   return res.json();
 }

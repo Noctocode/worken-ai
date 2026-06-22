@@ -308,6 +308,16 @@ export const management = {
     'Endpoint must be your Azure resource URL (https://{resource}.openai.azure.com).',
   'mgmt.integ.azureNeedApiVersion': 'Enter an api-version to save.',
   'mgmt.integ.azureNeedDeployment': 'Add at least one deployment to save.',
+  'mgmt.integ.allowPersonalTitle': 'Allow personal use',
+  'mgmt.integ.allowPersonalHint':
+    'Members of teams this key is linked to can also use it in their own personal projects and chats — not just inside the team.',
+  'mgmt.integ.tokenLimitLabel': 'Monthly token limit',
+  'mgmt.integ.tokenLimitPlaceholder': 'No limit',
+  'mgmt.integ.tokenLimitHint':
+    'Caps total tokens this key may use per month across everyone. Leave empty for no limit, or 0 to pause the key. Usage is counted in tokens because custom endpoints have no price.',
+  'mgmt.integ.usageThisMonth': 'Usage this month',
+  'mgmt.integ.tokensWord': 'tokens',
+  'mgmt.integ.noUsageYet': 'No usage yet this month.',
   'mgmt.integ.keySavedToast': 'key saved.',
   'mgmt.integ.settingsSavedToast': 'settings saved.',
   'mgmt.integ.couldntSave': "Couldn't save settings.",

@@ -708,6 +708,33 @@ export const Appbar = () => {
     );
   }
 
+  /* ── AI Cron new/edit form appbar ─────────────────────────────────────── */
+  if (config.appbarType === "aiCronForm") {
+    return (
+      <>
+        <MobileTopbar />
+        <header
+          className={`hidden md:flex sticky top-0 z-20 py-6 items-center border-b border-bg-1 px-6 ${config.bg}`}
+        >
+          <div className="flex items-center gap-2">
+            <Link href="/ai-cron">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-black-700 hover:text-black-900"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <h4 className="text-[26px] font-bold text-text-1">
+              {config.titleKey ? t(config.titleKey) : ""}
+            </h4>
+          </div>
+        </header>
+      </>
+    );
+  }
+
   /* ── Tender create appbar ─────────────────────────────────────────────── */
   if (config.appbarType === "tenderCreate") {
     return (

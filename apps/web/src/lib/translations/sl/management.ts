@@ -310,6 +310,16 @@ export const management: Record<keyof typeof managementEn, string> = {
     'Endpoint mora biti URL vašega Azure vira (https://{resource}.openai.azure.com).',
   'mgmt.integ.azureNeedApiVersion': 'Za shranjevanje vnesite api-version.',
   'mgmt.integ.azureNeedDeployment': 'Za shranjevanje dodajte vsaj en deployment.',
+  'mgmt.integ.allowPersonalTitle': 'Dovoli osebno uporabo',
+  'mgmt.integ.allowPersonalHint':
+    'Člani ekip, v katere je ta ključ povezan, ga lahko uporabljajo tudi v svojih osebnih projektih in klepetih — ne le znotraj ekipe.',
+  'mgmt.integ.tokenLimitLabel': 'Mesečna omejitev tokenov',
+  'mgmt.integ.tokenLimitPlaceholder': 'Brez omejitve',
+  'mgmt.integ.tokenLimitHint':
+    'Omeji skupno število tokenov, ki jih ta ključ lahko porabi na mesec za vse uporabnike. Pustite prazno za brez omejitve ali 0 za pavzo ključa. Poraba se šteje v tokenih, ker custom končne točke nimajo cene.',
+  'mgmt.integ.usageThisMonth': 'Poraba ta mesec',
+  'mgmt.integ.tokensWord': 'tokenov',
+  'mgmt.integ.noUsageYet': 'Ta mesec še ni porabe.',
   'mgmt.integ.keySavedToast': 'ključ shranjen.',
   'mgmt.integ.settingsSavedToast': 'nastavitve shranjene.',
   'mgmt.integ.couldntSave': 'Shranjevanje nastavitev ni uspelo.',
