@@ -470,6 +470,10 @@ export class ChatTransportService {
           .where(
             and(
               eq(modelConfigs.modelIdentifier, modelIdentifier),
+              // Only the genuinely company-wide (teamless) alias — a
+              // team-scoped alias keeps its own team-link / ownerStillOnTeam
+              // gate and must not be reachable through this company path.
+              isNull(modelConfigs.teamId),
               eq(integrations.providerId, 'custom'),
               eq(integrations.isEnabled, true),
               inArray(integrations.ownerId, memberIds),
