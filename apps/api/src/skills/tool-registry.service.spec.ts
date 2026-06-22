@@ -201,7 +201,10 @@ describe('ToolRegistryService', () => {
 
       await dispatch({ id: 't1', name: 'run_script', input: {} });
 
-      const inputs = run.mock.calls[0][0].inputs as { filename: string }[];
+      const calls = run.mock.calls as Array<
+        [{ inputs: { filename: string }[] }]
+      >;
+      const inputs = calls[0][0].inputs;
       // The running script is excluded; its siblings are passed through.
       expect(inputs.map((i) => i.filename).sort()).toEqual([
         'data.csv',
