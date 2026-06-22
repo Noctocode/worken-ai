@@ -162,18 +162,12 @@ export default function CreateProjectPage() {
     enabled: projectType === "team",
   });
 
-  // Models scoped to the project type the user is creating: a personal
-  // project shows only the caller's personal keys/aliases; a team project
-  // shows only what's enabled at THAT team. This
-  // is what keeps a Custom LLM that's both personal and team-linked from
-  // appearing twice, and hides personal-only keys from team projects.
-  const customScope =
-    projectType === "team" ? selectedTeamId : "personal";
+  // Models are company-wide now (admin-managed under the Models tab, no
+  // longer tied to a team), so the picker shows the full available pool
+  // regardless of personal vs team project — no per-scope narrowing.
   const { data: configuredModels = [] } = useQuery({
-    queryKey: ["models", "effective", customScope || "none"],
-    queryFn: () => fetchEffectiveModels(customScope),
-    // A team project with no team picked yet has nothing to scope to.
-    enabled: projectType === "personal" || !!selectedTeamId,
+    queryKey: ["models", "effective", "all"],
+    queryFn: () => fetchEffectiveModels(),
   });
   // Any model routed through an own key / endpoint (BYOK or Custom LLM) is
   // marked "(custom)"; managed catalog models get no suffix.
