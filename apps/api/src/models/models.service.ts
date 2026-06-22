@@ -144,6 +144,27 @@ export class ModelsService {
   }
 
   /**
+   * Ids of everyone sharing the caller's company (company-profile callers
+   * only; empty for personal / pre-onboarding accounts). A key any member
+   * (an admin — only admins can add) configures is available company-wide,
+   * so these ids drive company-wide key visibility in the picker.
+   */
+  private async resolveCompanyMemberIds(callerId: string): Promise<string[]> {
+    const [caller] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const companyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    if (!companyId) return [];
+    const members = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.companyId, companyId));
+    return members.map((m) => m.id);
+  }
+
+  /**
    * Models the caller can see in the /teams "Models" management tab.
    * Same scope as `listEffectiveForUser`, except inactive rows are
    * included so the user can toggle them back on.
@@ -265,6 +286,39 @@ export class ModelsService {
       .filter((r) => r.providerId === 'custom')
       .map((r) => r.id);
 
+    // Company-wide keys: any enabled integration owned by a company member
+    // (admin-added — only admins can add) is available to EVERY member.
+    // Surfaced in the personal + no-scope pickers; a team scope already
+    // shows that team's keys, so we skip the lookup there.
+    const companyMemberIds = includePersonalProviders
+      ? await this.resolveCompanyMemberIds(userId)
+      : [];
+    const companyIntegrations =
+      companyMemberIds.length > 0
+        ? await this.db
+            .select({
+              id: integrations.id,
+              providerId: integrations.providerId,
+              config: integrations.config,
+            })
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.ownerId, companyMemberIds),
+                isNull(integrations.teamId),
+                eq(integrations.isEnabled, true),
+              ),
+            )
+        : [];
+    const companyCustomIds = companyIntegrations
+      .filter((r) => r.providerId === 'custom')
+      .map((r) => r.id);
+    // Custom integration ids whose aliases must surface in the personal-scope
+    // picker: team-shared (allow_personal_use) + company-wide.
+    const personalCustomAliasIds = Array.from(
+      new Set([...sharedCustomIds, ...companyCustomIds]),
+    );
+
     // Aliases the user can pick from, narrowed to `scope` when given
     // (see the doc comment above). No scope = the full union. For the
     // personal scope we also pull in team-scoped aliases bound to a
@@ -273,13 +327,13 @@ export class ModelsService {
     // loop, so they don't need this).
     const aliasScopeFilter: SQL<unknown> | undefined = scope
       ? scope.teamId === null
-        ? sharedCustomIds.length > 0
+        ? personalCustomAliasIds.length > 0
           ? or(
               and(
                 eq(modelConfigs.ownerId, userId),
                 isNull(modelConfigs.teamId),
               ),
-              inArray(modelConfigs.integrationId, sharedCustomIds),
+              inArray(modelConfigs.integrationId, personalCustomAliasIds),
             )
           : and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
         : eq(modelConfigs.teamId, scope.teamId)
@@ -344,7 +398,13 @@ export class ModelsService {
     const enabledProviders = new Set(
       // personalEnabledRows is already empty unless includePersonalProviders.
       // personalUseShared is already empty unless this is the personal scope.
-      [...personalEnabledRows, ...teamEnabledRows, ...personalUseShared]
+      // companyIntegrations is already empty unless includePersonalProviders.
+      [
+        ...personalEnabledRows,
+        ...teamEnabledRows,
+        ...personalUseShared,
+        ...companyIntegrations,
+      ]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -391,6 +451,8 @@ export class ModelsService {
     }
     // Custom keys shared for personal use (personal scope only).
     sharedCustomIds.forEach((id) => enabledCustomIntegrationIds.add(id));
+    // Company-wide custom keys (admin-added) — available to every member.
+    companyCustomIds.forEach((id) => enabledCustomIntegrationIds.add(id));
 
     // Azure has no OpenRouter catalog (it isn't an OpenRouter slug), so
     // its selectable models are the deployments the user configured on
@@ -443,6 +505,10 @@ export class ModelsService {
         ...personalAzure.map((r) => r.config),
         ...teamAzure.map((r) => r.config),
         ...personalUseShared
+          .filter((r) => r.providerId === 'azure')
+          .map((r) => r.config),
+        // Company-wide Azure key (admin-added) — deployments available to all.
+        ...companyIntegrations
           .filter((r) => r.providerId === 'azure')
           .map((r) => r.config),
       );

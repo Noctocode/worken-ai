@@ -311,6 +311,9 @@ export const management = {
   'mgmt.integ.allowPersonalTitle': 'Allow personal use',
   'mgmt.integ.allowPersonalHint':
     'Members of teams this key is linked to can also use it in their own personal projects and chats — not just inside the team.',
+  'mgmt.integ.companyWideTitle': 'Shared with your whole company',
+  'mgmt.integ.companyWideHint':
+    'Every member of your company can use this key — in team and personal projects and chats. Usage is billed to this key and counts toward its monthly limit below.',
   'mgmt.integ.tokenLimitLabel': 'Monthly token limit',
   'mgmt.integ.tokenLimitPlaceholder': 'No limit',
   'mgmt.integ.tokenLimitHint':

@@ -105,6 +105,27 @@ export class IntegrationsService {
     private readonly encryptionService: EncryptionService,
   ) {}
 
+  /**
+   * Gate key mutations. A company key is shared with the whole company, so
+   * only a company **admin** may add / edit / delete it — regular members
+   * see keys (read-only) but can't change them. Personal-profile users have
+   * no company; they manage their own keys, so they're always allowed.
+   */
+  private async assertCanManageKeys(userId: string): Promise<void> {
+    const [u] = await this.db
+      .select({ role: users.role, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    // Company member (has a tenant) must be an admin; solo/personal users
+    // manage their own keys.
+    if (u?.companyId && u.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only an admin can add or change company AI keys.',
+      );
+    }
+  }
+
   /** Catalog of predefined providers, in canonical UI order. */
   listPredefined(): PredefinedProvider[] {
     return PREDEFINED_PROVIDERS;
@@ -354,6 +375,7 @@ export class IntegrationsService {
       monthlyTokenLimit?: number | null;
     },
   ): Promise<IntegrationView> {
+    await this.assertCanManageKeys(userId);
     const isCustom = input.providerId === 'custom';
     const isAzure = input.providerId === 'azure';
     if (!isCustom && !isPredefinedProvider(input.providerId)) {
@@ -518,6 +540,7 @@ export class IntegrationsService {
       monthlyTokenLimit?: number | null;
     },
   ): Promise<IntegrationView> {
+    await this.assertCanManageKeys(userId);
     const [row] = await this.db
       .select()
       .from(integrations)
@@ -651,6 +674,7 @@ export class IntegrationsService {
   }
 
   async remove(userId: string, id: string): Promise<void> {
+    await this.assertCanManageKeys(userId);
     const [row] = await this.db
       .select()
       .from(integrations)

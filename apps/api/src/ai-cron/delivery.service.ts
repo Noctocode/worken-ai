@@ -158,8 +158,7 @@ export class DeliveryService {
       .select({ companyId: users.companyId, profileType: users.profileType })
       .from(users)
       .where(eq(users.id, ownerId));
-    const companyId =
-      owner?.profileType === 'company' ? owner.companyId : null;
+    const companyId = owner?.profileType === 'company' ? owner.companyId : null;
     if (!companyId) return [];
     const rows = await this.db
       .select({ id: users.id })

@@ -339,6 +339,34 @@ export class ChatTransportService {
       return personalTeamIdsCache;
     };
 
+    // Lazily resolve (once) the ids of everyone sharing the caller's company.
+    // A key added by any company member (an admin — only admins can add) is
+    // available company-wide, so these ids drive the company-wide custom +
+    // BYOK fallbacks below. A personal-profile caller has no company → [].
+    let companyMemberIdsCache: string[] | undefined;
+    const getCompanyMemberIds = async (): Promise<string[]> => {
+      if (companyMemberIdsCache === undefined) {
+        const [u] = await this.db
+          .select({
+            profileType: users.profileType,
+            companyId: users.companyId,
+          })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1);
+        const companyId = u?.profileType === 'company' ? u.companyId : null;
+        companyMemberIdsCache = companyId
+          ? (
+              await this.db
+                .select({ id: users.id })
+                .from(users)
+                .where(eq(users.companyId, companyId))
+            ).map((r) => r.id)
+          : [];
+      }
+      return companyMemberIdsCache;
+    };
+
     // Resolve team scope ONCE up-front — used by Custom LLM alias
     // lookup, BYOK lookup, and the OpenRouter fallback billing
     // decision. Pulled out of the BYOK section because alias lookup
@@ -419,6 +447,36 @@ export class ChatTransportService {
           integrationId: sharedAlias.integrationId,
           upstreamModel: sharedAlias.upstreamModel,
         };
+      }
+    }
+
+    // Company-wide Custom LLM: an admin added a Custom LLM for the company,
+    // so any member may use it (no team link / personal-use flag needed).
+    // Match the alias identifier across company members whose backing custom
+    // integration is enabled. Only when nothing personal/team/shared matched.
+    if (!alias && !teamScopeId) {
+      const memberIds = await getCompanyMemberIds();
+      if (memberIds.length > 0) {
+        const [companyAlias] = await this.db
+          .select({
+            integrationId: modelConfigs.integrationId,
+            upstreamModel: modelConfigs.upstreamModel,
+          })
+          .from(modelConfigs)
+          .innerJoin(
+            integrations,
+            eq(integrations.id, modelConfigs.integrationId),
+          )
+          .where(
+            and(
+              eq(modelConfigs.modelIdentifier, modelIdentifier),
+              eq(integrations.providerId, 'custom'),
+              eq(integrations.isEnabled, true),
+              inArray(integrations.ownerId, memberIds),
+            ),
+          )
+          .limit(1);
+        if (companyAlias) alias = companyAlias;
       }
     }
 
@@ -602,6 +660,39 @@ export class ChatTransportService {
               config: sharedByok.config,
             } as typeof integrations.$inferSelect;
             byokIntegrationId = sharedByok.id;
+          }
+        }
+      }
+
+      // Company-wide BYOK: an admin added a provider key for the company; any
+      // member may use it. Personal scope only, and only when the member has
+      // no own key for this provider. Predefined providers (apiUrl IS NULL).
+      if (!byokRow && !teamScopeId) {
+        const memberIds = await getCompanyMemberIds();
+        if (memberIds.length > 0) {
+          const [companyByok] = await this.db
+            .select({
+              id: integrations.id,
+              apiKeyEncrypted: integrations.apiKeyEncrypted,
+              config: integrations.config,
+            })
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.ownerId, memberIds),
+                isNull(integrations.teamId),
+                eq(integrations.providerId, provider),
+                eq(integrations.isEnabled, true),
+                isNull(integrations.apiUrl),
+              ),
+            )
+            .limit(1);
+          if (companyByok?.apiKeyEncrypted) {
+            byokRow = {
+              apiKeyEncrypted: companyByok.apiKeyEncrypted,
+              config: companyByok.config,
+            } as typeof integrations.$inferSelect;
+            byokIntegrationId = companyByok.id;
           }
         }
       }

@@ -121,13 +121,9 @@ function ProviderSettingsDialog({
   // Avoids the user typing over an already-good key by accident.
   const [editingKey, setEditingKey] = useState(!card.hasApiKey);
 
-  // Sharing + per-key limit. allowPersonalUse lets members of teams this
-  // key is linked into use it in their own personal projects/chats; the
-  // token limit caps the key's total monthly usage (empty = no limit,
-  // 0 = paused).
-  const [allowPersonalUse, setAllowPersonalUse] = useState(
-    card.allowPersonalUse,
-  );
+  // Per-key monthly limit. A company key is shared company-wide (every
+  // member can use it, incl. personal); the token limit caps the key's
+  // total monthly usage (empty = no limit, 0 = paused).
   const [tokenLimitInput, setTokenLimitInput] = useState(
     card.monthlyTokenLimit == null ? "" : String(card.monthlyTokenLimit),
   );
@@ -218,7 +214,6 @@ function ProviderSettingsDialog({
               ? apiKey
               : undefined,
           config,
-          allowPersonalUse,
           monthlyTokenLimit: parsedTokenLimit,
         });
       }
@@ -227,7 +222,6 @@ function ProviderSettingsDialog({
         apiKey: useOwnKey && apiKey ? apiKey : undefined,
         isEnabled: enabled,
         config,
-        allowPersonalUse,
         monthlyTokenLimit: parsedTokenLimit,
       });
     },
@@ -421,25 +415,19 @@ function ProviderSettingsDialog({
           )}
         </div>
 
-        {/* Sharing + per-key monthly limit. Only meaningful once a key
-            is actually set (otherwise calls route through WorkenAI and
-            there's nothing key-scoped to share or cap) — so hide it for
+        {/* Company-wide sharing note + per-key monthly limit. Only meaningful
+            once a key is actually set (otherwise calls route through WorkenAI
+            and there's nothing key-scoped to share or cap) — so hide it for
             untouched predefined providers with no own key. */}
         {(card.isCustom || card.hasApiKey || (useOwnKey && apiKey)) && (
         <div className="space-y-4 rounded-lg border border-border-2 p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[14px] font-semibold text-text-1">
-                {t("mgmt.integ.allowPersonalTitle")}
-              </p>
-              <p className="mt-0.5 text-[12px] leading-snug text-text-3">
-                {t("mgmt.integ.allowPersonalHint")}
-              </p>
-            </div>
-            <Switch
-              checked={allowPersonalUse}
-              onCheckedChange={setAllowPersonalUse}
-            />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.integ.companyWideTitle")}
+            </p>
+            <p className="mt-0.5 text-[12px] leading-snug text-text-3">
+              {t("mgmt.integ.companyWideHint")}
+            </p>
           </div>
 
           <div className="space-y-1.5">
