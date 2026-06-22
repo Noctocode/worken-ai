@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown } from "lucide-react";
+import { GripVertical, MoreVertical, Trash2, ArrowUp, ArrowDown, Check, Search } from "lucide-react";
 import {
   createModel,
   updateModel,
@@ -178,6 +178,11 @@ export function AddModelDialog({
   const [modelId, setModelId] = useState("");
   const [fallbacks, setFallbacks] = useState<string[]>([]);
   const [fallbackToAdd, setFallbackToAdd] = useState("");
+  // Create flow: a searchable multi-select. Each picked model is added as its
+  // own alias (auto-named from the catalog label, no fallbacks — fallbacks are
+  // configured afterwards via the row's Edit action). Unused in edit mode.
+  const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
+  const [modelSearch, setModelSearch] = useState("");
   const queryClient = useQueryClient();
   const { models, isLoading: modelsLoading, getLabel: getModelLabel } =
     useAvailableModels();
@@ -205,21 +210,47 @@ export function AddModelDialog({
   }, [modelId, customNameTouched, getModelLabel]);
 
   const mutation = useMutation({
-    mutationFn: (payload: {
-      customName: string;
-      modelIdentifier: string;
-      fallbackModels: string[];
-      integrationId: string | null;
-    }) =>
-      existingModel
-        ? updateModel(existingModel.id, payload)
-        : createModel(payload),
+    mutationFn: async (
+      payload:
+        | {
+            mode: "edit";
+            customName: string;
+            modelIdentifier: string;
+            fallbackModels: string[];
+            integrationId: string | null;
+          }
+        | { mode: "create"; modelIds: string[] },
+    ) => {
+      if (payload.mode === "edit") {
+        return updateModel(existingModel!.id, {
+          customName: payload.customName,
+          modelIdentifier: payload.modelIdentifier,
+          fallbackModels: payload.fallbackModels,
+          integrationId: payload.integrationId,
+        });
+      }
+      // Create: one alias per selected model, auto-named, no fallbacks
+      // (set later via Edit). New aliases always route via the default
+      // path — Custom LLM endpoints are bound on the Integration tab.
+      await Promise.all(
+        payload.modelIds.map((id) =>
+          createModel({
+            customName: getModelLabel(id),
+            modelIdentifier: id,
+            fallbackModels: [],
+            integrationId: null,
+          }),
+        ),
+      );
+    },
     onSuccess: () => {
       invalidateModelMutations(queryClient);
       setCustomName("");
       setCustomNameTouched(false);
       setModelId("");
       setFallbacks([]);
+      setSelectedModelIds([]);
+      setModelSearch("");
       setOpen(false);
     },
   });
@@ -265,22 +296,36 @@ export function AddModelDialog({
     (m) => m.id !== modelId && !fallbacks.includes(m.id),
   );
 
+  // Create-flow search over the catalog (by display name or id).
+  const filteredCatalog = models.filter((m) => {
+    const q = modelSearch.trim().toLowerCase();
+    if (!q) return true;
+    return m.name.toLowerCase().includes(q) || m.id.toLowerCase().includes(q);
+  });
+
   const getLabelById = (id: string) => getModelLabel(id);
 
+  const toggleSelectedModel = (id: string) =>
+    setSelectedModelIds((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
+    );
+
   const handleApply = () => {
-    if (!customName.trim() || !modelId) return;
-    mutation.mutate({
-      customName: customName.trim(),
-      modelIdentifier: modelId,
-      fallbackModels: fallbacks,
-      // Custom LLM endpoints are managed solely on the Integration tab
-      // (adding one there auto-creates its bound alias). This dialog no
-      // longer binds endpoints, so new aliases always route via the
-      // default path. On edit, preserve whatever binding the row already
-      // had so editing an integration-created alias here doesn't unbind
-      // it from its endpoint.
-      integrationId: existingModel?.integrationId ?? null,
-    });
+    if (isEdit) {
+      if (!customName.trim() || !modelId) return;
+      mutation.mutate({
+        mode: "edit",
+        customName: customName.trim(),
+        modelIdentifier: modelId,
+        fallbackModels: fallbacks,
+        // On edit, preserve whatever binding the row already had so editing
+        // an integration-created alias here doesn't unbind its endpoint.
+        integrationId: existingModel?.integrationId ?? null,
+      });
+      return;
+    }
+    if (selectedModelIds.length === 0) return;
+    mutation.mutate({ mode: "create", modelIds: selectedModelIds });
   };
 
   const handleClose = () => {
@@ -291,6 +336,8 @@ export function AddModelDialog({
     setCustomNameTouched(false);
     setModelId("");
     setFallbacks([]);
+    setSelectedModelIds([]);
+    setModelSearch("");
     setOpen(false);
   };
 
@@ -332,35 +379,95 @@ export function AddModelDialog({
           }
         >
           <div className="space-y-4">
-            {/* Selected model */}
+            {/* Selected model — single Select on edit; searchable multi-
+                select on create (pick several to add them all at once). */}
             <div>
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
                 {t("addModel.selectedModel")}
               </p>
-              <Select value={modelId} onValueChange={setModelId}>
-                <SelectTrigger className={modelSelectClass}>
-                  <SelectValue
-                    placeholder={
-                      modelsLoading
-                        ? t("addModel.loadingModels")
-                        : models.length === 0
+              {isEdit ? (
+                <Select value={modelId} onValueChange={setModelId}>
+                  <SelectTrigger className={modelSelectClass}>
+                    <SelectValue
+                      placeholder={
+                        modelsLoading
+                          ? t("addModel.loadingModels")
+                          : models.length === 0
+                            ? t("addModel.noModels")
+                            : t("addModel.selectModel")
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="p-0">
+                    {models.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className={selectItemClass}>
+                        <ModelIcon id={m.id} />
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-3" />
+                    <input
+                      type="text"
+                      value={modelSearch}
+                      onChange={(e) => setModelSearch(e.target.value)}
+                      placeholder={t("addModel.searchModels")}
+                      className={`${inputClass} !pl-9 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50`}
+                    />
+                  </div>
+                  <div className="max-h-[260px] divide-y divide-border-2 overflow-y-auto rounded border border-border-3">
+                    {modelsLoading ? (
+                      <p className="px-3 py-6 text-center text-[14px] text-text-3">
+                        {t("addModel.loadingModels")}
+                      </p>
+                    ) : filteredCatalog.length === 0 ? (
+                      <p className="px-3 py-6 text-center text-[14px] text-text-3">
+                        {models.length === 0
                           ? t("addModel.noModels")
-                          : t("addModel.selectModel")
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent className="p-0">
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id} className={selectItemClass}>
-                      <ModelIcon id={m.id} />
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                          : t("addModel.noMatch")}
+                      </p>
+                    ) : (
+                      filteredCatalog.map((m) => {
+                        const checked = selectedModelIds.includes(m.id);
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => toggleSelectedModel(m.id)}
+                            className={`flex w-full items-center gap-2 px-3 py-2 text-left text-[15px] transition-colors ${
+                              checked
+                                ? "bg-primary-1 text-text-1"
+                                : "text-text-1 hover:bg-bg-1"
+                            }`}
+                          >
+                            <ModelIcon id={m.id} />
+                            <span className="flex-1 truncate">{m.name}</span>
+                            {checked && (
+                              <Check className="h-4 w-4 shrink-0 text-primary-6" />
+                            )}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  {selectedModelIds.length > 0 && (
+                    <p className="text-[12px] text-text-3">
+                      {selectedModelIds.length} {t("addModel.selectedCount")}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Custom name */}
+            {/* Custom name + fallbacks — edit only. On create each picked
+                model is auto-named and gets no fallbacks; both are tuned
+                afterwards via the row's Edit action. */}
+            {isEdit && (
+            <>
             <div>
               <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-2">
                 {t("addModel.customName")}
@@ -492,6 +599,8 @@ export function AddModelDialog({
                 </div>
               )}
             </div>
+            </>
+            )}
           </div>
         </SettingsDialog>
       )}
