@@ -259,6 +259,11 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.company.webSearchDesc': 'Dovoli projektom v tej organizaciji iskanje po živem spletu. Ekipe lahko to prepišejo, vsak projekt pa ima svoje stikalo.',
   'mgmt.company.webSearchSaved': 'Nastavitev iskanja po spletu shranjena.',
   'mgmt.company.webSearchFailed': 'Posodobitev nastavitve iskanja po spletu ni uspela',
+  'mgmt.company.execSkillsTitle': 'Izvršljive veščine',
+  'mgmt.company.execSkillsDesc':
+    'Dovoli tej organizaciji poganjanje izvršljivih veščin — veščin, ki izvedejo svoje skripte v peskovniku in vrnejo datoteke za prenos. Privzeto izklopljeno; zagoni zahtevajo izvorni model Anthropic (BYOK).',
+  'mgmt.company.execSkillsSaved': 'Nastavitev izvršljivih veščin shranjena.',
+  'mgmt.company.execSkillsFailed': 'Posodobitev nastavitve izvršljivih veščin ni uspela',
   'mgmt.company.industry.technology': 'Tehnologija',
   'mgmt.company.industry.finance': 'Finance',
   'mgmt.company.industry.healthcare': 'Zdravstvo',

@@ -257,6 +257,11 @@ export const management = {
   'mgmt.company.webSearchDesc': 'Allow projects in this organization to search the live web. Teams can override this, and each project has its own on/off switch.',
   'mgmt.company.webSearchSaved': 'Web search setting saved.',
   'mgmt.company.webSearchFailed': 'Failed to update web search setting',
+  'mgmt.company.execSkillsTitle': 'Executable skills',
+  'mgmt.company.execSkillsDesc':
+    'Let this organization run executable skills — skills that execute their own scripts in a sandbox and return downloadable files. Off by default; runs require an Anthropic-native (BYOK) model.',
+  'mgmt.company.execSkillsSaved': 'Executable-skills setting saved.',
+  'mgmt.company.execSkillsFailed': 'Failed to update executable-skills setting',
   'mgmt.company.industry.technology': 'Technology',
   'mgmt.company.industry.finance': 'Finance',
   'mgmt.company.industry.healthcare': 'Healthcare',

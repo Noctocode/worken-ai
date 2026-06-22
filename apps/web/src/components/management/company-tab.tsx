@@ -305,6 +305,16 @@ export function CompanyTab() {
     onError: (err: Error) =>
       toast.error(err.message || t("mgmt.company.webSearchFailed")),
   });
+  const executableSkillsMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      updateOrgSettings({ executableSkillsEnabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings"] });
+      toast.success(t("mgmt.company.execSkillsSaved"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.execSkillsFailed")),
+  });
   const removeUserMutation = useMutation({
     mutationFn: (userId: string) => removeOrgUser(userId),
     onSuccess: () => {
@@ -598,6 +608,46 @@ export function CompanyTab() {
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
                 orgSettings?.webSearchEnabled ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </section>
+      )}
+
+      {/* Executable skills (Option #3). Admin-only, off by default. When off,
+          the run endpoints 404 and the "Run" affordance is hidden. A
+          deployment env kill-switch can still force it off everywhere. */}
+      {isAdmin && (
+        <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white p-4">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.company.execSkillsTitle")}
+            </h3>
+            <p className="text-[12px] text-text-3">
+              {t("mgmt.company.execSkillsDesc")}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!orgSettings?.executableSkillsEnabled}
+            disabled={executableSkillsMutation.isPending}
+            onClick={() =>
+              executableSkillsMutation.mutate(
+                !orgSettings?.executableSkillsEnabled,
+              )
+            }
+            className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              orgSettings?.executableSkillsEnabled
+                ? "bg-primary-6"
+                : "bg-border-3"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                orgSettings?.executableSkillsEnabled
+                  ? "left-[22px]"
+                  : "left-0.5"
               }`}
             />
           </button>

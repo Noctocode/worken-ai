@@ -3254,6 +3254,9 @@ export interface OrgSettings {
   monthlyBudgetCents: number | null;
   /** Org-wide default for whether projects may use web search. */
   webSearchEnabled: boolean;
+  /** Per-tenant toggle for executable skills (Option #3). An env kill-switch
+   *  can still force the effective capability off everywhere. */
+  executableSkillsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -3273,6 +3276,8 @@ export async function updateOrgSettings(input: {
   monthlyBudgetCents?: number | null;
   /** Org-wide web-search capability toggle. */
   webSearchEnabled?: boolean;
+  /** Per-tenant executable-skills toggle (Option #3). */
+  executableSkillsEnabled?: boolean;
 }): Promise<OrgSettings> {
   const res = await apiFetch("/org-settings", {
     method: "PATCH",
