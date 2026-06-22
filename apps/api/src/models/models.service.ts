@@ -628,6 +628,31 @@ export class ModelsService {
     return new Set(effective.map((m) => m.id));
   }
 
+  /** Actionable "this model can't be used" sentence, marker-prefixed so
+   *  the FE humanizer (chat-errors.ts) shows it verbatim. */
+  modelUnavailableMessage(modelId: string): string {
+    return `${MODEL_UNAVAILABLE_MARKER}: "${modelId}" is no longer available — it was disabled or removed in Management → Models. Ask an admin to enable it there, or pick a different model.`;
+  }
+
+  /** Ready-to-throw 422 carrying {@link modelUnavailableMessage}. */
+  modelUnavailableError(modelId: string): HttpException {
+    return new HttpException(this.modelUnavailableMessage(modelId), 422);
+  }
+
+  /**
+   * Given a primary model and its configured fallbacks (in order), return
+   * the first one that's actually usable (curated/active), or null when
+   * none are. This is what lets a disabled primary fall back to an enabled
+   * alternate — and surfaces MODEL_UNAVAILABLE only when the primary AND
+   * every fallback are unavailable. Pure: callers pass the available set.
+   */
+  firstAvailableModel(
+    candidates: string[],
+    available: Set<string>,
+  ): string | null {
+    return candidates.find((c) => available.has(c)) ?? null;
+  }
+
   /**
    * Throw a clear, actionable MODEL_UNAVAILABLE error when `modelId`
    * isn't in the user's curated/effective list (alias disabled, deleted,
@@ -642,10 +667,7 @@ export class ModelsService {
   ): Promise<void> {
     const ids = available ?? (await this.availableModelIds(userId, scope));
     if (ids.has(modelId)) return;
-    throw new HttpException(
-      `${MODEL_UNAVAILABLE_MARKER}: "${modelId}" is no longer available — it was disabled or removed in Management → Models. Ask an admin to enable it there, or pick a different model.`,
-      422,
-    );
+    throw this.modelUnavailableError(modelId);
   }
 
   async create(

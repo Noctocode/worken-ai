@@ -390,23 +390,6 @@ export class CompareModelsController {
       body.models.map(async (model) => {
         const modelStart = Date.now();
 
-        // Skip + report any model that's no longer in the curated list.
-        try {
-          await this.modelsService.assertModelAvailable(
-            user.id,
-            model,
-            undefined,
-            availableModelIds,
-          );
-        } catch (err) {
-          sendEvent('model-error', {
-            model,
-            message: err instanceof Error ? err.message : String(err),
-            status: err instanceof HttpException ? err.getStatus() : 422,
-          });
-          return;
-        }
-
         // Per-model pre-flight that mirrors the inline block in the
         // non-stream arena. Failures here become a model-error SSE
         // event so only this panel shows the failure; the rest keep
@@ -421,7 +404,22 @@ export class CompareModelsController {
           modelIdentifier: model,
           teamId,
         });
-        const candidates = [model, ...fallbackModels];
+        // Curation gate: drop candidates whose alias was disabled/deleted
+        // since the picker loaded, keeping fallback order. A disabled model
+        // with an enabled fallback uses the fallback; only when the model
+        // AND every fallback are unavailable does the panel fail with a
+        // clear MODEL_UNAVAILABLE.
+        const candidates = [model, ...fallbackModels].filter((c) =>
+          availableModelIds.has(c),
+        );
+        if (candidates.length === 0) {
+          sendEvent('model-error', {
+            model,
+            message: this.modelsService.modelUnavailableMessage(model),
+            status: 422,
+          });
+          return;
+        }
         // Fall back if a candidate emits no token within this window AND a
         // fallback exists ("timeouts (3s) or returns error" per Models tab).
         const FALLBACK_FIRST_TOKEN_TIMEOUT_MS = 3000;

@@ -114,19 +114,33 @@ export class CronRunnerService {
     const reservationIds: string[] = [];
 
     try {
-      // Curation gate: if the schedule's model was disabled or deleted in
-      // Management → Models since it was set, fail the run with a clear,
-      // actionable MODEL_UNAVAILABLE (stored in errorMessage + delivered)
-      // instead of silently routing elsewhere. The run-history dialog
-      // humanizes the marker into "enable it or pick another".
-      await this.modelsService.assertModelAvailable(
+      // Curation gate (fallback-aware): build the candidate chain (the
+      // schedule's model + its configured fallbacks) and drop any whose
+      // alias was disabled/deleted in Management → Models. The first
+      // survivor runs — so a disabled model with an enabled fallback uses
+      // the fallback. Only when the model AND every fallback are
+      // unavailable do we fail the run with a clear MODEL_UNAVAILABLE
+      // (stored in errorMessage + delivered; the run-history dialog
+      // humanizes the marker into "enable it or pick another").
+      const availableModelIds = await this.modelsService.availableModelIds(
         prompt.ownerId,
-        prompt.modelIdentifier,
       );
+      const fallbacks = await this.chatTransport.resolveFallbackModels({
+        userId: prompt.ownerId,
+        modelIdentifier: prompt.modelIdentifier,
+        teamId: prompt.teamId,
+      });
+      const candidates = [
+        prompt.modelIdentifier,
+        ...fallbacks.filter((m) => m !== prompt.modelIdentifier),
+      ].filter((m) => availableModelIds.has(m));
+      if (candidates.length === 0) {
+        throw this.modelsService.modelUnavailableError(prompt.modelIdentifier);
+      }
 
       transport = await this.chatTransport.resolve({
         userId: prompt.ownerId,
-        modelIdentifier: prompt.modelIdentifier,
+        modelIdentifier: candidates[0],
         teamId: prompt.teamId,
       });
 
@@ -173,21 +187,10 @@ export class CronRunnerService {
       // to the managed route where the plugin actually applies.
       const webAllowed = prompt.useWebSearch;
 
-      // 2. Candidates = the chosen model + its configured fallbacks (Models
-      //    tab). On a retryable failure (dead/unavailable model) before any
-      //    content, switch to the next candidate — mirroring the chat path.
-      //    No first-token timeout: a scheduled run has no live consumer, so a
-      //    slow-but-valid model shouldn't be killed.
-      const fallbacks = await this.chatTransport.resolveFallbackModels({
-        userId: prompt.ownerId,
-        modelIdentifier: prompt.modelIdentifier,
-        teamId: prompt.teamId,
-      });
-      const candidates = [
-        prompt.modelIdentifier,
-        ...fallbacks.filter((m) => m !== prompt.modelIdentifier),
-      ];
-
+      // Candidates (chosen model + enabled fallbacks) were resolved above
+      // by the curation gate. On a retryable failure (dead/unavailable
+      // model) before any content, the loop switches to the next one — no
+      // first-token timeout, since a scheduled run has no live consumer.
       let output = '';
       let usage: UsageTotals | undefined;
       let citations: { url: string; title?: string }[] | undefined;

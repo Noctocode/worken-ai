@@ -174,15 +174,31 @@ export class ChatController {
       user.id,
     );
 
-    const requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
-    // Pre-flight curation gate: an explicitly-selected model that's been
-    // disabled or deleted in Management → Models fails fast with a clear,
-    // actionable MODEL_UNAVAILABLE (the FE humanizer turns it into "enable
-    // it or pick another") instead of silently falling back to a different
-    // route. Skipped when no model was specified — that path uses the
-    // system default, which isn't a curated alias.
+    let requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
+    // Pre-flight curation gate (only for an explicitly-selected model —
+    // the system default isn't a curated alias). If the chosen model was
+    // disabled/deleted in Management → Models, fall back to its first
+    // configured fallback that IS still enabled. Only when neither the
+    // model nor any fallback is usable do we fail with a clear, actionable
+    // MODEL_UNAVAILABLE (the FE humanizer turns it into "enable it or pick
+    // another") instead of silently routing the dead model elsewhere.
     if (body.model) {
-      await this.modelsService.assertModelAvailable(user.id, body.model);
+      const available = await this.modelsService.availableModelIds(user.id);
+      if (!available.has(requestedModel)) {
+        const fallbacks = await this.chatTransport.resolveFallbackModels({
+          userId: user.id,
+          modelIdentifier: requestedModel,
+          projectId: conversation.projectId,
+        });
+        const usable = this.modelsService.firstAvailableModel(
+          fallbacks,
+          available,
+        );
+        if (!usable) {
+          throw this.modelsService.modelUnavailableError(requestedModel);
+        }
+        requestedModel = usable;
+      }
     }
     // `transport` / `usedModel` are reassigned once the stream commits to the
     // model that actually answered (the requested one, or a fallback) so all
