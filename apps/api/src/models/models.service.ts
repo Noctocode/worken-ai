@@ -193,15 +193,14 @@ export class ModelsService {
    * for a given user.
    *
    *  - Active model_configs aliases (one entry each, custom name as label).
-   *  - Plus every catalog model whose provider has an enabled BYOK row
-   *    with an api key in `integrations`. The user has explicitly opted
-   *    in to using their own provider account for that whole vendor;
-   *    surfacing the full catalog there saves them from manually
-   *    aliasing every model they want to try.
+   *  - Plus explicitly-configured Azure deployments (Azure has no
+   *    catalog, so its deployments are the selectable entries).
    *
-   * Aliases dedupe over catalog entries on the same modelIdentifier —
-   * the user's custom name and (if present) Custom LLM binding take
-   * precedence.
+   * Models are admin-curated under the Models tab: there is NO BYOK
+   * catalog expansion. An enabled provider key only changes how an
+   * existing alias routes (BYOK vs WorkenAI default) — it does not
+   * auto-surface that provider's whole catalog. To make a model
+   * selectable, an admin adds an alias for it.
    */
   async listEffectiveForUser(
     userId: string,
@@ -563,26 +562,13 @@ export class ModelsService {
       });
     }
 
-    if (enabledProviders.size > 0) {
-      const catalog = await this.catalogService.list();
-      for (const m of catalog) {
-        if (seen.has(m.id)) continue;
-        const slash = m.id.indexOf('/');
-        if (slash === -1) continue;
-        const provider = m.id.slice(0, slash);
-        if (!enabledProviders.has(provider)) continue;
-        seen.add(m.id);
-        out.push({
-          id: m.id,
-          name: m.name,
-          source: 'byok',
-          routing: computeRouting(m.id, false),
-          description: m.description,
-          context_length: m.context_length,
-          pricing: m.pricing,
-        });
-      }
-    }
+    // NOTE: no BYOK "catalog expansion" here. Models are admin-curated
+    // under the Models tab — the picker surfaces exactly the active
+    // aliases (above) plus explicitly-configured Azure deployments
+    // (below). Having an enabled provider key no longer auto-surfaces
+    // that provider's entire catalog; an admin must add an alias for
+    // any model they want selectable. `enabledProviders` still drives
+    // the BYOK/workenai routing marker on aliases via computeRouting.
 
     // Synthesize Azure deployments as selectable models. Id is
     // `azure/<deploymentName>` so providerOfModel() resolves "azure" and
