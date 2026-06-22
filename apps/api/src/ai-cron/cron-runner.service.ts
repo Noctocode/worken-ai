@@ -9,6 +9,7 @@ import {
 } from '../integrations/chat-transport.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ModelsService } from '../models/models.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { DeliveryService, type DeliveryPayload } from './delivery.service.js';
 import { ScheduleKnowledgeService } from './schedule-knowledge.service.js';
@@ -76,6 +77,7 @@ export class CronRunnerService {
     private readonly delivery: DeliveryService,
     private readonly scheduleKnowledge: ScheduleKnowledgeService,
     private readonly catalog: OpenRouterCatalogService,
+    private readonly modelsService: ModelsService,
   ) {}
 
   async execute(
@@ -112,6 +114,16 @@ export class CronRunnerService {
     const reservationIds: string[] = [];
 
     try {
+      // Curation gate: if the schedule's model was disabled or deleted in
+      // Management → Models since it was set, fail the run with a clear,
+      // actionable MODEL_UNAVAILABLE (stored in errorMessage + delivered)
+      // instead of silently routing elsewhere. The run-history dialog
+      // humanizes the marker into "enable it or pick another".
+      await this.modelsService.assertModelAvailable(
+        prompt.ownerId,
+        prompt.modelIdentifier,
+      );
+
       transport = await this.chatTransport.resolve({
         userId: prompt.ownerId,
         modelIdentifier: prompt.modelIdentifier,

@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   NotFoundException,
@@ -22,6 +23,17 @@ import {
   OpenRouterCatalogService,
   type CatalogModel,
 } from './openrouter-catalog.service.js';
+
+/**
+ * Marker for "the selected model isn't in the user's curated list" —
+ * its alias was disabled or deleted in Management → Models (or it was
+ * never enabled). Mirrors the budget/key markers in chat-transport: the
+ * FE humanizer (chat-errors.ts) matches on `MODEL_UNAVAILABLE:` and
+ * shows the actionable message verbatim. Used by chat, arena, and AI
+ * cron so a stale model selection fails with a clear "why + how to fix"
+ * instead of silently falling back to a different route.
+ */
+export const MODEL_UNAVAILABLE_MARKER = 'MODEL_UNAVAILABLE';
 
 /**
  * What a model picker (arena, project chat, …) should show for a user.
@@ -600,6 +612,40 @@ export class ModelsService {
    */
   async listAvailable(): Promise<CatalogModel[]> {
     return this.catalogService.list();
+  }
+
+  /**
+   * The set of model ids the user can actually use in a given scope —
+   * exactly what `listEffectiveForUser` would surface in the picker.
+   * Callers (chat / arena / cron) use it to reject a stale selection
+   * before a request runs.
+   */
+  async availableModelIds(
+    userId: string,
+    scope?: { teamId: string | null },
+  ): Promise<Set<string>> {
+    const effective = await this.listEffectiveForUser(userId, scope);
+    return new Set(effective.map((m) => m.id));
+  }
+
+  /**
+   * Throw a clear, actionable MODEL_UNAVAILABLE error when `modelId`
+   * isn't in the user's curated/effective list (alias disabled, deleted,
+   * or never enabled). Returns silently when the model is usable. Pass a
+   * pre-fetched id set to avoid re-querying when checking several models.
+   */
+  async assertModelAvailable(
+    userId: string,
+    modelId: string,
+    scope?: { teamId: string | null },
+    available?: Set<string>,
+  ): Promise<void> {
+    const ids = available ?? (await this.availableModelIds(userId, scope));
+    if (ids.has(modelId)) return;
+    throw new HttpException(
+      `${MODEL_UNAVAILABLE_MARKER}: "${modelId}" is no longer available — it was disabled or removed in Management → Models. Ask an admin to enable it there, or pick a different model.`,
+      422,
+    );
   }
 
   async create(

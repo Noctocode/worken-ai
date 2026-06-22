@@ -38,6 +38,7 @@ import {
   type ChatTransport,
 } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ModelsService } from '../models/models.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
@@ -123,6 +124,7 @@ export class CompareModelsController {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly documentsService: DocumentsService,
     private readonly skillRouter: SkillRouterService,
+    private readonly modelsService: ModelsService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -374,10 +376,36 @@ export class CompareModelsController {
     });
 
     // ── PER-MODEL FAN-OUT ───────────────────────────────────────────
+    // Curated-model gate: the arena only offers the user's effective
+    // models, but a selection can go stale (its alias disabled/deleted
+    // since the picker loaded). Fetch the usable set once so each panel
+    // can fail fast with a clear MODEL_UNAVAILABLE instead of silently
+    // routing elsewhere. The judge model is resolved separately above
+    // and isn't gated here.
+    const availableModelIds = await this.modelsService.availableModelIds(
+      user.id,
+    );
     const responses: ModelResponse[] = [];
     await Promise.allSettled(
       body.models.map(async (model) => {
         const modelStart = Date.now();
+
+        // Skip + report any model that's no longer in the curated list.
+        try {
+          await this.modelsService.assertModelAvailable(
+            user.id,
+            model,
+            undefined,
+            availableModelIds,
+          );
+        } catch (err) {
+          sendEvent('model-error', {
+            model,
+            message: err instanceof Error ? err.message : String(err),
+            status: err instanceof HttpException ? err.getStatus() : 422,
+          });
+          return;
+        }
 
         // Per-model pre-flight that mirrors the inline block in the
         // non-stream arena. Failures here become a model-error SSE

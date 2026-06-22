@@ -28,6 +28,7 @@ import {
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ModelsService } from '../models/models.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { SkillRouterService } from '../skills/skill-router.service.js';
@@ -75,6 +76,7 @@ export class ChatController {
     private readonly modelSuggestions: ModelSuggestionService,
     private readonly chatGateway: ChatGateway,
     private readonly skillRouter: SkillRouterService,
+    private readonly modelsService: ModelsService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -173,6 +175,15 @@ export class ChatController {
     );
 
     const requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
+    // Pre-flight curation gate: an explicitly-selected model that's been
+    // disabled or deleted in Management → Models fails fast with a clear,
+    // actionable MODEL_UNAVAILABLE (the FE humanizer turns it into "enable
+    // it or pick another") instead of silently falling back to a different
+    // route. Skipped when no model was specified — that path uses the
+    // system default, which isn't a curated alias.
+    if (body.model) {
+      await this.modelsService.assertModelAvailable(user.id, body.model);
+    }
     // `transport` / `usedModel` are reassigned once the stream commits to the
     // model that actually answered (the requested one, or a fallback) so all
     // post-stream cost / observability / persistence follows the real model.
