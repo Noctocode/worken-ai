@@ -96,6 +96,8 @@ export const skills = {
   'skillRuns.loading': 'Loading runs…',
   'skillRuns.empty': 'No runs yet.',
   'skillRuns.loadingFiles': 'Loading details…',
+  'skillRuns.loadError': "Couldn't load this run.",
+  'skillRuns.filesError': "Couldn't load this run's files.",
   'skillRuns.noFiles': 'No files were produced.',
   'skillRuns.usage': '{calls} call(s) · {tokens} tokens',
   'skillRuns.unknownSkill': '(deleted skill)',

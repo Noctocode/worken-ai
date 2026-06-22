@@ -66,15 +66,27 @@ function StatusBadge({ status }: { status: SkillRunSummary["status"] }) {
 /** Lazily-loaded detail for one run (steps timeline + usage + artifacts). */
 function RunDetail({ runId }: { runId: string }) {
   const { t } = useLanguage();
-  const { data: detail, isLoading } = useQuery({
+  const {
+    data: detail,
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["skill-run", runId],
     queryFn: () => fetchSkillRun(runId),
   });
-  const { data: arts = [] } = useQuery({
+  const { data: arts = [], isError: artsError } = useQuery({
     queryKey: ["skill-run-artifacts", runId],
     queryFn: () => fetchSkillRunArtifacts(runId),
   });
 
+  // A failed detail fetch must not look like an endless "loading" state.
+  if (isError) {
+    return (
+      <p className="px-1 py-2 text-[12px] text-danger-6">
+        {t("skillRuns.loadError")}
+      </p>
+    );
+  }
   if (isLoading || !detail) {
     return (
       <p className="px-1 py-2 text-[12px] text-text-3">
@@ -127,7 +139,11 @@ function RunDetail({ runId }: { runId: string }) {
       )}
 
       {/* Artifact download chips */}
-      {arts.length > 0 ? (
+      {artsError ? (
+        <p className="text-[12px] text-danger-6">
+          {t("skillRuns.filesError")}
+        </p>
+      ) : arts.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {arts.map((a) => (
             <a

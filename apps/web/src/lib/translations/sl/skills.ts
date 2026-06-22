@@ -98,6 +98,8 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skillRuns.loading': 'Nalaganje zagonov…',
   'skillRuns.empty': 'Ni še zagonov.',
   'skillRuns.loadingFiles': 'Nalaganje podrobnosti…',
+  'skillRuns.loadError': 'Tega zagona ni bilo mogoče naložiti.',
+  'skillRuns.filesError': 'Datotek tega zagona ni bilo mogoče naložiti.',
   'skillRuns.noFiles': 'Ni ustvarjenih datotek.',
   'skillRuns.usage': '{calls} klic(ev) · {tokens} žetonov',
   'skillRuns.unknownSkill': '(izbrisana veščina)',
