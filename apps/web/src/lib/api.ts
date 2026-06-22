@@ -1431,6 +1431,22 @@ export async function fetchOrgUsers(): Promise<OrgUser[]> {
   return res.json();
 }
 
+/** Slim company roster for member-pickers — only id/name/email/picture, no
+ *  role/budget. Use this (not fetchOrgUsers) anywhere a non-admin picks a
+ *  colleague, so management-only fields aren't shipped to the client. */
+export interface Colleague {
+  id: string;
+  name: string | null;
+  email: string;
+  picture: string | null;
+}
+
+export async function fetchColleagues(): Promise<Colleague[]> {
+  const res = await apiFetch("/users/colleagues");
+  if (!res.ok) throw new Error("Failed to fetch colleagues");
+  return res.json();
+}
+
 export interface OrgUserDetail {
   id: string;
   email: string;

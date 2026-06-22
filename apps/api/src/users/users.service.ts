@@ -174,6 +174,33 @@ export class UsersService {
     });
   }
 
+  /**
+   * Minimal company roster for member-pickers (e.g. AI Cron "also notify",
+   * tender team selection). Returns ONLY id / name / email / picture — no
+   * role, budget or other admin-sensitive fields, so it's safe to expose to
+   * any company member (unlike `findAll`, which carries management data and
+   * is meant for the admin Users/Company views). A personal-profile caller
+   * has no company, so the list is empty.
+   */
+  async listColleagues(callerId: string) {
+    const [caller] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const companyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    if (!companyId) return [];
+    return this.db
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        picture: users.picture,
+      })
+      .from(users)
+      .where(eq(users.companyId, companyId));
+  }
+
   async findOne(userId: string, callerId: string) {
     const [user] = await this.db
       .select({
