@@ -2406,6 +2406,23 @@ export function skillArtifactDownloadUrl(artifactId: string): string {
   return `${BASE_URL}/skills/artifacts/${artifactId}/download`;
 }
 
+/** Pre-run cost estimate (USD) for a skill on a given model. */
+export async function estimateSkillRun(
+  skillId: string,
+  opts: { model: string; message?: string },
+): Promise<{ estimatedUsd: number | null }> {
+  const res = await apiFetch(`/skills/${skillId}/estimate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: opts.model,
+      ...(opts.message ? { message: opts.message } : {}),
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to estimate run cost");
+  return res.json();
+}
+
 // Tenders
 
 export interface TenderSummary {

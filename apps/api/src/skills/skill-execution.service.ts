@@ -421,6 +421,42 @@ export class SkillExecutionService {
     };
   }
 
+  /**
+   * Pre-run cost estimate (USD) for the FE to show before a run is launched —
+   * the same rough heuristic the run emits as its `cost_estimate` event.
+   * Owner-scoped; null when the model isn't in the catalog.
+   */
+  async estimate(params: {
+    userId: string;
+    skillId: string;
+    modelIdentifier: string;
+    userMessage?: string;
+  }): Promise<{ estimatedUsd: number | null }> {
+    const [skill] = await this.db
+      .select()
+      .from(skills)
+      .where(eq(skills.id, params.skillId));
+    if (!skill || skill.userId !== params.userId) {
+      throw new NotFoundException('Skill not found.');
+    }
+    if (skill.source !== 'executable') {
+      throw new BadRequestException('This skill is not executable.');
+    }
+    const canRunScripts =
+      this.sandbox.isAvailable() && (skill.scripts?.length ?? 0) > 0;
+    const system = this.buildSystem(skill, canRunScripts);
+    const userMessage = params.userMessage?.trim() || 'Run this skill.';
+    const estPromptTokens = Math.ceil(
+      (system.length + userMessage.length) / CHARS_PER_TOKEN,
+    );
+    const estimatedUsd = await this.catalog.estimateCost(
+      params.modelIdentifier,
+      estPromptTokens,
+      ESTIMATE_COMPLETION_TOKENS,
+    );
+    return { estimatedUsd };
+  }
+
   /** Abort the caller's in-flight run, if any. Returns whether one was
    *  running. The run loop observes the signal and finalizes the row as
    *  'cancelled'. */

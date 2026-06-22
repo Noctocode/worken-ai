@@ -133,6 +133,11 @@ export class ContainerSandbox implements SkillSandboxRuntime {
       '/out',
       '-v',
       `${hostWork}:/work:ro`,
+      // /out is writable so the script can produce artifacts. Docker can't set
+      // `noexec` on a bind mount (unlike the /tmp tmpfs above), so code written
+      // to /out could in principle be exec'd — acceptable here because the
+      // container has no network, all caps dropped, no-new-privileges, and runs
+      // non-root, so there's no escape vector to leverage it.
       '-v',
       `${hostOut}:/out:rw`,
       lang.image,

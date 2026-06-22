@@ -79,6 +79,7 @@ export const skills = {
     'No eligible model. Connect an Anthropic key in Models — executable skills run only on Anthropic-native (BYOK) models.',
   'skillRun.modelHint':
     'Only your Anthropic-native models with a connected key can run skills.',
+  'skillRun.manageModels': 'Manage models →',
   'skillRun.messageField': 'Message (optional)',
   'skillRun.messagePh': 'What should the skill do? Leave blank to just run it.',
   'skillRun.estimate': 'Est.',

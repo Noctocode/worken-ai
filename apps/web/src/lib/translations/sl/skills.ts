@@ -81,6 +81,7 @@ export const skills: Record<keyof typeof skillsEn, string> = {
     'Ni primernega modela. Povežite ključ Anthropic v Modelih — izvršljive veščine tečejo le na izvornih modelih Anthropic (BYOK).',
   'skillRun.modelHint':
     'Veščine lahko poženejo le vaši izvorni modeli Anthropic s povezanim ključem.',
+  'skillRun.manageModels': 'Upravljaj modele →',
   'skillRun.messageField': 'Sporočilo (neobvezno)',
   'skillRun.messagePh': 'Kaj naj veščina naredi? Pustite prazno za zgolj zagon.',
   'skillRun.estimate': 'Oc.',

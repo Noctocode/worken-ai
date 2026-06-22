@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -30,6 +31,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   cancelActiveSkillRun,
+  estimateSkillRun,
   fetchEffectiveModels,
   skillArtifactDownloadUrl,
   streamSkillRun,
@@ -74,6 +76,13 @@ export function SkillRunDialog({
     () => eligibleExecutableModels(allModels),
     [allModels],
   );
+
+  // Pre-run cost estimate for the picked model, shown before launching.
+  const { data: preEstimate } = useQuery({
+    queryKey: ["skill-estimate", skill?.id, model],
+    queryFn: () => estimateSkillRun(skill!.id, { model }),
+    enabled: open && !!skill && !!model && view.status === "idle",
+  });
 
   // Default to the first eligible model; clear if the current pick disappears.
   useEffect(() => {
@@ -171,7 +180,15 @@ export function SkillRunDialog({
             ) : models.length === 0 ? (
               <div className="flex items-start gap-2 rounded border border-border-2 bg-bg-1 px-3 py-2 text-[12px] text-text-2">
                 <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-3" />
-                <span>{t("skillRun.noModels")}</span>
+                <span>
+                  {t("skillRun.noModels")}{" "}
+                  <Link
+                    href="/teams?tab=models"
+                    className="font-medium text-primary-6 hover:underline"
+                  >
+                    {t("skillRun.manageModels")}
+                  </Link>
+                </span>
               </div>
             ) : (
               <Select value={model} onValueChange={setModel} disabled={running}>
@@ -206,6 +223,11 @@ export function SkillRunDialog({
           {/* Run / Stop + cost */}
           <div className="flex items-center justify-between gap-3">
             <div className="text-[12px] text-text-2">
+              {view.status === "idle" && preEstimate?.estimatedUsd != null && (
+                <span>
+                  {t("skillRun.estimate")}: {fmtUsd(preEstimate.estimatedUsd)}
+                </span>
+              )}
               {view.estimatedUsd != null && !terminal && (
                 <span>
                   {t("skillRun.estimate")}: {fmtUsd(view.estimatedUsd)}

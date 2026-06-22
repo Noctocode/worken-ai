@@ -120,6 +120,25 @@ export class SkillsController {
     return { cancelled: this.execution.cancel(user.id) };
   }
 
+  /** Pre-run cost estimate for the FE (before launching the SSE run). */
+  @Post(':id/estimate')
+  async estimate(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { model?: string; message?: string },
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    await this.assertExecutableEnabled(user.id);
+    if (!body?.model) {
+      throw new BadRequestException('`model` is required.');
+    }
+    return this.execution.estimate({
+      userId: user.id,
+      skillId: id,
+      modelIdentifier: body.model,
+      userMessage: body.message,
+    });
+  }
+
   /** The owner's generated artifacts for one run. */
   @Get('runs/:id/artifacts')
   async listArtifacts(
