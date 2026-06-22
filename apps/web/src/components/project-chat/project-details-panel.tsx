@@ -6,6 +6,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ChevronRight,
   Download,
   FileText,
   Loader2,
@@ -155,6 +156,49 @@ function Section({
   );
 }
 
+/* ─── Document group card ────────────────────────────────────────────────── */
+
+function DocumentGroupCard({
+  group,
+}: {
+  group: { groupId: string; title: string; chunks: { id: string; content: string }[] };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-lg border border-border-2 bg-bg-1 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="flex w-full cursor-pointer items-center gap-2 px-2.5 py-2 text-left"
+      >
+        {expanded ? (
+          <ChevronDown className="h-3.5 w-3.5 shrink-0 text-text-3" />
+        ) : (
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-3" />
+        )}
+        <span className="flex-1 truncate text-[12px] font-medium text-text-1">
+          {group.title}
+        </span>
+        <span className="shrink-0 text-[11px] text-text-3">
+          {group.chunks.length} chunk{group.chunks.length !== 1 ? "s" : ""}
+        </span>
+      </button>
+      {expanded && (
+        <div className="border-t border-border-2 px-2.5 py-2 space-y-2">
+          {group.chunks.map((chunk) => (
+            <p
+              key={chunk.id}
+              className="whitespace-pre-wrap text-[12px] leading-relaxed text-text-2"
+            >
+              {chunk.content}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Panel ──────────────────────────────────────────────────────────────── */
 
 /**
@@ -288,6 +332,17 @@ export function ProjectDetailsPanel({
     queryFn: () => fetchDocuments(projectId),
     enabled: panelVisible,
   });
+
+  const documentGroups = useMemo(() => {
+    const map = new Map<string, { groupId: string; title: string; createdAt: string; chunks: typeof documents }>();
+    for (const doc of documents) {
+      if (!map.has(doc.groupId)) {
+        map.set(doc.groupId, { groupId: doc.groupId, title: doc.title, createdAt: doc.createdAt, chunks: [] });
+      }
+      map.get(doc.groupId)!.chunks.push(doc);
+    }
+    return Array.from(map.values());
+  }, [documents]);
   const { data: prompts = [], isLoading: promptsLoading } = useQuery({
     queryKey: ["prompts"],
     queryFn: fetchPrompts,
@@ -351,13 +406,8 @@ export function ProjectDetailsPanel({
               </p>
             ) : (
               <div className="space-y-2">
-                {documents.map((d) => (
-                  <p
-                    key={d.id}
-                    className="whitespace-pre-wrap rounded-lg border border-border-2 bg-bg-1 p-2.5 text-[12px] leading-relaxed text-text-2"
-                  >
-                    {d.content}
-                  </p>
+                {documentGroups.map((group) => (
+                  <DocumentGroupCard key={group.groupId} group={group} />
                 ))}
               </div>
             )}

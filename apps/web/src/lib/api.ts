@@ -391,6 +391,8 @@ export async function deleteProject(id: string): Promise<void> {
 
 export interface Document {
   id: string;
+  groupId: string;
+  title: string;
   content: string;
   createdAt: string;
 }
