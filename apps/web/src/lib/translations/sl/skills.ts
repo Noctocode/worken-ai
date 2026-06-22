@@ -90,6 +90,20 @@ export const skills: Record<keyof typeof skillsEn, string> = {
   'skillRun.running': 'Izvajanje…',
   'skillRun.cancelled': 'Zagon preklican.',
 
+  // Pogovorno okno z zgodovino zagonov
+  'skillRuns.button': 'Zagoni',
+  'skillRuns.title': 'Zagoni veščin',
+  'skillRuns.desc': 'Vaši nedavni zagoni izvršljivih veščin in njihove datoteke.',
+  'skillRuns.loading': 'Nalaganje zagonov…',
+  'skillRuns.empty': 'Ni še zagonov.',
+  'skillRuns.loadingFiles': 'Nalaganje datotek…',
+  'skillRuns.noFiles': 'Ni ustvarjenih datotek.',
+  'skillRuns.unknownSkill': '(izbrisana veščina)',
+  'skillRuns.status.running': 'Izvajanje',
+  'skillRuns.status.done': 'Končano',
+  'skillRuns.status.failed': 'Spodletelo',
+  'skillRuns.status.cancelled': 'Preklicano',
+
   // Composer "Veščine" dialog (pregled + pripni)
   'skillsDlg.title': 'Veščine',
   'skillsDlg.desc':

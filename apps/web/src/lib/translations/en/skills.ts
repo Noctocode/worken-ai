@@ -88,6 +88,20 @@ export const skills = {
   'skillRun.running': 'Running…',
   'skillRun.cancelled': 'Run cancelled.',
 
+  // Run-history dialog
+  'skillRuns.button': 'Runs',
+  'skillRuns.title': 'Skill runs',
+  'skillRuns.desc': 'Your recent executable-skill runs and their files.',
+  'skillRuns.loading': 'Loading runs…',
+  'skillRuns.empty': 'No runs yet.',
+  'skillRuns.loadingFiles': 'Loading files…',
+  'skillRuns.noFiles': 'No files were produced.',
+  'skillRuns.unknownSkill': '(deleted skill)',
+  'skillRuns.status.running': 'Running',
+  'skillRuns.status.done': 'Done',
+  'skillRuns.status.failed': 'Failed',
+  'skillRuns.status.cancelled': 'Cancelled',
+
   // Composer "Skills" dialog (browse + pin)
   'skillsDlg.title': 'Skills',
   'skillsDlg.desc':

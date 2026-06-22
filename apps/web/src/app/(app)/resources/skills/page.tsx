@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  History,
   MoreVertical,
   Pencil,
   Play,
@@ -62,6 +63,7 @@ import {
 import { useLanguage } from "@/lib/i18n";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { SkillRunDialog } from "@/components/project-chat/skill-run-dialog";
+import { SkillRunsDialog } from "@/components/project-chat/skill-runs-dialog";
 
 interface DraftSkill {
   name: string;
@@ -103,6 +105,17 @@ export default function SkillsPage() {
   const [importing, setImporting] = useState(false);
   // Executable-skill (Option #3) run dialog target.
   const [runTarget, setRunTarget] = useState<Skill | null>(null);
+  const [runsOpen, setRunsOpen] = useState(false);
+  // skillId → name, so the runs history can label each run.
+  const skillNames = useMemo(
+    () => Object.fromEntries(items.map((s) => [s.id, s.name])),
+    [items],
+  );
+  // Show the run-history affordance once the user has any executable skills.
+  const hasExecutable = useMemo(
+    () => items.some((s) => s.source === "executable"),
+    [items],
+  );
   // Picker sources for 'teams' / 'project' visibility. Loaded once; failures
   // are non-fatal (the picker just shows empty).
   const [teams, setTeams] = useState<TeamListItem[]>([]);
@@ -324,6 +337,16 @@ export default function SkillsPage() {
             className="h-11 pl-9 pr-3 text-base rounded-md border-border-2 placeholder:text-text-3"
           />
         </div>
+        {hasExecutable && (
+          <button
+            type="button"
+            onClick={() => setRunsOpen(true)}
+            className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md border border-border-2 bg-bg-white px-4 text-[13px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+          >
+            <History className="h-4 w-4" />
+            {t("skillRuns.button")}
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setImportOpen(true)}
@@ -729,6 +752,12 @@ export default function SkillsPage() {
       </Dialog>
 
       {/* Executable-skill run dialog (Option #3) */}
+      <SkillRunsDialog
+        open={runsOpen}
+        onOpenChange={setRunsOpen}
+        skillNames={skillNames}
+      />
+
       <SkillRunDialog
         skill={runTarget}
         open={runTarget !== null}
