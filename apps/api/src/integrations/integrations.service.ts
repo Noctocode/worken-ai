@@ -411,7 +411,14 @@ export class IntegrationsService {
       ? this.encryptionService.encrypt(input.apiKey.trim())
       : null;
 
-    const monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
+    // Monthly token limit applies ONLY to Custom LLM (BYOK) integrations.
+    // Predefined providers — whether or not the user added their own key —
+    // never carry a per-key monthly limit; their usage is governed by the
+    // budget tiers, not a token cap. Force null for non-custom so a stray
+    // input can't re-introduce a limit.
+    const monthlyTokenLimit = isCustom
+      ? normalizeTokenLimit(input.monthlyTokenLimit)
+      : null;
 
     if (isCustom) {
       const customName = input.customName!.trim();
@@ -587,7 +594,10 @@ export class IntegrationsService {
     if (input.allowPersonalUse !== undefined) {
       updates.allowPersonalUse = input.allowPersonalUse;
     }
-    if (input.monthlyTokenLimit !== undefined) {
+    // Monthly token limit is a Custom-LLM-only setting (see upsert). For
+    // predefined providers it's ignored so a limit can never be attached
+    // to a non-custom key.
+    if (input.monthlyTokenLimit !== undefined && row.providerId === 'custom') {
       updates.monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
     }
     // Azure config edits (endpoint / api-version / deployments) come
