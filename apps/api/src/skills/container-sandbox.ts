@@ -209,12 +209,16 @@ export class ContainerSandbox implements SkillSandboxRuntime {
           ? `Sandbox run exceeded ${input.limits.timeoutMs}ms and was killed.`
           : exec.exitCode === 0
             ? null
-            : // exitCode -1 means docker itself never ran the script (daemon
-              // down / image missing / binary not found) — an infra failure, not
-              // a script bug. Surface the captured reason instead of a code.
-              exec.exitCode === -1
-              ? `Sandbox could not start: ${exec.stderr.trim() || 'docker unavailable'}`
-              : `Script exited with code ${exec.exitCode}.`,
+            : // A user/Stop abort also surfaces as exitCode -1 — report it as a
+              // cancellation rather than an infra failure.
+              input.signal?.aborted
+              ? 'Sandbox run was cancelled.'
+              : // exitCode -1 means docker itself never ran the script (daemon
+                // down / image missing / binary not found) — an infra failure,
+                // not a script bug. Surface the captured reason instead of a code.
+                exec.exitCode === -1
+                ? `Sandbox could not start: ${exec.stderr.trim() || 'docker unavailable'}`
+                : `Script exited with code ${exec.exitCode}.`,
       };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

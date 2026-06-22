@@ -44,10 +44,7 @@ import {
   type SkillRunView,
 } from "@/lib/skill-run-reducer";
 import { useLanguage } from "@/lib/i18n";
-
-function fmtUsd(n: number): string {
-  return `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
-}
+import { formatSmallUsd } from "@/lib/utils";
 
 export function SkillRunDialog({
   skill,
@@ -225,17 +222,17 @@ export function SkillRunDialog({
             <div className="text-[12px] text-text-2">
               {view.status === "idle" && preEstimate?.estimatedUsd != null && (
                 <span>
-                  {t("skillRun.estimate")}: {fmtUsd(preEstimate.estimatedUsd)}
+                  {t("skillRun.estimate")}: {formatSmallUsd(preEstimate.estimatedUsd)}
                 </span>
               )}
               {view.estimatedUsd != null && !terminal && (
                 <span>
-                  {t("skillRun.estimate")}: {fmtUsd(view.estimatedUsd)}
+                  {t("skillRun.estimate")}: {formatSmallUsd(view.estimatedUsd)}
                 </span>
               )}
               {terminal && view.costUsd != null && (
                 <span>
-                  {t("skillRun.cost")}: {fmtUsd(view.costUsd)}
+                  {t("skillRun.cost")}: {formatSmallUsd(view.costUsd)}
                 </span>
               )}
             </div>

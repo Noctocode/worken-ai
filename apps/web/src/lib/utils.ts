@@ -21,6 +21,15 @@ export function formatCurrency(value: number): string {
 }
 
 /**
+ * Compact USD for small amounts (skill-run cost / estimate): 2 decimals
+ * normally, 4 for sub-cent values — a single run can cost a fraction of a
+ * cent, which `formatCurrency`'s fixed 2 decimals would round to "$0.00".
+ */
+export function formatSmallUsd(value: number): string {
+  return `$${value.toFixed(value < 0.01 ? 4 : 2)}`;
+}
+
+/**
  * Live formatter for the de-DE budget input. Called on every keystroke
  * to keep the displayed value in `1.234,56` shape while the user is
  * typing. Also smart-parses pasted en-US values (`1234.56` → `1.234,56`)

@@ -26,10 +26,7 @@ import {
   type SkillRunSummary,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
-
-function fmtUsd(n: number): string {
-  return `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
-}
+import { formatSmallUsd } from "@/lib/utils";
 
 function StatusBadge({ status }: { status: SkillRunSummary["status"] }) {
   const { t } = useLanguage();
@@ -102,7 +99,7 @@ function RunDetail({ runId }: { runId: string }) {
         {t("skillRuns.usage")
           .replace("{calls}", String(detail.usage.calls))
           .replace("{tokens}", detail.usage.totalTokens.toLocaleString())}{" "}
-        · {fmtUsd(detail.usage.costUsd)}
+        · {formatSmallUsd(detail.usage.costUsd)}
       </p>
 
       {/* Step timeline */}
