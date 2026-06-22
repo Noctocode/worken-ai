@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Download,
   Loader2,
+  Wrench,
   XCircle,
 } from "lucide-react";
 
@@ -18,12 +19,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  fetchSkillRun,
   fetchSkillRunArtifacts,
   fetchSkillRuns,
   skillArtifactDownloadUrl,
   type SkillRunSummary,
 } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+
+function fmtUsd(n: number): string {
+  return `$${n.toFixed(n < 0.01 ? 4 : 2)}`;
+}
 
 function StatusBadge({ status }: { status: SkillRunSummary["status"] }) {
   const { t } = useLanguage();
@@ -57,40 +63,87 @@ function StatusBadge({ status }: { status: SkillRunSummary["status"] }) {
   );
 }
 
-/** Lazily-loaded artifact chips for one run (only fetched when expanded). */
-function RunArtifacts({ runId }: { runId: string }) {
+/** Lazily-loaded detail for one run (steps timeline + usage + artifacts). */
+function RunDetail({ runId }: { runId: string }) {
   const { t } = useLanguage();
-  const { data: arts = [], isLoading } = useQuery({
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ["skill-run", runId],
+    queryFn: () => fetchSkillRun(runId),
+  });
+  const { data: arts = [] } = useQuery({
     queryKey: ["skill-run-artifacts", runId],
     queryFn: () => fetchSkillRunArtifacts(runId),
   });
-  if (isLoading) {
+
+  if (isLoading || !detail) {
     return (
-      <p className="px-1 py-1 text-[12px] text-text-3">
+      <p className="px-1 py-2 text-[12px] text-text-3">
         {t("skillRuns.loadingFiles")}
       </p>
     );
   }
-  if (arts.length === 0) {
-    return (
-      <p className="px-1 py-1 text-[12px] text-text-3">
-        {t("skillRuns.noFiles")}
-      </p>
-    );
-  }
+
   return (
-    <div className="flex flex-wrap gap-2 px-1 py-1">
-      {arts.map((a) => (
-        <a
-          key={a.id}
-          href={skillArtifactDownloadUrl(a.id)}
-          download={a.filename}
-          className="inline-flex items-center gap-1.5 rounded-md border border-border-2 bg-bg-white px-2.5 py-1.5 text-[12px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
-        >
-          <Download className="h-3.5 w-3.5" />
-          {a.filename}
-        </a>
-      ))}
+    <div className="mt-2 flex flex-col gap-2 border-t border-border-2 pt-2">
+      {/* Usage rollup */}
+      <p className="text-[11px] text-text-3">
+        {t("skillRuns.usage")
+          .replace("{calls}", String(detail.usage.calls))
+          .replace("{tokens}", detail.usage.totalTokens.toLocaleString())}{" "}
+        · {fmtUsd(detail.usage.costUsd)}
+      </p>
+
+      {/* Step timeline */}
+      {detail.steps.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {detail.steps.map((s) => (
+            <div
+              key={s.id}
+              className="flex items-center gap-2 text-[12px] text-text-2"
+            >
+              {s.success ? (
+                <CheckCircle2 className="h-3 w-3 shrink-0 text-success-6" />
+              ) : (
+                <AlertTriangle className="h-3 w-3 shrink-0 text-danger-6" />
+              )}
+              {s.stepType === "llm" ? (
+                <span className="font-mono text-text-1">
+                  {s.model ?? "llm"}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 font-mono text-text-1">
+                  <Wrench className="h-3 w-3 text-text-3" />
+                  {s.tool ?? s.stepType}
+                </span>
+              )}
+              {s.totalTokens != null && (
+                <span className="text-text-3">
+                  {s.totalTokens.toLocaleString()} tok
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Artifact download chips */}
+      {arts.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {arts.map((a) => (
+            <a
+              key={a.id}
+              href={skillArtifactDownloadUrl(a.id)}
+              download={a.filename}
+              className="inline-flex items-center gap-1.5 rounded-md border border-border-2 bg-bg-white px-2.5 py-1.5 text-[12px] font-medium text-text-1 transition-colors hover:border-primary-6 hover:text-primary-6"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {a.filename}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[12px] text-text-3">{t("skillRuns.noFiles")}</p>
+      )}
     </div>
   );
 }
@@ -156,8 +209,8 @@ export function SkillRunsDialog({
                   {run.error && (
                     <p className="mt-1 text-[12px] text-danger-6">{run.error}</p>
                   )}
-                  {isOpen && run.status === "done" && (
-                    <RunArtifacts runId={run.id} />
+                  {isOpen && run.status !== "running" && (
+                    <RunDetail runId={run.id} />
                   )}
                 </div>
               );

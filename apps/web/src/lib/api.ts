@@ -2386,6 +2386,38 @@ export async function fetchSkillRuns(): Promise<SkillRunSummary[]> {
   return res.json();
 }
 
+/** One step of a run's trace (an LLM round or a tool/script call). */
+export interface SkillRunStep {
+  id: string;
+  stepType: "llm" | "tool" | "script";
+  tool: string | null;
+  model: string | null;
+  outputPreview: string | null;
+  totalTokens: number | null;
+  costUsd: string | null;
+  success: boolean;
+}
+
+export interface SkillRunDetail extends SkillRunSummary {
+  costUsd: string | null;
+  steps: SkillRunStep[];
+  /** Authoritative per-turn rollup from observability. */
+  usage: {
+    calls: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    costUsd: number;
+  };
+}
+
+/** One run + its ordered steps + usage rollup (owner-only). */
+export async function fetchSkillRun(runId: string): Promise<SkillRunDetail> {
+  const res = await apiFetch(`/skills/runs/${runId}`);
+  if (!res.ok) throw new Error("Failed to load run");
+  return res.json();
+}
+
 export async function fetchSkillRunArtifacts(
   runId: string,
 ): Promise<SkillArtifact[]> {
