@@ -72,8 +72,11 @@ the default (a guard is never disabled by a bad value). See
 - **Prompt-injection awareness**: the agent reads untrusted content (KC chunks,
   files). Skill instructions and tool results stay in separate roles, tool scope
   is fixed per run, and every tool call is recorded in `skill_run_steps`.
-- CI never runs a live container — the hardening args, language resolution, and
-  gating are unit-tested; real execution is validated manually on a Docker host.
+- CI never runs a live container by default — the hardening args, language
+  resolution, and gating are unit-tested. The **real `docker run` path** (artifact
+  production, wall-clock kill, network isolation, input files) is covered by an
+  opt-in integration test: `RUN_SANDBOX_IT=true pnpm --filter api test:integration
+  -- container-sandbox` on a host with a Docker daemon.
 
 ## Authoring a SKILL.md with scripts
 
