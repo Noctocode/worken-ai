@@ -43,6 +43,7 @@ import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { sha256File } from '../knowledge-core/knowledge-core.service.js';
 import { parseAzureConfig } from '../integrations/azure-validation.js';
+import { ModelsService } from '../models/models.service.js';
 
 type ProfileType = 'company' | 'personal';
 type InfraChoice = 'managed' | 'on-premise';
@@ -206,6 +207,7 @@ export class OnboardingService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryption: EncryptionService,
     private readonly knowledgeIngestion: KnowledgeIngestionService,
+    private readonly modelsService: ModelsService,
   ) {}
 
   /**
@@ -456,6 +458,11 @@ export class OnboardingService {
       });
     }
 
+    // Predefined providers whose BYOK key was saved below — used after the
+    // transaction commits to auto-provision their catalog into the Models
+    // tab (same as toggling the key on in Management → Integration).
+    const provisionProviders: string[] = [];
+
     // Single transaction so users row, credentials, and document rows are
     // all-or-nothing.
     await this.db.transaction(async (tx) => {
@@ -595,6 +602,10 @@ export class OnboardingService {
               // OpenAI / Anthropic key in step-5.
               where: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
             });
+          // Provider key saved + enabled → queue its catalog for
+          // provisioning into the Models tab after commit. (Azure is a
+          // no-op in the sync — no catalog — so it's harmless to include.)
+          provisionProviders.push(provider);
         }
       }
 
@@ -666,6 +677,27 @@ export class OnboardingService {
           .where(eq(knowledgeFolders.id, folder.id));
       }
     });
+
+    // Auto-provision the catalog for every BYOK provider saved above, so
+    // the user (and — since these aliases are company-wide — every member
+    // of their company) lands on the Models tab with the provider's models
+    // already enabled. Runs post-commit (own connection); idempotent and
+    // best-effort so a catalog hiccup can't fail a completed onboarding.
+    for (const provider of provisionProviders) {
+      try {
+        await this.modelsService.syncProviderCatalogAliases(
+          userId,
+          provider,
+          true,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Onboarding: failed to auto-provision ${provider} models for ${userId}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
 
     // Managed Cloud users are NOT provisioned an OpenRouter key here.
     // The original design provisioned with `limit: 0`, but OpenRouter's
