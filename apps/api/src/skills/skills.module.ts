@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { DocumentsModule } from '../documents/documents.module.js';
+import { GuardrailsSectionModule } from '../guardrails/guardrails-section.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
 import { KnowledgeCoreModule } from '../knowledge-core/knowledge-core.module.js';
 import { ModelsModule } from '../models/models.module.js';
@@ -20,6 +21,7 @@ import { SkillsService } from './skills.service.js';
   // read_attached_file tools.
   imports: [
     DocumentsModule,
+    GuardrailsSectionModule, // GuardrailEvaluatorService for the run input gate
     IntegrationsModule,
     KnowledgeCoreModule,
     ModelsModule,

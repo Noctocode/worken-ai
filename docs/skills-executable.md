@@ -65,6 +65,10 @@ the default (a guard is never disabled by a bad value). See
   dir.
 - **Artifacts** are stored under `uploads/skill-artifacts/<runId>/`,
   basename-only (no path traversal), and served as **owner-only attachments**.
+- **Input guardrails**: the run's kick-off message is gated through the same
+  `GuardrailEvaluatorService` as chat (`target: 'input'`, team-scoped from the
+  launching project) *before* the stream opens — a blocked message returns a
+  clean 422, never starts a run.
 - **Prompt-injection awareness**: the agent reads untrusted content (KC chunks,
   files). Skill instructions and tool results stay in separate roles, tool scope
   is fixed per run, and every tool call is recorded in `skill_run_steps`.
@@ -100,6 +104,10 @@ Rules enforced by the parser:
 - **Names are de-duplicated** (first wins); a duplicate block is ignored.
 - **At most one `entrypoint`** (first marked wins). `run_script` with no
   `scriptName` runs the entrypoint; otherwise pass the exact `name`.
+- A skill is a **package**: when a script runs, the skill's other named blocks
+  are written read-only alongside it in `/work` (by their `name`), so a script
+  can `import` a helper module or read a bundled resource file (e.g.
+  `name=data.csv`, `name=helper.py`).
 - Scripts write output files to `/out`; everything there is collected as an
   artifact (subject to the size cap).
 

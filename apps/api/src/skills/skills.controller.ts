@@ -5,6 +5,8 @@ import {
   Delete,
   Get,
   HttpCode,
+  HttpException,
+  Inject,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -15,8 +17,15 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { eq } from 'drizzle-orm';
+import { projects } from '@worken/database/schema';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
+import { DATABASE, type Database } from '../database/database.module.js';
+import {
+  GUARDRAIL_BLOCKED_MARKER,
+  GuardrailEvaluatorService,
+} from '../guardrails/guardrail-evaluator.service.js';
 import { OrgSettingsService } from '../org-settings/org-settings.service.js';
 import { parseSkillMd } from './skill-md.parser.js';
 import { SkillArtifactService } from './skill-artifact.service.js';
@@ -71,6 +80,8 @@ export class SkillsController {
     private readonly orgSettings: OrgSettingsService,
     private readonly router: SkillRouterService,
     private readonly artifacts: SkillArtifactService,
+    private readonly guardrails: GuardrailEvaluatorService,
+    @Inject(DATABASE) private readonly db: Database,
   ) {}
 
   /** 404 the executable-skills surface unless the tenant flag is on. */
@@ -153,6 +164,36 @@ export class SkillsController {
       throw new BadRequestException('`model` is required.');
     }
 
+    // Input guardrail on the (untrusted) kick-off message, mirroring chat —
+    // run PRE-FLIGHT (before SSE headers flush) so a block returns a clean
+    // JSON 422 the FE humanizer routes, not a mid-stream error. Team-scoped
+    // rules resolve from the launching project when there is one.
+    let safeMessage = body.message;
+    if (body.message?.trim()) {
+      let teamId: string | null = null;
+      if (body.projectId) {
+        const [proj] = await this.db
+          .select({ teamId: projects.teamId })
+          .from(projects)
+          .where(eq(projects.id, body.projectId))
+          .limit(1);
+        teamId = proj?.teamId ?? null;
+      }
+      const decision = await this.guardrails.evaluate({
+        text: body.message,
+        target: 'input',
+        userId: user.id,
+        teamId,
+      });
+      if (decision.blocked) {
+        throw new HttpException(
+          `${GUARDRAIL_BLOCKED_MARKER}: "${decision.blocked.ruleName}" blocked your message (${decision.blocked.validator}). Edit it and try again, or ask an admin to adjust the rule in Management → Guardrails.`,
+          422,
+        );
+      }
+      safeMessage = decision.text;
+    }
+
     const controller = new AbortController();
     req.on('close', () => controller.abort());
 
@@ -171,7 +212,7 @@ export class SkillsController {
         userId: user.id,
         skillId: id,
         modelIdentifier: body.model,
-        userMessage: body.message,
+        userMessage: safeMessage,
         conversationId: body.conversationId ?? null,
         projectId: body.projectId ?? null,
         signal: controller.signal,

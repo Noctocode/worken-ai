@@ -137,7 +137,7 @@ export class ToolRegistryService {
       defs.push({
         name: 'run_script',
         description:
-          "Run one of THIS skill's own scripts in a locked-down sandbox and capture its output plus any files it produces (returned as downloadable artifacts). You cannot run arbitrary code — only the skill's provided scripts, by name (or the entrypoint if omitted).",
+          "Run one of THIS skill's own scripts in a locked-down sandbox and capture its output plus any files it produces (returned as downloadable artifacts). The skill's other files are available read-only alongside it, so a script can import a helper module or read a bundled resource file. You cannot run arbitrary code — only the skill's provided scripts, by name (or the entrypoint if omitted).",
         inputSchema: {
           type: 'object',
           properties: {
@@ -200,11 +200,24 @@ export class ToolRegistryService {
           // not the model's fault — return a concise corrective message rather
           // than letting a raw exception become a confusing tool error the
           // model retries against.
+          // A skill is a package: expose its OTHER files alongside the running
+          // script (read-only, in /work) so the entrypoint can import a helper
+          // module or read a bundled data/resource file. The script itself is
+          // written by the sandbox as script.<ext>, so it's excluded here.
+          const inputs = (ctx.scripts ?? [])
+            .filter((s) => s.name !== script.name)
+            .map((s) => ({
+              filename: s.name,
+              mimeType: 'application/octet-stream',
+              content: Buffer.from(s.content, 'utf8'),
+            }));
+
           let result: SandboxRunResult;
           try {
             result = await this.sandbox.run({
               language: script.language,
               script: script.content,
+              inputs,
               limits: DEFAULT_SANDBOX_LIMITS,
               signal: ctx.signal,
             });

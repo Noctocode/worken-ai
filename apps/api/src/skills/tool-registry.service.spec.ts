@@ -171,6 +171,44 @@ describe('ToolRegistryService', () => {
       expect(out).toMatch(/exit=0/);
     });
 
+    it('exposes the skill’s OTHER files to the sandbox as read-only inputs', async () => {
+      const run = jest.fn().mockResolvedValue({
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        outputTruncated: false,
+        artifacts: [],
+        timedOut: false,
+        error: null,
+      });
+      const sandbox = { isAvailable: () => true, run };
+      const { dispatch } = svc({}, sandbox, {
+        store: () => Promise.resolve([]),
+      }).build({
+        userId: 'u1',
+        runId: 'r1',
+        scripts: [
+          {
+            name: 'build',
+            language: 'python',
+            entrypoint: true,
+            content: 'x=1',
+          },
+          { name: 'helper.py', language: 'python', content: 'y=2' },
+          { name: 'data.csv', language: 'text', content: 'a,b' },
+        ],
+      });
+
+      await dispatch({ id: 't1', name: 'run_script', input: {} });
+
+      const inputs = run.mock.calls[0][0].inputs as { filename: string }[];
+      // The running script is excluded; its siblings are passed through.
+      expect(inputs.map((i) => i.filename).sort()).toEqual([
+        'data.csv',
+        'helper.py',
+      ]);
+    });
+
     it('returns a corrective message for an unknown script name', async () => {
       const sandbox = { isAvailable: () => true, run: jest.fn() };
       const { dispatch } = svc({}, sandbox).build({
