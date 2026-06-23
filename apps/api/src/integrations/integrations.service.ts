@@ -712,11 +712,14 @@ export class IntegrationsService {
       .where(eq(integrations.id, id));
 
     // Toggling a predefined provider on/off syncs its catalog into (or
-    // out of) the Models tab. Custom rows are no-ops in the sync (they
-    // route via their own bound alias, not a provider catalog).
+    // out of) the Models tab. Sync on the KEY's OWNER, not the caller:
+    // the auto-provisioned aliases belong to whoever added the key, so a
+    // company admin disabling another member's company key must remove
+    // THAT owner's models — otherwise the rows linger and only their BYOK
+    // routing marker flips. Custom rows are no-ops in the sync.
     if (input.isEnabled !== undefined) {
       await this.modelsService.syncProviderCatalogAliases(
-        userId,
+        row.ownerId,
         row.providerId,
         input.isEnabled,
       );
