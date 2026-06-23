@@ -116,6 +116,13 @@ function ProviderSettingsDialog({
   const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
   const [enabled, setEnabled] = useState(card.isEnabled);
+  // Custom LLM editable fields — seeded from the card so the edit dialog
+  // mirrors the Add Custom LLM form (display name / endpoint / model).
+  const [customName, setCustomName] = useState(
+    card.isCustom ? card.displayName : "",
+  );
+  const [customApiUrl, setCustomApiUrl] = useState(card.apiUrl ?? "");
+  const [customModel, setCustomModel] = useState(card.upstreamModel ?? "");
   // Editing mode: when a key is already saved, show a status panel by
   // default and only reveal the input on explicit "Replace key" click.
   // Avoids the user typing over an already-good key by accident.
@@ -215,6 +222,14 @@ function ProviderSettingsDialog({
               : undefined,
           config,
           monthlyTokenLimit: parsedTokenLimit,
+          // Custom LLM field edits (BE ignores these for predefined).
+          ...(card.isCustom
+            ? {
+                customName: customName.trim(),
+                apiUrl: customApiUrl.trim(),
+                customModel: customModel.trim(),
+              }
+            : {}),
         });
       }
       return upsertIntegration({
@@ -260,7 +275,13 @@ function ProviderSettingsDialog({
       applyPending={saveMutation.isPending}
       // Azure can't be saved with an incomplete/invalid config — the BE
       // would 400. Block Apply and surface the reason inline instead.
-      applyDisabled={isAzure && !azureComplete}
+      applyDisabled={
+        (isAzure && !azureComplete) ||
+        (card.isCustom &&
+          (!customName.trim() ||
+            !customApiUrl.trim() ||
+            !customModel.trim()))
+      }
       title={card.displayName}
       description={t("mgmt.integ.settingsTitle").replace("{name}", card.displayName)}
       headerIcon={iconForHint(card.iconHint)}
@@ -272,6 +293,56 @@ function ProviderSettingsDialog({
       }
     >
       <div className="space-y-5">
+        {/* Custom LLM editable fields — mirror the Add Custom LLM form so
+            a custom key can be fully edited (name / endpoint / model).
+            The API key lives in the "use your own key" section below. */}
+        {card.isCustom && (
+          <div className="space-y-4">
+            <div>
+              <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                {t("mgmt.integ.displayName")}
+              </p>
+              <input
+                type="text"
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder={t("mgmt.integ.displayNamePlaceholder")}
+                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+              <p className="text-[12px] text-text-3 mt-1">
+                {t("mgmt.integ.displayNameHint")}
+              </p>
+            </div>
+            <div>
+              <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                {t("mgmt.integ.apiUrl")}
+              </p>
+              <input
+                type="text"
+                value={customApiUrl}
+                onChange={(e) => setCustomApiUrl(e.target.value)}
+                placeholder={t("mgmt.integ.apiUrlPlaceholder")}
+                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+            </div>
+            <div>
+              <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                {t("mgmt.integ.model")}
+              </p>
+              <input
+                type="text"
+                value={customModel}
+                onChange={(e) => setCustomModel(e.target.value)}
+                placeholder={t("mgmt.integ.modelPlaceholder")}
+                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+              />
+              <p className="text-[12px] text-text-3 mt-1">
+                {t("mgmt.integ.modelHint")}
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Compatibility disclaimer for non-OpenAI-compatible providers
             (Anthropic, Google, Qwen). The BYOK key is saved but chat
             calls keep going through OpenRouter for now — surface that

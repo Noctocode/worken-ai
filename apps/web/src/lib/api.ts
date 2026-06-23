@@ -3485,6 +3485,8 @@ export interface IntegrationCard {
   description: string;
   iconHint: string;
   apiUrl: string | null;
+  /** Custom only: the real upstream model id, to seed the edit form. */
+  upstreamModel?: string | null;
   hasApiKey: boolean;
   isEnabled: boolean;
   isCustom: boolean;
@@ -3576,6 +3578,10 @@ export async function updateIntegration(
     config?: IntegrationConfig;
     allowPersonalUse?: boolean;
     monthlyTokenLimit?: number | null;
+    // Custom LLM field edits (ignored for predefined/azure).
+    customName?: string;
+    apiUrl?: string;
+    customModel?: string;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {

@@ -44,6 +44,8 @@ export interface IntegrationView {
   description: string;
   iconHint: string;
   apiUrl: string | null; // only set for "custom"
+  /** Custom only: the real upstream model id (seeds the edit form). */
+  upstreamModel?: string | null;
   hasApiKey: boolean; // never expose the key itself
   isEnabled: boolean;
   isCustom: boolean;
@@ -346,11 +348,13 @@ export class IntegrationsService {
       .map((r) => r.id);
     const aliasCountByIntegration = new Map<string, number>();
     const aliasNameByIntegration = new Map<string, string>();
+    const aliasUpstreamByIntegration = new Map<string, string>();
     if (customIds.length > 0) {
       const aliasRows = await this.db
         .select({
           integrationId: modelConfigs.integrationId,
           customName: modelConfigs.customName,
+          upstreamModel: modelConfigs.upstreamModel,
         })
         .from(modelConfigs)
         .where(inArray(modelConfigs.integrationId, customIds));
@@ -366,6 +370,12 @@ export class IntegrationsService {
         // covers the warning case.
         if (!aliasNameByIntegration.has(r.integrationId)) {
           aliasNameByIntegration.set(r.integrationId, r.customName);
+        }
+        if (
+          r.upstreamModel &&
+          !aliasUpstreamByIntegration.has(r.integrationId)
+        ) {
+          aliasUpstreamByIntegration.set(r.integrationId, r.upstreamModel);
         }
       }
     }
@@ -425,6 +435,12 @@ export class IntegrationsService {
         description: r.apiUrl ?? '',
         iconHint: 'custom',
         apiUrl: r.apiUrl,
+        // Real upstream model id (seeds the edit form's Model field).
+        // Live alias first, then the snapshot kept while disabled.
+        upstreamModel:
+          aliasUpstreamByIntegration.get(r.id) ??
+          r.config?.customLlm?.upstreamModel ??
+          null,
         hasApiKey: !!r.apiKeyEncrypted,
         isEnabled: r.isEnabled,
         isCustom: true,
@@ -670,6 +686,11 @@ export class IntegrationsService {
       config?: IntegrationConfig;
       allowPersonalUse?: boolean;
       monthlyTokenLimit?: number | null;
+      // Custom LLM field edits (ignored for predefined/azure). Mirror the
+      // Add Custom LLM form so a custom key can be fully edited.
+      customName?: string;
+      apiUrl?: string;
+      customModel?: string;
     },
   ): Promise<IntegrationView> {
     await this.assertCanManageKeys(userId);
@@ -715,10 +736,81 @@ export class IntegrationsService {
     if (input.config !== undefined && row.providerId === 'azure') {
       updates.config = validateAzureConfig(input.config);
     }
+
+    // Custom LLM field edits (display name / endpoint / upstream model) —
+    // mirror the Add form. `modelIdentifier` stays STABLE on rename so
+    // existing project/conversation references keep resolving; only the
+    // display name + upstream model + endpoint change. `customBinding`
+    // is the effective binding used to update the alias below and to
+    // recreate it on re-enable.
+    let customBinding = row.config?.customLlm;
+    if (row.providerId === 'custom') {
+      if (input.apiUrl !== undefined) {
+        const url = input.apiUrl.trim();
+        if (!url) throw new BadRequestException('Custom LLM requires apiUrl');
+        try {
+          new URL(url);
+        } catch {
+          throw new BadRequestException('apiUrl is not a valid URL');
+        }
+        updates.apiUrl = url;
+      }
+      if (input.customName !== undefined || input.customModel !== undefined) {
+        const [alias] = await this.db
+          .select({
+            customName: modelConfigs.customName,
+            upstreamModel: modelConfigs.upstreamModel,
+          })
+          .from(modelConfigs)
+          .where(eq(modelConfigs.integrationId, id))
+          .limit(1);
+        const name = (
+          input.customName?.trim() ||
+          alias?.customName ||
+          customBinding?.customName ||
+          ''
+        ).trim();
+        const model = (
+          input.customModel?.trim() ||
+          alias?.upstreamModel ||
+          customBinding?.upstreamModel ||
+          ''
+        ).trim();
+        if (!name) {
+          throw new BadRequestException('Custom LLM requires a display name');
+        }
+        if (!model) {
+          throw new BadRequestException(
+            'Custom LLM requires the model id its endpoint expects',
+          );
+        }
+        customBinding = { customName: name, upstreamModel: model };
+        updates.config = { ...(row.config ?? {}), customLlm: customBinding };
+      }
+    }
+
     await this.db
       .update(integrations)
       .set(updates)
       .where(eq(integrations.id, id));
+
+    // Apply custom name/model edits to the live bound alias (no-op when
+    // the key is disabled and the alias was removed — config keeps the
+    // snapshot for re-enable). modelIdentifier is intentionally untouched.
+    if (
+      row.providerId === 'custom' &&
+      (input.customName !== undefined || input.customModel !== undefined) &&
+      customBinding
+    ) {
+      await this.db
+        .update(modelConfigs)
+        .set({
+          customName: customBinding.customName,
+          upstreamModel: customBinding.upstreamModel,
+          updatedAt: new Date(),
+        })
+        .where(eq(modelConfigs.integrationId, id));
+    }
 
     // Toggling a provider on/off keeps the Models tab in sync.
     //  - Predefined: add/remove the auto-provisioned catalog. Sync on the
@@ -744,22 +836,19 @@ export class IntegrationsService {
               .update(modelConfigs)
               .set({ isActive: true, updatedAt: new Date() })
               .where(eq(modelConfigs.integrationId, id));
-          } else {
-            const binding = row.config?.customLlm;
-            if (binding) {
-              await this.db.insert(modelConfigs).values({
-                ownerId: row.ownerId,
-                teamId: null,
-                customName: binding.customName,
-                modelIdentifier: userCustomModelIdentifier(
-                  row.ownerId,
-                  binding.customName,
-                ),
-                upstreamModel: binding.upstreamModel,
-                integrationId: id,
-                isActive: true,
-              });
-            }
+          } else if (customBinding) {
+            await this.db.insert(modelConfigs).values({
+              ownerId: row.ownerId,
+              teamId: null,
+              customName: customBinding.customName,
+              modelIdentifier: userCustomModelIdentifier(
+                row.ownerId,
+                customBinding.customName,
+              ),
+              upstreamModel: customBinding.upstreamModel,
+              integrationId: id,
+              isActive: true,
+            });
           }
         } else {
           // Disable: snapshot the binding (so the card keeps its name and
