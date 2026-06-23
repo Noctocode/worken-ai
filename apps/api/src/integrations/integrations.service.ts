@@ -128,6 +128,64 @@ export class IntegrationsService {
     }
   }
 
+  /**
+   * Ids of everyone in the caller's company (company-profile callers only;
+   * empty for personal / solo accounts). AI keys are admin-managed at the
+   * company level, so the Integration tab and the per-row mutation guard
+   * treat a key added by any member as the company's key.
+   */
+  private async resolveCompanyMemberIds(userId: string): Promise<string[]> {
+    const [u] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const companyId = u?.profileType === 'company' ? u.companyId : null;
+    if (!companyId) return [];
+    const members = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.companyId, companyId));
+    return members.map((m) => m.id);
+  }
+
+  /**
+   * Per-row mutation guard. The owner can always change their own key.
+   * Beyond that — because predefined/company keys are admin-managed
+   * company-wide — a company admin may change a teamless key owned by
+   * another member of the SAME company. (assertCanManageKeys already
+   * confirmed the caller is an admin.) Team-scoped rows are handled by
+   * the callers' own teamId guards.
+   */
+  private async assertCanMutateIntegrationRow(
+    rowOwnerId: string,
+    userId: string,
+  ): Promise<void> {
+    if (rowOwnerId === userId) return;
+    const [caller] = await this.db
+      .select({
+        role: users.role,
+        companyId: users.companyId,
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (
+      caller?.role === 'admin' &&
+      caller.profileType === 'company' &&
+      caller.companyId
+    ) {
+      const [owner] = await this.db
+        .select({ companyId: users.companyId })
+        .from(users)
+        .where(eq(users.id, rowOwnerId))
+        .limit(1);
+      if (owner?.companyId && owner.companyId === caller.companyId) return;
+    }
+    throw new ForbiddenException('Not your integration');
+  }
+
   /** Catalog of predefined providers, in canonical UI order. */
   listPredefined(): PredefinedProvider[] {
     return PREDEFINED_PROVIDERS;
@@ -144,12 +202,55 @@ export class IntegrationsService {
     // Personal scope only — team-scoped rows the same user owns (e.g.
     // admin configured a team key) belong to the team's Integrations
     // panel, not the personal one.
-    const rows = await this.db
+    const callerRows = await this.db
       .select()
       .from(integrations)
       .where(
         and(eq(integrations.ownerId, userId), isNull(integrations.teamId)),
       );
+
+    // AI keys are admin-managed company-wide, so the Integration tab must
+    // reflect the company's keys — not just the caller's own rows. Pull
+    // every teamless key owned by a company member so a key added by ONE
+    // admin shows as enabled (with its config) on EVERY member's tab.
+    // Empty for personal/solo accounts → behaviour unchanged.
+    const companyMemberIds = await this.resolveCompanyMemberIds(userId);
+    const companyRows =
+      companyMemberIds.length > 0
+        ? await this.db
+            .select()
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.ownerId, companyMemberIds),
+                isNull(integrations.teamId),
+              ),
+            )
+        : [];
+
+    // Combined view (caller rows first, deduped by id) drives the custom
+    // cards + alias/stat lookups below; the predefined loop picks its row
+    // explicitly via `pickPredefinedRow` so a multi-member company resolves
+    // deterministically (caller's own first, else the company key).
+    const rowsById = new Map<string, (typeof callerRows)[number]>();
+    for (const r of [...callerRows, ...companyRows]) {
+      if (!rowsById.has(r.id)) rowsById.set(r.id, r);
+    }
+    const rows = Array.from(rowsById.values());
+    const pickPredefinedRow = (providerId: string) => {
+      const own = callerRows.find(
+        (r) => r.providerId === providerId && r.apiUrl === null,
+      );
+      if (own) return own;
+      const company = companyRows.filter(
+        (r) => r.providerId === providerId && r.apiUrl === null,
+      );
+      return (
+        company.find((r) => r.isEnabled && r.apiKeyEncrypted) ??
+        company.find((r) => r.isEnabled) ??
+        company[0]
+      );
+    };
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
     const statsRows = await this.db
@@ -273,7 +374,7 @@ export class IntegrationsService {
 
     // Predefined first, in catalog order.
     for (const p of PREDEFINED_PROVIDERS) {
-      const row = rows.find((r) => r.providerId === p.id && r.apiUrl === null);
+      const row = pickPredefinedRow(p.id);
       out.push({
         id: row?.id ?? null,
         providerId: p.id,
@@ -568,9 +669,7 @@ export class IntegrationsService {
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
     // Team-scoped rows must go through the team endpoints so the
     // owner/editor role check fires. Without this guard, an admin
     // who later lost team-manage rights could keep editing the team
@@ -666,9 +765,7 @@ export class IntegrationsService {
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
 
     const startOfMonth = sql`date_trunc('month', now())`;
     const rows = await this.db
@@ -716,9 +813,7 @@ export class IntegrationsService {
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
     if (row.teamId) {
       throw new ForbiddenException(
         'Team-scoped integrations must be deleted via /teams/:id/integrations',
