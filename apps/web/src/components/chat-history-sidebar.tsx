@@ -16,6 +16,7 @@ import {
 import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { hideTeamScopeUi } from "@/lib/team-scope-visibility";
 import { useProjectActivity } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -25,6 +26,13 @@ interface ChatHistorySidebarProps {
   activeConversationId: string | null;
   onSelectConversation: (id: string) => void;
   onNewChat: () => void;
+  /** Whether this project is team-scoped. Personal projects (no team)
+   *  have only personal conversations, so the All/Personal/Team filter
+   *  is meaningless and hidden. */
+  projectHasTeam?: boolean;
+  /** True while the project is still loading — keeps the filter hidden
+   *  until the team status is known (no flash for team projects). */
+  projectLoading?: boolean;
   /** <lg: render the same list inside a left slide-over drawer. */
   mobileOpen?: boolean;
   onMobileOpenChange?: (open: boolean) => void;
@@ -62,15 +70,22 @@ export function ChatHistorySidebar({
   activeConversationId,
   onSelectConversation,
   onNewChat,
+  projectHasTeam = false,
+  projectLoading = false,
   mobileOpen,
   onMobileOpenChange,
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
-  // Personal profiles have no teammates, so every conversation is
-  // "personal" — the All/Personal/Team split is meaningless for them
-  // (mirrors main's dashboard, which forces personal profiles to the
-  // Personal view). Hide the tabs and show the full list instead.
+  // The All/Personal/Team split is meaningless when there can't be team
+  // conversations — a personal profile, a personal project, or while the
+  // project is still loading. Shared predicate keeps this in sync with
+  // the Team Members section in ProjectDetailsPanel.
   const isPersonal = useIsPersonal();
+  const hideScopeTabs = hideTeamScopeUi({
+    isPersonal,
+    projectHasTeam,
+    projectLoading,
+  });
   const getRelativeTime = makeGetRelativeTime(t);
   const queryClient = useQueryClient();
 
@@ -97,8 +112,8 @@ export function ChatHistorySidebar({
 
   // Tab filter stays client-side — it's a cheap partition over the
   // already-fetched (and possibly already-searched) list.
-  // Personal profiles never see the filter, so collapse to "all".
-  const effectiveTab: FilterTab = isPersonal ? "all" : tab;
+  // When the tabs are hidden the filter collapses to "all".
+  const effectiveTab: FilterTab = hideScopeTabs ? "all" : tab;
   const filtered = useMemo(() => {
     if (!conversations) return [];
     return conversations.filter((convo) => {
@@ -179,9 +194,9 @@ export function ChatHistorySidebar({
         </div>
       </div>
 
-      {/* Filter tabs — hidden for personal profiles (no team
-          conversations exist, so the split is meaningless). */}
-      {!isPersonal && (
+      {/* Filter tabs — hidden when no team conversations can exist
+          (personal profile OR personal project), so the split is moot. */}
+      {!hideScopeTabs && (
         <div className="flex gap-1 px-3 pb-2">
           {tabs.map((tabItem) => (
             <button
