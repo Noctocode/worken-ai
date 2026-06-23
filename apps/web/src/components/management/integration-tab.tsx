@@ -215,14 +215,20 @@ function ProviderSettingsDialog({
       if (card.id) {
         return updateIntegration(card.id, {
           isEnabled: enabled,
-          // Only send apiKey when user is actually replacing it. Sending
-          // `undefined` means "leave existing key alone" (BE PATCH skips
-          // it). Sending null = explicit clear.
-          apiKey: !useOwnKey
-            ? null
-            : editingKey && apiKey
+          // Only send apiKey when the user is actually replacing it.
+          // `undefined` = leave the existing key alone (BE PATCH skips it),
+          // null = explicit clear. Custom LLMs have no "use own key"
+          // toggle (the field is always shown), so they never auto-clear —
+          // only an explicitly typed new key is sent.
+          apiKey: card.isCustom
+            ? editingKey && apiKey
               ? apiKey
-              : undefined,
+              : undefined
+            : !useOwnKey
+              ? null
+              : editingKey && apiKey
+                ? apiKey
+                : undefined,
           config,
           monthlyTokenLimit: parsedTokenLimit,
           // Custom LLM field edits (BE ignores these for predefined).
@@ -388,45 +394,55 @@ function ProviderSettingsDialog({
           </div>
         </div>
 
-        {/* WorkenAI default note. Plain div on purpose — using a
-            textarea/input here gave it scroll behavior the moment the
-            text didn't fit, which we never want. The block now grows
-            to fit whatever copy lands in it. */}
-        <div>
-          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
-            {t("mgmt.integ.useWorkenai")}
-          </p>
-          <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
-            {t("mgmt.integ.additionalCosts")}
+        {/* WorkenAI default note — predefined only. A Custom LLM has no
+            WorkenAI fallback route (it always calls its own endpoint), so
+            this note is irrelevant there. */}
+        {!card.isCustom && (
+          <div>
+            <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+              {t("mgmt.integ.useWorkenai")}
+            </p>
+            <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
+              {t("mgmt.integ.additionalCosts")}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Own API key */}
+        {/* API key. Predefined providers gate it behind a "use your own
+            key" checkbox (the WorkenAI default is the alternative). A
+            Custom LLM has no default route, so the key field is shown
+            directly (optional) — like the Add Custom LLM form. */}
         <div className="space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useOwnKey}
-              onChange={(e) => {
-                setUseOwnKey(e.target.checked);
-                // Toggling off and back on resets the editor — keeps
-                // the "key already saved" path visible until the user
-                // explicitly clicks Replace.
-                if (!e.target.checked) {
-                  setEditingKey(true);
-                  setApiKey("");
-                } else {
-                  setEditingKey(!card.hasApiKey);
-                }
-              }}
-              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
-            />
-            <span className="text-[14px] font-normal leading-[20px] text-text-2">
-              {t("mgmt.integ.useOwnKey")}
-            </span>
-          </label>
+          {card.isCustom ? (
+            <p className="text-[14px] font-normal leading-[20px] text-text-2">
+              {t("mgmt.integ.apiKeyOptional")}
+            </p>
+          ) : (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={useOwnKey}
+                onChange={(e) => {
+                  setUseOwnKey(e.target.checked);
+                  // Toggling off and back on resets the editor — keeps
+                  // the "key already saved" path visible until the user
+                  // explicitly clicks Replace.
+                  if (!e.target.checked) {
+                    setEditingKey(true);
+                    setApiKey("");
+                  } else {
+                    setEditingKey(!card.hasApiKey);
+                  }
+                }}
+                className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
+              />
+              <span className="text-[14px] font-normal leading-[20px] text-text-2">
+                {t("mgmt.integ.useOwnKey")}
+              </span>
+            </label>
+          )}
 
-          {useOwnKey && card.hasApiKey && !editingKey && (
+          {(card.isCustom || useOwnKey) && card.hasApiKey && !editingKey && (
             // Status panel: the user has a key saved already. Show a
             // clear "configured" state with masked dots, plus actions
             // to replace or remove. Without this, after clicking
@@ -460,7 +476,7 @@ function ProviderSettingsDialog({
             </div>
           )}
 
-          {useOwnKey && (editingKey || !card.hasApiKey) && (
+          {(card.isCustom || useOwnKey) && (editingKey || !card.hasApiKey) && (
             <>
               <div className="relative">
                 <input
