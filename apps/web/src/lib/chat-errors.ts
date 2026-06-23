@@ -120,6 +120,37 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // The selected model is no longer usable — its alias was disabled or
+  // deleted in Management → Models (or it was never enabled). Distinct
+  // from a transient provider outage: the fix is to enable/add the model
+  // or pick another. BE message is already actionable, forward verbatim.
+  const modelUnavailableMatch = raw.match(/MODEL_UNAVAILABLE:\s*([^\r\n]+)/);
+  if (modelUnavailableMatch) {
+    return (
+      modelUnavailableMatch[1].trim() ||
+      "This model is no longer available — it was disabled or removed. Ask an admin to enable it in Management → Models, or pick a different model."
+    );
+  }
+
+  // Per-key (BYOK / Custom LLM) monthly token limit — distinct from the
+  // workspace/team/org budget gates. Must run BEFORE the generic 402
+  // branch below, which would otherwise mislabel it as a workspace
+  // budget. BE message names the limit + how to raise it; forward it.
+  const keyLimitMatch = raw.match(/KEY_LIMIT_EXCEEDED:\s*([^\r\n]+)/);
+  if (keyLimitMatch) {
+    return (
+      keyLimitMatch[1].trim() ||
+      "This AI key reached its monthly token limit. It resets on the 1st of next month, or an admin can raise it in Management → Models → API keys."
+    );
+  }
+  const keyPausedMatch = raw.match(/KEY_PAUSED:\s*([^\r\n]+)/);
+  if (keyPausedMatch) {
+    return (
+      keyPausedMatch[1].trim() ||
+      "This AI key is paused by its owner. Ask an admin to raise its monthly token limit in Management → Models → API keys, or pick a different model."
+    );
+  }
+
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code
@@ -163,7 +194,8 @@ export function humanizeChatError(err: unknown): string {
 
   if (/no endpoints found/i.test(raw)) {
     return withModel(
-      (m) => `${m} is no longer available. Pick a different model in the project header.`,
+      (m) =>
+        `${m} is no longer available — it may have been disabled or removed. Pick a different model, or ask an admin to enable it in Management → Models.`,
     );
   }
 
@@ -220,7 +252,8 @@ export function humanizeChatError(err: unknown): string {
 
   if (/\b404\b/.test(raw) || /model not found/i.test(raw)) {
     return withModel(
-      (m) => `${m} can't be reached. Pick a different model in the project header.`,
+      (m) =>
+        `${m} can't be reached — it may have been disabled or removed. Pick a different model, or ask an admin to enable it in Management → Models.`,
     );
   }
 

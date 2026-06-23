@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  Eye,
+  EyeOff,
   Info,
   KeyRound,
   Loader2,
@@ -115,19 +117,23 @@ function ProviderSettingsDialog({
   const queryClient = useQueryClient();
   const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [enabled, setEnabled] = useState(card.isEnabled);
+  // Custom LLM editable fields — seeded from the card so the edit dialog
+  // mirrors the Add Custom LLM form (display name / endpoint / model).
+  const [customName, setCustomName] = useState(
+    card.isCustom ? card.displayName : "",
+  );
+  const [customApiUrl, setCustomApiUrl] = useState(card.apiUrl ?? "");
+  const [customModel, setCustomModel] = useState(card.upstreamModel ?? "");
   // Editing mode: when a key is already saved, show a status panel by
   // default and only reveal the input on explicit "Replace key" click.
   // Avoids the user typing over an already-good key by accident.
   const [editingKey, setEditingKey] = useState(!card.hasApiKey);
 
-  // Sharing + per-key limit. allowPersonalUse lets members of teams this
-  // key is linked into use it in their own personal projects/chats; the
-  // token limit caps the key's total monthly usage (empty = no limit,
-  // 0 = paused).
-  const [allowPersonalUse, setAllowPersonalUse] = useState(
-    card.allowPersonalUse,
-  );
+  // Per-key monthly limit. A company key is shared company-wide (every
+  // member can use it, incl. personal); the token limit caps the key's
+  // total monthly usage (empty = no limit, 0 = paused).
   const [tokenLimitInput, setTokenLimitInput] = useState(
     card.monthlyTokenLimit == null ? "" : String(card.monthlyTokenLimit),
   );
@@ -209,17 +215,30 @@ function ProviderSettingsDialog({
       if (card.id) {
         return updateIntegration(card.id, {
           isEnabled: enabled,
-          // Only send apiKey when user is actually replacing it. Sending
-          // `undefined` means "leave existing key alone" (BE PATCH skips
-          // it). Sending null = explicit clear.
-          apiKey: !useOwnKey
-            ? null
-            : editingKey && apiKey
+          // Only send apiKey when the user is actually replacing it.
+          // `undefined` = leave the existing key alone (BE PATCH skips it),
+          // null = explicit clear. Custom LLMs have no "use own key"
+          // toggle (the field is always shown), so they never auto-clear —
+          // only an explicitly typed new key is sent.
+          apiKey: card.isCustom
+            ? editingKey && apiKey
               ? apiKey
-              : undefined,
+              : undefined
+            : !useOwnKey
+              ? null
+              : editingKey && apiKey
+                ? apiKey
+                : undefined,
           config,
-          allowPersonalUse,
           monthlyTokenLimit: parsedTokenLimit,
+          // Custom LLM field edits (BE ignores these for predefined).
+          ...(card.isCustom
+            ? {
+                customName: customName.trim(),
+                apiUrl: customApiUrl.trim(),
+                customModel: customModel.trim(),
+              }
+            : {}),
         });
       }
       return upsertIntegration({
@@ -227,7 +246,6 @@ function ProviderSettingsDialog({
         apiKey: useOwnKey && apiKey ? apiKey : undefined,
         isEnabled: enabled,
         config,
-        allowPersonalUse,
         monthlyTokenLimit: parsedTokenLimit,
       });
     },
@@ -266,7 +284,13 @@ function ProviderSettingsDialog({
       applyPending={saveMutation.isPending}
       // Azure can't be saved with an incomplete/invalid config — the BE
       // would 400. Block Apply and surface the reason inline instead.
-      applyDisabled={isAzure && !azureComplete}
+      applyDisabled={
+        (isAzure && !azureComplete) ||
+        (card.isCustom &&
+          (!customName.trim() ||
+            !customApiUrl.trim() ||
+            !customModel.trim()))
+      }
       title={card.displayName}
       description={t("mgmt.integ.settingsTitle").replace("{name}", card.displayName)}
       headerIcon={iconForHint(card.iconHint)}
@@ -278,6 +302,150 @@ function ProviderSettingsDialog({
       }
     >
       <div className="space-y-5">
+        {/* Custom LLM editor. A configured custom key shows a compact
+            summary + Replace; clicking Replace reveals ALL fields
+            (display name / endpoint / model / API key) together, mirroring
+            the Add Custom LLM form. A brand-new/keyless one opens straight
+            into the edit fields. `editingKey` is the shared edit flag. */}
+        {card.isCustom &&
+          (card.hasApiKey && !editingKey ? (
+            <div className="space-y-3 rounded-lg border border-border-2 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-success-7">
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                  {t("mgmt.integ.keyConfigured")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(true);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
+                >
+                  {t("mgmt.integ.replace")}
+                </button>
+              </div>
+              <dl className="space-y-1.5 text-[13px] text-text-2">
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.displayName")}:
+                  </dt>
+                  <dd className="min-w-0 truncate text-text-1">
+                    {card.displayName}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.apiUrl")}:
+                  </dt>
+                  <dd className="min-w-0 break-all text-text-1">
+                    {card.apiUrl}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.model")}:
+                  </dt>
+                  <dd className="min-w-0 break-all text-text-1">
+                    {card.upstreamModel}
+                  </dd>
+                </div>
+              </dl>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.displayName")}
+                </p>
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder={t("mgmt.integ.displayNamePlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+                <p className="text-[12px] text-text-3 mt-1">
+                  {t("mgmt.integ.displayNameHint")}
+                </p>
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.apiUrl")}
+                </p>
+                <input
+                  type="text"
+                  value={customApiUrl}
+                  onChange={(e) => setCustomApiUrl(e.target.value)}
+                  placeholder={t("mgmt.integ.apiUrlPlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.model")}
+                </p>
+                <input
+                  type="text"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                  placeholder={t("mgmt.integ.modelPlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+                <p className="text-[12px] text-text-3 mt-1">
+                  {t("mgmt.integ.modelHint")}
+                </p>
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.apiKeyOptional")}
+                </p>
+                <div className="relative">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={
+                      card.hasApiKey
+                        ? t("mgmt.integ.enterNewKey")
+                        : t("mgmt.integ.enterApiKey")
+                    }
+                    className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((s) => !s)}
+                    aria-label={
+                      showKey
+                        ? t("mgmt.integ.hideKey")
+                        : t("mgmt.integ.showKey")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+                  >
+                    {showKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {card.hasApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKey(false);
+                      setApiKey("");
+                    }}
+                    className="mt-1 text-[13px] text-text-3 hover:underline"
+                  >
+                    {t("mgmt.integ.cancelKeepKey")}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+
         {/* Compatibility disclaimer for non-OpenAI-compatible providers
             (Anthropic, Google, Qwen). The BYOK key is saved but chat
             calls keep going through OpenRouter for now — surface that
@@ -320,128 +488,152 @@ function ProviderSettingsDialog({
           </div>
         </div>
 
-        {/* WorkenAI default note. Plain div on purpose — using a
-            textarea/input here gave it scroll behavior the moment the
-            text didn't fit, which we never want. The block now grows
-            to fit whatever copy lands in it. */}
-        <div>
-          <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
-            {t("mgmt.integ.useWorkenai")}
-          </p>
-          <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
-            {t("mgmt.integ.additionalCosts")}
-          </div>
-        </div>
-
-        {/* Own API key */}
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={useOwnKey}
-              onChange={(e) => {
-                setUseOwnKey(e.target.checked);
-                // Toggling off and back on resets the editor — keeps
-                // the "key already saved" path visible until the user
-                // explicitly clicks Replace.
-                if (!e.target.checked) {
-                  setEditingKey(true);
-                  setApiKey("");
-                } else {
-                  setEditingKey(!card.hasApiKey);
-                }
-              }}
-              className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
-            />
-            <span className="text-[14px] font-normal leading-[20px] text-text-2">
-              {t("mgmt.integ.useOwnKey")}
-            </span>
-          </label>
-
-          {useOwnKey && card.hasApiKey && !editingKey && (
-            // Status panel: the user has a key saved already. Show a
-            // clear "configured" state with masked dots, plus actions
-            // to replace or remove. Without this, after clicking
-            // Apply the dialog just closes and there's no visible
-            // signal that the key persisted.
-            <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
-                <Check className="h-4 w-4" strokeWidth={2.5} />
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-[13px] font-semibold text-success-7">
-                  {t("mgmt.integ.keyConfigured")}
-                </span>
-                <span className="flex items-center gap-1.5 text-[13px] text-text-2">
-                  <KeyRound className="h-3.5 w-3.5 text-text-3" />
-                  <span className="font-mono tracking-wide">
-                    ••••••••••••••••
-                  </span>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingKey(true);
-                  setApiKey("");
-                }}
-                className="text-[13px] font-medium text-primary-6 hover:underline"
-              >
-                {t("mgmt.integ.replace")}
-              </button>
+        {/* WorkenAI default note — predefined only. A Custom LLM has no
+            WorkenAI fallback route (it always calls its own endpoint), so
+            this note is irrelevant there. */}
+        {!card.isCustom && (
+          <div>
+            <p className="text-[14px] font-normal leading-[20px] text-text-2 mb-1.5">
+              {t("mgmt.integ.useWorkenai")}
+            </p>
+            <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
+              {t("mgmt.integ.additionalCosts")}
             </div>
-          )}
+            {/* Heads-up: enabling a provider bulk-adds its whole catalog to
+                the Models tab (can be dozens of models); disabling removes
+                them. */}
+            <p className="mt-1.5 flex items-start gap-1.5 text-[12px] leading-snug text-text-3">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {t("mgmt.integ.enableAddsModels")}
+            </p>
+          </div>
+        )}
 
-          {useOwnKey && (editingKey || !card.hasApiKey) && (
-            <>
+        {/* Predefined provider BYOK key — gated behind a "use your own
+            key" checkbox (the WorkenAI default is the alternative). Custom
+            LLMs handle their key in the editor block at the top. */}
+        {!card.isCustom && (
+          <div className="space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer">
               <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  card.hasApiKey
-                    ? t("mgmt.integ.enterNewKey")
-                    : t("mgmt.integ.enterApiKey")
-                }
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                type="checkbox"
+                checked={useOwnKey}
+                onChange={(e) => {
+                  setUseOwnKey(e.target.checked);
+                  // Toggling off and back on resets the editor — keeps
+                  // the "key already saved" path visible until the user
+                  // explicitly clicks Replace.
+                  if (!e.target.checked) {
+                    setEditingKey(true);
+                    setApiKey("");
+                  } else {
+                    setEditingKey(!card.hasApiKey);
+                  }
+                }}
+                className="h-3.5 w-3.5 rounded-[5px] border border-border-4 accent-success-7 cursor-pointer"
               />
-              {card.hasApiKey && (
+              <span className="text-[14px] font-normal leading-[20px] text-text-2">
+                {t("mgmt.integ.useOwnKey")}
+              </span>
+            </label>
+
+            {useOwnKey && card.hasApiKey && !editingKey && (
+              <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                </span>
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-[13px] font-semibold text-success-7">
+                    {t("mgmt.integ.keyConfigured")}
+                  </span>
+                  <span className="flex items-center gap-1.5 text-[13px] text-text-2">
+                    <KeyRound className="h-3.5 w-3.5 text-text-3" />
+                    <span className="font-mono tracking-wide">
+                      ••••••••••••••••
+                    </span>
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setEditingKey(false);
+                    setEditingKey(true);
                     setApiKey("");
                   }}
-                  className="text-[13px] text-text-3 hover:underline"
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
                 >
-                  {t("mgmt.integ.cancelKeepKey")}
+                  {t("mgmt.integ.replace")}
                 </button>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
 
-        {/* Sharing + per-key monthly limit. Only meaningful once a key
-            is actually set (otherwise calls route through WorkenAI and
-            there's nothing key-scoped to share or cap) — so hide it for
+            {useOwnKey && (editingKey || !card.hasApiKey) && (
+              <>
+                <div className="relative">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={
+                      card.hasApiKey
+                        ? t("mgmt.integ.enterNewKey")
+                        : t("mgmt.integ.enterApiKey")
+                    }
+                    className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((s) => !s)}
+                    aria-label={
+                      showKey
+                        ? t("mgmt.integ.hideKey")
+                        : t("mgmt.integ.showKey")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+                  >
+                    {showKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {card.hasApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKey(false);
+                      setApiKey("");
+                    }}
+                    className="text-[13px] text-text-3 hover:underline"
+                  >
+                    {t("mgmt.integ.cancelKeepKey")}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Company-wide sharing note + per-key monthly limit. Only meaningful
+            once a key is actually set (otherwise calls route through WorkenAI
+            and there's nothing key-scoped to share or cap) — so hide it for
             untouched predefined providers with no own key. */}
         {(card.isCustom || card.hasApiKey || (useOwnKey && apiKey)) && (
         <div className="space-y-4 rounded-lg border border-border-2 p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="text-[14px] font-semibold text-text-1">
-                {t("mgmt.integ.allowPersonalTitle")}
-              </p>
-              <p className="mt-0.5 text-[12px] leading-snug text-text-3">
-                {t("mgmt.integ.allowPersonalHint")}
-              </p>
-            </div>
-            <Switch
-              checked={allowPersonalUse}
-              onCheckedChange={setAllowPersonalUse}
-            />
+          <div className="min-w-0">
+            <p className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.integ.companyWideTitle")}
+            </p>
+            <p className="mt-0.5 text-[12px] leading-snug text-text-3">
+              {t("mgmt.integ.companyWideHint")}
+            </p>
           </div>
 
+          {/* Per-key monthly token limit. Applies to any BYOK key — a
+              predefined provider with the user's own key OR a Custom LLM.
+              The enclosing block already hides this whole section for a
+              predefined provider with no key (managed route), where a
+              per-key cap is meaningless. */}
           <div className="space-y-1.5">
             <label className="text-[13px] text-text-2">
               {t("mgmt.integ.tokenLimitLabel")}
@@ -627,6 +819,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   const [customModel, setCustomModel] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -716,13 +909,29 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
             {t("mgmt.integ.apiKeyOptional")}
           </p>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={t("mgmt.integ.anonymousPlaceholder")}
-            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-          />
+          <div className="relative">
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={t("mgmt.integ.anonymousPlaceholder")}
+              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((s) => !s)}
+              aria-label={
+                showKey ? t("mgmt.integ.hideKey") : t("mgmt.integ.showKey")
+              }
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+            >
+              {showKey ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
         <button
           type="button"

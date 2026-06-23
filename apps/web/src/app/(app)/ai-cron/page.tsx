@@ -14,6 +14,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { useLanguage } from "@/lib/i18n";
+import { humanizeChatError } from "@/lib/chat-errors";
 import type { ScheduledPrompt } from "@/lib/api";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import {
@@ -89,7 +90,12 @@ export default function AiCronPage() {
         if (run.status === "success") {
           toast.success(t("aiCron.toast.runDone"), { id });
         } else {
-          toast.error(run.errorMessage || t("aiCron.toast.runFailed"), { id });
+          toast.error(
+            run.errorMessage
+              ? humanizeChatError(new Error(run.errorMessage))
+              : t("aiCron.toast.runFailed"),
+            { id },
+          );
         }
       },
       onError: () => toast.error(t("aiCron.toast.runFailed"), { id }),

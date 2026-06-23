@@ -533,6 +533,7 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
       [], // user alias lookup — none
       [], // personalUseTeamIds: accepted memberships — none
       [], // personalUseTeamIds: owned teams — none (→ no shared-key lookups)
+      [{ profileType: 'personal', companyId: null }], // getCompanyMemberIds: no company (→ no company-wide lookups)
       [
         {
           apiKeyEncrypted: 'enc',
@@ -564,6 +565,7 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
       [], // user alias lookup — none
       [], // personalUseTeamIds: accepted memberships — none
       [], // personalUseTeamIds: owned teams — none
+      [{ profileType: 'personal', companyId: null }], // getCompanyMemberIds: no company
       [{ apiKeyEncrypted: 'enc', config: { azureApiVersion: '2024-10-21' } }], // no endpoint
     ]);
 
@@ -576,6 +578,60 @@ describe('ChatTransportService.resolve (Azure BYOK)', () => {
     expect(t.source).toBe('openrouter');
     expect(t.apiKey).toBe('openrouter-key');
     expect(t.model).toBe('azure/gpt4-prod');
+  });
+});
+
+/* ─── resolve() company-wide key routing (admin-added, shared to all) ─── */
+
+describe('ChatTransportService.resolve (company-wide key)', () => {
+  const USER_ID = 'member-id';
+
+  function makeService(rowSets: unknown[][]) {
+    const db = makeChainableDb(rowSets);
+    return new ChatTransportService(
+      db as unknown as Database,
+      { decrypt: (s: string) => `plain:${s}` } as unknown as EncryptionService,
+      {
+        resolveUserKey: () => Promise.resolve('openrouter-key'),
+      } as unknown as KeyResolverService,
+      {
+        getTeamBudgetRecipients: () => Promise.resolve([] as string[]),
+        getOrgBudgetRecipients: () => Promise.resolve([] as string[]),
+        createIfNotExists: () => Promise.resolve(null),
+        create: () => Promise.resolve(null),
+      } as unknown as NotificationsService,
+    );
+  }
+
+  it('routes a member with no own key through a company colleague’s Custom LLM', async () => {
+    const svc = makeService([
+      [], // user alias lookup — none of their own
+      [], // personalUseTeamIds: accepted memberships — none
+      [], // personalUseTeamIds: owned teams — none
+      [{ profileType: 'company', companyId: 'c1' }], // getCompanyMemberIds: caller's company
+      [{ id: USER_ID }, { id: 'admin-id' }], // getCompanyMemberIds: company members
+      [{ integrationId: 'int-1', upstreamModel: 'gpt-4o' }], // company custom alias match
+      [
+        {
+          isEnabled: true,
+          apiUrl: 'https://llm.acme.internal/v1',
+          apiKeyEncrypted: 'enc',
+          ownerId: 'admin-id',
+        },
+      ], // the backing integration (admin's), enabled
+    ]);
+
+    const t = await svc.resolve({
+      userId: USER_ID,
+      modelIdentifier: 'acme-internal-gpt',
+    });
+
+    expect(t.source).toBe('custom');
+    expect(t.kind).toBe('openai-sdk');
+    expect(t.baseURL).toBe('https://llm.acme.internal/v1');
+    expect(t.model).toBe('gpt-4o'); // the upstream model the endpoint expects
+    expect(t.apiKey).toBe('plain:enc');
+    expect(t.integrationId).toBe('int-1');
   });
 });
 

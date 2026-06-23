@@ -5,12 +5,15 @@ import { IntegrationsController } from './integrations.controller.js';
 import { IntegrationsService } from './integrations.service.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { OpenRouterModule } from '../openrouter/openrouter.module.js';
+import { ModelsModule } from '../models/models.module.js';
 
 @Module({
   // OpenRouter brings EncryptionService + KeyResolverService;
-  // Notifications brings NotificationsService used by the budget
-  // gates for threshold alerts.
-  imports: [OpenRouterModule, NotificationsModule],
+  // Notifications brings NotificationsService used by the budget gates
+  // for threshold alerts; Models brings ModelsService used to auto-
+  // provision a provider's catalog into the Models tab when its key is
+  // toggled on/off.
+  imports: [OpenRouterModule, NotificationsModule, ModelsModule],
   controllers: [IntegrationsController],
   providers: [
     IntegrationsService,

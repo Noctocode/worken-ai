@@ -5,7 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -15,6 +23,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { EncryptionService } from '../openrouter/encryption.service.js';
+import { ModelsService } from '../models/models.service.js';
 import {
   PREDEFINED_PROVIDERS,
   isPredefinedProvider,
@@ -43,6 +52,8 @@ export interface IntegrationView {
   description: string;
   iconHint: string;
   apiUrl: string | null; // only set for "custom"
+  /** Custom only: the real upstream model id (seeds the edit form). */
+  upstreamModel?: string | null;
   hasApiKey: boolean; // never expose the key itself
   isEnabled: boolean;
   isCustom: boolean;
@@ -103,7 +114,66 @@ export class IntegrationsService {
   constructor(
     @Inject(DATABASE) private readonly db: Database,
     private readonly encryptionService: EncryptionService,
+    private readonly modelsService: ModelsService,
   ) {}
+
+  /**
+   * Gate key mutations. A company key is shared with the whole company, so
+   * only a company **admin** may add / edit / delete it — regular members
+   * see keys (read-only) but can't change them. Personal-profile users have
+   * no company; they manage their own keys, so they're always allowed.
+   */
+  private async assertCanManageKeys(userId: string): Promise<void> {
+    const [u] = await this.db
+      .select({ role: users.role, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    // Company member (has a tenant) must be an admin; solo/personal users
+    // manage their own keys.
+    if (u?.companyId && u.role !== 'admin') {
+      throw new ForbiddenException(
+        'Only an admin can add or change company AI keys.',
+      );
+    }
+  }
+
+  /**
+   * Per-row mutation guard. The owner can always change their own key.
+   * Beyond that — because predefined/company keys are admin-managed
+   * company-wide — a company admin may change a teamless key owned by
+   * another member of the SAME company. (assertCanManageKeys already
+   * confirmed the caller is an admin.) Team-scoped rows are handled by
+   * the callers' own teamId guards.
+   */
+  private async assertCanMutateIntegrationRow(
+    rowOwnerId: string,
+    userId: string,
+  ): Promise<void> {
+    if (rowOwnerId === userId) return;
+    const [caller] = await this.db
+      .select({
+        role: users.role,
+        companyId: users.companyId,
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (
+      caller?.role === 'admin' &&
+      caller.profileType === 'company' &&
+      caller.companyId
+    ) {
+      const [owner] = await this.db
+        .select({ companyId: users.companyId })
+        .from(users)
+        .where(eq(users.id, rowOwnerId))
+        .limit(1);
+      if (owner?.companyId && owner.companyId === caller.companyId) return;
+    }
+    throw new ForbiddenException('Not your integration');
+  }
 
   /** Catalog of predefined providers, in canonical UI order. */
   listPredefined(): PredefinedProvider[] {
@@ -121,12 +191,63 @@ export class IntegrationsService {
     // Personal scope only — team-scoped rows the same user owns (e.g.
     // admin configured a team key) belong to the team's Integrations
     // panel, not the personal one.
-    const rows = await this.db
+    const callerRows = await this.db
       .select()
       .from(integrations)
       .where(
         and(eq(integrations.ownerId, userId), isNull(integrations.teamId)),
       );
+
+    // AI keys are admin-managed company-wide, so the Integration tab must
+    // reflect the company's keys — not just the caller's own rows. Pull
+    // every teamless key owned by a company member so a key added by ONE
+    // admin shows as enabled (with its config) on EVERY member's tab.
+    // Single JOIN on the tenant (no separate member-id fetch + inArray) so
+    // this stays one query regardless of company size. Empty for
+    // personal/solo accounts → behaviour unchanged.
+    const [caller] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const callerCompanyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    const companyRows = callerCompanyId
+      ? await this.db
+          .select(getTableColumns(integrations))
+          .from(integrations)
+          .innerJoin(users, eq(users.id, integrations.ownerId))
+          .where(
+            and(
+              eq(users.companyId, callerCompanyId),
+              isNull(integrations.teamId),
+            ),
+          )
+      : [];
+
+    // Combined view (caller rows first, deduped by id) drives the custom
+    // cards + alias/stat lookups below; the predefined loop picks its row
+    // explicitly via `pickPredefinedRow` so a multi-member company resolves
+    // deterministically (caller's own first, else the company key).
+    const rowsById = new Map<string, (typeof callerRows)[number]>();
+    for (const r of [...callerRows, ...companyRows]) {
+      if (!rowsById.has(r.id)) rowsById.set(r.id, r);
+    }
+    const rows = Array.from(rowsById.values());
+    const pickPredefinedRow = (providerId: string) => {
+      const own = callerRows.find(
+        (r) => r.providerId === providerId && r.apiUrl === null,
+      );
+      if (own) return own;
+      const company = companyRows.filter(
+        (r) => r.providerId === providerId && r.apiUrl === null,
+      );
+      return (
+        company.find((r) => r.isEnabled && r.apiKeyEncrypted) ??
+        company.find((r) => r.isEnabled) ??
+        company[0]
+      );
+    };
 
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30d
     const statsRows = await this.db
@@ -222,11 +343,13 @@ export class IntegrationsService {
       .map((r) => r.id);
     const aliasCountByIntegration = new Map<string, number>();
     const aliasNameByIntegration = new Map<string, string>();
+    const aliasUpstreamByIntegration = new Map<string, string>();
     if (customIds.length > 0) {
       const aliasRows = await this.db
         .select({
           integrationId: modelConfigs.integrationId,
           customName: modelConfigs.customName,
+          upstreamModel: modelConfigs.upstreamModel,
         })
         .from(modelConfigs)
         .where(inArray(modelConfigs.integrationId, customIds));
@@ -243,6 +366,12 @@ export class IntegrationsService {
         if (!aliasNameByIntegration.has(r.integrationId)) {
           aliasNameByIntegration.set(r.integrationId, r.customName);
         }
+        if (
+          r.upstreamModel &&
+          !aliasUpstreamByIntegration.has(r.integrationId)
+        ) {
+          aliasUpstreamByIntegration.set(r.integrationId, r.upstreamModel);
+        }
       }
     }
 
@@ -250,7 +379,7 @@ export class IntegrationsService {
 
     // Predefined first, in catalog order.
     for (const p of PREDEFINED_PROVIDERS) {
-      const row = rows.find((r) => r.providerId === p.id && r.apiUrl === null);
+      const row = pickPredefinedRow(p.id);
       out.push({
         id: row?.id ?? null,
         providerId: p.id,
@@ -289,7 +418,11 @@ export class IntegrationsService {
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
     for (const r of customs) {
-      const aliasName = aliasNameByIntegration.get(r.id);
+      // Prefer the live alias name; fall back to the snapshot kept in
+      // config (the alias is deleted while the key is disabled) so the
+      // card keeps its friendly name instead of dropping to the hostname.
+      const aliasName =
+        aliasNameByIntegration.get(r.id) ?? r.config?.customLlm?.customName;
       out.push({
         id: r.id,
         providerId: 'custom',
@@ -297,6 +430,12 @@ export class IntegrationsService {
         description: r.apiUrl ?? '',
         iconHint: 'custom',
         apiUrl: r.apiUrl,
+        // Real upstream model id (seeds the edit form's Model field).
+        // Live alias first, then the snapshot kept while disabled.
+        upstreamModel:
+          aliasUpstreamByIntegration.get(r.id) ??
+          r.config?.customLlm?.upstreamModel ??
+          null,
         hasApiKey: !!r.apiKeyEncrypted,
         isEnabled: r.isEnabled,
         isCustom: true,
@@ -354,6 +493,7 @@ export class IntegrationsService {
       monthlyTokenLimit?: number | null;
     },
   ): Promise<IntegrationView> {
+    await this.assertCanManageKeys(userId);
     const isCustom = input.providerId === 'custom';
     const isAzure = input.providerId === 'azure';
     if (!isCustom && !isPredefinedProvider(input.providerId)) {
@@ -387,6 +527,10 @@ export class IntegrationsService {
       ? this.encryptionService.encrypt(input.apiKey.trim())
       : null;
 
+    // Monthly token limit applies to BYOK keys — a Custom LLM OR a
+    // predefined provider with the user's own key. The FE only exposes
+    // the field in those cases; an unused limit on a keyless managed
+    // route is never enforced by the per-key gate anyway.
     const monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
 
     if (isCustom) {
@@ -424,6 +568,14 @@ export class IntegrationsService {
           isEnabled: input.isEnabled ?? true,
           allowPersonalUse: input.allowPersonalUse ?? false,
           monthlyTokenLimit,
+          // Snapshot the binding so the alias can be deleted on disable
+          // (model disappears, like predefined) and recreated on enable.
+          config: {
+            customLlm: {
+              customName,
+              upstreamModel: input.customModel!.trim(),
+            },
+          },
         })
         .returning();
       // Bound alias is what makes the Custom LLM actually appear in
@@ -498,6 +650,20 @@ export class IntegrationsService {
           targetWhere: sql`${integrations.apiUrl} IS NULL AND ${integrations.teamId} IS NULL`,
           set: conflictUpdates,
         });
+
+      // Predefined branch (custom is handled in the `if (isCustom)` block
+      // above). Enabling auto-provisions the provider's catalog into the
+      // Models tab; disabling removes those auto rows. Only act when the
+      // caller explicitly set the enabled state (a toggle / first save),
+      // not on unrelated edits (e.g. token-limit only) that leave
+      // isEnabled untouched. Azure is a no-op in the sync (no catalog).
+      if (input.isEnabled !== undefined) {
+        await this.modelsService.syncProviderCatalogAliases(
+          userId,
+          input.providerId,
+          input.isEnabled,
+        );
+      }
     }
 
     const all = await this.listForUser(userId);
@@ -516,16 +682,20 @@ export class IntegrationsService {
       config?: IntegrationConfig;
       allowPersonalUse?: boolean;
       monthlyTokenLimit?: number | null;
+      // Custom LLM field edits (ignored for predefined/azure). Mirror the
+      // Add Custom LLM form so a custom key can be fully edited.
+      customName?: string;
+      apiUrl?: string;
+      customModel?: string;
     },
   ): Promise<IntegrationView> {
+    await this.assertCanManageKeys(userId);
     const [row] = await this.db
       .select()
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
     // Team-scoped rows must go through the team endpoints so the
     // owner/editor role check fires. Without this guard, an admin
     // who later lost team-manage rights could keep editing the team
@@ -549,6 +719,9 @@ export class IntegrationsService {
     if (input.allowPersonalUse !== undefined) {
       updates.allowPersonalUse = input.allowPersonalUse;
     }
+    // Monthly token limit applies to BYOK keys (Custom or a predefined
+    // provider with the user's own key — see upsert). Persist whatever the
+    // (key-gated) FE sends.
     if (input.monthlyTokenLimit !== undefined) {
       updates.monthlyTokenLimit = normalizeTokenLimit(input.monthlyTokenLimit);
     }
@@ -559,10 +732,161 @@ export class IntegrationsService {
     if (input.config !== undefined && row.providerId === 'azure') {
       updates.config = validateAzureConfig(input.config);
     }
+
+    // Custom LLM field edits (display name / endpoint / upstream model) —
+    // mirror the Add form. `modelIdentifier` stays STABLE on rename so
+    // existing project/conversation references keep resolving; only the
+    // display name + upstream model + endpoint change. `customBinding`
+    // is the effective binding used to update the alias below and to
+    // recreate it on re-enable.
+    let customBinding = row.config?.customLlm;
+    if (row.providerId === 'custom') {
+      if (input.apiUrl !== undefined) {
+        const url = input.apiUrl.trim();
+        if (!url) throw new BadRequestException('Custom LLM requires apiUrl');
+        try {
+          new URL(url);
+        } catch {
+          throw new BadRequestException('apiUrl is not a valid URL');
+        }
+        updates.apiUrl = url;
+      }
+      if (input.customName !== undefined || input.customModel !== undefined) {
+        const [alias] = await this.db
+          .select({
+            customName: modelConfigs.customName,
+            upstreamModel: modelConfigs.upstreamModel,
+          })
+          .from(modelConfigs)
+          .where(eq(modelConfigs.integrationId, id))
+          .limit(1);
+        const name = (
+          input.customName?.trim() ||
+          alias?.customName ||
+          customBinding?.customName ||
+          ''
+        ).trim();
+        const model = (
+          input.customModel?.trim() ||
+          alias?.upstreamModel ||
+          customBinding?.upstreamModel ||
+          ''
+        ).trim();
+        if (!name) {
+          throw new BadRequestException('Custom LLM requires a display name');
+        }
+        if (!model) {
+          throw new BadRequestException(
+            'Custom LLM requires the model id its endpoint expects',
+          );
+        }
+        customBinding = { customName: name, upstreamModel: model };
+        updates.config = { ...(row.config ?? {}), customLlm: customBinding };
+      }
+    }
+
     await this.db
       .update(integrations)
       .set(updates)
       .where(eq(integrations.id, id));
+
+    // Apply custom name/model edits to the live bound alias (no-op when
+    // the key is disabled and the alias was removed — config keeps the
+    // snapshot for re-enable). modelIdentifier is intentionally untouched.
+    if (
+      row.providerId === 'custom' &&
+      (input.customName !== undefined || input.customModel !== undefined) &&
+      customBinding
+    ) {
+      await this.db
+        .update(modelConfigs)
+        .set({
+          customName: customBinding.customName,
+          upstreamModel: customBinding.upstreamModel,
+          updatedAt: new Date(),
+        })
+        .where(eq(modelConfigs.integrationId, id));
+    }
+
+    // Toggling a provider on/off keeps the Models tab in sync — disabling
+    // removes the model(s) from the table, enabling brings them back.
+    //  - Predefined: add/remove the auto-provisioned catalog via
+    //    syncProviderCatalogAliases, on the KEY's OWNER (not the caller)
+    //    so a company admin disabling another member's company key removes
+    //    THAT owner's models, not nothing.
+    //  - Custom LLM: delete the bound alias on disable (snapshotting the
+    //    binding into config) and recreate it on enable — same
+    //    "disappears from the table" behaviour as predefined.
+    if (input.isEnabled !== undefined) {
+      if (row.providerId === 'custom') {
+        if (input.isEnabled) {
+          // Re-enable: bring the model back into the Models tab. Recreate
+          // the bound alias from the snapshot if a prior disable deleted
+          // it; otherwise reactivate the existing one (covers legacy rows
+          // that were left inactive rather than deleted).
+          const [existing] = await this.db
+            .select({ id: modelConfigs.id })
+            .from(modelConfigs)
+            .where(eq(modelConfigs.integrationId, id))
+            .limit(1);
+          if (existing) {
+            await this.db
+              .update(modelConfigs)
+              .set({ isActive: true, updatedAt: new Date() })
+              .where(eq(modelConfigs.integrationId, id));
+          } else if (customBinding) {
+            await this.db.insert(modelConfigs).values({
+              ownerId: row.ownerId,
+              teamId: null,
+              customName: customBinding.customName,
+              modelIdentifier: userCustomModelIdentifier(
+                row.ownerId,
+                customBinding.customName,
+              ),
+              upstreamModel: customBinding.upstreamModel,
+              integrationId: id,
+              isActive: true,
+            });
+          }
+        } else {
+          // Disable: snapshot the binding (so the card keeps its name and
+          // the alias can be recreated on re-enable), then DELETE the
+          // alias so the model disappears from the table — consistent with
+          // predefined providers.
+          const [alias] = await this.db
+            .select({
+              customName: modelConfigs.customName,
+              upstreamModel: modelConfigs.upstreamModel,
+            })
+            .from(modelConfigs)
+            .where(eq(modelConfigs.integrationId, id))
+            .limit(1);
+          if (alias) {
+            await this.db
+              .update(integrations)
+              .set({
+                config: {
+                  ...(row.config ?? {}),
+                  customLlm: {
+                    customName: alias.customName,
+                    upstreamModel: alias.upstreamModel ?? '',
+                  },
+                },
+              })
+              .where(eq(integrations.id, id));
+            await this.db
+              .delete(modelConfigs)
+              .where(eq(modelConfigs.integrationId, id));
+          }
+        }
+      } else {
+        await this.modelsService.syncProviderCatalogAliases(
+          row.ownerId,
+          row.providerId,
+          input.isEnabled,
+        );
+      }
+    }
 
     const all = await this.listForUser(userId);
     const view = all.find((v) => v.id === id);
@@ -607,9 +931,7 @@ export class IntegrationsService {
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
 
     const startOfMonth = sql`date_trunc('month', now())`;
     const rows = await this.db
@@ -651,14 +973,13 @@ export class IntegrationsService {
   }
 
   async remove(userId: string, id: string): Promise<void> {
+    await this.assertCanManageKeys(userId);
     const [row] = await this.db
       .select()
       .from(integrations)
       .where(eq(integrations.id, id));
     if (!row) throw new NotFoundException('Integration not found');
-    if (row.ownerId !== userId) {
-      throw new ForbiddenException('Not your integration');
-    }
+    await this.assertCanMutateIntegrationRow(row.ownerId, userId);
     if (row.teamId) {
       throw new ForbiddenException(
         'Team-scoped integrations must be deleted via /teams/:id/integrations',

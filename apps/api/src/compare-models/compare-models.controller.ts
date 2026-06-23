@@ -38,6 +38,7 @@ import {
   type ChatTransport,
 } from '../integrations/chat-transport.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ModelsService } from '../models/models.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { DocumentsService } from '../documents/documents.service.js';
@@ -123,6 +124,7 @@ export class CompareModelsController {
     private readonly knowledgeIngestion: KnowledgeIngestionService,
     private readonly documentsService: DocumentsService,
     private readonly skillRouter: SkillRouterService,
+    private readonly modelsService: ModelsService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
 
@@ -374,6 +376,15 @@ export class CompareModelsController {
     });
 
     // ── PER-MODEL FAN-OUT ───────────────────────────────────────────
+    // Curated-model gate: the arena only offers the user's effective
+    // models, but a selection can go stale (its alias disabled/deleted
+    // since the picker loaded). Fetch the usable set once so each panel
+    // can fail fast with a clear MODEL_UNAVAILABLE instead of silently
+    // routing elsewhere. The judge model is resolved separately above
+    // and isn't gated here.
+    const availableModelIds = await this.modelsService.availableModelIds(
+      user.id,
+    );
     const responses: ModelResponse[] = [];
     await Promise.allSettled(
       body.models.map(async (model) => {
@@ -393,7 +404,22 @@ export class CompareModelsController {
           modelIdentifier: model,
           teamId,
         });
-        const candidates = [model, ...fallbackModels];
+        // Curation gate: drop candidates whose alias was disabled/deleted
+        // since the picker loaded, keeping fallback order. A disabled model
+        // with an enabled fallback uses the fallback; only when the model
+        // AND every fallback are unavailable does the panel fail with a
+        // clear MODEL_UNAVAILABLE.
+        const candidates = [model, ...fallbackModels].filter((c) =>
+          availableModelIds.has(c),
+        );
+        if (candidates.length === 0) {
+          sendEvent('model-error', {
+            model,
+            message: this.modelsService.modelUnavailableMessage(model),
+            status: 422,
+          });
+          return;
+        }
         // Fall back if a candidate emits no token within this window AND a
         // fallback exists ("timeouts (3s) or returns error" per Models tab).
         const FALLBACK_FIRST_TOKEN_TIMEOUT_MS = 3000;

@@ -1564,6 +1564,11 @@ export interface ModelConfig {
   ownerId: string;
   customName: string;
   modelIdentifier: string;
+  /** Custom LLM aliases only: the real model id sent to the upstream
+   *  endpoint. `modelIdentifier` is a synthetic `user:…` routing id for
+   *  these, so the UI shows `upstreamModel` instead. Null for predefined
+   *  aliases (where `modelIdentifier` IS the real id). */
+  upstreamModel?: string | null;
   isActive: boolean;
   fallbackModels: string[];
   /** When set, chat calls for this alias route through the linked Custom
@@ -3480,6 +3485,8 @@ export interface IntegrationCard {
   description: string;
   iconHint: string;
   apiUrl: string | null;
+  /** Custom only: the real upstream model id, to seed the edit form. */
+  upstreamModel?: string | null;
   hasApiKey: boolean;
   isEnabled: boolean;
   isCustom: boolean;
@@ -3571,6 +3578,10 @@ export async function updateIntegration(
     config?: IntegrationConfig;
     allowPersonalUse?: boolean;
     monthlyTokenLimit?: number | null;
+    // Custom LLM field edits (ignored for predefined/azure).
+    customName?: string;
+    apiUrl?: string;
+    customModel?: string;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {

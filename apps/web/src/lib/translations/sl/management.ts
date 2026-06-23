@@ -291,6 +291,10 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.integ.useOwnKey': 'Uporabi svoj API KLJUČ',
   'mgmt.integ.keyConfigured': 'API ključ nastavljen',
   'mgmt.integ.replace': 'Zamenjaj',
+  'mgmt.integ.showKey': 'Pokaži ključ',
+  'mgmt.integ.hideKey': 'Skrij ključ',
+  'mgmt.integ.enableAddsModels':
+    'Omogočanje doda vse modele tega providerja v zavihek Models; onemogočanje jih odstrani.',
   'mgmt.integ.enterNewKey': 'Vnesite nov ključ za zamenjavo shranjenega',
   'mgmt.integ.enterApiKey': 'Vnesite svoj API ključ',
   'mgmt.integ.cancelKeepKey': 'Prekliči — obdrži shranjen ključ',
@@ -313,6 +317,9 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.integ.allowPersonalTitle': 'Dovoli osebno uporabo',
   'mgmt.integ.allowPersonalHint':
     'Člani ekip, v katere je ta ključ povezan, ga lahko uporabljajo tudi v svojih osebnih projektih in klepetih — ne le znotraj ekipe.',
+  'mgmt.integ.companyWideTitle': 'Deljeno s celotno firmo',
+  'mgmt.integ.companyWideHint':
+    'Ta ključ lahko uporablja vsak član firme — v ekipnih in osebnih projektih ter klepetih. Poraba se obračuna na ta ključ in šteje v njegovo mesečno omejitev spodaj.',
   'mgmt.integ.tokenLimitLabel': 'Mesečna omejitev tokenov',
   'mgmt.integ.tokenLimitPlaceholder': 'Brez omejitve',
   'mgmt.integ.tokenLimitHint':

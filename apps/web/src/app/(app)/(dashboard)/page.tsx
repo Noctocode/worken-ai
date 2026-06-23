@@ -137,8 +137,10 @@ function ProjectCard({ project }: { project: Project }) {
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
   const { effective: configuredModels } = useUserModels();
+  // Any model routed through an own key / endpoint (BYOK or Custom LLM) is
+  // marked "(custom)"; managed catalog models get no suffix.
   const routingSuffix = (routing: string): string =>
-    routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
+    routing === "byok" || routing === "custom" ? " (custom)" : "";
   // Resolve a pool entry (preset id or model id) to its model slug.
   const resolveSelectionModel = (id: string): string => {
     const preset = AGENTS.find((a) => a.id === id);
@@ -589,8 +591,7 @@ function ProjectCard({ project }: { project: Project }) {
             </div>
           )}
           <p className="mx-auto max-w-[700px] text-center text-[12px] text-text-3">
-            <strong>(BYOK)</strong> {t("dashboard.byokNote")}{" "}
-            <strong>(Custom)</strong> {t("dashboard.customNote")}
+            <strong>(custom)</strong> {t("dashboard.customNote")}
           </p>
           <DialogFooter className="gap-2">
             <Button
