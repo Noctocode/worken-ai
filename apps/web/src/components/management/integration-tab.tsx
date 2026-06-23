@@ -430,28 +430,28 @@ function ProviderSettingsDialog({
             </p>
           </div>
 
-          {/* Per-key monthly token limit is a Custom-LLM-only setting:
-              predefined providers (even with a BYOK key) bill on the
-              provider account / budget tiers, not a token cap. */}
-          {card.isCustom && (
-            <div className="space-y-1.5">
-              <label className="text-[13px] text-text-2">
-                {t("mgmt.integ.tokenLimitLabel")}
-              </label>
-              <input
-                type="number"
-                min={0}
-                step={1000}
-                value={tokenLimitInput}
-                onChange={(e) => setTokenLimitInput(e.target.value)}
-                placeholder={t("mgmt.integ.tokenLimitPlaceholder")}
-                className="w-full h-11 rounded-lg border border-border-3 bg-transparent px-3 text-[15px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
-              <p className="text-[12px] leading-snug text-text-3">
-                {t("mgmt.integ.tokenLimitHint")}
-              </p>
-            </div>
-          )}
+          {/* Per-key monthly token limit. Applies to any BYOK key — a
+              predefined provider with the user's own key OR a Custom LLM.
+              The enclosing block already hides this whole section for a
+              predefined provider with no key (managed route), where a
+              per-key cap is meaningless. */}
+          <div className="space-y-1.5">
+            <label className="text-[13px] text-text-2">
+              {t("mgmt.integ.tokenLimitLabel")}
+            </label>
+            <input
+              type="number"
+              min={0}
+              step={1000}
+              value={tokenLimitInput}
+              onChange={(e) => setTokenLimitInput(e.target.value)}
+              placeholder={t("mgmt.integ.tokenLimitPlaceholder")}
+              className="w-full h-11 rounded-lg border border-border-3 bg-transparent px-3 text-[15px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            />
+            <p className="text-[12px] leading-snug text-text-3">
+              {t("mgmt.integ.tokenLimitHint")}
+            </p>
+          </div>
 
           {/* Month-to-date usage of this key, per user. */}
           {keyUsage && (
