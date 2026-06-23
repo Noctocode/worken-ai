@@ -291,6 +291,8 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.integ.useOwnKey': 'Uporabi svoj API KLJUČ',
   'mgmt.integ.keyConfigured': 'API ključ nastavljen',
   'mgmt.integ.replace': 'Zamenjaj',
+  'mgmt.integ.showKey': 'Pokaži ključ',
+  'mgmt.integ.hideKey': 'Skrij ključ',
   'mgmt.integ.enterNewKey': 'Vnesite nov ključ za zamenjavo shranjenega',
   'mgmt.integ.enterApiKey': 'Vnesite svoj API ključ',
   'mgmt.integ.cancelKeepKey': 'Prekliči — obdrži shranjen ključ',

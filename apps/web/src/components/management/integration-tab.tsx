@@ -5,6 +5,8 @@ import {
   AlertTriangle,
   BookOpen,
   Check,
+  Eye,
+  EyeOff,
   Info,
   KeyRound,
   Loader2,
@@ -115,6 +117,7 @@ function ProviderSettingsDialog({
   const queryClient = useQueryClient();
   const [useOwnKey, setUseOwnKey] = useState(card.hasApiKey);
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [enabled, setEnabled] = useState(card.isEnabled);
   // Custom LLM editable fields — seeded from the card so the edit dialog
   // mirrors the Add Custom LLM form (display name / endpoint / model).
@@ -459,17 +462,33 @@ function ProviderSettingsDialog({
 
           {useOwnKey && (editingKey || !card.hasApiKey) && (
             <>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={
-                  card.hasApiKey
-                    ? t("mgmt.integ.enterNewKey")
-                    : t("mgmt.integ.enterApiKey")
-                }
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
+              <div className="relative">
+                <input
+                  type={showKey ? "text" : "password"}
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={
+                    card.hasApiKey
+                      ? t("mgmt.integ.enterNewKey")
+                      : t("mgmt.integ.enterApiKey")
+                  }
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowKey((s) => !s)}
+                  aria-label={
+                    showKey ? t("mgmt.integ.hideKey") : t("mgmt.integ.showKey")
+                  }
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+                >
+                  {showKey ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
               {card.hasApiKey && (
                 <button
                   type="button"
@@ -691,6 +710,7 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
   const [customModel, setCustomModel] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const queryClient = useQueryClient();
 
   const createMutation = useMutation({
@@ -780,13 +800,29 @@ function AddCustomLLMDialog({ onClose }: { onClose: () => void }) {
           <p className="text-[14px] font-normal text-text-2 mb-1.5">
             {t("mgmt.integ.apiKeyOptional")}
           </p>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder={t("mgmt.integ.anonymousPlaceholder")}
-            className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-          />
+          <div className="relative">
+            <input
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={t("mgmt.integ.anonymousPlaceholder")}
+              className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+            />
+            <button
+              type="button"
+              onClick={() => setShowKey((s) => !s)}
+              aria-label={
+                showKey ? t("mgmt.integ.hideKey") : t("mgmt.integ.showKey")
+              }
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+            >
+              {showKey ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
         </div>
         <button
           type="button"
