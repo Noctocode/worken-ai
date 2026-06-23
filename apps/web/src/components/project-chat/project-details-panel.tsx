@@ -133,10 +133,16 @@ function Section({
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
-  // Force-open when the parent targets this section from the rail.
-  useEffect(() => {
+  // Force-open when the parent targets this section from the rail. The
+  // parent bumps `openToken` on each rail click; we react by adjusting
+  // state DURING render (React's "a prop changed" pattern) rather than in
+  // an effect — that avoids the extra commit + the set-state-in-effect
+  // warning, while still respecting the user's own collapse toggle.
+  const [seenToken, setSeenToken] = useState(openToken);
+  if (openToken !== seenToken) {
+    setSeenToken(openToken);
     if (openToken > 0) setOpen(true);
-  }, [openToken]);
+  }
   return (
     <div
       id={sectionId ? `pd-section-${sectionId}` : undefined}
