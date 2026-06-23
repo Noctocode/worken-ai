@@ -818,17 +818,14 @@ export default function KnowledgeCorePage() {
         </label>
       </div>
 
-      {/* Google Drive — connect, import, and Re-sync imported sources. */}
-      <DriveSection />
-
-      {/* SharePoint — same shape as Drive but for Microsoft Graph. */}
-      <SharePointSection />
-
-      {/* OneDrive — shares the SharePoint Microsoft connection. */}
-      <OneDriveSection />
-
-      {/* Confluence — same shape as Drive but for Atlassian Confluence. */}
-      <ConfluenceSection />
+      {/* Cloud sources — import + Re-sync only. The connection itself
+          (Connect / account / Disconnect) now lives in Settings →
+          Integrations; when a source isn't connected these render a hint
+          linking there. */}
+      <DriveSection mode="import" />
+      <SharePointSection mode="import" />
+      <OneDriveSection mode="import" />
+      <ConfluenceSection mode="import" />
 
       {/* Folders */}
       <section>

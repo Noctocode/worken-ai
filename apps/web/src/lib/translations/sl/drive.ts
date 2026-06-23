@@ -44,6 +44,9 @@ export const drive: Record<keyof typeof driveEn, string> = {
   "drive.removeSourceTitle": "Odstrani vir (uvožene datoteke ostanejo)",
   "drive.removeSource": "Odstrani vir",
   "drive.importInProgress": "Uvoz v teku…",
+  "drive.connectInSettings":
+    "Za uvoz dokumentov poveži Google Drive v Nastavitve → Integracije.",
+  "drive.goToSettings": "Odpri nastavitve",
   "driveDlg.collapseFolder": "Strni mapo",
   "driveDlg.expandFolder": "Razširi mapo",
   "driveDlg.allInKC": "Vse iz vašega Drive je že v bazi znanja.",

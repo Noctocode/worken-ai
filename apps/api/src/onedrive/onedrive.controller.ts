@@ -92,25 +92,25 @@ export class OneDriveController {
     if (error) {
       const detail = errorDescription || error;
       res.redirect(
-        `${frontendUrl}/knowledge-core?onedrive=error=${encodeURIComponent(detail)}`,
+        `${frontendUrl}/teams?tab=integration&onedrive=error=${encodeURIComponent(detail)}`,
       );
       return;
     }
 
     if (!code || !state) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?onedrive=error=${encodeURIComponent('missing_code_or_state')}`,
+        `${frontendUrl}/teams?tab=integration&onedrive=error=${encodeURIComponent('missing_code_or_state')}`,
       );
       return;
     }
 
     try {
       await this.oauth.handleCallback(code, state, 'onedrive-connect');
-      res.redirect(`${frontendUrl}/knowledge-core?onedrive=connected`);
+      res.redirect(`${frontendUrl}/teams?tab=integration&onedrive=connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       res.redirect(
-        `${frontendUrl}/knowledge-core?onedrive=error=${encodeURIComponent(message)}`,
+        `${frontendUrl}/teams?tab=integration&onedrive=error=${encodeURIComponent(message)}`,
       );
     }
   }

@@ -42,6 +42,8 @@ export const sharepoint = {
   'sharepoint.resync': 'Re-sync',
   'sharepoint.removeSourceTitle': 'Remove source (keeps imported files)',
   'sharepoint.removeSource': 'Remove source',
+  'sharepoint.connectInSettings': 'Connect SharePoint in Settings → Integrations to import documents.',
+  'sharepoint.goToSettings': 'Go to Settings',
   'spDlg.collapseFolder': 'Collapse folder',
   'spDlg.expandFolder': 'Expand folder',
   'spDlg.allInKC': 'Everything from this site is already in Knowledge Core.',

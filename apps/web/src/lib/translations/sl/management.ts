@@ -268,6 +268,9 @@ export const management: Record<keyof typeof managementEn, string> = {
   'mgmt.company.industry.other': 'Drugo',
   'mgmt.integ.search': 'Iskanje',
   'mgmt.integ.addCustomLLM': 'Dodaj LLM po meri',
+  'mgmt.integ.cloudConnections': 'Povezave v oblak',
+  'mgmt.integ.cloudConnectionsDesc':
+    'Poveži shrambo v oblaku za uvoz dokumentov v Knowledge Core. Uvoz in ponovna sinhronizacija ostaneta v Knowledge Core.',
   'mgmt.integ.adminOnly': 'Samo skrbniki lahko dodajajo integracije',
   'mgmt.integ.changeAdminOnly': 'Samo skrbniki lahko spreminjajo integracije',
   'mgmt.integ.deleteAdminOnly': 'Samo skrbniki lahko brišejo integracije',

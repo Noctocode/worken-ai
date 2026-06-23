@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -54,7 +55,11 @@ function makeRelativeTime(t: (k: TranslationKey) => string) {
   };
 }
 
-export function SharePointSection() {
+export function SharePointSection({
+  mode,
+}: {
+  mode: "connection" | "import";
+}) {
   const { t } = useLanguage();
   const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
@@ -84,10 +89,11 @@ export function SharePointSection() {
   const { data: sources = [] } = useQuery({
     queryKey: ["sharepoint", "sources"],
     queryFn: fetchSharePointSources,
-    enabled: connected,
+    enabled: connected && mode === "import",
   });
 
   useEffect(() => {
+    if (mode !== "connection") return;
     const flag = searchParams.get("sharepoint");
     if (!flag) return;
     if (flag === "connected") {
@@ -219,7 +225,30 @@ export function SharePointSection() {
     );
   }
 
+  const reauthRequired = status?.status === "reauth_required";
+
   if (!connected) {
+    if (mode === "import") {
+      return (
+        <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
+              <FolderOpen className="h-4 w-4 text-primary-6" />
+            </span>
+            <p className="text-[13px] text-text-3">
+              {t("sharepoint.connectInSettings")}
+            </p>
+          </div>
+          <Link
+            href="/teams?tab=integration"
+            className="text-[13px] font-medium text-primary-6 hover:underline"
+          >
+            {t("sharepoint.goToSettings")}
+          </Link>
+        </section>
+      );
+    }
+
     return (
       <>
         <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
@@ -256,7 +285,27 @@ export function SharePointSection() {
     );
   }
 
-  const reauthRequired = status?.status === "reauth_required";
+  // Import mode + reauth required → same hint card as not-connected.
+  if (mode === "import" && reauthRequired) {
+    return (
+      <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
+            <FolderOpen className="h-4 w-4 text-primary-6" />
+          </span>
+          <p className="text-[13px] text-text-3">
+            {t("sharepoint.connectInSettings")}
+          </p>
+        </div>
+        <Link
+          href="/teams?tab=integration"
+          className="text-[13px] font-medium text-primary-6 hover:underline"
+        >
+          {t("sharepoint.goToSettings")}
+        </Link>
+      </section>
+    );
+  }
 
   return (
     <>
@@ -290,15 +339,7 @@ export function SharePointSection() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {reauthRequired ? (
-              <Button
-                onClick={handleConnectClick}
-                variant="outline"
-                className="cursor-pointer gap-2 text-[13px]"
-              >
-                {t("sharepoint.reconnect")}
-              </Button>
-            ) : (
+            {mode === "import" ? (
               <Button
                 onClick={() => setImportOpen(true)}
                 variant="outline"
@@ -307,27 +348,39 @@ export function SharePointSection() {
                 <FolderOpen className="h-3.5 w-3.5" />
                 {t("sharepoint.importFromSharePoint")}
               </Button>
+            ) : (
+              <>
+                {reauthRequired && (
+                  <Button
+                    onClick={handleConnectClick}
+                    variant="outline"
+                    className="cursor-pointer gap-2 text-[13px]"
+                  >
+                    {t("sharepoint.reconnect")}
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                      aria-label={t("sharepoint.options")}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={handleDisconnectClick}
+                      className="text-danger-6 focus:text-danger-6"
+                    >
+                      <Unplug className="mr-2 h-3.5 w-3.5" />
+                      {t("sharepoint.disconnect")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label={t("sharepoint.options")}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={handleDisconnectClick}
-                  className="text-danger-6 focus:text-danger-6"
-                >
-                  <Unplug className="mr-2 h-3.5 w-3.5" />
-                  {t("sharepoint.disconnect")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </header>
 
@@ -393,21 +446,25 @@ export function SharePointSection() {
         )}
       </section>
 
-      <ImportFromSharePointDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
+      {mode === "import" && (
+        <ImportFromSharePointDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+        />
+      )}
 
-      <MicrosoftConnectConfirmDialog
-        open={confirmMode !== null}
-        onOpenChange={(o) => !o && setConfirmMode(null)}
-        mode={confirmMode}
-        onConnectConfirm={handleConnectConfirm}
-        onDisconnectConfirm={handleDisconnectConfirm}
-        loading={
-          enableMutation.isPending || disconnectMutation.isPending
-        }
-      />
+      {mode === "connection" && (
+        <MicrosoftConnectConfirmDialog
+          open={confirmMode !== null}
+          onOpenChange={(o) => !o && setConfirmMode(null)}
+          mode={confirmMode}
+          onConnectConfirm={handleConnectConfirm}
+          onDisconnectConfirm={handleDisconnectConfirm}
+          loading={
+            enableMutation.isPending || disconnectMutation.isPending
+          }
+        />
+      )}
     </>
   );
 }

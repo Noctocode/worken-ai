@@ -74,13 +74,13 @@ export class ConfluenceController {
 
     if (error) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?confluence=error=${encodeURIComponent(error)}`,
+        `${frontendUrl}/teams?tab=integration&confluence=error=${encodeURIComponent(error)}`,
       );
       return;
     }
     if (!code || !state) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?confluence=error=${encodeURIComponent('missing_code_or_state')}`,
+        `${frontendUrl}/teams?tab=integration&confluence=error=${encodeURIComponent('missing_code_or_state')}`,
       );
       return;
     }
@@ -90,11 +90,11 @@ export class ConfluenceController {
       // A reconnect may point at a different Atlassian site — drop any
       // cached cloudId so the next API call re-resolves it.
       this.client.clearSiteCache(userId);
-      res.redirect(`${frontendUrl}/knowledge-core?confluence=connected`);
+      res.redirect(`${frontendUrl}/teams?tab=integration&confluence=connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       res.redirect(
-        `${frontendUrl}/knowledge-core?confluence=error=${encodeURIComponent(message)}`,
+        `${frontendUrl}/teams?tab=integration&confluence=error=${encodeURIComponent(message)}`,
       );
     }
   }

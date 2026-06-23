@@ -41,6 +41,8 @@ export const onedrive = {
   'onedrive.resync': 'Re-sync',
   'onedrive.removeSourceTitle': 'Remove source (keeps imported files)',
   'onedrive.removeSource': 'Remove source',
+  'onedrive.connectInSettings': 'Connect OneDrive in Settings → Integrations to import documents.',
+  'onedrive.goToSettings': 'Go to Settings',
   'odDlg.collapseFolder': 'Collapse folder',
   'odDlg.expandFolder': 'Expand folder',
   'odDlg.allInKC': 'Everything from your OneDrive is already in Knowledge Core.',

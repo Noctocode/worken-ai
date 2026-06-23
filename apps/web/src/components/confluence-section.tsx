@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -59,7 +60,11 @@ function makeRelativeTime(t: (k: TranslationKey) => string) {
  * Also owns the OAuth callback toast: reads `?confluence=connected` /
  * `?confluence=error=...` on mount, toasts, and scrubs the param.
  */
-export function ConfluenceSection() {
+export function ConfluenceSection({
+  mode,
+}: {
+  mode: "connection" | "import";
+}) {
   const { t } = useLanguage();
   const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
@@ -78,13 +83,13 @@ export function ConfluenceSection() {
   const { data: sources = [] } = useQuery({
     queryKey: ["confluence", "sources"],
     queryFn: fetchConfluenceSources,
-    enabled: connected,
+    enabled: connected && mode === "import",
   });
 
   const { data: importProgress } = useQuery<ConfluenceImportProgress | null>({
     queryKey: ["confluence", "import-progress"],
     queryFn: fetchConfluenceImportProgress,
-    enabled: connected,
+    enabled: connected && mode === "import",
     refetchInterval: (query) => {
       const p = query.state.data;
       if (p && (p.phase === "scanning" || p.phase === "importing")) return 2000;
@@ -94,6 +99,7 @@ export function ConfluenceSection() {
   });
 
   useEffect(() => {
+    if (mode !== "connection") return;
     const flag = searchParams.get("confluence");
     if (!flag) return;
     if (flag === "connected") {
@@ -174,6 +180,29 @@ export function ConfluenceSection() {
     );
   }
 
+  const reauthRequired = status?.status === "reauth_required";
+
+  if (mode === "import" && (!connected || reauthRequired)) {
+    return (
+      <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
+            <BookOpen className="h-4 w-4 text-primary-6" />
+          </span>
+          <p className="text-[13px] text-text-3">
+            {t("confluence.connectInSettings")}
+          </p>
+        </div>
+        <Link
+          href="/teams?tab=integration"
+          className="text-[13px] font-medium text-primary-6 hover:underline"
+        >
+          {t("confluence.goToSettings")}
+        </Link>
+      </section>
+    );
+  }
+
   if (!connected) {
     return (
       <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
@@ -201,8 +230,6 @@ export function ConfluenceSection() {
       </section>
     );
   }
-
-  const reauthRequired = status?.status === "reauth_required";
 
   return (
     <>
@@ -236,15 +263,7 @@ export function ConfluenceSection() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {reauthRequired ? (
-              <Button
-                onClick={() => connectConfluence()}
-                variant="outline"
-                className="cursor-pointer gap-2 text-[13px]"
-              >
-                {t("confluence.reconnect")}
-              </Button>
-            ) : (
+            {mode === "import" ? (
               <DisabledReasonTooltip
                 disabled={importInProgress}
                 reason={t("confluence.importInProgress")}
@@ -259,31 +278,43 @@ export function ConfluenceSection() {
                   {t("confluence.importFromConfluence")}
                 </Button>
               </DisabledReasonTooltip>
+            ) : (
+              <>
+                {reauthRequired && (
+                  <Button
+                    onClick={() => connectConfluence()}
+                    variant="outline"
+                    className="cursor-pointer gap-2 text-[13px]"
+                  >
+                    {t("confluence.reconnect")}
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                      aria-label={t("confluence.options")}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onSelect={() => disconnectMutation.mutate()}
+                      className="text-danger-6 focus:text-danger-6"
+                    >
+                      <Unplug className="mr-2 h-3.5 w-3.5" />
+                      {t("confluence.disconnect")}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label={t("confluence.options")}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={() => disconnectMutation.mutate()}
-                  className="text-danger-6 focus:text-danger-6"
-                >
-                  <Unplug className="mr-2 h-3.5 w-3.5" />
-                  {t("confluence.disconnect")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
         </header>
 
-        {sources.length > 0 && (
+        {mode === "import" && sources.length > 0 && (
           <div className="flex flex-col gap-2 border-t border-border-2 pt-3">
             <p className="text-[11px] font-medium uppercase tracking-wide text-text-3">
               {t("confluence.importedSources")}
@@ -345,10 +376,12 @@ export function ConfluenceSection() {
         )}
       </section>
 
-      <ImportFromConfluenceDialog
-        open={importOpen}
-        onOpenChange={setImportOpen}
-      />
+      {mode === "import" && (
+        <ImportFromConfluenceDialog
+          open={importOpen}
+          onOpenChange={setImportOpen}
+        />
+      )}
     </>
   );
 }

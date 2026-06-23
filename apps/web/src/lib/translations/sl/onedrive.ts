@@ -43,6 +43,8 @@ export const onedrive: Record<keyof typeof onedriveEn, string> = {
   'onedrive.resync': 'Ponovno sinhroniziraj',
   'onedrive.removeSourceTitle': 'Odstrani vir (uvožene datoteke ostanejo)',
   'onedrive.removeSource': 'Odstrani vir',
+  'onedrive.connectInSettings': 'Za uvoz dokumentov poveži OneDrive v Nastavitve → Integracije.',
+  'onedrive.goToSettings': 'Odpri nastavitve',
   'odDlg.collapseFolder': 'Strni mapo',
   'odDlg.expandFolder': 'Razširi mapo',
   'odDlg.allInKC': 'Vse iz vašega OneDrive je že v bazi znanja.',

@@ -5,7 +5,6 @@ import {
   Users,
   Loader2,
   Bot,
-  PlugZap,
   Trash2,
   Power,
   PowerOff,
@@ -58,6 +57,10 @@ import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
+import { DriveSection } from "@/components/drive-section";
+import { SharePointSection } from "@/components/sharepoint-section";
+import { OneDriveSection } from "@/components/onedrive-section";
+import { ConfluenceSection } from "@/components/confluence-section";
 import { useLanguage } from "@/lib/i18n";
 
 export default function TeamsPage() {
@@ -970,16 +973,25 @@ export default function TeamsPage() {
         <BillingTab />
       </PageTabsContent>
       <PageTabsContent value="integration">
-        {/* Provider keys + Custom LLMs moved under the Models tab. This tab
-            is reserved for upcoming integrations — placeholder for now. */}
-        <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border-3 bg-bg-white py-20 text-center">
-          <PlugZap className="h-10 w-10 text-text-3" />
-          <p className="text-sm font-medium text-text-2">
-            {t("teams.integrationWip")}
+        {/* Cloud Connections — connect cloud storage (Drive / OneDrive /
+            SharePoint / Confluence) here. Importing + re-syncing documents
+            from a connected source stays in Knowledge Core. Connection
+            state is per-user. The sections in `mode="connection"` render
+            only the connect / account / disconnect UI and own the OAuth
+            callback toast (the backend redirects here after consent). */}
+        <div className="py-5">
+          <h3 className="text-[16px] font-semibold text-black-900 lg:text-[18px] lg:font-bold">
+            {t("mgmt.integ.cloudConnections")}
+          </h3>
+          <p className="mt-1 text-[13px] text-text-3">
+            {t("mgmt.integ.cloudConnectionsDesc")}
           </p>
-          <p className="max-w-md text-xs text-text-3">
-            {t("teams.integrationWipDesc")}
-          </p>
+          <div className="mt-4 flex flex-col gap-3">
+            <DriveSection mode="connection" />
+            <SharePointSection mode="connection" />
+            <OneDriveSection mode="connection" />
+            <ConfluenceSection mode="connection" />
+          </div>
         </div>
       </PageTabsContent>
     </PageTabs>
