@@ -1,5 +1,4 @@
-"use client";
-
+import type { Metadata } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -16,6 +15,18 @@ const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600"],
 });
+
+// Browser tab: name + description. Sub-pages may set their own title and
+// it is appended as "<page> · WorkenAI". The favicon comes from the
+// app/icon.png file convention (the WorkenAI mark).
+export const metadata: Metadata = {
+  title: {
+    default: "WorkenAI",
+    template: "%s · WorkenAI",
+  },
+  description:
+    "AI development platform for managing workflows, comparing models, and analyzing documents.",
+};
 
 export default function RootLayout({
   children,
