@@ -188,7 +188,7 @@ export function ModelCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <Bot className="h-4 w-4 shrink-0 text-text-3" />
           <span className="break-all text-[13px] text-text-1">
-            {model.modelIdentifier}
+            {model.upstreamModel ?? model.modelIdentifier}
           </span>
           {customIntegration && (
             <span

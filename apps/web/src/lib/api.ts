@@ -1564,6 +1564,11 @@ export interface ModelConfig {
   ownerId: string;
   customName: string;
   modelIdentifier: string;
+  /** Custom LLM aliases only: the real model id sent to the upstream
+   *  endpoint. `modelIdentifier` is a synthetic `user:…` routing id for
+   *  these, so the UI shows `upstreamModel` instead. Null for predefined
+   *  aliases (where `modelIdentifier` IS the real id). */
+  upstreamModel?: string | null;
   isActive: boolean;
   fallbackModels: string[];
   /** When set, chat calls for this alias route through the linked Custom

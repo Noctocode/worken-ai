@@ -150,7 +150,7 @@ export function ModelRow({
         <div className="flex items-center gap-1.5">
           <Bot className="h-4 w-4 text-text-3 shrink-0" />
           <span className="text-base font-normal text-text-1">
-            {model.modelIdentifier}
+            {model.upstreamModel ?? model.modelIdentifier}
           </span>
           {customIntegration && (
             <span
