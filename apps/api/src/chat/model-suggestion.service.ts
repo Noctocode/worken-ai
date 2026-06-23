@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
+import { ModelsService } from '../models/models.service.js';
 
 /**
  * Lightweight heuristic that nudges the user toward a better-suited
@@ -15,11 +15,12 @@ import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.j
  * assistant message; the `done` shape change is purely additive, so
  * older FE builds that don't read the field just ignore it.
  *
- * The suggested id is **resolved against the live OpenRouter catalog**
- * before it's returned: clicking "Try It" persists the id as the
- * project's model with no further validation, so suggesting a
- * delisted/renamed id would silently poison the project (every later
- * turn 404s). A model that isn't in the catalog is never suggested.
+ * The suggested id is **resolved against the user's available (curated)
+ * models** before it's returned: clicking "Try It" persists the id as
+ * the project's model, and models are admin-curated — a model that isn't
+ * enabled would be rejected at chat time with MODEL_UNAVAILABLE. So we
+ * only ever suggest a model the user can actually switch to; if it isn't
+ * enabled (or the lookup fails) we drop the suggestion.
  */
 export interface ModelSuggestion {
   /** Slug the user can pass back to /chat/stream as `model`. */
@@ -48,8 +49,8 @@ const RULES: Rule[] = [
       /\b(code|function|debug|stack ?trace|typescript|javascript|python|refactor|implement|algorithm)\b/i,
     skipIfCurrentMatches: ['anthropic/'],
     suggestion: {
-      id: 'anthropic/claude-opus-4.7',
-      label: 'Claude Opus 4.7',
+      id: 'anthropic/claude-opus-4.8',
+      label: 'Claude Opus 4.8',
       reason:
         'Claude handles structured code tasks better — fewer hallucinated API calls.',
     },
@@ -71,12 +72,12 @@ const RULES: Rule[] = [
 export class ModelSuggestionService {
   private readonly logger = new Logger(ModelSuggestionService.name);
 
-  constructor(private readonly catalog: OpenRouterCatalogService) {}
+  constructor(private readonly modelsService: ModelsService) {}
 
   /**
    * Return a suggestion for this turn, or null. The keyword match is a
-   * cheap in-memory rule scan; the only async work is the catalog
-   * resolve below, against a Redis-cached list, on the chat-stream tail.
+   * cheap in-memory rule scan; the only async work is resolving the
+   * caller's available models below, on the chat-stream tail.
    *
    * Always opt-in for the caller: the FE bubble only renders when the
    * field is present, so a null is a no-op for users.
@@ -84,6 +85,7 @@ export class ModelSuggestionService {
   async suggest(input: {
     prompt: string;
     currentModel: string;
+    userId: string;
   }): Promise<ModelSuggestion | null> {
     const prompt = (input.prompt ?? '').slice(0, 4000); // cap to keep regex cheap
     const current = input.currentModel ?? '';
@@ -100,16 +102,22 @@ export class ModelSuggestionService {
     if (!matched) return null;
     const chosen = matched;
 
-    // Never suggest a model the user can't actually switch to: clicking
-    // "Try It" persists the id with no validation. Fail-safe — if the
-    // catalog is unreachable, drop the suggestion rather than risk
-    // surfacing a delisted id or breaking the chat `done` event.
+    // Never suggest a model the user can't actually switch to. Models are
+    // admin-curated, so validate against the caller's available (enabled)
+    // models — not the raw catalog: a catalog-valid-but-not-enabled model
+    // would be rejected at chat time with MODEL_UNAVAILABLE. Fail-safe —
+    // on any lookup error, drop the suggestion rather than risk breaking
+    // the chat `done` event or surfacing an unusable id.
     try {
-      const catalog = await this.catalog.list();
-      if (!catalog.some((m) => m.id === chosen.id)) return null;
+      const available = await this.modelsService.availableModelIds(
+        input.userId,
+      );
+      if (!available.has(chosen.id)) return null;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      this.logger.warn(`Suggestion catalog check failed; dropping: ${msg}`);
+      this.logger.warn(
+        `Suggestion availability check failed; dropping: ${msg}`,
+      );
       return null;
     }
     return chosen;

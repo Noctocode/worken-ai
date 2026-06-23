@@ -872,6 +872,7 @@ export class ChatController {
         : await this.modelSuggestions.suggest({
             prompt: safePrompt,
             currentModel: body.model ?? '',
+            userId: user.id,
           });
 
       sendEvent('done', {
