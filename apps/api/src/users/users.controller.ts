@@ -39,6 +39,16 @@ export class UsersController {
     return this.usersService.findAll(caller.id);
   }
 
+  /**
+   * Slim company roster (id/name/email/picture) for member-pickers — no
+   * role/budget. Declared before `:id` so the static path wins over the
+   * param route. Any company member may call it.
+   */
+  @Get('colleagues')
+  colleagues(@CurrentUser() caller: AuthenticatedUser) {
+    return this.usersService.listColleagues(caller.id);
+  }
+
   @Get(':id')
   findOne(@Param('id') id: string, @CurrentUser() caller: AuthenticatedUser) {
     return this.usersService.findOne(id, caller.id);

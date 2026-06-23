@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLanguage } from "@/lib/i18n";
 import { useAuth } from "@/components/providers";
 import {
-  fetchOrgUsers,
+  fetchColleagues,
   uploadScheduleFiles,
   type ScheduledPrompt,
   type ScheduledPromptInput,
@@ -130,8 +130,8 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
   );
   const { user } = useAuth();
   const { data: orgUsers } = useQuery({
-    queryKey: ["org-users"],
-    queryFn: fetchOrgUsers,
+    queryKey: ["colleagues"],
+    queryFn: fetchColleagues,
   });
   // Colleagues = company members other than the current user (the owner is
   // always notified, so they're not listed as a selectable extra).
