@@ -6,6 +6,7 @@ import type {
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
+import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -146,7 +147,7 @@ export class ChatService {
    */
   async *sendMessageStream(
     messages: ChatMessage[],
-    model: string = 'moonshotai/kimi-k2.5',
+    model: string = DEFAULT_CHAT_MODEL,
     enableReasoning: boolean = true,
     context?: string,
     apiKey: string = '',

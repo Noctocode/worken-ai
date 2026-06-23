@@ -135,7 +135,6 @@ function toHistoryEntry(run: ArenaRunSummary): HistoryEntry {
 const MODEL_COLORS: Record<string, string> = {
   // simple deterministic palette per model id; falls back to gray.
   "stepfun/step-3.5-flash:free": "bg-[#10A37F]/10 text-[#10A37F]",
-  "arcee-ai/trinity-large-preview:free": "bg-[#C2410C]/10 text-[#C2410C]",
   "liquid/lfm-2.5-1.2b-thinking:free": "bg-[#4338CA]/10 text-[#4338CA]",
 };
 

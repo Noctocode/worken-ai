@@ -33,6 +33,7 @@ import { ObservabilityService } from '../observability/observability.service.js'
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { SkillRouterService } from '../skills/skill-router.service.js';
 import { ChatService } from './chat.service.js';
+import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { ChatGateway } from '../realtime/chat.gateway.js';
 
@@ -174,7 +175,7 @@ export class ChatController {
       user.id,
     );
 
-    let requestedModel = body.model ?? 'moonshotai/kimi-k2.5';
+    let requestedModel = body.model ?? DEFAULT_CHAT_MODEL;
     // Pre-flight curation gate (only for an explicitly-selected model —
     // the system default isn't a curated alias). If the chosen model was
     // disabled/deleted in Management → Models, fall back to its first
@@ -868,9 +869,10 @@ export class ChatController {
       // that don't read it just ignore it.
       const alternativeModel = clientDisconnected
         ? null
-        : this.modelSuggestions.suggest({
+        : await this.modelSuggestions.suggest({
             prompt: safePrompt,
             currentModel: body.model ?? '',
+            userId: user.id,
           });
 
       sendEvent('done', {

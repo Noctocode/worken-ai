@@ -29,7 +29,6 @@ import { useLanguage } from "@/lib/i18n";
 
 const MODEL_ICONS: Record<string, { color: string; letter: string }> = {
   "stepfun/step-3.5-flash:free": { color: "#10a37f", letter: "S" },
-  "arcee-ai/trinity-large-preview:free": { color: "#1a73e8", letter: "T" },
   "liquid/lfm-2.5-1.2b-thinking:free": { color: "#7c3aed", letter: "L" },
 };
 
