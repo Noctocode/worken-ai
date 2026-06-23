@@ -47,6 +47,7 @@ import {
   type ProjectMember,
 } from "@/lib/api";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { hideTeamScopeUi } from "@/lib/team-scope-visibility";
 import { useOnlineUsers } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -243,9 +244,11 @@ export function ProjectDetailsPanel({
   // The Team Members section is meaningless without a team — a personal
   // profile (no teammates) OR a personal project (no team). In either
   // case `fetchProjectMembers` returns no rows, so hide the section and
-  // skip the fetch. Consistent with main's personal-account model.
+  // skip the fetch. Shared predicate keeps this in sync with the chat-
+  // history filter in ChatHistorySidebar. (The panel only renders once
+  // the project is loaded, so no loading flag is needed here.)
   const isPersonal = useIsPersonal();
-  const hideTeamMembers = isPersonal || !projectHasTeam;
+  const hideTeamMembers = hideTeamScopeUi({ isPersonal, projectHasTeam });
   const onlineUserIds = useOnlineUsers();
 
   /* Chat Context edit state */

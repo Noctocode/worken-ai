@@ -16,6 +16,7 @@ import {
 import { fetchConversations, deleteConversation } from "@/lib/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { hideTeamScopeUi } from "@/lib/team-scope-visibility";
 import { useProjectActivity } from "@/components/realtime-provider";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
@@ -29,6 +30,9 @@ interface ChatHistorySidebarProps {
    *  have only personal conversations, so the All/Personal/Team filter
    *  is meaningless and hidden. */
   projectHasTeam?: boolean;
+  /** True while the project is still loading — keeps the filter hidden
+   *  until the team status is known (no flash for team projects). */
+  projectLoading?: boolean;
   /** <lg: render the same list inside a left slide-over drawer. */
   mobileOpen?: boolean;
   onMobileOpenChange?: (open: boolean) => void;
@@ -67,17 +71,21 @@ export function ChatHistorySidebar({
   onSelectConversation,
   onNewChat,
   projectHasTeam = false,
+  projectLoading = false,
   mobileOpen,
   onMobileOpenChange,
 }: ChatHistorySidebarProps) {
   const { t } = useLanguage();
   // The All/Personal/Team split is meaningless when there can't be team
-  // conversations — i.e. a personal profile (no teammates) OR a personal
-  // project (no team). In either case hide the tabs and show the full
-  // list. Mirrors main's dashboard, which forces personal profiles to the
-  // Personal view.
+  // conversations — a personal profile, a personal project, or while the
+  // project is still loading. Shared predicate keeps this in sync with
+  // the Team Members section in ProjectDetailsPanel.
   const isPersonal = useIsPersonal();
-  const hideScopeTabs = isPersonal || !projectHasTeam;
+  const hideScopeTabs = hideTeamScopeUi({
+    isPersonal,
+    projectHasTeam,
+    projectLoading,
+  });
   const getRelativeTime = makeGetRelativeTime(t);
   const queryClient = useQueryClient();
 

@@ -802,8 +802,11 @@ export default function ProjectChatPage() {
     onSelectConversation: handleSelectConversation,
     onNewChat: handleNewChat,
     // Personal projects (no team) have only personal chats — the sidebar
-    // hides the All/Personal/Team filter for them.
+    // hides the All/Personal/Team filter for them. `projectLoading` keeps
+    // it hidden until the team status is known (sidebar also renders in
+    // the loading branch below), so the filter doesn't flash in.
     projectHasTeam: !!project?.teamId,
+    projectLoading: isLoadingProject,
     mobileOpen: historyDrawerOpen,
     onMobileOpenChange: setHistoryDrawerOpen,
   };
