@@ -291,6 +291,8 @@ export const management = {
   'mgmt.integ.replace': 'Replace',
   'mgmt.integ.showKey': 'Show key',
   'mgmt.integ.hideKey': 'Hide key',
+  'mgmt.integ.enableAddsModels':
+    "Enabling adds all of this provider's models to the Models tab; disabling removes them.",
   'mgmt.integ.enterNewKey': 'Enter a new key to replace the saved one',
   'mgmt.integ.enterApiKey': 'Enter your API key',
   'mgmt.integ.cancelKeepKey': 'Cancel — keep the saved key',

@@ -619,6 +619,11 @@ export class ModelsService {
    * exactly what `listEffectiveForUser` would surface in the picker.
    * Callers (chat / arena / cron) use it to reject a stale selection
    * before a request runs.
+   *
+   * Perf note: this resolves the full effective list (one DB round-trip)
+   * per call, i.e. once per chat/arena/cron request. That's an acceptable
+   * cost for the curation gate today; if model lists or request volume
+   * grow, cache the effective list per (user, scope) for a few seconds.
    */
   async availableModelIds(
     userId: string,
@@ -776,6 +781,10 @@ export class ModelsService {
         isActive: true,
         autoProvisioned: true,
       }));
+    // A single bulk insert. A "heavy" provider (e.g. OpenAI) can add
+    // dozens of rows at once — that's expected; the Integration settings
+    // dialog warns the admin that enabling adds the provider's models to
+    // the Models tab (and disabling removes them).
     if (toInsert.length > 0) {
       await this.db.insert(modelConfigs).values(toInsert);
     }

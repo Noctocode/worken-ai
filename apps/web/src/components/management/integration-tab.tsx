@@ -499,6 +499,13 @@ function ProviderSettingsDialog({
             <div className="w-full rounded-lg bg-bg-3 px-[17px] py-[13px] text-[15px] leading-[22px] text-text-1">
               {t("mgmt.integ.additionalCosts")}
             </div>
+            {/* Heads-up: enabling a provider bulk-adds its whole catalog to
+                the Models tab (can be dozens of models); disabling removes
+                them. */}
+            <p className="mt-1.5 flex items-start gap-1.5 text-[12px] leading-snug text-text-3">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {t("mgmt.integ.enableAddsModels")}
+            </p>
           </div>
         )}
 

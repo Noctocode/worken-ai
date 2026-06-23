@@ -5,7 +5,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  and,
+  eq,
+  getTableColumns,
+  gte,
+  inArray,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -131,27 +139,6 @@ export class IntegrationsService {
   }
 
   /**
-   * Ids of everyone in the caller's company (company-profile callers only;
-   * empty for personal / solo accounts). AI keys are admin-managed at the
-   * company level, so the Integration tab and the per-row mutation guard
-   * treat a key added by any member as the company's key.
-   */
-  private async resolveCompanyMemberIds(userId: string): Promise<string[]> {
-    const [u] = await this.db
-      .select({ profileType: users.profileType, companyId: users.companyId })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-    const companyId = u?.profileType === 'company' ? u.companyId : null;
-    if (!companyId) return [];
-    const members = await this.db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.companyId, companyId));
-    return members.map((m) => m.id);
-  }
-
-  /**
    * Per-row mutation guard. The owner can always change their own key.
    * Beyond that — because predefined/company keys are admin-managed
    * company-wide — a company admin may change a teamless key owned by
@@ -215,20 +202,28 @@ export class IntegrationsService {
     // reflect the company's keys — not just the caller's own rows. Pull
     // every teamless key owned by a company member so a key added by ONE
     // admin shows as enabled (with its config) on EVERY member's tab.
-    // Empty for personal/solo accounts → behaviour unchanged.
-    const companyMemberIds = await this.resolveCompanyMemberIds(userId);
-    const companyRows =
-      companyMemberIds.length > 0
-        ? await this.db
-            .select()
-            .from(integrations)
-            .where(
-              and(
-                inArray(integrations.ownerId, companyMemberIds),
-                isNull(integrations.teamId),
-              ),
-            )
-        : [];
+    // Single JOIN on the tenant (no separate member-id fetch + inArray) so
+    // this stays one query regardless of company size. Empty for
+    // personal/solo accounts → behaviour unchanged.
+    const [caller] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const callerCompanyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    const companyRows = callerCompanyId
+      ? await this.db
+          .select(getTableColumns(integrations))
+          .from(integrations)
+          .innerJoin(users, eq(users.id, integrations.ownerId))
+          .where(
+            and(
+              eq(users.companyId, callerCompanyId),
+              isNull(integrations.teamId),
+            ),
+          )
+      : [];
 
     // Combined view (caller rows first, deduped by id) drives the custom
     // cards + alias/stat lookups below; the predefined loop picks its row
@@ -656,11 +651,12 @@ export class IntegrationsService {
           set: conflictUpdates,
         });
 
-      // Enabling a provider auto-provisions its whole catalog into the
+      // Predefined branch (custom is handled in the `if (isCustom)` block
+      // above). Enabling auto-provisions the provider's catalog into the
       // Models tab; disabling removes those auto rows. Only act when the
       // caller explicitly set the enabled state (a toggle / first save),
       // not on unrelated edits (e.g. token-limit only) that leave
-      // isEnabled untouched. Azure/custom are no-ops in the sync.
+      // isEnabled untouched. Azure is a no-op in the sync (no catalog).
       if (input.isEnabled !== undefined) {
         await this.modelsService.syncProviderCatalogAliases(
           userId,
@@ -812,13 +808,15 @@ export class IntegrationsService {
         .where(eq(modelConfigs.integrationId, id));
     }
 
-    // Toggling a provider on/off keeps the Models tab in sync.
-    //  - Predefined: add/remove the auto-provisioned catalog. Sync on the
-    //    KEY's OWNER (not the caller) so a company admin disabling another
-    //    member's company key removes THAT owner's models, not nothing.
-    //  - Custom LLM: mirror the toggle onto its bound alias's isActive, so
-    //    a disabled Custom endpoint doesn't keep showing an "active" model
-    //    in the table while its card reads disabled (and vice-versa).
+    // Toggling a provider on/off keeps the Models tab in sync — disabling
+    // removes the model(s) from the table, enabling brings them back.
+    //  - Predefined: add/remove the auto-provisioned catalog via
+    //    syncProviderCatalogAliases, on the KEY's OWNER (not the caller)
+    //    so a company admin disabling another member's company key removes
+    //    THAT owner's models, not nothing.
+    //  - Custom LLM: delete the bound alias on disable (snapshotting the
+    //    binding into config) and recreate it on enable — same
+    //    "disappears from the table" behaviour as predefined.
     if (input.isEnabled !== undefined) {
       if (row.providerId === 'custom') {
         if (input.isEnabled) {
