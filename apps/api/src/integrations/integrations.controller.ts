@@ -87,6 +87,9 @@ export class IntegrationsController {
       config?: IntegrationConfig;
       allowPersonalUse?: boolean;
       monthlyTokenLimit?: number | null;
+      customName?: string;
+      apiUrl?: string;
+      customModel?: string;
     },
     @CurrentUser() user: AuthenticatedUser,
   ) {

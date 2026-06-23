@@ -1,10 +1,11 @@
 import {
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { type SQL, and, asc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { type SQL, and, asc, eq, inArray, isNull, like, or } from 'drizzle-orm';
 import {
   integrations,
   modelConfigs,
@@ -22,6 +23,17 @@ import {
   OpenRouterCatalogService,
   type CatalogModel,
 } from './openrouter-catalog.service.js';
+
+/**
+ * Marker for "the selected model isn't in the user's curated list" —
+ * its alias was disabled or deleted in Management → Models (or it was
+ * never enabled). Mirrors the budget/key markers in chat-transport: the
+ * FE humanizer (chat-errors.ts) matches on `MODEL_UNAVAILABLE:` and
+ * shows the actionable message verbatim. Used by chat, arena, and AI
+ * cron so a stale model selection fails with a clear "why + how to fix"
+ * instead of silently falling back to a different route.
+ */
+export const MODEL_UNAVAILABLE_MARKER = 'MODEL_UNAVAILABLE';
 
 /**
  * What a model picker (arena, project chat, …) should show for a user.
@@ -81,10 +93,11 @@ export class ModelsService {
    * user across the whole deployment, which leaked model aliases
    * across distinct tenants.
    *
-   * Edit / delete permissions are not relaxed by this — they
-   * still gate on `ownerId === caller` in `update` / `remove`.
-   * Company users can SEE every model_config in their tenant, but
-   * only the owner (or admin in a follow-up PR) can mutate it.
+   * Edit / delete permissions are handled separately in `update` /
+   * `remove` via `assertCanMutateModel`: the owner, or a company
+   * admin acting within the same tenant, may mutate a model. Company
+   * users can SEE every model_config in their tenant but basic
+   * members can't mutate ones they don't own.
    */
   private async resolveAliasScopeFilter(
     callerId: string,
@@ -144,6 +157,27 @@ export class ModelsService {
   }
 
   /**
+   * Ids of everyone sharing the caller's company (company-profile callers
+   * only; empty for personal / pre-onboarding accounts). A key any member
+   * (an admin — only admins can add) configures is available company-wide,
+   * so these ids drive company-wide key visibility in the picker.
+   */
+  private async resolveCompanyMemberIds(callerId: string): Promise<string[]> {
+    const [caller] = await this.db
+      .select({ profileType: users.profileType, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, callerId));
+    const companyId =
+      caller?.profileType === 'company' ? caller.companyId : null;
+    if (!companyId) return [];
+    const members = await this.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.companyId, companyId));
+    return members.map((m) => m.id);
+  }
+
+  /**
    * Models the caller can see in the /teams "Models" management tab.
    * Same scope as `listEffectiveForUser`, except inactive rows are
    * included so the user can toggle them back on.
@@ -171,15 +205,14 @@ export class ModelsService {
    * for a given user.
    *
    *  - Active model_configs aliases (one entry each, custom name as label).
-   *  - Plus every catalog model whose provider has an enabled BYOK row
-   *    with an api key in `integrations`. The user has explicitly opted
-   *    in to using their own provider account for that whole vendor;
-   *    surfacing the full catalog there saves them from manually
-   *    aliasing every model they want to try.
+   *  - Plus explicitly-configured Azure deployments (Azure has no
+   *    catalog, so its deployments are the selectable entries).
    *
-   * Aliases dedupe over catalog entries on the same modelIdentifier —
-   * the user's custom name and (if present) Custom LLM binding take
-   * precedence.
+   * Models are admin-curated under the Models tab: there is NO BYOK
+   * catalog expansion. An enabled provider key only changes how an
+   * existing alias routes (BYOK vs WorkenAI default) — it does not
+   * auto-surface that provider's whole catalog. To make a model
+   * selectable, an admin adds an alias for it.
    */
   async listEffectiveForUser(
     userId: string,
@@ -265,6 +298,39 @@ export class ModelsService {
       .filter((r) => r.providerId === 'custom')
       .map((r) => r.id);
 
+    // Company-wide keys: any enabled integration owned by a company member
+    // (admin-added — only admins can add) is available to EVERY member.
+    // Surfaced in the personal + no-scope pickers; a team scope already
+    // shows that team's keys, so we skip the lookup there.
+    const companyMemberIds = includePersonalProviders
+      ? await this.resolveCompanyMemberIds(userId)
+      : [];
+    const companyIntegrations =
+      companyMemberIds.length > 0
+        ? await this.db
+            .select({
+              id: integrations.id,
+              providerId: integrations.providerId,
+              config: integrations.config,
+            })
+            .from(integrations)
+            .where(
+              and(
+                inArray(integrations.ownerId, companyMemberIds),
+                isNull(integrations.teamId),
+                eq(integrations.isEnabled, true),
+              ),
+            )
+        : [];
+    const companyCustomIds = companyIntegrations
+      .filter((r) => r.providerId === 'custom')
+      .map((r) => r.id);
+    // Custom integration ids whose aliases must surface in the personal-scope
+    // picker: team-shared (allow_personal_use) + company-wide.
+    const personalCustomAliasIds = Array.from(
+      new Set([...sharedCustomIds, ...companyCustomIds]),
+    );
+
     // Aliases the user can pick from, narrowed to `scope` when given
     // (see the doc comment above). No scope = the full union. For the
     // personal scope we also pull in team-scoped aliases bound to a
@@ -273,13 +339,13 @@ export class ModelsService {
     // loop, so they don't need this).
     const aliasScopeFilter: SQL<unknown> | undefined = scope
       ? scope.teamId === null
-        ? sharedCustomIds.length > 0
+        ? personalCustomAliasIds.length > 0
           ? or(
               and(
                 eq(modelConfigs.ownerId, userId),
                 isNull(modelConfigs.teamId),
               ),
-              inArray(modelConfigs.integrationId, sharedCustomIds),
+              inArray(modelConfigs.integrationId, personalCustomAliasIds),
             )
           : and(eq(modelConfigs.ownerId, userId), isNull(modelConfigs.teamId))
         : eq(modelConfigs.teamId, scope.teamId)
@@ -344,7 +410,13 @@ export class ModelsService {
     const enabledProviders = new Set(
       // personalEnabledRows is already empty unless includePersonalProviders.
       // personalUseShared is already empty unless this is the personal scope.
-      [...personalEnabledRows, ...teamEnabledRows, ...personalUseShared]
+      // companyIntegrations is already empty unless includePersonalProviders.
+      [
+        ...personalEnabledRows,
+        ...teamEnabledRows,
+        ...personalUseShared,
+        ...companyIntegrations,
+      ]
         .map((r) => r.providerId)
         .filter((id) => id !== 'custom'), // custom routes via aliases, not provider lookup
     );
@@ -391,6 +463,8 @@ export class ModelsService {
     }
     // Custom keys shared for personal use (personal scope only).
     sharedCustomIds.forEach((id) => enabledCustomIntegrationIds.add(id));
+    // Company-wide custom keys (admin-added) — available to every member.
+    companyCustomIds.forEach((id) => enabledCustomIntegrationIds.add(id));
 
     // Azure has no OpenRouter catalog (it isn't an OpenRouter slug), so
     // its selectable models are the deployments the user configured on
@@ -445,6 +519,10 @@ export class ModelsService {
         ...personalUseShared
           .filter((r) => r.providerId === 'azure')
           .map((r) => r.config),
+        // Company-wide Azure key (admin-added) — deployments available to all.
+        ...companyIntegrations
+          .filter((r) => r.providerId === 'azure')
+          .map((r) => r.config),
       );
     }
 
@@ -496,26 +574,13 @@ export class ModelsService {
       });
     }
 
-    if (enabledProviders.size > 0) {
-      const catalog = await this.catalogService.list();
-      for (const m of catalog) {
-        if (seen.has(m.id)) continue;
-        const slash = m.id.indexOf('/');
-        if (slash === -1) continue;
-        const provider = m.id.slice(0, slash);
-        if (!enabledProviders.has(provider)) continue;
-        seen.add(m.id);
-        out.push({
-          id: m.id,
-          name: m.name,
-          source: 'byok',
-          routing: computeRouting(m.id, false),
-          description: m.description,
-          context_length: m.context_length,
-          pricing: m.pricing,
-        });
-      }
-    }
+    // NOTE: no BYOK "catalog expansion" here. Models are admin-curated
+    // under the Models tab — the picker surfaces exactly the active
+    // aliases (above) plus explicitly-configured Azure deployments
+    // (below). Having an enabled provider key no longer auto-surfaces
+    // that provider's entire catalog; an admin must add an alias for
+    // any model they want selectable. `enabledProviders` still drives
+    // the BYOK/workenai routing marker on aliases via computeRouting.
 
     // Synthesize Azure deployments as selectable models. Id is
     // `azure/<deploymentName>` so providerOfModel() resolves "azure" and
@@ -549,6 +614,86 @@ export class ModelsService {
     return this.catalogService.list();
   }
 
+  /**
+   * The set of model ids the user can actually use in a given scope —
+   * exactly what `listEffectiveForUser` would surface in the picker.
+   * Callers (chat / arena / cron) use it to reject a stale selection
+   * before a request runs.
+   *
+   * Perf note: this resolves the full effective list (one DB round-trip)
+   * per call, i.e. once per chat/arena/cron request. That's an acceptable
+   * cost for the curation gate today; if model lists or request volume
+   * grow, cache the effective list per (user, scope) for a few seconds.
+   */
+  async availableModelIds(
+    userId: string,
+    scope?: { teamId: string | null },
+  ): Promise<Set<string>> {
+    const effective = await this.listEffectiveForUser(userId, scope);
+    return new Set(effective.map((m) => m.id));
+  }
+
+  /** Actionable "this model can't be used" sentence, marker-prefixed so
+   *  the FE humanizer (chat-errors.ts) shows it verbatim. */
+  modelUnavailableMessage(modelId: string): string {
+    return `${MODEL_UNAVAILABLE_MARKER}: "${modelId}" is no longer available — it was disabled or removed in Management → Models. Ask an admin to enable it there, or pick a different model.`;
+  }
+
+  /** Ready-to-throw 422 carrying {@link modelUnavailableMessage}. */
+  modelUnavailableError(modelId: string): HttpException {
+    return new HttpException(this.modelUnavailableMessage(modelId), 422);
+  }
+
+  /**
+   * Given a primary model and its configured fallbacks (in order), return
+   * the first one that's actually usable (curated/active), or null when
+   * none are. This is what lets a disabled primary fall back to an enabled
+   * alternate — and surfaces MODEL_UNAVAILABLE only when the primary AND
+   * every fallback are unavailable. Pure: callers pass the available set.
+   */
+  firstAvailableModel(
+    candidates: string[],
+    available: Set<string>,
+  ): string | null {
+    return candidates.find((c) => available.has(c)) ?? null;
+  }
+
+  /**
+   * Throw a clear, actionable MODEL_UNAVAILABLE error when `modelId`
+   * isn't in the user's curated/effective list (alias disabled, deleted,
+   * or never enabled). Returns silently when the model is usable. Pass a
+   * pre-fetched id set to avoid re-querying when checking several models.
+   */
+  async assertModelAvailable(
+    userId: string,
+    modelId: string,
+    scope?: { teamId: string | null },
+    available?: Set<string>,
+  ): Promise<void> {
+    const ids = available ?? (await this.availableModelIds(userId, scope));
+    if (ids.has(modelId)) return;
+    throw this.modelUnavailableError(modelId);
+  }
+
+  /**
+   * Gate model creation. Models are admin-managed at the company level
+   * (the /teams "Models" tab is an admin surface), so a company member
+   * must be an admin to add one — mirrors integrations' assertCanManageKeys
+   * and the owner-or-admin rule in assertCanMutateModel. Personal / solo
+   * accounts (no company tenant) manage their own models, so they're
+   * always allowed.
+   */
+  private async assertCanCreateModel(userId: string): Promise<void> {
+    const [u] = await this.db
+      .select({ role: users.role, companyId: users.companyId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (u?.companyId && u.role !== 'admin') {
+      throw new ForbiddenException('Only an admin can add company models.');
+    }
+  }
+
   async create(
     ownerId: string,
     data: {
@@ -558,6 +703,7 @@ export class ModelsService {
       integrationId?: string | null;
     },
   ) {
+    await this.assertCanCreateModel(ownerId);
     const [model] = await this.db
       .insert(modelConfigs)
       .values({
@@ -570,6 +716,121 @@ export class ModelsService {
       .returning();
 
     return model;
+  }
+
+  /**
+   * Sync a predefined provider's whole catalog into the Models tab when
+   * its BYOK key is enabled, and remove it again when disabled. Driven
+   * by the provider enable/disable toggle in integrations.
+   *
+   *  - enable  → insert one active alias per catalog model of `providerId`
+   *              that the owner doesn't already have (auto_provisioned=true).
+   *              Manually-added aliases for the same model are left as-is.
+   *  - disable → delete only the auto-provisioned aliases for that
+   *              provider; manual aliases (auto_provisioned=false) survive.
+   *
+   * Custom and Azure are skipped: 'custom' has no catalog (it routes via
+   * a bound alias) and Azure's selectable models are explicit deployments,
+   * not a catalog. No-ops for any provider with no catalog entries.
+   */
+  async syncProviderCatalogAliases(
+    ownerId: string,
+    providerId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    if (providerId === 'custom' || providerId === 'azure') return;
+
+    if (!enabled) {
+      await this.db
+        .delete(modelConfigs)
+        .where(
+          and(
+            eq(modelConfigs.ownerId, ownerId),
+            isNull(modelConfigs.teamId),
+            eq(modelConfigs.autoProvisioned, true),
+            like(modelConfigs.modelIdentifier, `${providerId}/%`),
+          ),
+        );
+      return;
+    }
+
+    const catalog = await this.catalogService.list();
+    const providerModels = catalog.filter(
+      (m) => providerOfModel(m.id) === providerId,
+    );
+    if (providerModels.length === 0) return;
+
+    // Skip identifiers the owner already has (manual OR previously
+    // auto-provisioned) so re-enabling never duplicates a row.
+    const existing = await this.db
+      .select({ modelIdentifier: modelConfigs.modelIdentifier })
+      .from(modelConfigs)
+      .where(
+        and(eq(modelConfigs.ownerId, ownerId), isNull(modelConfigs.teamId)),
+      );
+    const existingIds = new Set(existing.map((e) => e.modelIdentifier));
+
+    const toInsert = providerModels
+      .filter((m) => !existingIds.has(m.id))
+      .map((m) => ({
+        ownerId,
+        teamId: null,
+        customName: m.name,
+        modelIdentifier: m.id,
+        integrationId: null,
+        isActive: true,
+        autoProvisioned: true,
+      }));
+    // A single bulk insert. A "heavy" provider (e.g. OpenAI) can add
+    // dozens of rows at once — that's expected; the Integration settings
+    // dialog warns the admin that enabling adds the provider's models to
+    // the Models tab (and disabling removes them).
+    if (toInsert.length > 0) {
+      await this.db.insert(modelConfigs).values(toInsert);
+    }
+  }
+
+  /**
+   * Mutation guard for a single model_config. The owner can always
+   * edit/delete their own alias. Beyond that, a company admin manages
+   * the whole tenant's model catalog (the /teams "Models" tab is an
+   * admin surface), so an admin may mutate any model whose owner sits
+   * in the SAME company tenant. Personal profiles have no tenant, so
+   * they fall back to owner-only.
+   */
+  private async assertCanMutateModel(
+    model: typeof modelConfigs.$inferSelect,
+    userId: string,
+    action: 'update' | 'delete',
+  ): Promise<void> {
+    if (model.ownerId === userId) return;
+
+    const [caller] = await this.db
+      .select({
+        role: users.role,
+        companyId: users.companyId,
+        profileType: users.profileType,
+      })
+      .from(users)
+      .where(eq(users.id, userId));
+
+    if (
+      caller?.role === 'admin' &&
+      caller.profileType === 'company' &&
+      caller.companyId
+    ) {
+      const [owner] = await this.db
+        .select({ companyId: users.companyId })
+        .from(users)
+        .where(eq(users.id, model.ownerId));
+      if (owner?.companyId && owner.companyId === caller.companyId) return;
+    }
+
+    throw new ForbiddenException(
+      action === 'delete'
+        ? 'Only the owner or a company admin can delete this model'
+        : 'Only the owner or a company admin can update this model',
+    );
   }
 
   async update(
@@ -589,9 +850,7 @@ export class ModelsService {
       .where(eq(modelConfigs.id, id));
 
     if (!model) throw new NotFoundException('Model config not found');
-    if (model.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can update this model');
-    }
+    await this.assertCanMutateModel(model, userId, 'update');
 
     const updates: Record<string, unknown> = {};
     if (data.customName !== undefined) updates.customName = data.customName;
@@ -621,9 +880,7 @@ export class ModelsService {
       .where(eq(modelConfigs.id, id));
 
     if (!model) throw new NotFoundException('Model config not found');
-    if (model.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can delete this model');
-    }
+    await this.assertCanMutateModel(model, userId, 'delete');
 
     await this.db.delete(modelConfigs).where(eq(modelConfigs.id, id));
     return { success: true };

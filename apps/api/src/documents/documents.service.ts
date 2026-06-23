@@ -136,6 +136,8 @@ export class DocumentsService {
     return this.db
       .select({
         id: documents.id,
+        groupId: documents.groupId,
+        title: documents.title,
         content: documents.content,
         createdAt: documents.createdAt,
       })

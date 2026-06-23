@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { useLanguage } from "@/lib/i18n";
+import { humanizeChatError } from "@/lib/chat-errors";
 import type { ScheduledPromptRun } from "@/lib/api";
 import { useScheduledPromptRuns } from "@/lib/hooks/use-scheduled-prompts";
 import { Badge } from "@/components/ui/badge";
@@ -119,7 +120,7 @@ export function RunHistoryDialog({
                         </div>
                         {run.errorMessage && (
                           <div className="rounded-lg bg-danger-1 px-3 py-2 text-xs text-danger-6">
-                            {run.errorMessage}
+                            {humanizeChatError(new Error(run.errorMessage))}
                           </div>
                         )}
                         {run.output && (

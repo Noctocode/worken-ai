@@ -391,6 +391,8 @@ export async function deleteProject(id: string): Promise<void> {
 
 export interface Document {
   id: string;
+  groupId: string;
+  title: string;
   content: string;
   createdAt: string;
 }
@@ -1431,6 +1433,22 @@ export async function fetchOrgUsers(): Promise<OrgUser[]> {
   return res.json();
 }
 
+/** Slim company roster for member-pickers — only id/name/email/picture, no
+ *  role/budget. Use this (not fetchOrgUsers) anywhere a non-admin picks a
+ *  colleague, so management-only fields aren't shipped to the client. */
+export interface Colleague {
+  id: string;
+  name: string | null;
+  email: string;
+  picture: string | null;
+}
+
+export async function fetchColleagues(): Promise<Colleague[]> {
+  const res = await apiFetch("/users/colleagues");
+  if (!res.ok) throw new Error("Failed to fetch colleagues");
+  return res.json();
+}
+
 export interface OrgUserDetail {
   id: string;
   email: string;
@@ -1546,6 +1564,11 @@ export interface ModelConfig {
   ownerId: string;
   customName: string;
   modelIdentifier: string;
+  /** Custom LLM aliases only: the real model id sent to the upstream
+   *  endpoint. `modelIdentifier` is a synthetic `user:…` routing id for
+   *  these, so the UI shows `upstreamModel` instead. Null for predefined
+   *  aliases (where `modelIdentifier` IS the real id). */
+  upstreamModel?: string | null;
   isActive: boolean;
   fallbackModels: string[];
   /** When set, chat calls for this alias route through the linked Custom
@@ -3462,6 +3485,8 @@ export interface IntegrationCard {
   description: string;
   iconHint: string;
   apiUrl: string | null;
+  /** Custom only: the real upstream model id, to seed the edit form. */
+  upstreamModel?: string | null;
   hasApiKey: boolean;
   isEnabled: boolean;
   isCustom: boolean;
@@ -3553,6 +3578,10 @@ export async function updateIntegration(
     config?: IntegrationConfig;
     allowPersonalUse?: boolean;
     monthlyTokenLimit?: number | null;
+    // Custom LLM field edits (ignored for predefined/azure).
+    customName?: string;
+    apiUrl?: string;
+    customModel?: string;
   },
 ): Promise<IntegrationCard> {
   const res = await apiFetch(`/integrations/${id}`, {
@@ -4794,6 +4823,8 @@ export interface ScheduledPrompt {
   deliverEmail: boolean;
   deliverWebhook: boolean;
   emailRecipients: string[] | null;
+  /** Extra in-app notification recipients (company member user ids). */
+  notifyUserIds: string[] | null;
   webhookUrl: string | null;
   isEnabled: boolean;
   lastRunAt: string | null;
@@ -4837,6 +4868,8 @@ export interface ScheduledPromptInput {
   deliverEmail?: boolean;
   deliverWebhook?: boolean;
   emailRecipients?: string[];
+  /** Extra in-app notification recipients (company member user ids). */
+  notifyUserIds?: string[];
   webhookUrl?: string | null;
   isEnabled?: boolean;
 }

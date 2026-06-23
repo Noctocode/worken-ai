@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   deleteModel,
   fetchIntegrations,
@@ -36,6 +37,7 @@ import {
 } from "@/lib/api";
 import { invalidateModelMutations } from "@/lib/hooks/use-user-models";
 import { AddModelDialog } from "@/components/add-model-dialog";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 
 function providerOf(modelId: string): string | null {
@@ -50,9 +52,22 @@ function providerOf(modelId: string): string | null {
  * + fallback chips show up. Rendered at `<lg`; desktop keeps the
  * existing table.
  */
-export function ModelCard({ model }: { model: ModelConfig }) {
+export function ModelCard({
+  model,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
+}: {
+  model: ModelConfig;
+  // Bulk-select is admin-only; the parent gates `selectable`.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
   const [editOpen, setEditOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
@@ -92,12 +107,28 @@ export function ModelCard({ model }: { model: ModelConfig }) {
       : null;
 
   return (
-    <div className="flex flex-col gap-2.5 rounded-xl border border-border-2 bg-bg-white p-3.5">
+    <div
+      className={`flex flex-col gap-2.5 rounded-xl border p-3.5 ${
+        selectable && selected
+          ? "border-primary-3 bg-primary-1/30"
+          : "border-border-2 bg-bg-white"
+      }`}
+    >
       {/* Row 1: Custom Name + kebab */}
       <div className="flex items-start justify-between gap-3">
-        <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-1">
-          {model.customName}
-        </span>
+        <div className="flex min-w-0 flex-1 items-center gap-2.5">
+          {selectable && (
+            <Checkbox
+              aria-label={`${t("mgmt.rows.actionsFor")} ${model.customName}`}
+              checked={selected}
+              onCheckedChange={() => onToggleSelected?.()}
+              className="shrink-0"
+            />
+          )}
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold text-text-1">
+            {model.customName}
+          </span>
+        </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -113,6 +144,8 @@ export function ModelCard({ model }: { model: ModelConfig }) {
             <DropdownMenuItem
               className="gap-2"
               onClick={() => setEditOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : t("mgmt.rows.editModelsAdmin")}
             >
               <Pencil className="h-4 w-4" />
               {t("mgmt.rows.editModel")}
@@ -120,6 +153,8 @@ export function ModelCard({ model }: { model: ModelConfig }) {
             <DropdownMenuItem
               className="gap-2 text-danger-6 focus:text-danger-6"
               onClick={() => setDeleteConfirmOpen(true)}
+              disabled={!isAdmin}
+              title={isAdmin ? undefined : t("mgmt.rows.deleteModelsAdmin")}
             >
               <Trash2 className="h-4 w-4" />
               {t("mgmt.rows.removeModel")}
@@ -135,7 +170,9 @@ export function ModelCard({ model }: { model: ModelConfig }) {
           <Switch
             checked={model.isActive}
             onCheckedChange={() => toggleMutation.mutate()}
-            disabled={toggleMutation.isPending}
+            disabled={toggleMutation.isPending || !isAdmin}
+            title={isAdmin ? undefined : t("mgmt.rows.changeModelsAdmin")}
+            className={!isAdmin ? "opacity-50 cursor-not-allowed" : ""}
           />
           <span className="text-[13px] font-medium text-text-1">
             {model.isActive ? t("mgmt.rows.active") : t("mgmt.rows.inactive")}
@@ -151,7 +188,7 @@ export function ModelCard({ model }: { model: ModelConfig }) {
         <div className="flex flex-wrap items-center gap-1.5">
           <Bot className="h-4 w-4 shrink-0 text-text-3" />
           <span className="break-all text-[13px] text-text-1">
-            {model.modelIdentifier}
+            {model.upstreamModel ?? model.modelIdentifier}
           </span>
           {customIntegration && (
             <span

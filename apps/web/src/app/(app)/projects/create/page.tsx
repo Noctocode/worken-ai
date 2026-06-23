@@ -32,9 +32,6 @@ import {
   // type OrgUser,
 } from "@/lib/api";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
-import { useAvailableModels } from "@/lib/hooks/use-available-models";
-import { AGENTS } from "@/lib/agents";
-import { AgentGrid } from "@/components/agent-grid";
 import { useLanguage } from "@/lib/i18n";
 
 /* ─── Member picker (DISABLED) ────────────────────────────────────────────
@@ -152,21 +149,8 @@ export default function CreateProjectPage() {
   const [nameTaken, setNameTaken] = useState(false);
   const [teamError, setTeamError] = useState(false);
   const [projectType, setProjectType] = useState<"personal" | "team">("personal");
-  // Multi-select pool of agent presets. The first picked agent becomes
-  // the project's active one; the rest are switchable from the project
-  // header. Seeded with the general assistant so creation never blocks
-  // on an empty selection.
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([
-    "general-assistant",
-  ]);
-  // Model selection has two tabs: "recommended" (agent presets — our picks)
-  // and "custom" (models the admin configured in Team → Models). In custom
-  // mode the project is pinned directly to one configured model.
-  const [selectionTab, setSelectionTab] = useState<"recommended" | "custom">(
-    "recommended",
-  );
-  // Multi-select pool of configured model ids (Custom tab). The first becomes
-  // the active model; the rest are switchable from the project header.
+  // Multi-select pool of model ids. The first becomes the project's active
+  // model; the rest are switchable from the project header.
   const [selectedModelIds, setSelectedModelIds] = useState<string[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
   // const [selectedMembers, setSelectedMembers] = useState<{ id: string; name: string; email: string }[]>([]);
@@ -178,31 +162,21 @@ export default function CreateProjectPage() {
     enabled: projectType === "team",
   });
 
-  const { models: availableModels } = useAvailableModels();
-  // Models for the "Custom" tab, scoped to the project type the user is
-  // creating: a personal project shows only the caller's personal keys/
-  // aliases; a team project shows only what's enabled at THAT team. This
-  // is what keeps a Custom LLM that's both personal and team-linked from
-  // appearing twice, and hides personal-only keys from team projects.
-  const customScope =
-    projectType === "team" ? selectedTeamId : "personal";
+  // Models are company-wide now (admin-managed under the Models tab, no
+  // longer tied to a team), so the picker shows the full available pool
+  // regardless of personal vs team project — no per-scope narrowing.
   const { data: configuredModels = [] } = useQuery({
-    queryKey: ["models", "effective", customScope || "none"],
-    queryFn: () => fetchEffectiveModels(customScope),
-    // A team project with no team picked yet has nothing to scope to.
-    enabled: projectType === "personal" || !!selectedTeamId,
+    queryKey: ["models", "effective", "all"],
+    queryFn: () => fetchEffectiveModels(),
   });
+  // Any model routed through an own key / endpoint (BYOK or Custom LLM) is
+  // marked "(custom)"; managed catalog models get no suffix.
   const routingSuffix = (routing: string): string =>
-    routing === "byok" ? " (BYOK)" : routing === "custom" ? " (Custom)" : "";
+    routing === "byok" || routing === "custom" ? " (custom)" : "";
 
   const toggleModel = (id: string) =>
     setSelectedModelIds((prev) =>
       prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id],
-    );
-
-  const toggleAgent = (id: string) =>
-    setSelectedAgents((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
     );
 
   // Only teams the user can actually create a project in. Mirrors the BE
@@ -243,48 +217,17 @@ export default function CreateProjectPage() {
     const teamId =
       projectType === "team" && selectedTeamId ? selectedTeamId : undefined;
 
-    // Custom tab — a pool of configured models. The first is active; the rest
-    // are switchable from the project header (model ids live in `agents`).
-    if (selectionTab === "custom") {
-      if (selectedModelIds.length === 0) return; // Create disabled until picked.
-      const active = selectedModelIds[0];
-      const picked = configuredModels.find((m) => m.id === active);
-      mutation.mutate({
-        name,
-        description: `${picked?.name ?? active} project`,
-        model: active,
-        agent: active,
-        agents: selectedModelIds,
-        teamId,
-      });
-      return;
-    }
-
-    // Recommended tab — agent presets. Active agent = first in the pool;
-    // switchable later from the header.
-    const activeAgentId = selectedAgents[0];
-    const agent = AGENTS.find((a) => a.id === activeAgentId);
-    if (!agent) return;
-    if (availableModels.length === 0) {
-      // No models in the catalog response — surface a clear error rather
-      // than silently submitting with an empty model id.
-      setNameError(false);
-      alert(
-        "No models are available right now. Try again in a moment, or contact support if it persists.",
-      );
-      return;
-    }
-    // Prefer the model recommended for the active agent; if it isn't in
-    // the catalog response, fall back to the first available model so
-    // project creation never blocks on missing config.
-    const preferredModel = availableModels.find((m) => m.id === agent.model);
-    const model = preferredModel?.id ?? availableModels[0].id;
+    // A pool of selected models. The first is the active model; the rest are
+    // switchable from the project header (model ids live in `agents`).
+    if (selectedModelIds.length === 0) return; // Create disabled until picked.
+    const active = selectedModelIds[0];
+    const picked = configuredModels.find((m) => m.id === active);
     mutation.mutate({
       name,
-      description: `${agent.label} project`,
-      model,
-      agent: activeAgentId,
-      agents: selectedAgents,
+      description: `${picked?.name ?? active} project`,
+      model: active,
+      agent: active,
+      agents: selectedModelIds,
       teamId,
     });
   };
@@ -428,95 +371,67 @@ export default function CreateProjectPage() {
           )}
         </div>
 
-        {/* Select model — two tabs: Recommended (agent presets, our picks)
-            and Custom (models the admin configured in Team → Models). */}
+        {/* Select model(s) — a single pool of everything available to you
+            (catalog + your own keys / Custom LLMs, marked "(custom)"). The
+            first picked is the project's active model; the rest are
+            switchable from the project header. */}
         <div className="flex flex-col items-stretch md:items-center gap-4 w-full rounded-xl md:rounded-none bg-bg-white md:bg-transparent px-4 py-5 md:p-0">
-          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectAgent")}</h2>
-
-          {/* Tab switcher */}
-          <div className="inline-flex items-center gap-1 self-center rounded-lg border border-border-2 bg-bg-1 p-1">
-            {(["recommended", "custom"] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                onClick={() => setSelectionTab(tab)}
-                className={`cursor-pointer rounded-md px-4 py-1.5 text-[14px] font-medium transition-colors ${
-                  selectionTab === tab
-                    ? "bg-bg-white text-text-1 shadow-sm"
-                    : "text-text-2 hover:text-text-1"
-                }`}
-              >
-                {tab === "recommended"
-                  ? t("projectCreate.tabRecommended")
-                  : t("projectCreate.tabCustom")}
-              </button>
-            ))}
-          </div>
-
+          <h2 className="text-[18px] sm:text-[23px] font-bold text-text-1">{t("projectCreate.selectModel")}</h2>
           <p className="text-[14px] text-text-2 md:text-center leading-normal md:max-w-[600px]">
-            {selectionTab === "recommended"
-              ? t("projectCreate.selectAgentDesc")
-              : t("projectCreate.selectCustomDesc")}
+            {t("projectCreate.selectModelDesc")}
           </p>
 
-          {selectionTab === "recommended" ? (
-            <AgentGrid
-              selectedAgentIds={selectedAgents}
-              onToggle={(agent) => toggleAgent(agent.id)}
-            />
-          ) : (
-            <div className="flex w-full max-w-[900px] flex-col items-center gap-3">
-              {configuredModels.length === 0 ? (
-                <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-4 text-center text-[14px] text-text-2">
-                  {t("projectCreate.noCustomModels")}{" "}
+          <div className="flex w-full max-w-[900px] flex-col items-center gap-3">
+            {configuredModels.length === 0 ? (
+              <div className="rounded-lg border border-border-2 bg-bg-1 px-4 py-4 text-center text-[14px] text-text-2">
+                {t("projectCreate.noModels")}{" "}
+                <Link
+                  href="/teams?tab=models"
+                  className="text-primary-6 hover:underline"
+                >
+                  {t("projectCreate.addModels")}
+                </Link>
+              </div>
+            ) : (
+              <>
+                <div className="flex w-full flex-wrap justify-center gap-2.5">
+                  {configuredModels.map((m) => {
+                    const isSelected = selectedModelIds.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => toggleModel(m.id)}
+                        title={m.id}
+                        className={`flex w-[calc(50%-5px)] cursor-pointer flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors sm:w-auto sm:min-w-[220px] sm:max-w-[260px] sm:flex-1 ${
+                          isSelected
+                            ? "border border-primary-6 bg-primary-1"
+                            : "border border-transparent bg-bg-1 hover:border-border-3"
+                        }`}
+                      >
+                        <span className="max-w-full truncate text-[14px] font-medium text-text-1">
+                          {m.name}
+                          {routingSuffix(m.routing)}
+                        </span>
+                        <span className="max-w-full truncate text-[11px] text-text-3">
+                          {m.id}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-center text-[13px] text-text-3">
+                  {t("projectCreate.modelsHint")}{" "}
                   <Link
                     href="/teams?tab=models"
                     className="text-primary-6 hover:underline"
                   >
-                    {t("projectCreate.addCustomModels")}
+                    {t("projectCreate.addModels")}
                   </Link>
-                </div>
-              ) : (
-                <>
-                  <div className="flex w-full flex-wrap justify-center gap-2.5">
-                    {configuredModels.map((m) => {
-                      const isSelected = selectedModelIds.includes(m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => toggleModel(m.id)}
-                          title={m.id}
-                          className={`flex w-[calc(50%-5px)] cursor-pointer flex-col items-start gap-1 rounded-lg p-4 text-left transition-colors sm:w-auto sm:min-w-[220px] sm:max-w-[260px] sm:flex-1 ${
-                            isSelected
-                              ? "border border-primary-6 bg-primary-1"
-                              : "border border-transparent bg-bg-1 hover:border-border-3"
-                          }`}
-                        >
-                          <span className="max-w-full truncate text-[14px] font-medium text-text-1">
-                            {m.name}
-                            {routingSuffix(m.routing)}
-                          </span>
-                          <span className="max-w-full truncate text-[11px] text-text-3">
-                            {m.id}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-center text-[13px] text-text-3">
-                    {t("projectCreate.customHint")}{" "}
-                    <Link
-                      href="/teams?tab=models"
-                      className="text-primary-6 hover:underline"
-                    >
-                      {t("projectCreate.addCustomModels")}
-                    </Link>
-                  </p>
-                </>
-              )}
-            </div>
-          )}
+                </p>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
@@ -534,12 +449,7 @@ export default function CreateProjectPage() {
         <Button
           className="h-[43px] md:h-10 flex-1 md:flex-none md:w-[174px] rounded-lg bg-primary-6 hover:bg-primary-7 text-[16px] text-white cursor-pointer"
           onClick={handleSubmit}
-          disabled={
-            mutation.isPending ||
-            (selectionTab === "recommended"
-              ? selectedAgents.length === 0
-              : selectedModelIds.length === 0)
-          }
+          disabled={mutation.isPending || selectedModelIds.length === 0}
         >
           {mutation.isPending ? t("projectCreate.creating") : t("projectCreate.title")}
         </Button>

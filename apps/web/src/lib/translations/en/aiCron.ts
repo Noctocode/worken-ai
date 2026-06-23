@@ -80,7 +80,7 @@ export const aiCron = {
   // Model picker
   'aiCron.model.placeholder': 'Select a model',
   'aiCron.model.byok': 'BYOK',
-  'aiCron.model.custom': 'Custom',
+  'aiCron.model.custom': 'custom',
 
   // Schedule context (free text) + attached files
   'aiCron.scheduleContext.title': 'Schedule Context',
@@ -101,6 +101,8 @@ export const aiCron = {
 
   // Delivery
   'aiCron.delivery.inApp': 'In-app notification',
+  'aiCron.delivery.notifyMembers': 'Also notify',
+  'aiCron.delivery.notifyMembersHint': 'Pick teammates who should also get the in-app notification. You always get it.',
   'aiCron.delivery.email': 'Email',
   'aiCron.delivery.emailRecipients': 'Recipients',
   'aiCron.delivery.emailRecipientsPlaceholder': 'Type an email and press Enter',

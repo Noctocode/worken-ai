@@ -17,12 +17,14 @@ const STALE_TIME_MS = 60 * 1000; // 1 min — list moves when user edits Models 
  *
  * Sources (BE-merged via /models/effective):
  *   - Active model_configs aliases (Models tab) — custom name preserved.
- *   - Catalog models for any provider with an enabled BYOK key in
- *     Integration tab — auto-unlocked, no per-model alias needed.
+ *   - Explicitly-configured Azure deployments.
+ * Models are admin-curated under the Models tab; an enabled provider
+ * key only changes how an alias routes (BYOK vs default), it does NOT
+ * auto-surface that provider's catalog.
  *
- * Returns an empty list when the user has neither aliases nor BYOK
- * keys; UI should treat that as a setup-required state (the arena
- * gates on `< 2 models`, project create alerts the user instead).
+ * Returns an empty list when the user has no active aliases; UI should
+ * treat that as a setup-required state (the arena gates on `< 2 models`,
+ * project create alerts the user instead).
  *
  * The hook keeps the same shape as useAvailableModels for drop-in
  * compatibility — consumers that just need {id, name, getLabel} don't

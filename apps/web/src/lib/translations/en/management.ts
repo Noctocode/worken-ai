@@ -289,6 +289,10 @@ export const management = {
   'mgmt.integ.useOwnKey': 'Use your own API KEY',
   'mgmt.integ.keyConfigured': 'API key configured',
   'mgmt.integ.replace': 'Replace',
+  'mgmt.integ.showKey': 'Show key',
+  'mgmt.integ.hideKey': 'Hide key',
+  'mgmt.integ.enableAddsModels':
+    "Enabling adds all of this provider's models to the Models tab; disabling removes them.",
   'mgmt.integ.enterNewKey': 'Enter a new key to replace the saved one',
   'mgmt.integ.enterApiKey': 'Enter your API key',
   'mgmt.integ.cancelKeepKey': 'Cancel — keep the saved key',
@@ -311,6 +315,9 @@ export const management = {
   'mgmt.integ.allowPersonalTitle': 'Allow personal use',
   'mgmt.integ.allowPersonalHint':
     'Members of teams this key is linked to can also use it in their own personal projects and chats — not just inside the team.',
+  'mgmt.integ.companyWideTitle': 'Shared with your whole company',
+  'mgmt.integ.companyWideHint':
+    'Every member of your company can use this key — in team and personal projects and chats. Usage is billed to this key and counts toward its monthly limit below.',
   'mgmt.integ.tokenLimitLabel': 'Monthly token limit',
   'mgmt.integ.tokenLimitPlaceholder': 'No limit',
   'mgmt.integ.tokenLimitHint':

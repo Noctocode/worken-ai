@@ -31,7 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { createTender, fetchOrgUsers } from "@/lib/api";
+import { createTender, fetchColleagues } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -504,8 +504,8 @@ function TeamStep({
   const [search, setSearch] = useState("");
 
   const { data: orgUsers = [], isLoading: usersLoading } = useQuery({
-    queryKey: ["org-users"],
-    queryFn: fetchOrgUsers,
+    queryKey: ["colleagues"],
+    queryFn: fetchColleagues,
   });
 
   const filtered = orgUsers.filter((m) => {

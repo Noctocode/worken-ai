@@ -1076,6 +1076,12 @@ export const modelConfigs = pgTable("model_configs", {
   // `modelIdentifier` IS already the upstream model id.
   upstreamModel: text("upstream_model"),
   isActive: boolean("is_active").notNull().default(true),
+  // True when this alias was auto-provisioned by enabling a predefined
+  // provider (BYOK key) — the whole provider catalog gets added to the
+  // Models tab on enable, and only these auto rows are removed again on
+  // disable. Manually-added aliases (false) are never touched by the
+  // provider enable/disable sync.
+  autoProvisioned: boolean("auto_provisioned").notNull().default(false),
   fallbackModels: jsonb("fallback_models").notNull().default([]),
   // When set, chat calls for this alias route through the linked
   // integration (a Custom LLM the user registered in Management →
@@ -1159,6 +1165,11 @@ export type IntegrationConfig = {
   azureEndpoint?: string;
   azureApiVersion?: string;
   azureDeployments?: AzureDeployment[];
+  // Snapshot of a Custom LLM's bound-alias binding so the alias can be
+  // deleted when the key is disabled (model disappears from the Models
+  // tab, consistent with predefined providers) and recreated when it's
+  // re-enabled — and so the card keeps its friendly name while disabled.
+  customLlm?: { customName: string; upstreamModel: string };
 };
 
 export const integrations = pgTable(
@@ -1697,6 +1708,10 @@ export const scheduledPrompts = pgTable(
     // Recipient addresses for the email channel (the user can type extra
     // addresses on the form besides their own).
     emailRecipients: jsonb("email_recipients").$type<string[]>(),
+    // Extra in-app notification recipients besides the owner: user ids that
+    // must share the owner's company (validated on save). NULL / empty =
+    // owner only (the default — the owner always gets the run notification).
+    notifyUserIds: jsonb("notify_user_ids").$type<string[]>(),
     webhookUrl: text("webhook_url"),
     // Pause flag — disabled jobs are skipped by the scanner without losing
     // their schedule/history.

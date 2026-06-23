@@ -82,7 +82,7 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
   // Model picker
   'aiCron.model.placeholder': 'Izberite model',
   'aiCron.model.byok': 'BYOK',
-  'aiCron.model.custom': 'Custom',
+  'aiCron.model.custom': 'custom',
 
   // Schedule context (free text) + attached files
   'aiCron.scheduleContext.title': 'Kontekst urnika',
@@ -103,6 +103,8 @@ export const aiCron: Record<keyof typeof aiCronEn, string> = {
 
   // Delivery
   'aiCron.delivery.inApp': 'Obvestilo v aplikaciji',
+  'aiCron.delivery.notifyMembers': 'Obvesti tudi',
+  'aiCron.delivery.notifyMembersHint': 'Izberi sodelavce, ki naj prav tako prejmejo obvestilo v aplikaciji. Ti ga dobiš vedno.',
   'aiCron.delivery.email': 'E-pošta',
   'aiCron.delivery.emailRecipients': 'Prejemniki',
   'aiCron.delivery.emailRecipientsPlaceholder': 'Vpišite e-naslov in pritisnite Enter',

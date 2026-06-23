@@ -73,7 +73,6 @@ import {
   type SubteamListItem,
 } from "@/lib/api";
 import { InviteMemberDialog } from "@/components/invite-member-dialog";
-import { TeamIntegrationsSection } from "@/components/team-integrations-section";
 import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
@@ -1248,8 +1247,8 @@ export default function TeamDetailPage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      {/* ── AI Provider Keys ──────────────────────────────────────── */}
-      <TeamIntegrationsSection teamId={id} canManage={canManageTeam} />
+      {/* AI keys are managed company-wide under Models → API keys & Custom
+          LLMs (admin only); a team no longer links its own provider keys. */}
 
       {/* ── Guardrails ────────────────────────────────────────────── */}
       <div className="space-y-2">

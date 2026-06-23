@@ -28,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   deleteModel,
   fetchIntegrations,
@@ -44,7 +45,19 @@ function providerOf(modelId: string): string | null {
   return idx === -1 ? null : modelId.slice(0, idx);
 }
 
-export function ModelRow({ model }: { model: ModelConfig }) {
+export function ModelRow({
+  model,
+  selectable = false,
+  selected = false,
+  onToggleSelected,
+}: {
+  model: ModelConfig;
+  // Bulk-select column is admin-only — the parent passes `selectable`
+  // so non-admins never see (or can act on) the checkbox.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelected?: () => void;
+}) {
   const { t } = useLanguage();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -97,7 +110,21 @@ export function ModelRow({ model }: { model: ModelConfig }) {
       : null;
 
   return (
-    <tr className="h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50">
+    <tr
+      className={`h-14 border-b border-bg-1 transition-colors hover:bg-bg-1/50 ${
+        selectable && selected ? "bg-primary-1/30" : ""
+      }`}
+    >
+      {/* Bulk-select checkbox (admin only) */}
+      {selectable && (
+        <td className="px-4 align-middle w-10">
+          <Checkbox
+            aria-label={`${t("mgmt.rows.actionsFor")} ${model.customName}`}
+            checked={selected}
+            onCheckedChange={() => onToggleSelected?.()}
+          />
+        </td>
+      )}
       {/* Custom Name */}
       <td className="px-4 align-middle text-base font-normal text-text-1 whitespace-nowrap">
         {model.customName}
@@ -123,7 +150,7 @@ export function ModelRow({ model }: { model: ModelConfig }) {
         <div className="flex items-center gap-1.5">
           <Bot className="h-4 w-4 text-text-3 shrink-0" />
           <span className="text-base font-normal text-text-1">
-            {model.modelIdentifier}
+            {model.upstreamModel ?? model.modelIdentifier}
           </span>
           {customIntegration && (
             <span
