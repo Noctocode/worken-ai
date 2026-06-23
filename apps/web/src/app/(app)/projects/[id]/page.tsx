@@ -801,6 +801,9 @@ export default function ProjectChatPage() {
     activeConversationId,
     onSelectConversation: handleSelectConversation,
     onNewChat: handleNewChat,
+    // Personal projects (no team) have only personal chats — the sidebar
+    // hides the All/Personal/Team filter for them.
+    projectHasTeam: !!project?.teamId,
     mobileOpen: historyDrawerOpen,
     onMobileOpenChange: setHistoryDrawerOpen,
   };
@@ -1485,6 +1488,7 @@ export default function ProjectChatPage() {
         mobileOpen={detailsDrawerOpen}
         onMobileOpenChange={setDetailsDrawerOpen}
         onPickPrompt={setMessage}
+        projectHasTeam={!!project?.teamId}
       />
     </div>
   );

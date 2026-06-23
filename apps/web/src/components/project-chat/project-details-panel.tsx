@@ -64,6 +64,9 @@ interface Props {
   onMobileOpenChange?: (open: boolean) => void;
   /** Insert a prompt body into the composer (Prompts Library click). */
   onPickPrompt: (text: string) => void;
+  /** Whether this project is team-scoped. Personal projects (no team)
+   *  have no members, so the Team Members section is hidden. */
+  projectHasTeam?: boolean;
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -233,14 +236,16 @@ export function ProjectDetailsPanel({
   mobileOpen,
   onMobileOpenChange,
   onPickPrompt,
+  projectHasTeam = false,
 }: Props) {
   const { t } = useLanguage();
   const qc = useQueryClient();
-  // Personal profiles have no team — `fetchProjectMembers` returns no
-  // rows (it excludes the owner), so the Team Members section would
-  // just show an empty "no members" state. Hide it (and skip the
-  // fetch) for them, consistent with main's personal-account model.
+  // The Team Members section is meaningless without a team — a personal
+  // profile (no teammates) OR a personal project (no team). In either
+  // case `fetchProjectMembers` returns no rows, so hide the section and
+  // skip the fetch. Consistent with main's personal-account model.
   const isPersonal = useIsPersonal();
+  const hideTeamMembers = isPersonal || !projectHasTeam;
   const onlineUserIds = useOnlineUsers();
 
   /* Chat Context edit state */
@@ -383,7 +388,7 @@ export function ProjectDetailsPanel({
   const { data: members = [], isLoading: membersLoading } = useQuery({
     queryKey: ["project-members", projectId],
     queryFn: () => fetchProjectMembers(projectId),
-    enabled: panelVisible && !isPersonal,
+    enabled: panelVisible && !hideTeamMembers,
   });
 
   const AI_TOOLS = [
@@ -407,7 +412,7 @@ export function ProjectDetailsPanel({
     { id: "chatFiles", icon: Paperclip, label: t("projDetails.chatFiles") },
     { id: "promptsLibrary", icon: BookOpen, label: t("projDetails.promptsLibrary") },
     { id: "aiTools", icon: Wrench, label: t("projDetails.aiTools") },
-    ...(isPersonal
+    ...(hideTeamMembers
       ? []
       : [{ id: "teamMembers", icon: Users, label: t("projDetails.teamMembers") }]),
   ];
@@ -690,9 +695,9 @@ export function ProjectDetailsPanel({
         </Section>
 
         {/* ── Team Members ──────────────────────────────────────── */}
-        {/* Hidden for personal profiles — they have no team, so the
-            list is always empty. */}
-        {!isPersonal && (
+        {/* Hidden when there's no team — personal profile or personal
+            project — so the always-empty list never shows. */}
+        {!hideTeamMembers && (
         <Section
           icon={Users}
           title={t("projDetails.teamMembers")}
