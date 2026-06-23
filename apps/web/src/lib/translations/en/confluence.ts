@@ -38,6 +38,9 @@ export const confluence = {
   "confluence.removeSourceTitle": "Remove source (keeps imported pages)",
   "confluence.removeSource": "Remove source",
   "confluence.importInProgress": "Import in progress…",
+  "confluence.connectInSettings":
+    "Connect Confluence in Settings → Integrations to import documents.",
+  "confluence.goToSettings": "Go to Settings",
 
   "confluenceDlg.collapse": "Collapse page",
   "confluenceDlg.expand": "Expand page",

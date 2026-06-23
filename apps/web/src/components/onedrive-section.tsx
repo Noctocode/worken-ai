@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -54,7 +55,11 @@ function makeRelativeTime(t: (k: TranslationKey) => string) {
   };
 }
 
-export function OneDriveSection() {
+export function OneDriveSection({
+  mode,
+}: {
+  mode: "connection" | "import";
+}) {
   const { t } = useLanguage();
   const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
@@ -84,10 +89,11 @@ export function OneDriveSection() {
   const { data: sources = [] } = useQuery({
     queryKey: ["onedrive", "sources"],
     queryFn: fetchOneDriveSources,
-    enabled: connected,
+    enabled: connected && mode === "import",
   });
 
   useEffect(() => {
+    if (mode !== "connection") return;
     const flag = searchParams.get("onedrive");
     if (!flag) return;
     if (flag === "connected") {
@@ -222,6 +228,31 @@ export function OneDriveSection() {
     );
   }
 
+  const reauthRequired = status?.status === "reauth_required";
+
+  if (mode === "import" && (!connected || reauthRequired)) {
+    return (
+      <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
+            <Cloud className="h-4 w-4 text-primary-6" />
+          </span>
+          <p className="text-[13px] text-text-3">
+            {reauthRequired
+              ? t("onedrive.needsReconnect")
+              : t("onedrive.connectInSettings")}
+          </p>
+        </div>
+        <Link
+          href="/teams?tab=integration"
+          className="text-[13px] font-medium text-primary-6 hover:underline"
+        >
+          {t("onedrive.goToSettings")}
+        </Link>
+      </section>
+    );
+  }
+
   if (!connected) {
     return (
       <>
@@ -259,78 +290,113 @@ export function OneDriveSection() {
     );
   }
 
-  const reauthRequired = status?.status === "reauth_required";
+  if (mode === "connection") {
+    return (
+      <>
+        <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+          <header className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                  reauthRequired ? "bg-warning-1" : "bg-primary-1"
+                }`}
+              >
+                {reauthRequired ? (
+                  <AlertTriangle className="h-4 w-4 text-warning-7" />
+                ) : (
+                  <Cloud className="h-4 w-4 text-primary-6" />
+                )}
+              </span>
+              <div className="flex min-w-0 flex-col">
+                <p className="truncate text-[14px] font-medium text-text-1">
+                  {reauthRequired
+                    ? t("onedrive.needsReconnect")
+                    : t("onedrive.title")}
+                </p>
+                <p className="truncate text-[12px] text-text-3">
+                  {reauthRequired
+                    ? t("onedrive.cantReach")
+                    : status?.accountEmail
+                      ? `${t("onedrive.connectedAs")} ${status.accountEmail}`
+                      : t("onedrive.connectedSimple")}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {reauthRequired && (
+                <Button
+                  onClick={handleConnectClick}
+                  variant="outline"
+                  className="cursor-pointer gap-2 text-[13px]"
+                >
+                  {t("onedrive.reconnect")}
+                </Button>
+              )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
+                    aria-label={t("onedrive.options")}
+                  >
+                    <MoreVertical className="h-4 w-4" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onSelect={handleDisconnectClick}
+                    className="text-danger-6 focus:text-danger-6"
+                  >
+                    <Unplug className="mr-2 h-3.5 w-3.5" />
+                    {t("onedrive.disconnect")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </header>
+        </section>
 
+        <MicrosoftConnectConfirmDialog
+          open={confirmMode !== null}
+          onOpenChange={(o) => !o && setConfirmMode(null)}
+          mode={effectiveConfirmMode}
+          onConnectConfirm={handleConnectConfirm}
+          onDisconnectConfirm={handleDisconnectConfirm}
+          loading={enableMutation.isPending || disconnectMutation.isPending}
+        />
+      </>
+    );
+  }
+
+  // mode === "import", connected, not reauth
   return (
     <>
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <header className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <span
-              className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                reauthRequired ? "bg-warning-1" : "bg-primary-1"
-              }`}
-            >
-              {reauthRequired ? (
-                <AlertTriangle className="h-4 w-4 text-warning-7" />
-              ) : (
-                <Cloud className="h-4 w-4 text-primary-6" />
-              )}
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-1">
+              <Cloud className="h-4 w-4 text-primary-6" />
             </span>
             <div className="flex min-w-0 flex-col">
               <p className="truncate text-[14px] font-medium text-text-1">
-                {reauthRequired
-                  ? t("onedrive.needsReconnect")
-                  : t("onedrive.title")}
+                {t("onedrive.title")}
               </p>
               <p className="truncate text-[12px] text-text-3">
-                {reauthRequired
-                  ? t("onedrive.cantReach")
-                  : status?.accountEmail
-                    ? `${t("onedrive.connectedAs")} ${status.accountEmail}`
-                    : t("onedrive.connectedSimple")}
+                {status?.accountEmail
+                  ? `${t("onedrive.connectedAs")} ${status.accountEmail}`
+                  : t("onedrive.connectedSimple")}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {reauthRequired ? (
-              <Button
-                onClick={handleConnectClick}
-                variant="outline"
-                className="cursor-pointer gap-2 text-[13px]"
-              >
-                {t("onedrive.reconnect")}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => setImportOpen(true)}
-                variant="outline"
-                className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
-              >
-                <Cloud className="h-3.5 w-3.5" />
-                {t("onedrive.importFromOneDrive")}
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex h-9 w-9 cursor-pointer items-center justify-center rounded text-text-3 hover:bg-bg-1 hover:text-text-1"
-                  aria-label={t("onedrive.options")}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onSelect={handleDisconnectClick}
-                  className="text-danger-6 focus:text-danger-6"
-                >
-                  <Unplug className="mr-2 h-3.5 w-3.5" />
-                  {t("onedrive.disconnect")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Button
+              onClick={() => setImportOpen(true)}
+              variant="outline"
+              className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
+            >
+              <Cloud className="h-3.5 w-3.5" />
+              {t("onedrive.importFromOneDrive")}
+            </Button>
           </div>
         </header>
 
@@ -397,17 +463,6 @@ export function OneDriveSection() {
       <ImportFromOneDriveDialog
         open={importOpen}
         onOpenChange={setImportOpen}
-      />
-
-      <MicrosoftConnectConfirmDialog
-        open={confirmMode !== null}
-        onOpenChange={(o) => !o && setConfirmMode(null)}
-        mode={effectiveConfirmMode}
-        onConnectConfirm={handleConnectConfirm}
-        onDisconnectConfirm={handleDisconnectConfirm}
-        loading={
-          enableMutation.isPending || disconnectMutation.isPending
-        }
       />
     </>
   );

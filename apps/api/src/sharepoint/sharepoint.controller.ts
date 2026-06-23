@@ -103,25 +103,25 @@ export class SharePointController {
     if (error) {
       const detail = errorDescription || error;
       res.redirect(
-        `${frontendUrl}/knowledge-core?sharepoint=error=${encodeURIComponent(detail)}`,
+        `${frontendUrl}/teams?tab=integration&sharepoint=error=${encodeURIComponent(detail)}`,
       );
       return;
     }
 
     if (!code || !state) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?sharepoint=error=${encodeURIComponent('missing_code_or_state')}`,
+        `${frontendUrl}/teams?tab=integration&sharepoint=error=${encodeURIComponent('missing_code_or_state')}`,
       );
       return;
     }
 
     try {
       await this.oauth.handleCallback(code, state, 'sharepoint-connect');
-      res.redirect(`${frontendUrl}/knowledge-core?sharepoint=connected`);
+      res.redirect(`${frontendUrl}/teams?tab=integration&sharepoint=connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       res.redirect(
-        `${frontendUrl}/knowledge-core?sharepoint=error=${encodeURIComponent(message)}`,
+        `${frontendUrl}/teams?tab=integration&sharepoint=error=${encodeURIComponent(message)}`,
       );
     }
   }

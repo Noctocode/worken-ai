@@ -82,25 +82,25 @@ export class GoogleDriveController {
     // specific ("access_denied" vs. a real failure).
     if (error) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?drive=error=${encodeURIComponent(error)}`,
+        `${frontendUrl}/teams?tab=integration&drive=error=${encodeURIComponent(error)}`,
       );
       return;
     }
 
     if (!code || !state) {
       res.redirect(
-        `${frontendUrl}/knowledge-core?drive=error=${encodeURIComponent('missing_code_or_state')}`,
+        `${frontendUrl}/teams?tab=integration&drive=error=${encodeURIComponent('missing_code_or_state')}`,
       );
       return;
     }
 
     try {
       await this.oauth.handleCallback(code, state);
-      res.redirect(`${frontendUrl}/knowledge-core?drive=connected`);
+      res.redirect(`${frontendUrl}/teams?tab=integration&drive=connected`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown_error';
       res.redirect(
-        `${frontendUrl}/knowledge-core?drive=error=${encodeURIComponent(message)}`,
+        `${frontendUrl}/teams?tab=integration&drive=error=${encodeURIComponent(message)}`,
       );
     }
   }

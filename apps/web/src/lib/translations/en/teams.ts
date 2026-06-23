@@ -63,8 +63,6 @@ export const teams = {
   'teams.api': 'API',
   'teams.billing': 'Billing',
   'teams.integration': 'Integration',
-  'teams.integrationWip': 'Work in progress',
-  'teams.integrationWipDesc': 'New integrations will live here. API keys and Custom LLMs are now managed under the Models tab.',
   'teams.keysSection': 'API keys & Custom LLMs',
   'teams.keysSectionDesc': 'Connect provider API keys or your own Custom LLM endpoints. Models you add here become available everywhere, marked (custom).',
   'teams.userIs': 'user is',

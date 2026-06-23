@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -65,7 +66,7 @@ function makeRelativeTime(t: (k: TranslationKey) => string) {
  * `?drive=error=...` on mount, toasts accordingly, and scrubs the
  * param so a refresh doesn't re-toast.
  */
-export function DriveSection() {
+export function DriveSection({ mode }: { mode: "connection" | "import" }) {
   const { t } = useLanguage();
   const relativeTime = makeRelativeTime(t);
   const queryClient = useQueryClient();
@@ -86,7 +87,7 @@ export function DriveSection() {
     queryFn: fetchDriveSources,
     // Only ask the BE for sources once we know the user has a
     // connection — saves a wasted round-trip for first-time visitors.
-    enabled: connected,
+    enabled: connected && mode === "import",
   });
 
   // Background Entire-Drive import status. Shared cache key with the
@@ -96,7 +97,7 @@ export function DriveSection() {
   const { data: importProgress } = useQuery<DriveImportProgress | null>({
     queryKey: ["drive", "import-progress"],
     queryFn: fetchDriveImportProgress,
-    enabled: connected,
+    enabled: connected && mode === "import",
     refetchInterval: (query) => {
       const p = query.state.data;
       if (p && (p.phase === "scanning" || p.phase === "importing")) return 2000;
@@ -112,6 +113,9 @@ export function DriveSection() {
   useEffect(() => {
     const flag = searchParams.get("drive");
     if (!flag) return;
+    // The backend redirects the OAuth callback to the Integrations tab,
+    // so only the connection-mode instance should own this toast.
+    if (mode !== "connection") return;
     if (flag === "connected") {
       toast.success(t("drive.connected"));
       void queryClient.invalidateQueries({ queryKey: ["drive"] });
@@ -198,7 +202,11 @@ export function DriveSection() {
     );
   }
 
-  if (!connected) {
+  const reauthRequired = status?.status === "reauth_required";
+
+  // Connection mode owns the not-connected CTA — the import-mode
+  // equivalent is the "connect in Settings" hint card below.
+  if (mode === "connection" && !connected) {
     return (
       <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <div className="flex items-center gap-3">
@@ -224,10 +232,34 @@ export function DriveSection() {
     );
   }
 
-  const reauthRequired = status?.status === "reauth_required";
+  // Import mode can't import without a usable connection. When the Drive
+  // is unconnected or needs reauth, point the user to Settings where the
+  // connection lives, rather than offering a connect button here.
+  if (mode === "import" && (!connected || reauthRequired)) {
+    return (
+      <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary-1">
+            <Cloud className="h-4 w-4 text-primary-6" />
+          </span>
+          <p className="text-[13px] text-text-3">
+            {reauthRequired
+              ? t("drive.needsReconnect")
+              : t("drive.connectInSettings")}
+          </p>
+        </div>
+        <Link
+          href="/teams?tab=integration"
+          className="text-[13px] font-medium text-primary-6 hover:underline"
+        >
+          {t("drive.goToSettings")}
+        </Link>
+      </section>
+    );
+  }
 
-  return (
-    <>
+  if (mode === "connection") {
+    return (
       <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
         <header className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -256,7 +288,7 @@ export function DriveSection() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {reauthRequired ? (
+            {reauthRequired && (
               <Button
                 onClick={() => connectDrive()}
                 variant="outline"
@@ -264,21 +296,6 @@ export function DriveSection() {
               >
                 {t("drive.reconnect")}
               </Button>
-            ) : (
-              <DisabledReasonTooltip
-                disabled={importInProgress}
-                reason={t("drive.importInProgress")}
-              >
-                <Button
-                  onClick={() => setImportOpen(true)}
-                  disabled={importInProgress}
-                  variant="outline"
-                  className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
-                >
-                  <Cloud className="h-3.5 w-3.5" />
-                  {t("drive.importFromDrive")}
-                </Button>
-              </DisabledReasonTooltip>
             )}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -300,6 +317,47 @@ export function DriveSection() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
+        </header>
+      </section>
+    );
+  }
+
+  // mode === "import", connected and not reauth-required.
+  return (
+    <>
+      <section className="flex flex-col gap-3 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-1">
+              <Cloud className="h-4 w-4 text-primary-6" />
+            </span>
+            <div className="flex min-w-0 flex-col">
+              <p className="truncate text-[14px] font-medium text-text-1">
+                {t("drive.title")}
+              </p>
+              <p className="truncate text-[12px] text-text-3">
+                {status?.accountEmail
+                  ? `${t("drive.connectedAs")} ${status.accountEmail}`
+                  : t("drive.connectedSimple")}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <DisabledReasonTooltip
+              disabled={importInProgress}
+              reason={t("drive.importInProgress")}
+            >
+              <Button
+                onClick={() => setImportOpen(true)}
+                disabled={importInProgress}
+                variant="outline"
+                className="cursor-pointer gap-2 text-[13px] dark:border-primary-6 dark:bg-primary-6 dark:text-primary-foreground dark:hover:bg-primary-7 dark:hover:border-primary-7"
+              >
+                <Cloud className="h-3.5 w-3.5" />
+                {t("drive.importFromDrive")}
+              </Button>
+            </DisabledReasonTooltip>
           </div>
         </header>
 

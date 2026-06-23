@@ -38,6 +38,9 @@ export const confluence = {
   "confluence.removeSourceTitle": "Odstrani vir (uvožene strani ostanejo)",
   "confluence.removeSource": "Odstrani vir",
   "confluence.importInProgress": "Uvoz poteka …",
+  "confluence.connectInSettings":
+    "Za uvoz dokumentov poveži Confluence v Nastavitve → Integracije.",
+  "confluence.goToSettings": "Odpri nastavitve",
 
   "confluenceDlg.collapse": "Strni stran",
   "confluenceDlg.expand": "Razširi stran",

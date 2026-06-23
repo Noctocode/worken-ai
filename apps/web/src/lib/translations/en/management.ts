@@ -266,6 +266,9 @@ export const management = {
   'mgmt.company.industry.other': 'Other',
   'mgmt.integ.search': 'Search',
   'mgmt.integ.addCustomLLM': 'Add Custom LLM',
+  'mgmt.integ.cloudConnections': 'Cloud Connections',
+  'mgmt.integ.cloudConnectionsDesc':
+    'Connect cloud storage to import documents into Knowledge Core. Importing and re-syncing stays in Knowledge Core.',
   'mgmt.integ.adminOnly': 'Only admins can add integrations',
   'mgmt.integ.changeAdminOnly': 'Only admins can change integrations',
   'mgmt.integ.deleteAdminOnly': 'Only admins can delete integrations',

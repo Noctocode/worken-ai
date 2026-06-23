@@ -41,6 +41,9 @@ export const drive = {
   "drive.removeSourceTitle": "Remove source (keeps imported files)",
   "drive.removeSource": "Remove source",
   "drive.importInProgress": "Import in progress…",
+  "drive.connectInSettings":
+    "Connect Google Drive in Settings → Integrations to import documents.",
+  "drive.goToSettings": "Go to Settings",
   "driveDlg.collapseFolder": "Collapse folder",
   "driveDlg.expandFolder": "Expand folder",
   "driveDlg.allInKC":

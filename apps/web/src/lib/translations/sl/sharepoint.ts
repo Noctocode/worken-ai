@@ -44,6 +44,8 @@ export const sharepoint: Record<keyof typeof sharepointEn, string> = {
   'sharepoint.resync': 'Ponovno sinhroniziraj',
   'sharepoint.removeSourceTitle': 'Odstrani vir (uvožene datoteke ostanejo)',
   'sharepoint.removeSource': 'Odstrani vir',
+  'sharepoint.connectInSettings': 'Za uvoz dokumentov poveži SharePoint v Nastavitve → Integracije.',
+  'sharepoint.goToSettings': 'Odpri nastavitve',
   'spDlg.collapseFolder': 'Strni mapo',
   'spDlg.expandFolder': 'Razširi mapo',
   'spDlg.allInKC': 'Vse iz tega sajta je že v bazi znanja.',
