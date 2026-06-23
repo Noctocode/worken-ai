@@ -708,18 +708,26 @@ export class IntegrationsService {
       .set(updates)
       .where(eq(integrations.id, id));
 
-    // Toggling a predefined provider on/off syncs its catalog into (or
-    // out of) the Models tab. Sync on the KEY's OWNER, not the caller:
-    // the auto-provisioned aliases belong to whoever added the key, so a
-    // company admin disabling another member's company key must remove
-    // THAT owner's models — otherwise the rows linger and only their BYOK
-    // routing marker flips. Custom rows are no-ops in the sync.
+    // Toggling a provider on/off keeps the Models tab in sync.
+    //  - Predefined: add/remove the auto-provisioned catalog. Sync on the
+    //    KEY's OWNER (not the caller) so a company admin disabling another
+    //    member's company key removes THAT owner's models, not nothing.
+    //  - Custom LLM: mirror the toggle onto its bound alias's isActive, so
+    //    a disabled Custom endpoint doesn't keep showing an "active" model
+    //    in the table while its card reads disabled (and vice-versa).
     if (input.isEnabled !== undefined) {
-      await this.modelsService.syncProviderCatalogAliases(
-        row.ownerId,
-        row.providerId,
-        input.isEnabled,
-      );
+      if (row.providerId === 'custom') {
+        await this.db
+          .update(modelConfigs)
+          .set({ isActive: input.isEnabled, updatedAt: new Date() })
+          .where(eq(modelConfigs.integrationId, id));
+      } else {
+        await this.modelsService.syncProviderCatalogAliases(
+          row.ownerId,
+          row.providerId,
+          input.isEnabled,
+        );
+      }
     }
 
     const all = await this.listForUser(userId);
