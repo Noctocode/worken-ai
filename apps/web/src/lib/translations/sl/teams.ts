@@ -65,8 +65,6 @@ export const teams: Record<keyof typeof teamsEn, string> = {
   'teams.api': 'API',
   'teams.billing': 'Plačila',
   'teams.integration': 'Integracija',
-  'teams.integrationWip': 'V izdelavi',
-  'teams.integrationWipDesc': 'Tu bodo nove integracije. API ključi in Custom LLM-ji se zdaj urejajo pod zavihkom Modeli.',
   'teams.keysSection': 'API ključi in Custom LLM-ji',
   'teams.keysSectionDesc': 'Poveži API ključe ponudnikov ali lastne Custom LLM končne točke. Modeli, ki jih dodaš tu, postanejo na voljo povsod, označeni z (custom).',
   'teams.userIs': 'uporabnik je',

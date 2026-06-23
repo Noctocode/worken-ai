@@ -190,7 +190,9 @@ export function ConfluenceSection({
             <BookOpen className="h-4 w-4 text-primary-6" />
           </span>
           <p className="text-[13px] text-text-3">
-            {t("confluence.connectInSettings")}
+            {reauthRequired
+              ? t("confluence.needsReconnect")
+              : t("confluence.connectInSettings")}
           </p>
         </div>
         <Link

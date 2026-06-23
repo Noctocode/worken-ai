@@ -285,7 +285,8 @@ export function SharePointSection({
     );
   }
 
-  // Import mode + reauth required → same hint card as not-connected.
+  // Import mode + reauth required → reconnect hint (connection lives in
+  // Settings), distinct from the never-connected copy above.
   if (mode === "import" && reauthRequired) {
     return (
       <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white px-5 py-4">
@@ -294,7 +295,7 @@ export function SharePointSection({
             <FolderOpen className="h-4 w-4 text-primary-6" />
           </span>
           <p className="text-[13px] text-text-3">
-            {t("sharepoint.connectInSettings")}
+            {t("sharepoint.needsReconnect")}
           </p>
         </div>
         <Link

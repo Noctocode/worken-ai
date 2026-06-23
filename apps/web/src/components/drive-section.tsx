@@ -243,7 +243,9 @@ export function DriveSection({ mode }: { mode: "connection" | "import" }) {
             <Cloud className="h-4 w-4 text-primary-6" />
           </span>
           <p className="text-[13px] text-text-3">
-            {t("drive.connectInSettings")}
+            {reauthRequired
+              ? t("drive.needsReconnect")
+              : t("drive.connectInSettings")}
           </p>
         </div>
         <Link

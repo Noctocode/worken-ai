@@ -238,7 +238,9 @@ export function OneDriveSection({
             <Cloud className="h-4 w-4 text-primary-6" />
           </span>
           <p className="text-[13px] text-text-3">
-            {t("onedrive.connectInSettings")}
+            {reauthRequired
+              ? t("onedrive.needsReconnect")
+              : t("onedrive.connectInSettings")}
           </p>
         </div>
         <Link
