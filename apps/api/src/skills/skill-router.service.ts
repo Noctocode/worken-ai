@@ -257,9 +257,9 @@ export class SkillRouterService {
       const client = await this.resolveConfirmClient(userId);
       if (!client) {
         this.logger.warn(
-          'Skill confirm step skipped: no OpenRouter key resolved (BYOK/platform); dropping auto-candidates this turn.',
+          'Skill confirm step skipped: no OpenRouter key resolved — falling back to embedding score.',
         );
-        return new Set();
+        return new Set(candidates.map((c) => c.id));
       }
       const list = candidates
         .map((c, i) => `${i + 1}. ${c.name}: ${c.description}`)
@@ -294,9 +294,9 @@ export class SkillRouterService {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(
-        `Skill confirm step failed; dropping auto-candidates this turn: ${msg}`,
+        `Skill confirm step failed; falling back to embedding score: ${msg}`,
       );
-      return new Set();
+      return new Set(candidates.map((c) => c.id));
     }
   }
 

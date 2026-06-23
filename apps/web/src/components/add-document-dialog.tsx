@@ -553,8 +553,12 @@ export function AddDocumentDialog({
                     onChange={(e) => setContent(e.target.value)}
                     rows={6}
                     className="resize-y"
+                    maxLength={100000}
                     required
                   />
+                  <p className="text-xs text-muted-foreground text-right">
+                    {content.length.toLocaleString()} / 100,000
+                  </p>
                 </div>
                 <DialogFooter>
                   <Button
