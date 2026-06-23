@@ -413,7 +413,11 @@ export class IntegrationsService {
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
     for (const r of customs) {
-      const aliasName = aliasNameByIntegration.get(r.id);
+      // Prefer the live alias name; fall back to the snapshot kept in
+      // config (the alias is deleted while the key is disabled) so the
+      // card keeps its friendly name instead of dropping to the hostname.
+      const aliasName =
+        aliasNameByIntegration.get(r.id) ?? r.config?.customLlm?.customName;
       out.push({
         id: r.id,
         providerId: 'custom',
@@ -553,6 +557,14 @@ export class IntegrationsService {
           isEnabled: input.isEnabled ?? true,
           allowPersonalUse: input.allowPersonalUse ?? false,
           monthlyTokenLimit,
+          // Snapshot the binding so the alias can be deleted on disable
+          // (model disappears, like predefined) and recreated on enable.
+          config: {
+            customLlm: {
+              customName,
+              upstreamModel: input.customModel!.trim(),
+            },
+          },
         })
         .returning();
       // Bound alias is what makes the Custom LLM actually appear in
@@ -717,10 +729,69 @@ export class IntegrationsService {
     //    in the table while its card reads disabled (and vice-versa).
     if (input.isEnabled !== undefined) {
       if (row.providerId === 'custom') {
-        await this.db
-          .update(modelConfigs)
-          .set({ isActive: input.isEnabled, updatedAt: new Date() })
-          .where(eq(modelConfigs.integrationId, id));
+        if (input.isEnabled) {
+          // Re-enable: bring the model back into the Models tab. Recreate
+          // the bound alias from the snapshot if a prior disable deleted
+          // it; otherwise reactivate the existing one (covers legacy rows
+          // that were left inactive rather than deleted).
+          const [existing] = await this.db
+            .select({ id: modelConfigs.id })
+            .from(modelConfigs)
+            .where(eq(modelConfigs.integrationId, id))
+            .limit(1);
+          if (existing) {
+            await this.db
+              .update(modelConfigs)
+              .set({ isActive: true, updatedAt: new Date() })
+              .where(eq(modelConfigs.integrationId, id));
+          } else {
+            const binding = row.config?.customLlm;
+            if (binding) {
+              await this.db.insert(modelConfigs).values({
+                ownerId: row.ownerId,
+                teamId: null,
+                customName: binding.customName,
+                modelIdentifier: userCustomModelIdentifier(
+                  row.ownerId,
+                  binding.customName,
+                ),
+                upstreamModel: binding.upstreamModel,
+                integrationId: id,
+                isActive: true,
+              });
+            }
+          }
+        } else {
+          // Disable: snapshot the binding (so the card keeps its name and
+          // the alias can be recreated on re-enable), then DELETE the
+          // alias so the model disappears from the table — consistent with
+          // predefined providers.
+          const [alias] = await this.db
+            .select({
+              customName: modelConfigs.customName,
+              upstreamModel: modelConfigs.upstreamModel,
+            })
+            .from(modelConfigs)
+            .where(eq(modelConfigs.integrationId, id))
+            .limit(1);
+          if (alias) {
+            await this.db
+              .update(integrations)
+              .set({
+                config: {
+                  ...(row.config ?? {}),
+                  customLlm: {
+                    customName: alias.customName,
+                    upstreamModel: alias.upstreamModel ?? '',
+                  },
+                },
+              })
+              .where(eq(integrations.id, id));
+            await this.db
+              .delete(modelConfigs)
+              .where(eq(modelConfigs.integrationId, id));
+          }
+        }
       } else {
         await this.modelsService.syncProviderCatalogAliases(
           row.ownerId,

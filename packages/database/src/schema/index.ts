@@ -1165,6 +1165,11 @@ export type IntegrationConfig = {
   azureEndpoint?: string;
   azureApiVersion?: string;
   azureDeployments?: AzureDeployment[];
+  // Snapshot of a Custom LLM's bound-alias binding so the alias can be
+  // deleted when the key is disabled (model disappears from the Models
+  // tab, consistent with predefined providers) and recreated when it's
+  // re-enabled — and so the card keeps its friendly name while disabled.
+  customLlm?: { customName: string; upstreamModel: string };
 };
 
 export const integrations = pgTable(
