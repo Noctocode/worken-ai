@@ -302,55 +302,149 @@ function ProviderSettingsDialog({
       }
     >
       <div className="space-y-5">
-        {/* Custom LLM editable fields — mirror the Add Custom LLM form so
-            a custom key can be fully edited (name / endpoint / model).
-            The API key lives in the "use your own key" section below. */}
-        {card.isCustom && (
-          <div className="space-y-4">
-            <div>
-              <p className="text-[14px] font-normal text-text-2 mb-1.5">
-                {t("mgmt.integ.displayName")}
-              </p>
-              <input
-                type="text"
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder={t("mgmt.integ.displayNamePlaceholder")}
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
-              <p className="text-[12px] text-text-3 mt-1">
-                {t("mgmt.integ.displayNameHint")}
-              </p>
+        {/* Custom LLM editor. A configured custom key shows a compact
+            summary + Replace; clicking Replace reveals ALL fields
+            (display name / endpoint / model / API key) together, mirroring
+            the Add Custom LLM form. A brand-new/keyless one opens straight
+            into the edit fields. `editingKey` is the shared edit flag. */}
+        {card.isCustom &&
+          (card.hasApiKey && !editingKey ? (
+            <div className="space-y-3 rounded-lg border border-border-2 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <span className="flex items-center gap-1.5 text-[13px] font-semibold text-success-7">
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
+                  {t("mgmt.integ.keyConfigured")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingKey(true);
+                    setApiKey("");
+                  }}
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
+                >
+                  {t("mgmt.integ.replace")}
+                </button>
+              </div>
+              <dl className="space-y-1.5 text-[13px] text-text-2">
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.displayName")}:
+                  </dt>
+                  <dd className="min-w-0 truncate text-text-1">
+                    {card.displayName}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.apiUrl")}:
+                  </dt>
+                  <dd className="min-w-0 break-all text-text-1">
+                    {card.apiUrl}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
+                  <dt className="shrink-0 text-text-3">
+                    {t("mgmt.integ.model")}:
+                  </dt>
+                  <dd className="min-w-0 break-all text-text-1">
+                    {card.upstreamModel}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <div>
-              <p className="text-[14px] font-normal text-text-2 mb-1.5">
-                {t("mgmt.integ.apiUrl")}
-              </p>
-              <input
-                type="text"
-                value={customApiUrl}
-                onChange={(e) => setCustomApiUrl(e.target.value)}
-                placeholder={t("mgmt.integ.apiUrlPlaceholder")}
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.displayName")}
+                </p>
+                <input
+                  type="text"
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder={t("mgmt.integ.displayNamePlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[14px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+                <p className="text-[12px] text-text-3 mt-1">
+                  {t("mgmt.integ.displayNameHint")}
+                </p>
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.apiUrl")}
+                </p>
+                <input
+                  type="text"
+                  value={customApiUrl}
+                  onChange={(e) => setCustomApiUrl(e.target.value)}
+                  placeholder={t("mgmt.integ.apiUrlPlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.model")}
+                </p>
+                <input
+                  type="text"
+                  value={customModel}
+                  onChange={(e) => setCustomModel(e.target.value)}
+                  placeholder={t("mgmt.integ.modelPlaceholder")}
+                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                />
+                <p className="text-[12px] text-text-3 mt-1">
+                  {t("mgmt.integ.modelHint")}
+                </p>
+              </div>
+              <div>
+                <p className="text-[14px] font-normal text-text-2 mb-1.5">
+                  {t("mgmt.integ.apiKeyOptional")}
+                </p>
+                <div className="relative">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={
+                      card.hasApiKey
+                        ? t("mgmt.integ.enterNewKey")
+                        : t("mgmt.integ.enterApiKey")
+                    }
+                    className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((s) => !s)}
+                    aria-label={
+                      showKey
+                        ? t("mgmt.integ.hideKey")
+                        : t("mgmt.integ.showKey")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+                  >
+                    {showKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {card.hasApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKey(false);
+                      setApiKey("");
+                    }}
+                    className="mt-1 text-[13px] text-text-3 hover:underline"
+                  >
+                    {t("mgmt.integ.cancelKeepKey")}
+                  </button>
+                )}
+              </div>
             </div>
-            <div>
-              <p className="text-[14px] font-normal text-text-2 mb-1.5">
-                {t("mgmt.integ.model")}
-              </p>
-              <input
-                type="text"
-                value={customModel}
-                onChange={(e) => setCustomModel(e.target.value)}
-                placeholder={t("mgmt.integ.modelPlaceholder")}
-                className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent px-[17px] py-[13px] text-[13px] text-text-1 placeholder:text-text-3 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-              />
-              <p className="text-[12px] text-text-3 mt-1">
-                {t("mgmt.integ.modelHint")}
-              </p>
-            </div>
-          </div>
-        )}
+          ))}
 
         {/* Compatibility disclaimer for non-OpenAI-compatible providers
             (Anthropic, Google, Qwen). The BYOK key is saved but chat
@@ -408,16 +502,11 @@ function ProviderSettingsDialog({
           </div>
         )}
 
-        {/* API key. Predefined providers gate it behind a "use your own
-            key" checkbox (the WorkenAI default is the alternative). A
-            Custom LLM has no default route, so the key field is shown
-            directly (optional) — like the Add Custom LLM form. */}
-        <div className="space-y-2">
-          {card.isCustom ? (
-            <p className="text-[14px] font-normal leading-[20px] text-text-2">
-              {t("mgmt.integ.apiKeyOptional")}
-            </p>
-          ) : (
+        {/* Predefined provider BYOK key — gated behind a "use your own
+            key" checkbox (the WorkenAI default is the alternative). Custom
+            LLMs handle their key in the editor block at the top. */}
+        {!card.isCustom && (
+          <div className="space-y-2">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
@@ -440,86 +529,83 @@ function ProviderSettingsDialog({
                 {t("mgmt.integ.useOwnKey")}
               </span>
             </label>
-          )}
 
-          {(card.isCustom || useOwnKey) && card.hasApiKey && !editingKey && (
-            // Status panel: the user has a key saved already. Show a
-            // clear "configured" state with masked dots, plus actions
-            // to replace or remove. Without this, after clicking
-            // Apply the dialog just closes and there's no visible
-            // signal that the key persisted.
-            <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
-              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
-                <Check className="h-4 w-4" strokeWidth={2.5} />
-              </span>
-              <div className="flex min-w-0 flex-1 flex-col">
-                <span className="text-[13px] font-semibold text-success-7">
-                  {t("mgmt.integ.keyConfigured")}
+            {useOwnKey && card.hasApiKey && !editingKey && (
+              <div className="flex items-center gap-3 rounded-lg border border-success-3 bg-success-1/40 px-4 py-3">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-success-7 text-white">
+                  <Check className="h-4 w-4" strokeWidth={2.5} />
                 </span>
-                <span className="flex items-center gap-1.5 text-[13px] text-text-2">
-                  <KeyRound className="h-3.5 w-3.5 text-text-3" />
-                  <span className="font-mono tracking-wide">
-                    ••••••••••••••••
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="text-[13px] font-semibold text-success-7">
+                    {t("mgmt.integ.keyConfigured")}
                   </span>
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingKey(true);
-                  setApiKey("");
-                }}
-                className="text-[13px] font-medium text-primary-6 hover:underline"
-              >
-                {t("mgmt.integ.replace")}
-              </button>
-            </div>
-          )}
-
-          {(card.isCustom || useOwnKey) && (editingKey || !card.hasApiKey) && (
-            <>
-              <div className="relative">
-                <input
-                  type={showKey ? "text" : "password"}
-                  value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder={
-                    card.hasApiKey
-                      ? t("mgmt.integ.enterNewKey")
-                      : t("mgmt.integ.enterApiKey")
-                  }
-                  className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKey((s) => !s)}
-                  aria-label={
-                    showKey ? t("mgmt.integ.hideKey") : t("mgmt.integ.showKey")
-                  }
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
-                >
-                  {showKey ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
-                </button>
-              </div>
-              {card.hasApiKey && (
+                  <span className="flex items-center gap-1.5 text-[13px] text-text-2">
+                    <KeyRound className="h-3.5 w-3.5 text-text-3" />
+                    <span className="font-mono tracking-wide">
+                      ••••••••••••••••
+                    </span>
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setEditingKey(false);
+                    setEditingKey(true);
                     setApiKey("");
                   }}
-                  className="text-[13px] text-text-3 hover:underline"
+                  className="text-[13px] font-medium text-primary-6 hover:underline"
                 >
-                  {t("mgmt.integ.cancelKeepKey")}
+                  {t("mgmt.integ.replace")}
                 </button>
-              )}
-            </>
-          )}
-        </div>
+              </div>
+            )}
+
+            {useOwnKey && (editingKey || !card.hasApiKey) && (
+              <>
+                <div className="relative">
+                  <input
+                    type={showKey ? "text" : "password"}
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder={
+                      card.hasApiKey
+                        ? t("mgmt.integ.enterNewKey")
+                        : t("mgmt.integ.enterApiKey")
+                    }
+                    className="w-full h-[50px] rounded-lg border border-border-3 bg-transparent pl-[17px] pr-12 py-[13px] text-[16px] leading-[24px] text-text-1 outline-none focus:border-ring focus:ring-[1px] focus:ring-ring/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey((s) => !s)}
+                    aria-label={
+                      showKey
+                        ? t("mgmt.integ.hideKey")
+                        : t("mgmt.integ.showKey")
+                    }
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-3 hover:text-text-1"
+                  >
+                    {showKey ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                {card.hasApiKey && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingKey(false);
+                      setApiKey("");
+                    }}
+                    className="text-[13px] text-text-3 hover:underline"
+                  >
+                    {t("mgmt.integ.cancelKeepKey")}
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* Company-wide sharing note + per-key monthly limit. Only meaningful
             once a key is actually set (otherwise calls route through WorkenAI
