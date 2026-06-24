@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { fetchPinnableSkills, type PinnableSkill } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 /**
  * "Skills" composer button.
@@ -56,6 +57,9 @@ export function SkillsDialog({
     else setInternalOpen(next);
   };
   const [query, setQuery] = useState("");
+
+  // Clear the search when the dialog closes, so it reopens unfiltered.
+  useResetOnClose(open, () => setQuery(""));
 
   const { data: skills = [], isLoading } = useQuery({
     queryKey: ["skills", "pinnable", projectId ?? null],

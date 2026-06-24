@@ -24,6 +24,7 @@ import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 export function CreateProjectDialog({
   children,
@@ -45,6 +46,16 @@ export function CreateProjectDialog({
   // picker never offers a model the admin hasn't curated.
   const { models, isLoading: modelsLoading } = useUserModels();
 
+  // Clear the form whenever the dialog closes, so reopening starts fresh
+  // instead of showing the previous (cancelled) draft.
+  useResetOnClose(open, () => {
+    setName("");
+    setDescription("");
+    setModel("");
+    setTeamId("personal");
+    setNameTaken(false);
+  });
+
   const { data: teams } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
@@ -55,11 +66,7 @@ export function CreateProjectDialog({
     mutationFn: createProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setName("");
-      setDescription("");
-      setModel("");
-      setTeamId("personal");
-      setNameTaken(false);
+      // The close effect clears the form fields.
       setOpen(false);
     },
     onError: (err) => {

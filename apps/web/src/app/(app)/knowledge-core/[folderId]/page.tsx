@@ -74,6 +74,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 import { ChangeFileVisibilityDialog } from "@/components/change-file-visibility-dialog";
 import { KnowledgeNameConflictDialog } from "@/components/knowledge-name-conflict-dialog";
 import { Pagination } from "@/components/ui/pagination";
@@ -612,6 +613,17 @@ export default function FolderDetailPage({
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
   const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
+
+  // Reset each dialog's transient form state when it closes, so reopening
+  // starts fresh. Every close path (Cancel / Esc / overlay / success) flips
+  // the trigger var below, so keying the resets on those covers them all.
+  useResetOnClose(moveFileId !== null, () => setMoveTargetId(""));
+  useResetOnClose(stagedFiles.length > 0, () => {
+    setStagedVisibility("all");
+    setStagedTeamIds([]);
+    setStagedProjectIds([]);
+    setStagedScheduleIds([]);
+  });
 
   // Same user-teams list the root page renders. Cached by react-query
   // key 'teams' so navigating between KC pages reuses one fetch.

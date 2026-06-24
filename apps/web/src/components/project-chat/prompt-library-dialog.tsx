@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { fetchPrompts, type PromptSummary } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 /**
  * "Prompt Library" composer button.
@@ -37,6 +38,9 @@ export function PromptLibraryDialog({
   const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+
+  // Clear the search when the dialog closes, so it reopens unfiltered.
+  useResetOnClose(open, () => setQuery(""));
 
   // Lazy-load the prompt list when the dialog opens. Fresh query
   // each open instead of caching across mounts — the prompt library

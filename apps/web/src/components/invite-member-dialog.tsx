@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 type TeamRole = "admin" | "manager" | "editor" | "viewer";
 
@@ -44,6 +45,14 @@ function TeamInviteDialog({
   const [capUsd, setCapUsd] = useState("");
   const [capError, setCapError] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  // Clear the form whenever the dialog closes, so reopening starts fresh.
+  useResetOnClose(open, () => {
+    setEmail("");
+    setRole("viewer");
+    setCapUsd("");
+    setCapError(null);
+  });
 
   const parseCapToCents = (): number | null | "invalid" => {
     const trimmed = capUsd.trim();
@@ -192,6 +201,12 @@ function OrgInviteDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("basic");
   const qc = useQueryClient();
+
+  // Clear the form whenever the dialog closes, so reopening starts fresh.
+  useResetOnClose(open, () => {
+    setEmail("");
+    setRole("basic");
+  });
 
   const mutation = useMutation({
     mutationFn: () => inviteUser(email.trim(), role),
