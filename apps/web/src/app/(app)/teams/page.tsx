@@ -57,6 +57,7 @@ import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { IntegrationTab } from "@/components/management/integration-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
+import { GuardrailsTab } from "@/components/management/guardrails-tab";
 import { DriveSection } from "@/components/drive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
 import { OneDriveSection } from "@/components/onedrive-section";
@@ -68,7 +69,7 @@ export default function TeamsPage() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const VALID_TABS = ["teams", "users", "models", "my-account", "company", "api", "billing", "integration"] as const;
+  const VALID_TABS = ["teams", "users", "models", "guardrails", "my-account", "company", "api", "billing", "integration"] as const;
   // Tabs always render for everyone — basic users keep visibility
   // into management surfaces but the action buttons inside each tab
   // are individually disabled by their components (Add New Model,
@@ -316,6 +317,7 @@ export default function TeamsPage() {
         <PageTabsTrigger value="teams">{t("teams.title")}</PageTabsTrigger>
         <PageTabsTrigger value="users">{t("teams.users")}</PageTabsTrigger>
         <PageTabsTrigger value="models">{t("teams.models")}</PageTabsTrigger>
+        <PageTabsTrigger value="guardrails">{t("teams.guardrails")}</PageTabsTrigger>
         <PageTabsTrigger value="my-account">{t("teams.myAccount")}</PageTabsTrigger>
         <PageTabsTrigger value="company">
           {t("teams.company")}
@@ -957,6 +959,10 @@ export default function TeamsPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+      </PageTabsContent>
+
+      <PageTabsContent value="guardrails">
+        <GuardrailsTab />
       </PageTabsContent>
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}

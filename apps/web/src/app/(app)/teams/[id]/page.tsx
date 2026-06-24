@@ -314,7 +314,7 @@ function AddGuardrailDialog({ teamId, children }: { teamId: string; children: Re
           <div className="flex flex-col items-center gap-3 py-6 text-center">
             <p className="text-[14px] text-text-3">{t("teamDetail.noGuardrailsAvailable")}</p>
             <Link
-              href="/guardrails"
+              href="/teams?tab=guardrails"
               className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
             >
               {t("teamDetail.createOnGuardrails")}
