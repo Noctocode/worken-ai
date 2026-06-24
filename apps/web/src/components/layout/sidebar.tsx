@@ -113,11 +113,11 @@ export const SidebarContent = ({
     ],
     [
       { href: "/tender-ai", label: t("sidebar.nav.tenderAI"), icon: MessageSquare, match: "prefix" },
+      { href: "/ai-cron", label: t("sidebar.nav.aiCron"), icon: CalendarClock, match: "prefix" },
       { href: "/knowledge-core", label: t("sidebar.nav.knowledgeCore"), icon: Database, match: "prefix" },
     ],
     [
       { href: "/toolkit", label: t("sidebar.nav.toolkit"), icon: Wrench, match: "prefix" },
-      { href: "/ai-cron", label: t("sidebar.nav.aiCron"), icon: CalendarClock, match: "prefix" },
       { href: "/learning", label: t("sidebar.nav.learning"), icon: BookOpen, match: "prefix" },
     ],
   ];
