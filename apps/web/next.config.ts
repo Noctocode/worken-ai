@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       { source: "/resources/skills", destination: "/toolkit/skills", permanent: true },
       // The hub kept the name "Resources & Learning" → that section is /learning.
       { source: "/resources", destination: "/learning", permanent: true },
+      // Learn Academy isn't live yet (shown as "Coming soon"). Gate the route
+      // so a direct URL / old bookmark can't reach the unfinished page. TEMPORARY
+      // (307) — drop this line to switch the Academy on; the page already exists.
+      { source: "/learning/learn-academy/:slug*", destination: "/learning", permanent: false },
     ];
   },
 };
