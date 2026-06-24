@@ -116,9 +116,9 @@ export const SidebarContent = ({
       { href: "/knowledge-core", label: t("sidebar.nav.knowledgeCore"), icon: Database, match: "prefix" },
     ],
     [
-      { href: "/learning", label: t("sidebar.nav.learning"), icon: BookOpen, match: "prefix" },
       { href: "/toolkit", label: t("sidebar.nav.toolkit"), icon: Wrench, match: "prefix" },
       { href: "/ai-cron", label: t("sidebar.nav.aiCron"), icon: CalendarClock, match: "prefix" },
+      { href: "/learning", label: t("sidebar.nav.learning"), icon: BookOpen, match: "prefix" },
     ],
   ];
 

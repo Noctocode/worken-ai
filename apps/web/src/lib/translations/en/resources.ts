@@ -4,7 +4,7 @@ export const resources = {
   'toolkit.subtitle': 'Prompts, shortcuts and skills you build once and reuse — the everyday building blocks that shape how the assistant works for your team.',
   'toolkit.promptsHeading': 'Prompts',
   'toolkit.reusableHeading': 'Shortcuts & Skills',
-  'learning.title': 'Learning',
+  'learning.title': 'Resources & Learning',
   'learning.subtitle': 'Get to know the platform and level up your prompting — start with how WorkenAI works, then dive into the Academy.',
   'resources.title': 'Prompt Engineering Hub',
   'resources.subtitle': 'Access enterprise-grade tools and resources to build, optimize, and master AI prompts for procurement workflows. Designed specifically for Fortune 500 teams.',

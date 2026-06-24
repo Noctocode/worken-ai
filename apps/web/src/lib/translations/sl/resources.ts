@@ -5,7 +5,7 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'toolkit.subtitle': 'Prompti, bližnjice in veščine, ki jih sestaviš enkrat in znova uporabljaš — vsakodnevni gradniki, ki oblikujejo, kako asistent dela za tvojo ekipo.',
   'toolkit.promptsHeading': 'Prompti',
   'toolkit.reusableHeading': 'Bližnjice in veščine',
-  'learning.title': 'Učenje',
+  'learning.title': 'Viri & Učenje',
   'learning.subtitle': 'Spoznaj platformo in izboljšaj svoje prompte — začni s tem, kako deluje WorkenAI, nato se poglobi v Akademijo.',
   'resources.title': 'Prompt Engineering Hub',
   'resources.subtitle': 'Dostopajte do orodij in virov za gradnjo, optimizacijo in obvladovanje promptov AI za naročilniške procese. Zasnovano za ekipe Fortune 500.',
