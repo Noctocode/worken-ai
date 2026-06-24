@@ -3,6 +3,7 @@
 import {
   Network,
   GraduationCap,
+  MonitorPlay,
   BookOpen,
   Compass,
   Lightbulb,
@@ -46,6 +47,19 @@ const LEARN_CARDS: CardDef[] = [
     href: "/learning/learn-academy",
     comingSoon: true,
   },
+  {
+    titleKey: "learning.video.title",
+    descKey: "learning.video.desc",
+    bullets: [
+      "learning.video.b1",
+      "learning.video.b2",
+      "learning.video.b3",
+      "learning.video.b4",
+    ],
+    icon: MonitorPlay,
+    href: "/learning/video-tutorials",
+    comingSoon: true,
+  },
 ];
 
 const HERO_FEATURES: Array<{ labelKey: TKey; icon: LucideIcon }> = [
@@ -84,7 +98,7 @@ export default function LearningPage() {
       </div>
 
       {/* Learning cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {LEARN_CARDS.map((c) => (
           <ResourceCard
             key={c.href}
