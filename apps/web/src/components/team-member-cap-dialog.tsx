@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,6 +43,13 @@ export function TeamMemberCapDialog({
       ? (member.monthlyCapCents / 100).toString()
       : "";
   const [capUsd, setCapUsd] = useState(initialUsd);
+
+  // Re-seed the input from the member every time the dialog opens, so it never
+  // shows a value typed for a previous member or a previous (cancelled) edit.
+  useEffect(() => {
+    if (open) setCapUsd(initialUsd);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, member.id]);
 
   const mutation = useMutation({
     mutationFn: (cents: number | null) =>
