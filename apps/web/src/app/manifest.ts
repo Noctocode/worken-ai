@@ -1,4 +1,5 @@
 import type { MetadataRoute } from "next";
+import { BRAND } from "@/lib/theme";
 
 // PWA manifest. Next serves this at /manifest.webmanifest and injects the
 // <link rel="manifest"> automatically. The SVG covers the scalable "any"
@@ -13,7 +14,7 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     display: "standalone",
     background_color: "#ffffff",
-    theme_color: "#178ACA",
+    theme_color: BRAND,
     icons: [
       {
         src: "/icon.svg",

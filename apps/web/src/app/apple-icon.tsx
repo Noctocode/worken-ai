@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { BRAND } from "@/lib/theme";
 
 // iOS home-screen icon. Rendered to PNG at build time from the WorkenAI mark.
 // iOS applies its own rounded-corner mask, so we keep a plain white square.
@@ -23,7 +24,7 @@ export default function AppleIcon() {
         }}
       >
         <svg width="150" height="150" viewBox="0 0 30 30" fill="none">
-          <path d={MARK} fill="#178ACA" />
+          <path d={MARK} fill={BRAND} />
         </svg>
       </div>
     ),

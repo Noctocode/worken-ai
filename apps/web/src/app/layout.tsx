@@ -3,6 +3,7 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 import { Providers } from "@/components/providers";
+import { BRAND } from "@/lib/theme";
 
 const ibmPlexSans = IBM_Plex_Sans({
   variable: "--font-geist-sans",
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
 
 // Brand colour for the browser/OS UI (mobile address bar, PWA splash).
 export const viewport: Viewport = {
-  themeColor: "#178ACA",
+  themeColor: BRAND,
 };
 
 export default function RootLayout({
