@@ -70,7 +70,7 @@ export default function TeamsPage() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const VALID_TABS = ["teams", "users", "models", "guardrails", "my-account", "company", "api", "billing", "integration"] as const;
+  const VALID_TABS = ["teams", "users", "models", "guardrails", "tools", "my-account", "company", "api", "billing", "integration"] as const;
   // Tabs always render for everyone — basic users keep visibility
   // into management surfaces but the action buttons inside each tab
   // are individually disabled by their components (Add New Model,
