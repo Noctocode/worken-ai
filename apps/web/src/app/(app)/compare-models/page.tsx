@@ -2791,7 +2791,7 @@ function PromptLibraryDialog({
 
           <div className="border-t border-border-2 pt-2">
             <Link
-              href="/resources/prompt-library"
+              href="/toolkit/prompt-library"
               onClick={() => onOpenChange(false)}
               className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
             >
@@ -2906,7 +2906,7 @@ function ShortcutsPopover({
         </div>
         <div className="border-t border-border-2 p-1">
           <Link
-            href="/resources/shortcuts"
+            href="/toolkit/shortcuts"
             onClick={() => setOpen(false)}
             className="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1.5 text-[12px] text-text-2 transition-colors hover:bg-bg-1 hover:text-primary-6"
           >

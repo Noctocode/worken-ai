@@ -186,7 +186,7 @@ export default function LessonDetailPage({
       {/* Header row: back + module title */}
       <div className="flex items-center gap-4">
         <Link
-          href="/resources/learn-academy"
+          href="/learning/learn-academy"
           className="flex h-8 w-8 cursor-pointer items-center justify-center rounded text-text-1 transition-colors hover:bg-bg-1"
           aria-label={t("lessonDetail.backAria")}
         >

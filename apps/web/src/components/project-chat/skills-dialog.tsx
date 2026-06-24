@@ -27,7 +27,7 @@ import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
  * regardless of the embedding match. Pins are tracked client-side and sent
  * with each message as `pinnedSkillIds`.
  *
- * Read-only otherwise — full CRUD lives at /resources/skills.
+ * Read-only otherwise — full CRUD lives at /toolkit/skills.
  */
 export function SkillsDialog({
   children,
@@ -109,7 +109,7 @@ export function SkillsDialog({
                 {t("skillsDlg.empty")}
               </p>
               <Link
-                href="/resources/skills"
+                href="/toolkit/skills"
                 className="text-[13px] font-medium text-primary-6 hover:underline"
               >
                 {t("skillsDlg.manage")}
@@ -163,7 +163,7 @@ export function SkillsDialog({
         <div className="flex items-center justify-between border-t border-border-2 pt-3 text-[12px] text-text-3">
           <span>{t("skillsDlg.autoNote")}</span>
           <Link
-            href="/resources/skills"
+            href="/toolkit/skills"
             className="font-medium text-primary-6 hover:underline"
           >
             {t("skillsDlg.manage")}

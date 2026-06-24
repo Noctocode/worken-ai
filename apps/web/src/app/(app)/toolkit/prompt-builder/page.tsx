@@ -902,7 +902,7 @@ function PromptBuilderInner() {
         const message =
           err instanceof Error ? err.message : t("promptBuilder.errLoad");
         toast.error(message);
-        router.push("/resources/prompt-library");
+        router.push("/toolkit/prompt-library");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -957,7 +957,7 @@ function PromptBuilderInner() {
         await createPrompt(payload);
         toast.success(t("promptBuilder.saved"));
       }
-      router.push("/resources/prompt-library");
+      router.push("/toolkit/prompt-library");
     } catch (err) {
       const message =
         err instanceof Error ? err.message : t("promptBuilder.errSave");
@@ -1002,7 +1002,7 @@ function PromptBuilderInner() {
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
-        href="/resources/prompt-library"
+        href="/toolkit/prompt-library"
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -1024,7 +1024,7 @@ function PromptBuilderInner() {
             setPrompt={setPrompt}
             variables={variables}
             setVariables={setVariables}
-            onBack={() => (editId ? router.push("/resources/prompt-library") : setStep(0))}
+            onBack={() => (editId ? router.push("/toolkit/prompt-library") : setStep(0))}
             onContinue={() => setStep(2)}
           />
         )}

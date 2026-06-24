@@ -92,7 +92,7 @@ function ModuleCard({ module: m }: { module: Module }) {
   const Icon = m.icon;
   return (
     <Link
-      href={`/resources/learn-academy/${m.slug}`}
+      href={`/learning/learn-academy/${m.slug}`}
       className="flex cursor-pointer flex-col gap-3 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
     >
       <div className="flex items-start justify-between gap-3">
@@ -139,7 +139,7 @@ export default function LearnAcademyPage() {
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
-        href="/resources"
+        href="/learning"
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
