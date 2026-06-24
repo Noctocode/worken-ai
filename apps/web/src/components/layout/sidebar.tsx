@@ -15,7 +15,6 @@ import {
   Moon,
   Network,
   Plus,
-  Shield,
   Sun,
   User as UserIcon,
   Users,
@@ -99,7 +98,6 @@ export const SidebarContent = ({
     [
       { href: "/", label: t("sidebar.nav.ongoingProjects"), icon: FolderOpen, match: "exact" },
       { href: "/compare-models", label: t("sidebar.nav.modelArena"), icon: Layers, match: "exact" },
-      { href: "/guardrails", label: t("sidebar.nav.guardrails"), icon: Shield, match: "exact" },
       { href: "/observability", label: t("sidebar.nav.observability"), icon: Activity, match: "exact" },
       {
         href: "/teams",
