@@ -84,8 +84,16 @@ export class ArsoService {
 
   private str(v: unknown): string | null {
     if (v === null || v === undefined) return null;
-    const s = String(v).trim();
-    return s === '' ? null : s;
+    let s = String(v).trim();
+    if (s === '') return null;
+    // Some ARSO feeds (hydrology) write č/š/ž as numeric XML entities
+    // (e.g. "&#x010C;rne&#x010D;e" → "Črneče") which the parser leaves raw.
+    s = s
+      .replace(/&#x([0-9a-fA-F]+);/g, (_, h) =>
+        String.fromCodePoint(parseInt(h, 16)),
+      )
+      .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)));
+    return s;
   }
 
   /** fast-xml-parser yields an object for a single child, an array for many. */
@@ -163,7 +171,14 @@ export class ArsoService {
     return {
       source: ARSO_ATTRIBUTION,
       updated: data.updated,
-      readings: this.applyFilter(data.readings, filter, (r) => r.station),
+      // Station names start with a region code/name ("LJ Bežigrad", "Kranj")
+      // — prefix-match so "LJ" doesn't also catch "Trbovlje"/"Črnomelj".
+      readings: this.applyFilter(
+        data.readings,
+        filter,
+        (r) => r.station,
+        'startsWith',
+      ),
     };
   }
 
@@ -212,9 +227,13 @@ export class ArsoService {
     rows: T[],
     filter: string | undefined,
     haystack: (row: T) => string,
+    mode: 'includes' | 'startsWith' = 'includes',
   ): T[] {
     const q = filter?.trim().toLowerCase();
     if (!q) return rows;
-    return rows.filter((r) => haystack(r).toLowerCase().includes(q));
+    return rows.filter((r) => {
+      const h = haystack(r).toLowerCase();
+      return mode === 'startsWith' ? h.startsWith(q) : h.includes(q);
+    });
   }
 }
