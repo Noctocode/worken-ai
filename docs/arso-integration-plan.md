@@ -91,18 +91,18 @@ Today the chat is single-turn with no `tool_calls`. We add an agentic loop:
 - **Phase D — Polish.** Inline tool-call UI, attribution, org toggle, cache
   tuning, more places/stations, EN/SL.
 
-## Open questions (confirm before Phase A)
+## Decisions (locked — confirmed before Phase A)
 
-1. **Provider coverage:** OK to support function calling on the **OpenAI-SDK
-   route first** + Anthropic in the same Phase C, and silently skip tools for
-   models that don't support them? (Same call as the on-hold AI Tools track.)
-2. **Gating:** should ARSO tools be **on by default**, or behind an org/team
-   **toggle** like Web search? (I lean toggle.)
-3. **Location resolution depth:** start with **major Slovenian places +
-   stations** (curated list) and expand, vs. trying to resolve any free-text
-   place from day one? (I lean curated-first.)
-4. **Caching layer:** in-memory per-instance TTL (simplest) vs. shared (Redis)
-   if the API runs multi-instance. (I lean in-memory to start.)
+1. **Provider coverage:** support function calling on the **OpenAI-SDK route
+   first**, then Anthropic native `tool_use` in the same Phase C. Models that
+   don't support tools → tools simply not offered (chat unchanged).
+2. **Gating:** ARSO is **keyless** (public data), so it surfaces in the
+   **Integration tab as an enable toggle — no API-key field**. Off until an
+   admin enables it for the company/team (the opt-in). (Option 2a.)
+3. **Location resolution:** **curated list first** — map the main Slovenian
+   places/stations, expand over time.
+4. **Caching:** **in-memory per-instance TTL** to start (Redis only if/when the
+   API goes multi-instance).
 
 ## Non-goals (v1)
 - Generic user-defined tools (that's the on-hold AI Tools framework).

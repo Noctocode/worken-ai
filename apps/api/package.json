@@ -42,6 +42,7 @@
     "cron-parser": "^5.5.0",
     "cronstrue": "^3.14.0",
     "drizzle-orm": "^0.38.0",
+    "fast-xml-parser": "^5.9.3",
     "googleapis": "^172.0.0",
     "ioredis": "^5.9.2",
     "mammoth": "^1.11.0",

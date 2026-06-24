@@ -9,6 +9,7 @@ import { AiCronModule } from './ai-cron/ai-cron.module';
 import { ApiKeysModule } from './api-keys/api-keys.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { ArsoModule } from './arso/arso.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtOrApiKeyGuard } from './auth/jwt-or-api-key.guard';
 import { ChatModule } from './chat/chat.module';
@@ -58,6 +59,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     }),
     AiCronModule,
     ApiKeysModule,
+    ArsoModule,
     AuthModule,
     ChatModule,
     CompareModelsModule,
