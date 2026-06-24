@@ -6,7 +6,6 @@ import {
   Wand2,
   LayoutGrid,
   Sparkles,
-  Info,
   FileText,
   CheckCircle2,
   type LucideIcon,
@@ -63,20 +62,6 @@ const REUSABLE_CARDS: CardDef[] = [
     icon: Sparkles,
     href: "/toolkit/skills",
   },
-];
-
-const QUICK_STEPS: Array<{ titleKey: TKey; descKey: TKey }> = [
-  { titleKey: "resources.startWithBuilder", descKey: "toolkit.step1.desc" },
-  { titleKey: "resources.optimizeWithImprover", descKey: "toolkit.step2.desc" },
-  { titleKey: "resources.learnInAcademy", descKey: "toolkit.step3.desc" },
-];
-
-const BEST_PRACTICES: TKey[] = [
-  "toolkit.bp1",
-  "toolkit.bp2",
-  "toolkit.bp3",
-  "toolkit.bp4",
-  "toolkit.bp5",
 ];
 
 const HERO_FEATURES: Array<{ labelKey: TKey; icon: LucideIcon }> = [
@@ -142,50 +127,6 @@ export default function ToolkitPage() {
         </h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {REUSABLE_CARDS.map(card)}
-        </div>
-      </div>
-
-      {/* Quick Start Guide */}
-      <div className="flex flex-col gap-6 rounded-lg border border-border-2 bg-bg-white p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-bg-1">
-            <Sparkles className="h-4 w-4 text-primary-7" strokeWidth={2} />
-          </div>
-          <h3 className="text-[20px] font-bold leading-[1.5] text-text-1">
-            {t("resources.quickStartGuide")}
-          </h3>
-        </div>
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-          {QUICK_STEPS.map((s, i) => (
-            <div key={s.titleKey} className="flex flex-col gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-bg-1">
-                <span className="text-[16px] font-bold leading-[1.5] text-text-1">
-                  {i + 1}
-                </span>
-              </div>
-              <h4 className="text-[15px] font-semibold leading-[1.5] text-text-1">
-                {t(s.titleKey)}
-              </h4>
-              <p className="text-[13px] leading-[1.625] text-text-2">
-                {t(s.descKey)}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Best practices callout */}
-      <div className="flex items-start gap-3 rounded-lg border border-text-3 bg-bg-1 p-6">
-        <Info className="h-5 w-5 shrink-0 text-text-2" strokeWidth={2} />
-        <div className="flex flex-col gap-2">
-          <h4 className="text-[14px] font-semibold leading-[1.5] text-text-2">
-            {t("resources.enterpriseBestPractices")}
-          </h4>
-          <ul className="flex flex-col gap-1.5 text-[12px] leading-[1.5] text-text-1">
-            {BEST_PRACTICES.map((p) => (
-              <li key={p}>• {t(p)}</li>
-            ))}
-          </ul>
         </div>
       </div>
     </div>

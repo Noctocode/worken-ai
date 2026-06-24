@@ -36,16 +36,6 @@ export const resources = {
   'toolkit.skills.b2': 'Auto-applied when a message fits',
   'toolkit.skills.b3': 'Stays active across a conversation',
   'toolkit.skills.b4': 'Import from SKILL.md',
-  // Toolkit quick-start step descriptions (titles reuse resources.* keys).
-  'toolkit.step1.desc': 'Select from enterprise templates designed for procurement tasks like legal summaries, data extraction, and proposal reviews.',
-  'toolkit.step2.desc': 'Paste your existing prompts to get AI-powered suggestions for improving clarity, specificity, and effectiveness.',
-  'toolkit.step3.desc': 'Master advanced techniques through structured lessons, real-world case studies, and hands-on exercises.',
-  // Toolkit best-practice bullets.
-  'toolkit.bp1': 'Always specify output format and structure requirements',
-  'toolkit.bp2': 'Use variables for reusable prompts across different documents',
-  'toolkit.bp3': 'Test prompts with multiple examples before production use',
-  'toolkit.bp4': 'Document prompt versions and track performance metrics',
-  'toolkit.bp5': 'Follow compliance guidelines for sensitive data handling',
   // Learning card copy.
   'learning.how.desc': 'See the platform architecture and the three ways WorkenAI can be deployed.',
   'learning.how.b1': 'On-premise deployment',
@@ -70,12 +60,8 @@ export const resources = {
   'resources.skills': 'Skills',
   'resources.skills.cardDesc':
     'Capture how your team does a task once; the assistant applies it automatically when it fits.',
-  'resources.quickStartGuide': 'Quick Start Guide',
   'resources.openTool': 'Open Tool',
-  'resources.startWithBuilder': 'Start with Builder',
-  'resources.optimizeWithImprover': 'Optimize with Improver',
-  'resources.learnInAcademy': 'Learn in Academy',
-  'resources.enterpriseBestPractices': 'Enterprise Prompt Engineering Best Practices',
+  'resources.comingSoon': 'Coming soon',
 
   // How WorkenAI works (visual deployment overview)
   'resources.howItWorks': 'How WorkenAI works',

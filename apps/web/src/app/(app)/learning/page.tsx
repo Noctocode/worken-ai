@@ -20,6 +20,7 @@ interface CardDef {
   bullets: TKey[];
   icon: LucideIcon;
   href: string;
+  comingSoon?: boolean;
 }
 
 // Tutorials + learning content. "How WorkenAI works" leads (it used to be
@@ -43,6 +44,7 @@ const LEARN_CARDS: CardDef[] = [
     ],
     icon: GraduationCap,
     href: "/learning/learn-academy",
+    comingSoon: true,
   },
 ];
 
@@ -91,6 +93,7 @@ export default function LearningPage() {
             bullets={c.bullets.map((b) => t(b))}
             icon={c.icon}
             href={c.href}
+            comingSoon={c.comingSoon}
           />
         ))}
       </div>

@@ -35,14 +35,6 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'toolkit.skills.b2': 'Samodejno ob ujemanju sporočila',
   'toolkit.skills.b3': 'Ostane aktivno skozi pogovor',
   'toolkit.skills.b4': 'Uvoz iz SKILL.md',
-  'toolkit.step1.desc': 'Izberi med poslovnimi predlogami za naročilniške naloge, kot so pravni povzetki, izvleček podatkov in pregledi ponudb.',
-  'toolkit.step2.desc': 'Prilepi obstoječe prompte za predloge z AI za izboljšanje jasnosti, natančnosti in učinkovitosti.',
-  'toolkit.step3.desc': 'Obvladaj napredne tehnike skozi strukturirane lekcije, študije primerov in praktične vaje.',
-  'toolkit.bp1': 'Vedno določi zahteve glede oblike in strukture izhoda',
-  'toolkit.bp2': 'Uporabi spremenljivke za večkrat uporabne prompte med dokumenti',
-  'toolkit.bp3': 'Prompte preizkusi z več primeri pred produkcijsko rabo',
-  'toolkit.bp4': 'Dokumentiraj različice promptov in spremljaj metrike uspešnosti',
-  'toolkit.bp5': 'Upoštevaj smernice skladnosti za občutljive podatke',
   'learning.how.desc': 'Oglej si arhitekturo platforme in tri načine namestitve WorkenAI.',
   'learning.how.b1': 'Lokalna namestitev (on-premise)',
   'learning.how.b2': 'Hibridna namestitev',
@@ -66,12 +58,8 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.skills': 'Veščine',
   'resources.skills.cardDesc':
     'Enkrat zapišite, kako vaša ekipa opravi nalogo; pomočnik jo samodejno uporabi, ko se prilega.',
-  'resources.quickStartGuide': 'Vodnik za hitri začetek',
   'resources.openTool': 'Odpri orodje',
-  'resources.startWithBuilder': 'Začnite z Graditeljem',
-  'resources.optimizeWithImprover': 'Optimizirajte z Izboljšalnikom',
-  'resources.learnInAcademy': 'Učite se v Akademiji',
-  'resources.enterpriseBestPractices': 'Najboljše prakse inženiringa promptov',
+  'resources.comingSoon': 'Kmalu na voljo',
 
   // Kako deluje WorkenAI (vizualni pregled postavitve)
   'resources.howItWorks': 'Kako deluje WorkenAI',

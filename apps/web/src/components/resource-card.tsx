@@ -11,12 +11,15 @@ export interface ResourceCardProps {
   icon: LucideIcon;
   bullets: string[];
   href: string;
+  /** Render as a non-clickable "Coming soon" card. */
+  comingSoon?: boolean;
 }
 
 /**
  * Card used on the Toolkit and Learning landing pages — icon + title +
  * description + a bullet list + an "Open" affordance. Shared so the two
- * landings stay visually in sync.
+ * landings stay visually in sync. `comingSoon` renders a muted,
+ * non-interactive variant with a "Coming soon" badge.
  */
 export function ResourceCard({
   title,
@@ -24,13 +27,12 @@ export function ResourceCard({
   icon: Icon,
   bullets,
   href,
+  comingSoon = false,
 }: ResourceCardProps) {
   const { t } = useLanguage();
-  return (
-    <Link
-      href={href}
-      className="flex cursor-pointer flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
-    >
+
+  const body = (
+    <>
       <div className="flex items-start gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-1">
           <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />
@@ -52,10 +54,36 @@ export function ResourceCard({
           </li>
         ))}
       </ul>
-      <span className="mt-auto flex items-center gap-2 text-[13px] font-medium text-primary-6 transition-colors">
-        {t("resources.openTool")}
-        <ChevronRight className="h-4 w-4" />
-      </span>
+      {comingSoon ? (
+        <span className="mt-auto inline-flex w-fit items-center rounded-full bg-bg-1 px-2.5 py-1 text-[12px] font-medium text-text-3">
+          {t("resources.comingSoon")}
+        </span>
+      ) : (
+        <span className="mt-auto flex items-center gap-2 text-[13px] font-medium text-primary-6 transition-colors">
+          {t("resources.openTool")}
+          <ChevronRight className="h-4 w-4" />
+        </span>
+      )}
+    </>
+  );
+
+  if (comingSoon) {
+    return (
+      <div
+        aria-disabled="true"
+        className="flex cursor-not-allowed flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 opacity-60"
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Link
+      href={href}
+      className="flex cursor-pointer flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
+    >
+      {body}
     </Link>
   );
 }
