@@ -613,6 +613,21 @@ export default function FolderDetailPage({
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
   const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
 
+  // Reset each dialog's transient form state when it closes, so reopening
+  // starts fresh. Every close path (Cancel / Esc / overlay / success) flips
+  // the trigger var below, so keying the resets on those covers them all.
+  useEffect(() => {
+    if (moveFileId === null) setMoveTargetId("");
+  }, [moveFileId]);
+  useEffect(() => {
+    if (stagedFiles.length === 0) {
+      setStagedVisibility("all");
+      setStagedTeamIds([]);
+      setStagedProjectIds([]);
+      setStagedScheduleIds([]);
+    }
+  }, [stagedFiles]);
+
   // Same user-teams list the root page renders. Cached by react-query
   // key 'teams' so navigating between KC pages reuses one fetch.
   const { data: userTeams = [] } = useQuery({

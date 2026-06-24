@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pin, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -56,6 +56,11 @@ export function SkillsDialog({
     else setInternalOpen(next);
   };
   const [query, setQuery] = useState("");
+
+  // Clear the search when the dialog closes, so it reopens unfiltered.
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   const { data: skills = [], isLoading } = useQuery({
     queryKey: ["skills", "pinnable", projectId ?? null],

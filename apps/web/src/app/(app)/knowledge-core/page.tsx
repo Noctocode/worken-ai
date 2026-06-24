@@ -505,6 +505,24 @@ export default function KnowledgeCorePage() {
   const [stagedTeamIds, setStagedTeamIds] = useState<string[]>([]);
   const [stagedProjectIds, setStagedProjectIds] = useState<string[]>([]);
   const [stagedScheduleIds, setStagedScheduleIds] = useState<string[]>([]);
+
+  // Reset each dialog's transient form state when it closes, so reopening
+  // starts fresh. Every close path (Cancel / Esc / overlay / success) flips
+  // the trigger var below, so keying the resets on those covers them all.
+  useEffect(() => {
+    if (!newFolderOpen) setNewFolderName("");
+  }, [newFolderOpen]);
+  useEffect(() => {
+    if (moveFileId === null) setMoveTargetId("");
+  }, [moveFileId]);
+  useEffect(() => {
+    if (stagedFiles.length === 0) {
+      setStagedVisibility("all");
+      setStagedTeamIds([]);
+      setStagedProjectIds([]);
+      setStagedScheduleIds([]);
+    }
+  }, [stagedFiles]);
   // Held between the first upload and the user's resolution choice.
   // Mirrors the per-folder page state — see the comment there for
   // the full lifecycle (`pendingConflicts` → dialog → re-upload).

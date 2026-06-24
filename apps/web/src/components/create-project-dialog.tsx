@@ -22,7 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams, DuplicateProjectNameError } from "@/lib/api";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cloneElement, isValidElement, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
 
 export function CreateProjectDialog({
@@ -45,6 +45,18 @@ export function CreateProjectDialog({
   // picker never offers a model the admin hasn't curated.
   const { models, isLoading: modelsLoading } = useUserModels();
 
+  // Clear the form whenever the dialog closes, so reopening starts fresh
+  // instead of showing the previous (cancelled) draft.
+  useEffect(() => {
+    if (!open) {
+      setName("");
+      setDescription("");
+      setModel("");
+      setTeamId("personal");
+      setNameTaken(false);
+    }
+  }, [open]);
+
   const { data: teams } = useQuery({
     queryKey: ["teams"],
     queryFn: fetchTeams,
@@ -55,11 +67,7 @@ export function CreateProjectDialog({
     mutationFn: createProject,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      setName("");
-      setDescription("");
-      setModel("");
-      setTeamId("personal");
-      setNameTaken(false);
+      // The close effect clears the form fields.
       setOpen(false);
     },
     onError: (err) => {

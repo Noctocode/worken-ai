@@ -265,6 +265,15 @@ export function AddDocumentDialog({
       // Snap the attach filter back to "All files" so a folder the
       // user drilled into last time doesn't persist into the next open.
       setAttachFolderId(ALL_FILES);
+      // Clear everything the user typed/picked so reopening starts fresh
+      // instead of showing a half-finished draft. (uploadFolderId is
+      // re-seeded from uploadDefaults on the next open via the flag above.)
+      setContent("");
+      setSelectedFiles([]);
+      setAttachSelectedIds(new Set());
+      setAttachQuery("");
+      setConfirmDeleteId(null);
+      setIsDragOver(false);
       return;
     }
     if (uploadDefaults && !uploadDefaultsApplied) {

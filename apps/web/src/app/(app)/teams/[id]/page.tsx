@@ -128,7 +128,17 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
   });
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Clear the form on close so reopening starts fresh.
+        if (!next) {
+          setName("");
+          setDescription("");
+        }
+      }}
+    >
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>

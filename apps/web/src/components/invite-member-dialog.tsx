@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { inviteUser, inviteTeamMember, type OrgRole } from "@/lib/api";
@@ -44,6 +44,16 @@ function TeamInviteDialog({
   const [capUsd, setCapUsd] = useState("");
   const [capError, setCapError] = useState<string | null>(null);
   const qc = useQueryClient();
+
+  // Clear the form whenever the dialog closes, so reopening starts fresh.
+  useEffect(() => {
+    if (!open) {
+      setEmail("");
+      setRole("viewer");
+      setCapUsd("");
+      setCapError(null);
+    }
+  }, [open]);
 
   const parseCapToCents = (): number | null | "invalid" => {
     const trimmed = capUsd.trim();
@@ -192,6 +202,14 @@ function OrgInviteDialog({
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<OrgRole>("basic");
   const qc = useQueryClient();
+
+  // Clear the form whenever the dialog closes, so reopening starts fresh.
+  useEffect(() => {
+    if (!open) {
+      setEmail("");
+      setRole("basic");
+    }
+  }, [open]);
 
   const mutation = useMutation({
     mutationFn: () => inviteUser(email.trim(), role),
