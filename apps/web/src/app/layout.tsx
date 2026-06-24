@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -18,7 +18,8 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 // Browser tab: name + description. Sub-pages may set their own title and
 // it is appended as "<page> · WorkenAI". The favicon comes from the
-// app/icon.png file convention (the WorkenAI mark).
+// app/icon.svg file convention (the WorkenAI mark, vector — sharp at any size);
+// iOS uses app/apple-icon.tsx and PWAs read app/manifest.ts.
 export const metadata: Metadata = {
   title: {
     default: "WorkenAI",
@@ -26,6 +27,11 @@ export const metadata: Metadata = {
   },
   description:
     "AI development platform for managing workflows, comparing models, and analyzing documents.",
+};
+
+// Brand colour for the browser/OS UI (mobile address bar, PWA splash).
+export const viewport: Viewport = {
+  themeColor: "#178ACA",
 };
 
 export default function RootLayout({
