@@ -10,7 +10,8 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
-import { projects } from '@worken/database/schema';
+import { chatToolCalls, projects } from '@worken/database/schema';
+import { ArsoToolsService } from '../arso/arso-tools.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
 import { ConversationsService } from '../conversations/conversations.service.js';
@@ -32,7 +33,7 @@ import { ModelsService } from '../models/models.service.js';
 import { ObservabilityService } from '../observability/observability.service.js';
 import { ProjectKnowledgeService } from '../projects/project-knowledge.service.js';
 import { SkillRouterService } from '../skills/skill-router.service.js';
-import { ChatService } from './chat.service.js';
+import { ChatService, type ChatTool } from './chat.service.js';
 import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { ChatGateway } from '../realtime/chat.gateway.js';
@@ -78,8 +79,25 @@ export class ChatController {
     private readonly chatGateway: ChatGateway,
     private readonly skillRouter: SkillRouterService,
     private readonly modelsService: ModelsService,
+    private readonly arsoTools: ArsoToolsService,
     @Inject(DATABASE) private readonly db: Database,
   ) {}
+
+  /**
+   * The ARSO function-calling tools to offer, or undefined to offer none.
+   * Gated on (a) a temporary env flag (ARSO toggle UI lands in Phase D) and
+   * (b) the resolved model actually supporting tools per the catalog. The
+   * native Anthropic route is excluded until Phase C2.
+   */
+  private async arsoToolsFor(t: {
+    model: string;
+    kind: string;
+  }): Promise<ChatTool[] | undefined> {
+    if (process.env['ARSO_TOOLS_ENABLED'] === 'false') return undefined;
+    if (t.kind === 'anthropic-sdk') return undefined; // Phase C2
+    const supports = await this.catalogService.supportsTools(t.model);
+    return supports ? this.arsoTools.definitions() : undefined;
+  }
 
   /**
    * Token-streaming chat endpoint. Returns text/event-stream so the
@@ -422,6 +440,20 @@ export class ChatController {
     let streamErrored = false;
     let streamErrorPayload: { message: string; status?: number } | null = null;
     let blockedDuringStream = false;
+    // ARSO (and future) tool calls the model made this turn. Buffered by id on
+    // `tool_call`, completed on `tool_result`, persisted to chat_tool_calls
+    // once the assistant message exists.
+    const toolArgsById = new Map<
+      string,
+      { name: string; arguments: Record<string, unknown> }
+    >();
+    const toolCallsLog: {
+      name: string;
+      arguments: Record<string, unknown>;
+      ok: boolean;
+      summary: string;
+      latencyMs: number;
+    }[] = [];
 
     // Model attempt list: the requested model first, then its configured
     // fallbacks (in order). When a candidate fails with a retryable error
@@ -455,6 +487,8 @@ export class ChatController {
     const chatService = this.chatService;
     const chatTransport = this.chatTransport;
     const catalogService = this.catalogService;
+    const arsoTools = this.arsoTools;
+    const arsoToolsFor = this.arsoToolsFor.bind(this);
     async function* streamWithFallback() {
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
@@ -533,6 +567,11 @@ export class ChatController {
 
         let producedOutput = false;
         let attemptError: { message: string; status?: number } | null = null;
+        // ARSO function-calling tools, only when this model supports them (and
+        // ARSO is enabled). Undefined ⇒ the call is byte-for-byte the no-tools
+        // path. The maxToolIters cap (in chat.service) bounds cost; finer
+        // per-iteration budget gating is Phase C3.
+        const arsoToolDefs = await arsoToolsFor(t);
         try {
           for await (const ev of chatService.sendMessageStream(
             apiMessages,
@@ -547,6 +586,10 @@ export class ChatController {
               webSearch: candidateWebSearch,
               azureEndpoint: t.azureEndpoint,
               azureApiVersion: t.azureApiVersion,
+              tools: arsoToolDefs,
+              runTool: arsoToolDefs
+                ? (name, args) => arsoTools.dispatch(name, args)
+                : undefined,
             },
           )) {
             // A pre-content error from a dead model → abandon this candidate.
@@ -643,6 +686,31 @@ export class ChatController {
         } else if (event.type === 'citations') {
           citationsCollected = event.citations;
           sendEvent('citations', { citations: event.citations });
+        } else if (event.type === 'tool_call') {
+          toolArgsById.set(event.id, {
+            name: event.name,
+            arguments: event.arguments,
+          });
+          sendEvent('tool_call', {
+            id: event.id,
+            name: event.name,
+            arguments: event.arguments,
+          });
+        } else if (event.type === 'tool_result') {
+          const call = toolArgsById.get(event.id);
+          toolCallsLog.push({
+            name: event.name,
+            arguments: call?.arguments ?? {},
+            ok: event.ok,
+            summary: event.summary,
+            latencyMs: event.latencyMs,
+          });
+          sendEvent('tool_result', {
+            id: event.id,
+            name: event.name,
+            ok: event.ok,
+            summary: event.summary,
+          });
         } else if (event.type === 'usage') {
           usagePromptTokens = event.promptTokens;
           usageCompletionTokens = event.completionTokens;
@@ -824,13 +892,37 @@ export class ChatController {
     // "Skill applied" chip and the user understands why the style shifted.
     if (appliedSkills.length > 0) metadata.skills = appliedSkills;
 
-    await this.conversationsService.addMessage(
+    const assistantMessage = await this.conversationsService.addMessage(
       body.conversationId,
       'assistant',
       finalText,
       null,
       Object.keys(metadata).length > 0 ? metadata : undefined,
     );
+    // Persist any tool (ARSO) calls this turn, linked to the assistant message
+    // + conversation, so a reopened chat can show "called ARSO weather".
+    // Best-effort: a failure here must not sink an otherwise-good reply.
+    if (toolCallsLog.length > 0 && assistantMessage?.id) {
+      try {
+        await this.db.insert(chatToolCalls).values(
+          toolCallsLog.map((c) => ({
+            messageId: assistantMessage.id,
+            conversationId: body.conversationId,
+            toolName: c.name,
+            arguments: c.arguments,
+            ok: c.ok,
+            summary: c.summary,
+            latencyMs: c.latencyMs,
+          })),
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to persist ${toolCallsLog.length} tool call(s): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
     // Live sync the assistant reply to other members. senderId is the
     // triggering user so their own client (which streamed the reply)
     // skips the refetch; everyone else in the room refetches to see it.
