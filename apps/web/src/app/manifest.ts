@@ -1,8 +1,9 @@
 import type { MetadataRoute } from "next";
 
 // PWA manifest. Next serves this at /manifest.webmanifest and injects the
-// <link rel="manifest"> automatically. Icons reuse the app/icon.svg (scalable,
-// any size) and the iOS PNG from app/apple-icon.tsx.
+// <link rel="manifest"> automatically. The SVG covers the scalable "any"
+// purpose; the 192/512 PNGs are maskable (white plate + mark inside the
+// safe zone) for Android home-screen / install where the OS masks the icon.
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "WorkenAI",
@@ -23,6 +24,18 @@ export default function manifest(): MetadataRoute.Manifest {
         src: "/apple-icon",
         type: "image/png",
         sizes: "180x180",
+      },
+      {
+        src: "/icon-192.png",
+        type: "image/png",
+        sizes: "192x192",
+        purpose: "maskable",
+      },
+      {
+        src: "/icon-512.png",
+        type: "image/png",
+        sizes: "512x512",
+        purpose: "maskable",
       },
     ],
   };
