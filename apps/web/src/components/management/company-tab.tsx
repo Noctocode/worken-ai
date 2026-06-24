@@ -151,7 +151,7 @@ function CompanyAddGuardrailDialog({
               {t("mgmt.company.noGuardrailsAvailable")}
             </p>
             <Link
-              href="/guardrails"
+              href="/teams?tab=guardrails"
               className="text-[13px] font-medium text-primary-6 hover:text-primary-7"
             >
               {t("mgmt.company.createOnGuardrails")}
