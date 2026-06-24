@@ -1057,6 +1057,153 @@ export const conversationSkills = pgTable(
   ],
 );
 
+// AI Tools (plugins) — company-admin-registered external HTTP APIs the AI
+// can CALL during chat (function calling), e.g. a weather API. Company-scoped
+// so every member of a company sees the same catalog (company-wide
+// consistency, like the Models + Integration tabs); only admins mutate.
+// Credentials are encrypted at rest with EncryptionService (same scheme as
+// integrations.api_key_encrypted). This table is the REGISTRY; the chat
+// tool-call loop that consumes it is a later phase. See docs/ai-tools-plan.md.
+export const aiTools = pgTable(
+  "ai_tools",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    // Tenant: every member of this company sees the tool; admins mutate.
+    companyId: uuid("company_id")
+      .references(() => companies.id, { onDelete: "cascade" })
+      .notNull(),
+    // Audit — who registered it. Null on the admin's user delete so the
+    // tool outlives the actor (the company still owns it).
+    createdBy: uuid("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    // LLM-facing function name the model calls, e.g. "get_weather".
+    // Unique per company; `^[a-z0-9_]{1,48}$` enforced in the service.
+    name: text("name").notNull(),
+    // Human label shown in the Tools tab, e.g. "Weather".
+    displayName: text("display_name").notNull(),
+    // Routing hint for the model — WHEN to call this tool.
+    description: text("description").notNull(),
+    // JSON Schema for the parameters the model fills in.
+    inputSchema: jsonb("input_schema")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    // Outbound HTTP request template (interpolated with {{param}} at call time).
+    httpMethod: text("http_method").notNull().default("GET"), // GET | POST
+    urlTemplate: text("url_template").notNull(),
+    headersTemplate: jsonb("headers_template")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    queryTemplate: jsonb("query_template")
+      .$type<Record<string, string>>()
+      .notNull()
+      .default({}),
+    bodyTemplate: jsonb("body_template")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    // Credential. authType=none → no key. authParamName = the header/query
+    // name the key is sent under (e.g. "appid", "X-API-Key").
+    authType: text("auth_type").notNull().default("none"), // none | api_key_header | api_key_query | bearer
+    authParamName: text("auth_param_name"),
+    apiKeyEncrypted: text("api_key_encrypted"), // AES-256-GCM; never returned to clients
+    // Optional dotted path(s) to trim the response before handing it to the model.
+    responsePath: text("response_path"),
+    // Who in the company the tool is offered to at chat time (enforced in the
+    // later chat phase). Mirrors skills.visibility.
+    visibility: text("visibility").notNull().default("all"), // all | admins | teams | project
+    isEnabled: boolean("is_enabled").notNull().default(true),
+    // Monthly call cap: NULL = unlimited, 0 = paused, >0 = enforced.
+    monthlyCallLimit: integer("monthly_call_limit"),
+    // Outbound request timeout (ms); capped in the executor.
+    timeoutMs: integer("timeout_ms").notNull().default(8000),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_tools_company_idx").on(table.companyId),
+    // The model-facing function name must be unique within a company so the
+    // tool registry never offers two functions with the same name.
+    uniqueIndex("ai_tools_company_name_unique").on(table.companyId, table.name),
+  ],
+);
+
+// Team gating for visibility='teams' — mirrors skill_teams.
+export const aiToolTeams = pgTable(
+  "ai_tool_teams",
+  {
+    toolId: uuid("tool_id")
+      .references(() => aiTools.id, { onDelete: "cascade" })
+      .notNull(),
+    teamId: uuid("team_id")
+      .references(() => teams.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.toolId, table.teamId] }),
+    index("ai_tool_teams_team_idx").on(table.teamId),
+  ],
+);
+
+// Project gating for visibility='project' — mirrors skill_projects.
+export const aiToolProjects = pgTable(
+  "ai_tool_projects",
+  {
+    toolId: uuid("tool_id")
+      .references(() => aiTools.id, { onDelete: "cascade" })
+      .notNull(),
+    projectId: uuid("project_id")
+      .references(() => projects.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.toolId, table.projectId] }),
+    index("ai_tool_projects_project_idx").on(table.projectId),
+  ],
+);
+
+// Audit + usage ledger for tool calls. Powers the monthly cap and an admin
+// usage view (later phase). Secrets are NEVER written to `arguments`.
+export const aiToolExecutions = pgTable(
+  "ai_tool_executions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    toolId: uuid("tool_id")
+      .references(() => aiTools.id, { onDelete: "cascade" })
+      .notNull(),
+    companyId: uuid("company_id")
+      .references(() => companies.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    // Model-supplied arguments, with credential values stripped.
+    arguments: jsonb("arguments")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    status: text("status").notNull(), // ok | error | blocked | timeout
+    httpStatus: integer("http_status"),
+    latencyMs: integer("latency_ms"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("ai_tool_executions_tool_idx").on(table.toolId),
+    // Monthly-cap probe: count this company's calls in the current month.
+    index("ai_tool_executions_company_created_idx").on(
+      table.companyId,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const modelConfigs = pgTable("model_configs", {
   id: uuid("id").primaryKey().defaultRandom(),
   ownerId: uuid("owner_id")

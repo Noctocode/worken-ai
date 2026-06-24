@@ -217,18 +217,19 @@ provider matrix smoke for the loop (OpenAI-SDK route first; Anthropic next).
 
 ---
 
-## Open questions to confirm before Phase A
+## Decisions (locked — confirmed before Phase A)
 
-1. **Provider coverage for v1:** OK to support tool calling on the **OpenAI-SDK route
-   first** (OpenRouter / custom / Azure) and add the **Anthropic** native `tool_use`
-   path in the same Phase C — and simply **disable tools for models that don't support
-   them** (graceful no-op)? Or must a specific provider be first?
-2. **Generic HTTP tool vs. curated connectors:** this plan is a **constrained-generic
-   HTTP tool** (templates + SSRF allowlist). Good, or do you prefer a smaller set of
-   hand-written connectors (less flexible, even safer)?
-3. **UI name:** **"Tools"**, **"Plugins"**, or **"Integrations"**? (We already have an
-   "Integration" tab for BYOK keys — I'd avoid reusing that word; I lean **"Tools"**.)
-4. **Naming of the entity in code/DB:** `ai_tools` (proposed) vs `plugins`.
+1. **Provider coverage:** support tool calling on the **OpenAI-SDK route first**
+   (OpenRouter / custom / Azure), then the **Anthropic** native `tool_use` path in the
+   same Phase C. Models that don't support tools → tools are **silently not offered**
+   (chat behaves exactly as today). Each model carries a "supports tools" capability flag.
+2. **Architecture:** **constrained-generic HTTP tool** — one generic admin-defined
+   request (templates) behind strong guardrails (HTTPS-only, private-IP/SSRF block,
+   optional host allowlist, schema validation, timeouts). No per-service hand-written
+   connectors.
+3. **UI name:** **"Tools"** (avoids clashing with the existing BYOK "Integration" tab).
+4. **Entity name in code/DB:** **`ai_tools`** (aligned with the "Tools" UI + tool-calling
+   concept).
 
 ---
 

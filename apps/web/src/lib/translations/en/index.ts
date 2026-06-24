@@ -25,6 +25,7 @@ import { guardrails } from "./guardrails";
 import { chat } from "./chat";
 import { dialogs } from "./dialogs";
 import { aiCron } from "./aiCron";
+import { tools } from "./tools";
 
 export const en = {
   ...common,
@@ -54,6 +55,7 @@ export const en = {
   ...chat,
   ...dialogs,
   ...aiCron,
+  ...tools,
 } as const;
 
 export type TranslationKey = keyof typeof en;

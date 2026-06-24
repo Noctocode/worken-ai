@@ -35,6 +35,7 @@ import { ShortcutsModule } from './shortcuts/shortcuts.module';
 import { SkillsModule } from './skills/skills.module';
 import { TeamsModule } from './teams/teams.module';
 import { TendersModule } from './tenders/tenders.module';
+import { ToolsModule } from './tools/tools.module';
 import { UsersModule } from './users/users.module';
 import { buildThrottlerOptions } from './throttler/throttler.options';
 
@@ -81,6 +82,7 @@ import { buildThrottlerOptions } from './throttler/throttler.options';
     SkillsModule,
     TeamsModule,
     TendersModule,
+    ToolsModule,
     UsersModule,
   ],
   controllers: [AppController],

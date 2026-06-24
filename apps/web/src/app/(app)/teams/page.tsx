@@ -55,6 +55,7 @@ import { CompanyTab } from "@/components/management/company-tab";
 import { PersonalProfileNotice } from "@/components/personal-profile-notice";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
 import { IntegrationTab } from "@/components/management/integration-tab";
+import { ToolsTab } from "@/components/management/tools-tab";
 import { BillingTab } from "@/components/management/billing-tab";
 import { ApiTab } from "@/components/management/api-tab";
 import { GuardrailsTab } from "@/components/management/guardrails-tab";
@@ -318,6 +319,7 @@ export default function TeamsPage() {
         <PageTabsTrigger value="users">{t("teams.users")}</PageTabsTrigger>
         <PageTabsTrigger value="models">{t("teams.models")}</PageTabsTrigger>
         <PageTabsTrigger value="guardrails">{t("teams.guardrails")}</PageTabsTrigger>
+        <PageTabsTrigger value="tools">{t("tools.tab")}</PageTabsTrigger>
         <PageTabsTrigger value="my-account">{t("teams.myAccount")}</PageTabsTrigger>
         <PageTabsTrigger value="company">
           {t("teams.company")}
@@ -963,6 +965,10 @@ export default function TeamsPage() {
 
       <PageTabsContent value="guardrails">
         <GuardrailsTab />
+      </PageTabsContent>
+
+      <PageTabsContent value="tools">
+        <ToolsTab />
       </PageTabsContent>
 
       {/* ── Other tabs ───────────────────────────────────────────────────────── */}

@@ -2266,6 +2266,113 @@ export async function deleteSkill(id: string): Promise<void> {
   if (!res.ok) throw new Error("Failed to delete skill");
 }
 
+// AI Tools (admin-configured callable plugins — external HTTP APIs the AI
+// can call during chat). Company-wide catalog; only admins mutate. The
+// encrypted API key is never returned — `hasApiKey` reports whether one is set.
+
+export type ToolVisibility = "all" | "admins" | "teams" | "project";
+export type ToolAuthType =
+  | "none"
+  | "api_key_header"
+  | "api_key_query"
+  | "bearer";
+export type ToolHttpMethod = "GET" | "POST";
+
+export interface AiTool {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  httpMethod: string;
+  urlTemplate: string;
+  headersTemplate: Record<string, string>;
+  queryTemplate: Record<string, string>;
+  bodyTemplate: Record<string, unknown>;
+  authType: string;
+  authParamName: string | null;
+  hasApiKey: boolean;
+  responsePath: string | null;
+  visibility: string;
+  isEnabled: boolean;
+  monthlyCallLimit: number | null;
+  timeoutMs: number;
+  createdAt: string;
+  updatedAt: string;
+  /** Only populated by fetchTool (detail) — prefills the visibility pickers. */
+  teamIds?: string[];
+  projectIds?: string[];
+}
+
+export interface AiToolInput {
+  name: string;
+  displayName: string;
+  description: string;
+  inputSchema?: Record<string, unknown>;
+  httpMethod?: string;
+  urlTemplate: string;
+  headersTemplate?: Record<string, string>;
+  queryTemplate?: Record<string, string>;
+  bodyTemplate?: Record<string, unknown>;
+  authType?: string;
+  /** undefined = leave, null = clear, string = set (write-only). */
+  authParamName?: string | null;
+  apiKey?: string | null;
+  responsePath?: string | null;
+  visibility?: string;
+  isEnabled?: boolean;
+  monthlyCallLimit?: number | null;
+  timeoutMs?: number;
+  teamIds?: string[];
+  projectIds?: string[];
+}
+
+export async function fetchTools(): Promise<AiTool[]> {
+  const res = await apiFetch(`/tools`);
+  if (!res.ok) throw new Error("Failed to load tools");
+  return res.json();
+}
+
+export async function fetchTool(id: string): Promise<AiTool> {
+  const res = await apiFetch(`/tools/${id}`);
+  if (!res.ok) throw new Error("Failed to load tool");
+  return res.json();
+}
+
+export async function createTool(input: AiToolInput): Promise<AiTool> {
+  const res = await apiFetch(`/tools`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to create tool"));
+  }
+  return res.json();
+}
+
+export async function updateTool(
+  id: string,
+  input: Partial<AiToolInput>,
+): Promise<AiTool> {
+  const res = await apiFetch(`/tools/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to update tool"));
+  }
+  return res.json();
+}
+
+export async function deleteTool(id: string): Promise<void> {
+  const res = await apiFetch(`/tools/${id}`, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(await extractErrorMessage(res, "Failed to delete tool"));
+  }
+}
+
 // Tenders
 
 export interface TenderSummary {
