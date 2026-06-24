@@ -27,6 +27,7 @@ export const teams = {
   'teams.showAllUsers': 'Show all users',
   'teams.pending': 'Pending',
   'teams.models': 'Models',
+  'teams.guardrails': 'Guardrails',
   'teams.addNewModel': 'Add New Model',
   'teams.searchModels': 'Search models...',
   'teams.onlyAdminsModels': 'Only admins can add models',

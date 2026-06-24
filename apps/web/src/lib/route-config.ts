@@ -92,13 +92,6 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
-  "/guardrails": {
-    bg: "bg-bg-white",
-    titleKey: "appbar.title.guardrails",
-    hideSearch: true,
-    hideNotifications: true,
-    appbarAction: { labelKey: "appbar.action.addGuardrail", event: "guardrails:add" },
-  },
   "/observability": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.observability",

@@ -29,6 +29,7 @@ export const teams: Record<keyof typeof teamsEn, string> = {
   'teams.showAllUsers': 'Prikaži vse uporabnike',
   'teams.pending': 'V teku',
   'teams.models': 'Modeli',
+  'teams.guardrails': 'Varovala',
   'teams.addNewModel': 'Dodaj nov model',
   'teams.searchModels': 'Išči modele...',
   'teams.onlyAdminsModels': 'Samo administratorji lahko dodajajo modele',
