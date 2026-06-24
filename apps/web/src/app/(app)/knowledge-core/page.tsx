@@ -49,6 +49,7 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/components/providers";
 import { useIsPersonal } from "@/lib/hooks/use-is-personal";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 import { DriveSection } from "@/components/drive-section";
 import { OneDriveSection } from "@/components/onedrive-section";
 import { SharePointSection } from "@/components/sharepoint-section";
@@ -509,20 +510,14 @@ export default function KnowledgeCorePage() {
   // Reset each dialog's transient form state when it closes, so reopening
   // starts fresh. Every close path (Cancel / Esc / overlay / success) flips
   // the trigger var below, so keying the resets on those covers them all.
-  useEffect(() => {
-    if (!newFolderOpen) setNewFolderName("");
-  }, [newFolderOpen]);
-  useEffect(() => {
-    if (moveFileId === null) setMoveTargetId("");
-  }, [moveFileId]);
-  useEffect(() => {
-    if (stagedFiles.length === 0) {
-      setStagedVisibility("all");
-      setStagedTeamIds([]);
-      setStagedProjectIds([]);
-      setStagedScheduleIds([]);
-    }
-  }, [stagedFiles]);
+  useResetOnClose(newFolderOpen, () => setNewFolderName(""));
+  useResetOnClose(moveFileId !== null, () => setMoveTargetId(""));
+  useResetOnClose(stagedFiles.length > 0, () => {
+    setStagedVisibility("all");
+    setStagedTeamIds([]);
+    setStagedProjectIds([]);
+    setStagedScheduleIds([]);
+  });
   // Held between the first upload and the user's resolution choice.
   // Mirrors the per-folder page state — see the comment there for
   // the full lifecycle (`pendingConflicts` → dialog → re-upload).

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Pin, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { fetchPinnableSkills, type PinnableSkill } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 /**
  * "Skills" composer button.
@@ -58,9 +59,7 @@ export function SkillsDialog({
   const [query, setQuery] = useState("");
 
   // Clear the search when the dialog closes, so it reopens unfiltered.
-  useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
+  useResetOnClose(open, () => setQuery(""));
 
   const { data: skills = [], isLoading } = useQuery({
     queryKey: ["skills", "pinnable", projectId ?? null],

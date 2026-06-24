@@ -59,6 +59,7 @@ import {
   Inbox,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 interface AddDocumentDialogProps {
   projectId: string;
@@ -257,30 +258,26 @@ export function AddDocumentDialog({
 
   /* ── Effects ──────────────────────────────────────────────────── */
 
-  // Apply smart defaults once when they first arrive. Reset the
-  // applied flag on dialog close so reopening pulls fresh state.
+  // Clear everything the user typed/picked on close so reopening starts
+  // fresh instead of showing a half-finished draft. Resetting the
+  // applied flag + attach filter here means the next open re-seeds the
+  // smart defaults (below) and shows the whole Knowledge Core again.
+  // (uploadFolderId is re-seeded from uploadDefaults on the next open.)
+  useResetOnClose(open, () => {
+    setUploadDefaultsApplied(false);
+    setAttachFolderId(ALL_FILES);
+    setContent("");
+    setSelectedFiles([]);
+    setAttachSelectedIds(new Set());
+    setAttachQuery("");
+    setConfirmDeleteId(null);
+    setIsDragOver(false);
+  });
+
+  // Apply the BE smart defaults once when they first arrive while open.
   useEffect(() => {
-    if (!open) {
-      setUploadDefaultsApplied(false);
-      // Snap the attach filter back to "All files" so a folder the
-      // user drilled into last time doesn't persist into the next open.
-      setAttachFolderId(ALL_FILES);
-      // Clear everything the user typed/picked so reopening starts fresh
-      // instead of showing a half-finished draft. (uploadFolderId is
-      // re-seeded from uploadDefaults on the next open via the flag above.)
-      setContent("");
-      setSelectedFiles([]);
-      setAttachSelectedIds(new Set());
-      setAttachQuery("");
-      setConfirmDeleteId(null);
-      setIsDragOver(false);
-      return;
-    }
-    if (uploadDefaults && !uploadDefaultsApplied) {
+    if (open && uploadDefaults && !uploadDefaultsApplied) {
       setUploadFolderId(uploadDefaults.folderId);
-      // The attach-folder filter stays on its "All files" default
-      // (set in useState) so the user sees their whole Knowledge Core
-      // when they switch tabs, not just the smart-default folder.
       setUploadDefaultsApplied(true);
     }
   }, [open, uploadDefaults, uploadDefaultsApplied]);

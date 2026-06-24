@@ -76,6 +76,7 @@ import { InviteMemberDialog } from "@/components/invite-member-dialog";
 import { TeamMemberCapDialog } from "@/components/team-member-cap-dialog";
 import { formatBudgetInput, formatCurrency } from "@/lib/utils";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 import { severityLabel } from "@/lib/guardrails";
 
 /* ─── Helpers ────────────────────────────────────────────────────────────── */
@@ -117,6 +118,12 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
   const [description, setDescription] = useState("");
   const qc = useQueryClient();
 
+  // Clear the form on close so reopening starts fresh.
+  useResetOnClose(open, () => {
+    setName("");
+    setDescription("");
+  });
+
   const mutation = useMutation({
     mutationFn: () => createTeam({ name: name.trim(), description: description.trim() || undefined, parentTeamId }),
     onSuccess: () => {
@@ -128,17 +135,7 @@ function AddSubteamDialog({ parentTeamId, children }: { parentTeamId: string; ch
   });
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        // Clear the form on close so reopening starts fresh.
-        if (!next) {
-          setName("");
-          setDescription("");
-        }
-      }}
-    >
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent>
         <DialogHeader>

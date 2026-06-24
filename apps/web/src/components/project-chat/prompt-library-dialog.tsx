@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Loader2, Search } from "lucide-react";
 
@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { fetchPrompts, type PromptSummary } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 /**
  * "Prompt Library" composer button.
@@ -39,9 +40,7 @@ export function PromptLibraryDialog({
   const [query, setQuery] = useState("");
 
   // Clear the search when the dialog closes, so it reopens unfiltered.
-  useEffect(() => {
-    if (!open) setQuery("");
-  }, [open]);
+  useResetOnClose(open, () => setQuery(""));
 
   // Lazy-load the prompt list when the dialog opens. Fresh query
   // each open instead of caching across mounts — the prompt library

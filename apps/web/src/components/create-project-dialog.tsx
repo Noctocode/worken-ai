@@ -22,8 +22,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams, DuplicateProjectNameError } from "@/lib/api";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { cloneElement, isValidElement, useEffect, useState } from "react";
+import { cloneElement, isValidElement, useState } from "react";
 import { useLanguage } from "@/lib/i18n";
+import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
 
 export function CreateProjectDialog({
   children,
@@ -47,15 +48,13 @@ export function CreateProjectDialog({
 
   // Clear the form whenever the dialog closes, so reopening starts fresh
   // instead of showing the previous (cancelled) draft.
-  useEffect(() => {
-    if (!open) {
-      setName("");
-      setDescription("");
-      setModel("");
-      setTeamId("personal");
-      setNameTaken(false);
-    }
-  }, [open]);
+  useResetOnClose(open, () => {
+    setName("");
+    setDescription("");
+    setModel("");
+    setTeamId("personal");
+    setNameTaken(false);
+  });
 
   const { data: teams } = useQuery({
     queryKey: ["teams"],
