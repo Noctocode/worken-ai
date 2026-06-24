@@ -18,8 +18,10 @@ const ibmPlexMono = IBM_Plex_Mono({
 
 // Browser tab: name + description. Sub-pages may set their own title and
 // it is appended as "<page> · WorkenAI". The favicon comes from the
-// app/icon.svg file convention (the WorkenAI mark, vector — sharp at any size);
-// iOS uses app/apple-icon.tsx and PWAs read app/manifest.ts.
+// app/icon.svg file convention (the WorkenAI mark, vector — sharp at any
+// size); app/favicon.ico is a branded raster fallback (16/32/48) for legacy
+// clients and bots that request /favicon.ico directly. iOS uses
+// app/apple-icon.tsx and PWAs read app/manifest.ts.
 export const metadata: Metadata = {
   title: {
     default: "WorkenAI",
