@@ -20,6 +20,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { fetchTender, type TenderDetail as ApiTenderDetail } from "@/lib/api";
 import { useLanguage } from "@/lib/i18n";
+import { BRAND } from "@/lib/theme";
 
 type ReqStatus = "met" | "partial" | "gap";
 
@@ -415,7 +416,7 @@ export default function TenderDetailPage({
                   cy="72"
                   r="56"
                   fill="none"
-                  stroke="#178ACA"
+                  stroke={BRAND}
                   strokeWidth="16"
                   strokeDasharray={`${(tender.matchRate / 100) * 2 * Math.PI * 56} ${2 * Math.PI * 56}`}
                   strokeLinecap="round"
