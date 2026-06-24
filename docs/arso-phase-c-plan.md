@@ -128,13 +128,15 @@ renders them in Phase D.
   verified independently; models without tool support never get `tools`.
 - **Usage/billing** → sum usage across iterations (today only the last is kept).
 
-## Open questions (confirm before C1)
+## Decisions (locked — confirmed before C1)
 
-1. **Model capability source:** start with "openai-sdk route ⇒ supportsTools, plus
-   Anthropic native ⇒ supportsTools" (coarse, works for mainstream models), and
-   refine with a catalog flag later? *(lean yes)*
-2. **ARSO gate for C-phase:** until the Integration toggle (Phase D) exists,
-   default ARSO tools **ON** for everyone (so we can test), or behind a temporary
-   env flag? *(lean: ON in dev, env flag to disable.)*
-3. **Tool-call persistence shape:** attach to assistant message `metadata.toolCalls`
-   (no schema migration) vs a dedicated table? *(lean metadata — no migration.)*
+1. **Model capability:** a **precise per-model `supportsTools` flag** from the
+   model catalog (not a coarse route rule). Derive it from the source of truth
+   (e.g. OpenRouter `supported_parameters` containing `tools`; Anthropic native =
+   true; custom/Azure = conservative default until set). Only models flagged
+   tools-capable are offered ARSO tools.
+2. **ARSO gate (C phase):** ARSO tools **ON by default** for everyone so we can
+   test, behind a temporary env flag to disable. (The Integration-tab toggle is
+   Phase D.)
+3. **Tool-call persistence:** a **dedicated table** (with a migration) linking
+   tool calls to the message / conversation — not message metadata.
