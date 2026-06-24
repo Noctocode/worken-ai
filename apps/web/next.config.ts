@@ -18,7 +18,8 @@ const nextConfig: NextConfig = {
       { source: "/resources/prompt-improver", destination: "/toolkit/prompt-improver", permanent: true },
       { source: "/resources/shortcuts", destination: "/toolkit/shortcuts", permanent: true },
       { source: "/resources/skills", destination: "/toolkit/skills", permanent: true },
-      { source: "/resources", destination: "/toolkit", permanent: true },
+      // The hub kept the name "Resources & Learning" → that section is /learning.
+      { source: "/resources", destination: "/learning", permanent: true },
     ];
   },
 };

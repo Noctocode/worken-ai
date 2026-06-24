@@ -1,167 +1,102 @@
 "use client";
 
-import Link from "next/link";
 import {
   Library,
   Wrench,
   Wand2,
   LayoutGrid,
   Sparkles,
-  Check,
-  ChevronRight,
   Info,
   FileText,
   CheckCircle2,
+  type LucideIcon,
 } from "lucide-react";
 import { useLanguage } from "@/lib/i18n";
+import { ResourceCard } from "@/components/resource-card";
 
-type CardIcon = typeof Library;
+type TKey = Parameters<ReturnType<typeof useLanguage>["t"]>[0];
 
-interface ToolCard {
-  titleKey: string;
-  description: string;
-  icon: CardIcon;
-  bullets: string[];
+interface CardDef {
+  titleKey: TKey;
+  descKey: TKey;
+  bullets: TKey[];
+  icon: LucideIcon;
   href: string;
 }
+
+const PROMPT_CARDS: CardDef[] = [
+  {
+    titleKey: "resources.promptLibrary",
+    descKey: "toolkit.lib.desc",
+    bullets: ["toolkit.lib.b1", "toolkit.lib.b2", "toolkit.lib.b3", "toolkit.lib.b4"],
+    icon: Library,
+    href: "/toolkit/prompt-library",
+  },
+  {
+    titleKey: "resources.promptBuilder",
+    descKey: "toolkit.builder.desc",
+    bullets: ["toolkit.builder.b1", "toolkit.builder.b2", "toolkit.builder.b3", "toolkit.builder.b4"],
+    icon: Wrench,
+    href: "/toolkit/prompt-builder",
+  },
+  {
+    titleKey: "resources.promptImprover",
+    descKey: "toolkit.improver.desc",
+    bullets: ["toolkit.improver.b1", "toolkit.improver.b2", "toolkit.improver.b3", "toolkit.improver.b4"],
+    icon: Wand2,
+    href: "/toolkit/prompt-improver",
+  },
+];
+
+const REUSABLE_CARDS: CardDef[] = [
+  {
+    titleKey: "resources.shortcuts",
+    descKey: "toolkit.shortcuts.desc",
+    bullets: ["toolkit.shortcuts.b1", "toolkit.shortcuts.b2", "toolkit.shortcuts.b3", "toolkit.shortcuts.b4"],
+    icon: LayoutGrid,
+    href: "/toolkit/shortcuts",
+  },
+  {
+    titleKey: "resources.skills",
+    descKey: "toolkit.skills.desc",
+    bullets: ["toolkit.skills.b1", "toolkit.skills.b2", "toolkit.skills.b3", "toolkit.skills.b4"],
+    icon: Sparkles,
+    href: "/toolkit/skills",
+  },
+];
+
+const QUICK_STEPS: Array<{ titleKey: TKey; descKey: TKey }> = [
+  { titleKey: "resources.startWithBuilder", descKey: "toolkit.step1.desc" },
+  { titleKey: "resources.optimizeWithImprover", descKey: "toolkit.step2.desc" },
+  { titleKey: "resources.learnInAcademy", descKey: "toolkit.step3.desc" },
+];
+
+const BEST_PRACTICES: TKey[] = [
+  "toolkit.bp1",
+  "toolkit.bp2",
+  "toolkit.bp3",
+  "toolkit.bp4",
+  "toolkit.bp5",
+];
+
+const HERO_FEATURES: Array<{ labelKey: TKey; icon: LucideIcon }> = [
+  { labelKey: "resources.enterpriseTemplates", icon: FileText },
+  { labelKey: "resources.aiPoweredAnalysis", icon: Sparkles },
+  { labelKey: "resources.bestPractices", icon: CheckCircle2 },
+];
 
 export default function ToolkitPage() {
   const { t } = useLanguage();
 
-  // Things the user actively creates + reuses to shape how the AI works.
-  const PROMPT_CARDS: ToolCard[] = [
-    {
-      titleKey: "resources.promptLibrary",
-      description:
-        "Access pre-built, production-ready prompts for common procurement workflows.",
-      icon: Library,
-      bullets: [
-        "150+ enterprise templates",
-        "Copy & customize instantly",
-        "Category-based organization",
-        "Usage examples included",
-      ],
-      href: "/toolkit/prompt-library",
-    },
-    {
-      titleKey: "resources.promptBuilder",
-      description:
-        "Design effective prompts from enterprise templates designed for procurement workflows.",
-      icon: Wrench,
-      bullets: [
-        "Pre-built procurement templates",
-        "Variable management system",
-        "Parameter configuration",
-        "Real-time preview & testing",
-      ],
-      href: "/toolkit/prompt-builder",
-    },
-    {
-      titleKey: "resources.promptImprover",
-      description:
-        "Enhance existing prompts with AI-powered analysis and optimization suggestions.",
-      icon: Wand2,
-      bullets: [
-        "AI-powered analysis",
-        "Clarity improvements",
-        "Specificity optimization",
-        "Side-by-side comparison",
-      ],
-      href: "/toolkit/prompt-improver",
-    },
-  ];
-
-  const REUSABLE_CARDS: ToolCard[] = [
-    {
-      titleKey: "resources.shortcuts",
-      description:
-        "Save short text snippets and macros to drop into the composer in one click.",
-      icon: LayoutGrid,
-      bullets: [
-        "Reusable text fragments",
-        "Quick popover from the composer",
-        "Optional category filter",
-        "Up to 500 characters per shortcut",
-      ],
-      href: "/toolkit/shortcuts",
-    },
-    {
-      titleKey: "resources.skills",
-      description:
-        "Capture how your team does a task once; the assistant applies it automatically when it fits.",
-      icon: Sparkles,
-      bullets: [
-        "Capture how your team does a task",
-        "Auto-applied when a message fits",
-        "Stays active across a conversation",
-        "Import from SKILL.md",
-      ],
-      href: "/toolkit/skills",
-    },
-  ];
-
-  const QUICK_STEPS: Array<{ titleKey: string; description: string }> = [
-    {
-      titleKey: "resources.startWithBuilder",
-      description:
-        "Select from enterprise templates designed for procurement tasks like legal summaries, data extraction, and proposal reviews.",
-    },
-    {
-      titleKey: "resources.optimizeWithImprover",
-      description:
-        "Paste your existing prompts to get AI-powered suggestions for improving clarity, specificity, and effectiveness.",
-    },
-    {
-      titleKey: "resources.learnInAcademy",
-      description:
-        "Master advanced techniques through structured lessons, real-world case studies, and hands-on exercises.",
-    },
-  ];
-
-  const BEST_PRACTICES: string[] = [
-    "Always specify output format and structure requirements",
-    "Use variables for reusable prompts across different documents",
-    "Test prompts with multiple examples before production use",
-    "Document prompt versions and track performance metrics",
-    "Follow compliance guidelines for sensitive data handling",
-  ];
-
-  const HERO_FEATURES: Array<{ labelKey: string; icon: typeof FileText }> = [
-    { labelKey: "resources.enterpriseTemplates", icon: FileText },
-    { labelKey: "resources.aiPoweredAnalysis", icon: Sparkles },
-    { labelKey: "resources.bestPractices", icon: CheckCircle2 },
-  ];
-
-  const renderCard = ({ titleKey, icon: Icon, bullets, href, description }: ToolCard) => (
-    <Link
-      key={titleKey}
-      href={href}
-      className="flex cursor-pointer flex-col gap-4 rounded-lg border border-border-2 bg-bg-white p-6 transition-colors hover:border-primary-6 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-6"
-    >
-      <div className="flex items-start gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-1">
-          <Icon className="h-5 w-5 text-primary-7" strokeWidth={2} />
-        </div>
-        <div className="flex flex-col gap-1">
-          <h3 className="text-[18px] font-bold leading-[1.5] text-text-1">
-            {t(titleKey as Parameters<typeof t>[0])}
-          </h3>
-          <p className="text-[13px] leading-[1.625] text-text-2">{description}</p>
-        </div>
-      </div>
-      <ul className="flex flex-col gap-2">
-        {bullets.map((b) => (
-          <li key={b} className="flex items-center gap-2">
-            <Check className="h-4 w-4 shrink-0 text-success-7" strokeWidth={2.5} />
-            <span className="text-[12px] leading-[1.5] text-text-2">{b}</span>
-          </li>
-        ))}
-      </ul>
-      <span className="mt-auto flex items-center gap-2 text-[13px] font-medium text-primary-6 transition-colors">
-        {t("resources.openTool")}
-        <ChevronRight className="h-4 w-4" />
-      </span>
-    </Link>
+  const card = (c: CardDef) => (
+    <ResourceCard
+      key={c.href}
+      title={t(c.titleKey)}
+      description={t(c.descKey)}
+      bullets={c.bullets.map((b) => t(b))}
+      icon={c.icon}
+      href={c.href}
+    />
   );
 
   return (
@@ -184,9 +119,7 @@ export default function ToolkitPage() {
           {HERO_FEATURES.map(({ labelKey, icon: Icon }) => (
             <div key={labelKey} className="flex items-center gap-2">
               <Icon className="h-5 w-5" strokeWidth={2} />
-              <span className="text-[13px] leading-[1.5]">
-                {t(labelKey as Parameters<typeof t>[0])}
-              </span>
+              <span className="text-[13px] leading-[1.5]">{t(labelKey)}</span>
             </div>
           ))}
         </div>
@@ -198,7 +131,7 @@ export default function ToolkitPage() {
           {t("toolkit.promptsHeading")}
         </h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {PROMPT_CARDS.map(renderCard)}
+          {PROMPT_CARDS.map(card)}
         </div>
       </div>
 
@@ -208,7 +141,7 @@ export default function ToolkitPage() {
           {t("toolkit.reusableHeading")}
         </h3>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {REUSABLE_CARDS.map(renderCard)}
+          {REUSABLE_CARDS.map(card)}
         </div>
       </div>
 
@@ -231,10 +164,10 @@ export default function ToolkitPage() {
                 </span>
               </div>
               <h4 className="text-[15px] font-semibold leading-[1.5] text-text-1">
-                {t(s.titleKey as Parameters<typeof t>[0])}
+                {t(s.titleKey)}
               </h4>
               <p className="text-[13px] leading-[1.625] text-text-2">
-                {s.description}
+                {t(s.descKey)}
               </p>
             </div>
           ))}
@@ -250,7 +183,7 @@ export default function ToolkitPage() {
           </h4>
           <ul className="flex flex-col gap-1.5 text-[12px] leading-[1.5] text-text-1">
             {BEST_PRACTICES.map((p) => (
-              <li key={p}>• {p}</li>
+              <li key={p}>• {t(p)}</li>
             ))}
           </ul>
         </div>
