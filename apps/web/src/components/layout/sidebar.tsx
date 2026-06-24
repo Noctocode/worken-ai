@@ -13,8 +13,8 @@ import {
   LogOut,
   MessageSquare,
   Moon,
-  Network,
   Plus,
+  Wrench,
   Sun,
   User as UserIcon,
   Users,
@@ -116,15 +116,14 @@ export const SidebarContent = ({
       { href: "/knowledge-core", label: t("sidebar.nav.knowledgeCore"), icon: Database, match: "prefix" },
     ],
     [
-      { href: "/resources", label: t("sidebar.nav.resources"), icon: BookOpen, match: "prefix" },
-      { href: "/resources/how-it-works", label: t("sidebar.nav.howItWorks"), icon: Network, match: "exact" },
+      { href: "/learning", label: t("sidebar.nav.learning"), icon: BookOpen, match: "prefix" },
+      { href: "/toolkit", label: t("sidebar.nav.toolkit"), icon: Wrench, match: "prefix" },
       { href: "/ai-cron", label: t("sidebar.nav.aiCron"), icon: CalendarClock, match: "prefix" },
     ],
   ];
 
   // When a more specific item has its own exact entry for the current
-  // path (e.g. /resources/how-it-works sits under the /resources prefix
-  // item), the prefix parent yields so only the precise item lights up.
+  // path, the prefix parent yields so only the precise item lights up.
   const exactMatchExists = navGroups
     .flat()
     .some((i) => i.href === pathname);

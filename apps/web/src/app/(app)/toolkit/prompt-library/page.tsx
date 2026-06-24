@@ -118,7 +118,7 @@ export default function PromptLibraryPage() {
   };
 
   const handleEdit = (prompt: PromptSummary) => {
-    router.push(`/resources/prompt-builder?id=${prompt.id}`);
+    router.push(`/toolkit/prompt-builder?id=${prompt.id}`);
   };
 
   const confirmDelete = async () => {
@@ -141,7 +141,7 @@ export default function PromptLibraryPage() {
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
-        href="/resources"
+        href="/toolkit"
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />
@@ -173,7 +173,7 @@ export default function PromptLibraryPage() {
           </SelectContent>
         </Select>
         <Link
-          href="/resources/prompt-builder"
+          href="/toolkit/prompt-builder"
           className="inline-flex h-11 shrink-0 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
         >
           <Plus className="h-4 w-4" />
@@ -196,7 +196,7 @@ export default function PromptLibraryPage() {
             {t("promptLibrary.noPromptsDesc")}
           </p>
           <Link
-            href="/resources/prompt-builder"
+            href="/toolkit/prompt-builder"
             className="mt-2 inline-flex h-10 cursor-pointer items-center gap-2 rounded-md bg-primary-6 px-4 text-[13px] font-medium text-white transition-colors hover:bg-primary-7"
           >
             <Plus className="h-4 w-4" />

@@ -1,6 +1,12 @@
 import type { resources as resourcesEn } from "../en/resources";
 
 export const resources: Record<keyof typeof resourcesEn, string> = {
+  'toolkit.title': 'Toolkit',
+  'toolkit.subtitle': 'Prompti, bližnjice in veščine, ki jih sestaviš enkrat in znova uporabljaš — vsakodnevni gradniki, ki oblikujejo, kako asistent dela za tvojo ekipo.',
+  'toolkit.promptsHeading': 'Prompti',
+  'toolkit.reusableHeading': 'Bližnjice in veščine',
+  'learning.title': 'Učenje',
+  'learning.subtitle': 'Spoznaj platformo in izboljšaj svoje prompte — začni s tem, kako deluje WorkenAI, nato se poglobi v Akademijo.',
   'resources.title': 'Prompt Engineering Hub',
   'resources.subtitle': 'Dostopajte do orodij in virov za gradnjo, optimizacijo in obvladovanje promptov AI za naročilniške procese. Zasnovano za ekipe Fortune 500.',
   'resources.enterpriseTemplates': 'Poslovne predloge',

@@ -7,6 +7,20 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: "../..",
   },
+  // The old /resources hub was split into /learning (tutorials) and
+  // /toolkit (prompts, shortcuts, skills). Keep old bookmarks / links alive.
+  async redirects() {
+    return [
+      { source: "/resources/how-it-works", destination: "/learning/how-it-works", permanent: true },
+      { source: "/resources/learn-academy/:slug*", destination: "/learning/learn-academy/:slug*", permanent: true },
+      { source: "/resources/prompt-library", destination: "/toolkit/prompt-library", permanent: true },
+      { source: "/resources/prompt-builder", destination: "/toolkit/prompt-builder", permanent: true },
+      { source: "/resources/prompt-improver", destination: "/toolkit/prompt-improver", permanent: true },
+      { source: "/resources/shortcuts", destination: "/toolkit/shortcuts", permanent: true },
+      { source: "/resources/skills", destination: "/toolkit/skills", permanent: true },
+      { source: "/resources", destination: "/toolkit", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

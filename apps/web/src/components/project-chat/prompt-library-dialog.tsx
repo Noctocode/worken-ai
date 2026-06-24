@@ -24,7 +24,7 @@ import { useResetOnClose } from "@/lib/hooks/use-reset-on-close";
  * of the chosen prompt into the composer textarea via `onPick`.
  *
  * Read-only by design: nothing in this dialog mutates the prompt — if
- * a user wants to edit a prompt they navigate to /resources/prompt-
+ * a user wants to edit a prompt they navigate to /toolkit/prompt-
  * library where the full CRUD lives. The chat composer just consumes
  * them.
  */

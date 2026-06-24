@@ -302,7 +302,7 @@ export default function SkillsPage() {
   return (
     <div className="flex flex-col gap-6 py-6">
       <Link
-        href="/resources"
+        href="/toolkit"
         className="inline-flex w-fit cursor-pointer items-center gap-1.5 text-[13px] font-medium text-text-2 hover:text-primary-6"
       >
         <ArrowLeft className="h-4 w-4" />

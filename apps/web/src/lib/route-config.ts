@@ -44,51 +44,57 @@ const ROUTE_CONFIGS: Record<string, RouteConfig> = {
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources": {
+  "/learning": {
     bg: "bg-bg-1",
-    titleKey: "appbar.title.resources",
+    titleKey: "appbar.title.learning",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/prompt-library": {
+  "/learning/how-it-works": {
     bg: "bg-bg-1",
-    titleKey: "appbar.title.promptLibrary",
+    titleKey: "appbar.title.howItWorks",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/learn-academy": {
+  "/learning/learn-academy": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.learnAcademy",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/prompt-builder": {
+  "/toolkit": {
+    bg: "bg-bg-1",
+    titleKey: "appbar.title.toolkit",
+    hideSearch: true,
+    hideNotifications: true,
+  },
+  "/toolkit/prompt-library": {
+    bg: "bg-bg-1",
+    titleKey: "appbar.title.promptLibrary",
+    hideSearch: true,
+    hideNotifications: true,
+  },
+  "/toolkit/prompt-builder": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.promptBuilder",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/prompt-improver": {
+  "/toolkit/prompt-improver": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.promptImprover",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/shortcuts": {
+  "/toolkit/shortcuts": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.shortcuts",
     hideSearch: true,
     hideNotifications: true,
   },
-  "/resources/skills": {
+  "/toolkit/skills": {
     bg: "bg-bg-1",
     titleKey: "appbar.title.skills",
-    hideSearch: true,
-    hideNotifications: true,
-  },
-  "/resources/how-it-works": {
-    bg: "bg-bg-1",
-    titleKey: "appbar.title.howItWorks",
     hideSearch: true,
     hideNotifications: true,
   },
