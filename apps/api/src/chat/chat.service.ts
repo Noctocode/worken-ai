@@ -140,6 +140,10 @@ export interface StreamOptions {
   ) => Promise<unknown>;
   /** Safety cap on tool-loop round-trips. Default 5. */
   maxToolIters?: number;
+  /** Run before every tool-loop *re-call* (not the first model call). Throws
+   *  to abort the loop — the controller wires this to the spend-budget gate so
+   *  a multi-iteration tool loop can't run away on cost. */
+  onBeforeToolIteration?: () => Promise<void>;
 }
 
 // Cap the tool result we feed back to the model so a huge ARSO payload
@@ -372,6 +376,18 @@ export class ChatService {
 
     let iter = 0;
     while (true) {
+      // Before every model call except the first (each tool-loop re-call),
+      // honor a mid-loop Stop and re-check the spend budget — a tool loop must
+      // not run away on cost. onBeforeToolIteration throws when over budget.
+      if (iter > 0) {
+        if (options.signal?.aborted) return;
+        try {
+          await options.onBeforeToolIteration?.();
+        } catch (err) {
+          yield this.errorEvent(err);
+          return;
+        }
+      }
       const body: OpenRouterStreamingParams = {
         model,
         messages: convo,
@@ -480,6 +496,8 @@ export class ChatService {
       if (!toolDefs || !runTool || calls.length === 0) break;
       // Safety cap — stop looping and let whatever text we have stand.
       if (++iter >= maxIters) break;
+      // Honor a Stop that arrived during streaming before spending on tools.
+      if (options.signal?.aborted) return;
 
       // Record the assistant's tool_calls turn, then run each tool and append
       // its result, so the next iteration lets the model use the data.

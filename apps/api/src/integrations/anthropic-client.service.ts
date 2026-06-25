@@ -243,6 +243,17 @@ export class AnthropicClientService {
     let iter = 0;
 
     while (true) {
+      // Before each tool-loop re-call (not the first call): honor a mid-loop
+      // Stop and re-check the spend budget so a tool loop can't run away.
+      if (iter > 0) {
+        if (options.signal?.aborted) return;
+        try {
+          await options.onBeforeToolIteration?.();
+        } catch (err) {
+          yield toErrorEvent(err);
+          return;
+        }
+      }
       let stream: MessageStream;
       try {
         stream = client.messages.stream(
@@ -295,6 +306,8 @@ export class AnthropicClientService {
       if (!tools || !runTool || final.stop_reason !== 'tool_use') break;
       if (toolUses.length === 0) break;
       if (++iter >= maxIters) break;
+      // Honor a Stop that arrived during streaming before spending on tools.
+      if (options.signal?.aborted) return;
 
       // Append the assistant's tool_use turn verbatim, then run each tool and
       // append a user message of tool_result blocks for the next iteration.

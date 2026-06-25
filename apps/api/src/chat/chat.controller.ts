@@ -572,8 +572,8 @@ export class ChatController {
         let attemptError: { message: string; status?: number } | null = null;
         // ARSO function-calling tools, only when this model supports them (and
         // ARSO is enabled). Undefined ⇒ the call is byte-for-byte the no-tools
-        // path. The maxToolIters cap (in chat.service) bounds cost; finer
-        // per-iteration budget gating is Phase C3.
+        // path. The maxToolIters cap bounds cost; onBeforeToolIteration below
+        // re-gates the managed budget on every re-call.
         const arsoToolDefs = await arsoToolsFor(t);
         try {
           for await (const ev of chatService.sendMessageStream(
@@ -592,6 +592,15 @@ export class ChatController {
               tools: arsoToolDefs,
               runTool: arsoToolDefs
                 ? (name, args) => arsoTools.dispatch(name, args)
+                : undefined,
+              // Re-gate the managed spend budget before each tool-loop re-call
+              // so a multi-iteration loop can't run away on cost (throws → the
+              // loop stops + surfaces an error event). No-op for BYOK/custom.
+              onBeforeToolIteration: arsoToolDefs
+                ? () =>
+                    chatTransport.assertManagedBudgetApproved(t, user.id, {
+                      projectId: conversation.projectId,
+                    })
                 : undefined,
             },
           )) {
