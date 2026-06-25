@@ -94,7 +94,10 @@ export class ChatController {
     kind: string;
   }): Promise<ChatTool[] | undefined> {
     if (process.env['ARSO_TOOLS_ENABLED'] === 'false') return undefined;
-    if (t.kind === 'anthropic-sdk') return undefined; // Phase C2
+    // Anthropic native (Claude) all support tool_use; the openai-sdk route is
+    // gated on the catalog's tools capability (Azure is excluded in
+    // chat.service since it 400s on unknown body args).
+    if (t.kind === 'anthropic-sdk') return this.arsoTools.definitions();
     const supports = await this.catalogService.supportsTools(t.model);
     return supports ? this.arsoTools.definitions() : undefined;
   }

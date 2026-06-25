@@ -291,11 +291,11 @@ export class ChatService {
    * `ChatStreamEvent`s. Routing: Anthropic native SDK when
    * `kind === 'anthropic-sdk'`, OpenAI-compatible path otherwise.
    *
-   * When `options.tools` is provided (openai-sdk path only for now), this
-   * runs an agentic loop: stream → if the model asked for tool calls, run
-   * them via `options.runTool`, append the results, and re-call — up to
-   * `maxToolIters`. Without `tools` the loop runs exactly once, so behaviour
-   * is identical to the previous single-shot implementation.
+   * When `options.tools` is provided, this runs an agentic loop: stream → if
+   * the model asked for tool calls, run them via `options.runTool`, append the
+   * results, and re-call — up to `maxToolIters`. Both routes (openai-sdk here,
+   * anthropic-sdk in the adapter) implement the loop. Without `tools` the loop
+   * runs exactly once, so behaviour is identical to the single-shot version.
    */
   async *sendMessageStream(
     messages: ChatMessage[],
@@ -308,8 +308,9 @@ export class ChatService {
     options: StreamOptions = {},
   ): AsyncIterable<ChatStreamEvent> {
     if (kind === 'anthropic-sdk') {
-      // Anthropic native tool_use lands in Phase C2 — for now the adapter
-      // streams text only (tools are not offered on this route).
+      // Anthropic native path runs its own tool_use loop (Phase C2); it reads
+      // tools / runTool / maxToolIters from the same options and maps tool_use
+      // blocks onto the shared tool_call / tool_result events.
       yield* this.anthropic.sendMessageStream(
         messages.map((m) => ({ role: m.role, content: m.content })),
         model,
