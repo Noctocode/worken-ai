@@ -104,17 +104,18 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
     initial?.useWebSearch ?? false,
   );
 
-  // Web search only works for models routed through OpenRouter (it's an
-  // OpenRouter-only plugin). BYOK / Custom LLM / Azure models (routing
-  // 'byok' | 'custom') can't do it, so the toggle is disabled — and forced
+  // Web search works on the managed route (OpenRouter plugin) and on
+  // Anthropic-native BYOK (server-side tool). Other BYOK providers, Azure,
+  // and Custom LLMs have no path, so the toggle is disabled — and forced
   // off — the moment such a model is selected, and can't be turned back on
-  // until an OpenRouter-routed model is picked.
+  // until a web-search-capable model is picked. The BE flags this per model
+  // (webSearchCapable) so the rule stays in sync with the chat-path gate.
   const webSearchSupported = useMemo(() => {
     // Enabled only once a model that actually supports web search is picked.
     // No model selected (or an unknown one) → disabled, can't be turned on.
     if (!modelIdentifier) return false;
     const m = effective.find((x) => x.id === modelIdentifier);
-    return !!m && m.routing === "workenai";
+    return !!m && m.webSearchCapable;
   }, [effective, modelIdentifier]);
   useEffect(() => {
     if (!webSearchSupported && useWebSearch) setUseWebSearch(false);

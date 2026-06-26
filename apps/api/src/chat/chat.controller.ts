@@ -24,6 +24,7 @@ import {
 import {
   ChatTransportService,
   ESTIMATED_COMPLETION_TOKENS,
+  transportSupportsWebSearch,
 } from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
@@ -211,15 +212,15 @@ export class ChatController {
     });
     let usedModel = requestedModel;
 
-    // Effective web search = the project switch AND the OpenRouter route AND
-    // the org/team capability. The web plugin is OpenRouter-specific, so it
-    // never applies on BYOK / custom OpenAI-compatible routes — gating here
-    // keeps both the plugin injection and the budget surcharge off those
-    // routes. Short-circuits so the capability lookup (extra queries) only
-    // runs when the project wants web search on an OpenRouter model.
+    // Effective web search = the project switch AND a route that supports it
+    // (OpenRouter web plugin, or Anthropic BYOK native web_search tool) AND
+    // the org/team capability. Routes without a web-search path keep both the
+    // tool injection and the budget surcharge off. Short-circuits so the
+    // capability lookup (extra queries) only runs when the project wants web
+    // search on a supported model.
     const webSearch =
       !!proj?.webSearch &&
-      transport.source === 'openrouter' &&
+      transportSupportsWebSearch(transport.source, transport.kind) &&
       (await resolveWebSearchCapability(this.db, user.id, teamId));
 
     await this.chatTransport.assertManagedBudgetApproved(transport, user.id, {
@@ -418,6 +419,9 @@ export class ChatController {
     let usageCompletionTokens: number | undefined;
     let usageTotalTokens: number | undefined;
     let usageCostUsd: number | undefined;
+    // Anthropic native web_search count for the post-stream cost true-up
+    // (OpenRouter folds web cost into `costUsd`, so it stays 0 there).
+    let usageWebSearchRequests = 0;
     let citationsCollected: { url: string; title?: string }[] = [];
     let streamErrored = false;
     let streamErrorPayload: { message: string; status?: number } | null = null;
@@ -477,7 +481,8 @@ export class ChatController {
           // Re-run the spend gates for the fallback: its cost may differ from
           // the requested model's pre-flight estimate, and a fallback must not
           // bypass the team-member-cap / team / org budget limits.
-          const fbWebSearch = webSearch && t.source === 'openrouter';
+          const fbWebSearch =
+            webSearch && transportSupportsWebSearch(t.source, t.kind);
           const fbEstUsd = await catalogService.estimateCost(
             candidate,
             promptTokens,
@@ -510,9 +515,11 @@ export class ChatController {
           user.id,
           { estimatedTokens: promptTokens + ESTIMATED_COMPLETION_TOKENS },
         );
-        // Web search is OpenRouter-specific — re-gate per candidate (uses the
-        // final resolved transport for this candidate).
-        const candidateWebSearch = webSearch && t.source === 'openrouter';
+        // Web search support is route-specific — re-gate per candidate (uses
+        // the final resolved transport for this candidate, which may route
+        // differently from the requested model).
+        const candidateWebSearch =
+          webSearch && transportSupportsWebSearch(t.source, t.kind);
 
         // First-token timeout: abort and fall back if no token arrives in
         // time. Only when a fallback exists — the final candidate is left to
@@ -648,6 +655,7 @@ export class ChatController {
           usageCompletionTokens = event.completionTokens;
           usageTotalTokens = event.totalTokens;
           usageCostUsd = event.costUsd;
+          usageWebSearchRequests = event.webSearchRequests ?? 0;
         } else if (event.type === 'error') {
           // If the upstream error landed because the client
           // disconnected (some SDKs surface AbortSignal as an
@@ -807,6 +815,16 @@ export class ChatController {
         costUsd = estimated;
         costEstimated = true;
       }
+    }
+    // Anthropic bills the native web_search tool at $10 / 1,000 searches on
+    // top of token cost (OpenRouter already folds web cost into `costUsd`,
+    // and leaves the count at 0). Add it to whatever token cost we have.
+    if (usageWebSearchRequests > 0) {
+      const ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST = 0.01;
+      const webCost =
+        usageWebSearchRequests * ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST;
+      costUsd = (costUsd ?? 0) + webCost;
+      costEstimated = true;
     }
 
     // Persist the assistant message. Partial flag tracks user-

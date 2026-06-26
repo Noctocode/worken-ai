@@ -74,6 +74,12 @@ export type ChatStreamEvent =
       /** OpenRouter only; native BYOK paths leave it undefined and the
        *  caller backfills from the OpenRouter catalog. */
       costUsd?: number;
+      /** Anthropic native web_search tool only: how many searches the
+       *  server-side loop ran this turn (`usage.server_tool_use
+       *  .web_search_requests`). The caller adds the per-search surcharge
+       *  on top of the token cost. OpenRouter folds web cost into
+       *  `costUsd`, so it leaves this undefined. */
+      webSearchRequests?: number;
     }
   | {
       type: 'citations';
@@ -87,10 +93,11 @@ export interface StreamOptions {
    *  aborts the underlying HTTP call instead of running it to
    *  completion and discarding the bytes. */
   signal?: AbortSignal;
-  /** When true, augments the OpenRouter request with the web search
-   *  plugin (`plugins: [{ id: "web" }]`) so the model can browse the
-   *  live web. OpenRouter (openai-sdk) path only; ignored for native
-   *  Anthropic BYOK. */
+  /** When true, lets the model browse the live web. Two mechanisms by
+   *  route: the OpenRouter web plugin (`plugins: [{ id: "web" }]`) on the
+   *  openai-sdk path, or Anthropic's native server-side `web_search` tool
+   *  on the anthropic-sdk path. The controller only sets it for routes
+   *  that support one of these (see `transportSupportsWebSearch`). */
   webSearch?: boolean;
   /** Azure OpenAI ('azure-sdk') only: per-resource endpoint
    *  (https://{resource}.openai.azure.com). Carried here so the call
