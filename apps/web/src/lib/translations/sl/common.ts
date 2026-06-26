@@ -161,4 +161,9 @@ export const common: Record<keyof typeof commonEn, string> = {
   'pagination.next': 'Naslednja',
   'pagination.page': 'Stran {n}',
   'dashboard.viewTeamMembers': 'Prikaži člane ekipe',
+  // Iskalni izbirnik modela (ModelCombobox)
+  'modelSelect.placeholder': 'Izberi model',
+  'modelSelect.search': 'Išči modele…',
+  'modelSelect.loading': 'Nalagam modele…',
+  'modelSelect.noMatch': 'Ni ujemajočih modelov',
 };

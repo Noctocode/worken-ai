@@ -38,6 +38,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { ModelCombobox } from "@/components/ui/model-combobox";
 import {
   Sheet,
   SheetContent,
@@ -203,7 +204,7 @@ export default function CompareModelsPage() {
       const cleaned = prev.filter((id) => validIds.has(id));
       return cleaned.length === prev.length ? prev : cleaned;
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [availableModels]);
 
   // Seed the comparison with the first two enabled models once the
@@ -2187,18 +2188,14 @@ function RightRail({
         <p className="text-[12px] leading-relaxed text-text-3">
           {t("arena.judgeModelHint")}
         </p>
-        <select
+        <ModelCombobox
           value={selectedJudge}
-          onChange={(e) => onChangeJudge(e.target.value)}
-          className="h-9 w-full cursor-pointer rounded-lg border border-border-2 bg-bg-white px-2 text-[13px] text-text-1 outline-none focus:border-primary-6"
-        >
-          <option value="">{judgeDefaultLabel}</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {getLabel(m.id)}
-            </option>
-          ))}
-        </select>
+          onChange={onChangeJudge}
+          models={[
+            { id: "", name: judgeDefaultLabel },
+            ...models.map((m) => ({ id: m.id, name: getLabel(m.id) })),
+          ]}
+        />
       </RailSection>
 
       {/* History section — paginated 5 per page so the rail doesn't

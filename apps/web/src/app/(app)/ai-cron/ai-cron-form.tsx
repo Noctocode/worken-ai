@@ -1,6 +1,6 @@
 "use client";
 
-import { KeySquare, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +20,7 @@ import {
   type ScheduleSpec,
 } from "./schedule-when-section";
 import { useUserModels } from "@/lib/hooks/use-user-models";
+import { ModelCombobox } from "@/components/ui/model-combobox";
 import {
   useCreateScheduledPrompt,
   useUpdateScheduledPrompt,
@@ -27,13 +28,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -348,32 +342,23 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
         <h2 className="text-sm font-semibold text-text-1">
           {t("aiCron.form.section.model")}
         </h2>
-        <Select
+        <ModelCombobox
           value={modelIdentifier}
-          onValueChange={(v) => {
+          onChange={(v) => {
             setModelIdentifier(v);
             clearErr("model");
           }}
-        >
-          <SelectTrigger aria-invalid={!!errors.model}>
-            <SelectValue placeholder={t("aiCron.model.placeholder")} />
-          </SelectTrigger>
-          <SelectContent>
-            {effective.map((m) => (
-              <SelectItem key={m.id} value={m.id}>
-                <span className="flex items-center gap-2">
-                  {m.name}
-                  {(m.routing === "byok" || m.routing === "custom") && (
-                    <span className="inline-flex items-center gap-1 text-xs text-text-3">
-                      <KeySquare className="size-3" />
-                      {t("aiCron.model.custom")}
-                    </span>
-                  )}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          // Keep the BYOK/Custom signal the old Select showed — `useUserModels`
+          // preserves `routing` for exactly this.
+          models={effective.map((m) => ({
+            id: m.id,
+            name:
+              m.routing === "byok" || m.routing === "custom"
+                ? `${m.name} (${t("aiCron.model.custom")})`
+                : m.name,
+          }))}
+          placeholder={t("aiCron.model.placeholder")}
+        />
         <FieldError msg={errors.model} />
       </section>
 

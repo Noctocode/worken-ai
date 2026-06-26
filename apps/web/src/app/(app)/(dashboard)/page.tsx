@@ -42,7 +42,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AgentGrid } from "@/components/agent-grid";
 import { AGENTS } from "@/lib/agents";
 import { AddDocumentDialog } from "@/components/add-document-dialog";
 import { TeamMembersPopover } from "@/components/team-members-popover";
@@ -130,9 +129,6 @@ function ProjectCard({ project }: { project: Project }) {
   // Pool is mixed: entries are agent-preset ids OR configured-model ids. The
   // two tabs each toggle their own kind into the same pool.
   const [pendingAgentIds, setPendingAgentIds] = useState<string[]>([]);
-  const [modelTab, setModelTab] = useState<"recommended" | "custom">(
-    "recommended",
-  );
   const queryClient = useQueryClient();
   const { models: availableModels, getLabel: getModelLabel } =
     useAvailableModels();
@@ -214,17 +210,24 @@ function ProjectCard({ project }: { project: Project }) {
   // preset maps to that model. Used to highlight a card when the
   // Change model dialog opens. Returns null when no agent matches
   // (custom slug, deprecated default, ...). */
-  const agentIdForModel = (modelId: string): string | null =>
-    AGENTS.find((a) => a.model === modelId)?.id ?? null;
-
   // The project's saved agent pool, with a fallback for legacy projects
   // created before multi-agent support (empty `agents`): use the active
   // `agent`, else the single agent matching the stored model.
   const seedAgentIds = (): string[] => {
-    if (project.agents && project.agents.length > 0) return project.agents;
-    if (project.agent) return [project.agent];
-    const fromModel = agentIdForModel(project.model);
-    return fromModel ? [fromModel] : [];
+    // The dialog only renders configured models now, so seed only entries that
+    // are actually shown — legacy agent-preset ids in the pool aren't rendered
+    // and would otherwise stay selected (and re-saved) invisibly. Fall back to
+    // the project's active model id.
+    const modelIds = new Set(configuredModels.map((m) => m.id));
+    const pool =
+      project.agents && project.agents.length > 0
+        ? project.agents
+        : project.agent
+          ? [project.agent]
+          : [];
+    const seeded = pool.filter((id) => modelIds.has(id));
+    if (seeded.length > 0) return seeded;
+    return modelIds.has(project.model) ? [project.model] : [];
   };
 
   return (
@@ -279,13 +282,7 @@ function ProjectCard({ project }: { project: Project }) {
                       // project's full pool so every previously selected
                       // entry shows highlighted, and open on the tab that
                       // matches the pool's kind (model ids → Custom).
-                      const seeded = seedAgentIds();
-                      setPendingAgentIds(seeded);
-                      setModelTab(
-                        seeded.some((id) => !AGENTS.some((a) => a.id === id))
-                          ? "custom"
-                          : "recommended",
-                      );
+                      setPendingAgentIds(seedAgentIds());
                       setModelDialogOpen(true);
                     }}
                   >
@@ -508,52 +505,18 @@ function ProjectCard({ project }: { project: Project }) {
           <DialogHeader>
             <DialogTitle>{t("dashboard.changeModel")}</DialogTitle>
             <DialogDescription>
-              {t("dashboard.changeModelPickAgent")} <strong>{project.name}</strong>. {t("dashboard.changeModelNextMessage")}
+              {t("dashboard.changeModelPickAgent")} <strong>{project.name}</strong>.{" "}
+              {t("projectCreate.selectModelDesc")}
             </DialogDescription>
           </DialogHeader>
-          {/* Tab switcher — Recommended (presets) / Custom (configured). */}
-          <div className="flex justify-center">
-            <div className="inline-flex items-center gap-1 rounded-lg border border-border-2 bg-bg-1 p-1">
-              {(["recommended", "custom"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setModelTab(tab)}
-                  className={`cursor-pointer rounded-md px-4 py-1.5 text-[13px] font-medium transition-colors ${
-                    modelTab === tab
-                      ? "bg-bg-white text-text-1 shadow-sm"
-                      : "text-text-2 hover:text-text-1"
-                  }`}
-                >
-                  {tab === "recommended"
-                    ? t("projectCreate.tabRecommended")
-                    : t("projectCreate.tabCustom")}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {modelTab === "recommended" ? (
-            <div className="flex justify-center py-2">
-              <AgentGrid
-                selectedAgentIds={pendingAgentIds}
-                onToggle={(agent) =>
-                  setPendingAgentIds((prev) =>
-                    prev.includes(agent.id)
-                      ? prev.filter((a) => a !== agent.id)
-                      : [...prev, agent.id],
-                  )
-                }
-              />
-            </div>
-          ) : configuredModels.length === 0 ? (
+          {configuredModels.length === 0 ? (
             <div className="mx-auto my-2 rounded-lg border border-border-2 bg-bg-1 px-4 py-4 text-center text-[14px] text-text-2">
-              {t("projectCreate.noCustomModels")}{" "}
+              {t("projectCreate.noModels")}{" "}
               <Link
                 href="/teams?tab=models"
                 className="text-primary-6 hover:underline"
               >
-                {t("projectCreate.addCustomModels")}
+                {t("projectCreate.addModels")}
               </Link>
             </div>
           ) : (

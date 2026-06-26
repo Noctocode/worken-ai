@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
+import { ModelCombobox } from "@/components/ui/model-combobox";
 import { useLanguage } from "@/lib/i18n";
 
 const MODEL_ICONS: Record<string, { color: string; letter: string }> = {
@@ -129,8 +130,6 @@ const svgClass = "[&_svg]:text-text-2 [&_svg]:opacity-100 !items-center";
 
 const inputClass =
   "w-full rounded border border-border-3 bg-transparent px-[17px] py-[13px] text-[16px] leading-[24px] text-text-1";
-
-const modelSelectClass = `${inputClass} !h-auto ${svgClass}`;
 
 const fallbackSelectClass = `w-full !h-[46px] rounded border border-border-3 bg-transparent px-[17px] py-[11px] text-[16px] leading-[24px] text-text-1 ${svgClass}`;
 
@@ -385,27 +384,19 @@ export function AddModelDialog({
                 {t("addModel.selectedModel")}
               </p>
               {isEdit ? (
-                <Select value={modelId} onValueChange={setModelId}>
-                  <SelectTrigger className={modelSelectClass}>
-                    <SelectValue
-                      placeholder={
-                        modelsLoading
-                          ? t("addModel.loadingModels")
-                          : models.length === 0
-                            ? t("addModel.noModels")
-                            : t("addModel.selectModel")
-                      }
-                    />
-                  </SelectTrigger>
-                  <SelectContent className="p-0">
-                    {models.map((m) => (
-                      <SelectItem key={m.id} value={m.id} className={selectItemClass}>
-                        <ModelIcon id={m.id} />
-                        {m.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <ModelCombobox
+                  value={modelId}
+                  onChange={setModelId}
+                  models={models}
+                  loading={modelsLoading}
+                  placeholder={
+                    modelsLoading
+                      ? t("addModel.loadingModels")
+                      : models.length === 0
+                        ? t("addModel.noModels")
+                        : t("addModel.selectModel")
+                  }
+                />
               ) : (
                 <div className="space-y-2">
                   <div className="relative">

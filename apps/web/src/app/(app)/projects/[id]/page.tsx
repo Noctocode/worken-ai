@@ -19,6 +19,7 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
+  Search,
   Square,
   UserPlus,
 } from "lucide-react";
@@ -59,8 +60,6 @@ import {
 import { useAuth } from "@/components/providers";
 import { useConversationLiveSync } from "@/components/realtime-provider";
 import { useUserModels } from "@/lib/hooks/use-user-models";
-import { useAvailableModels } from "@/lib/hooks/use-available-models";
-import { AGENTS } from "@/lib/agents";
 import { humanizeChatError } from "@/lib/chat-errors";
 import { useLanguage } from "@/lib/i18n";
 
@@ -137,9 +136,7 @@ export default function ProjectChatPage() {
   const queryClient = useQueryClient();
   // Model data for the phone overflow menu's model picker — mirrors the
   // appbar: the project's agent pool, labelled + switched the same way.
-  const { effective: effectiveModels, getLabel: getModelLabel } =
-    useUserModels();
-  const { models: availableModels } = useAvailableModels();
+  const { effective: effectiveModels } = useUserModels();
 
   const {
     data: project,
@@ -178,7 +175,11 @@ export default function ProjectChatPage() {
       : null;
 
   const updateModelMutation = useMutation({
-    mutationFn: (model: string) => updateProject(projectId, { model }),
+    // Set `agent` alongside `model` (a model id is a valid active entry) so
+    // project.agent — read by other surfaces as the active selection — stays
+    // consistent after a direct model switch.
+    mutationFn: (model: string) =>
+      updateProject(projectId, { agent: model, model }),
     onSuccess: (updated) => {
       // Refetch so the cached project (and `project.model` used by
       // streamChatMessage on the next send) reflects the switch
@@ -190,43 +191,6 @@ export default function ProjectChatPage() {
         err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
       );
     },
-  });
-
-  // Label a pool entry (agent preset → its name; configured-model id →
-  // its alias name / catalog label). Mirrors the appbar.
-  const labelForModel = (id: string): string => {
-    const alias = effectiveModels.find((m) => m.id === id);
-    return alias ? alias.name : getModelLabel(id);
-  };
-  // Resolve a pool entry to a concrete model slug for persistence.
-  const resolveSelectionModel = (id: string): string => {
-    const preset = AGENTS.find((a) => a.id === id);
-    if (!preset) return id;
-    const inCatalog = availableModels.find((m) => m.id === preset.model);
-    return (
-      inCatalog?.id ??
-      availableModels[0]?.id ??
-      project?.model ??
-      preset.model
-    );
-  };
-  // Switch the project's active agent/model — same contract as the
-  // appbar header dropdown (persists agent + resolved model).
-  const switchAgentMutation = useMutation({
-    mutationFn: (id: string) =>
-      updateProject(projectId, { agent: id, model: resolveSelectionModel(id) }),
-    onSuccess: (updated, id) => {
-      queryClient.setQueryData(["project", projectId], updated);
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-      const preset = AGENTS.find((a) => a.id === id);
-      toast.success(
-        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
-      );
-    },
-    onError: (err) =>
-      toast.error(
-        err instanceof Error ? err.message : t("projDetail.failedChangeModel"),
-      ),
   });
 
   // Per-project web search toggle — mirrors the appbar's, surfaced in the
@@ -248,6 +212,7 @@ export default function ProjectChatPage() {
   // Right-hand "Project Details" panel (Figma 238:17561). Open by
   // default on wide screens; the panel renders a thin collapsed rail
   // when closed.
+  const [phoneModelQuery, setPhoneModelQuery] = useState("");
   const [detailsOpen, setDetailsOpen] = useState(true);
   // <xl / <lg slide-over drawers (Project Details / conversation history)
   // for tablet + mobile, where the inline panels are hidden.
@@ -906,39 +871,52 @@ export default function ProjectChatPage() {
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-0">
-              {/* Model picker — the project's agent pool (same as the
-                  desktop header dropdown), not every available model. */}
+              {/* Model picker — every model the user has (dynamic + search),
+                  like New Project. Switches project.model directly. */}
               <div className="border-b border-border-2 px-3 py-2">
                 <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-text-3">
                   {t("appbar.model")}
                 </p>
+                <div className="relative mb-1.5">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-text-3" />
+                  <input
+                    value={phoneModelQuery}
+                    onChange={(e) => setPhoneModelQuery(e.target.value)}
+                    placeholder={t("modelSelect.search")}
+                    className="h-8 w-full rounded border border-border-3 bg-bg-white pl-8 pr-2 text-[13px] text-text-1 outline-none focus:border-primary-6"
+                  />
+                </div>
                 <div className="flex max-h-48 flex-col gap-0.5 overflow-y-auto">
-                  {(project.agents?.length
-                    ? project.agents
-                    : project.agent
-                      ? [project.agent]
-                      : []
-                  ).map((id) => {
-                    const preset = AGENTS.find((a) => a.id === id);
-                    const label = preset?.label ?? labelForModel(id);
-                    const isActive = id === project.agent;
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() =>
-                          !isActive && switchAgentMutation.mutate(id)
-                        }
-                        disabled={switchAgentMutation.isPending}
-                        className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed"
-                      >
-                        <span className="truncate">{label}</span>
-                        {isActive && (
-                          <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
-                        )}
-                      </button>
-                    );
-                  })}
+                  {effectiveModels
+                    .filter((m) => {
+                      const q = phoneModelQuery.trim().toLowerCase();
+                      return (
+                        !q ||
+                        m.name.toLowerCase().includes(q) ||
+                        m.id.toLowerCase().includes(q)
+                      );
+                    })
+                    .map((m) => {
+                      const isActive = m.id === project.model;
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            if (isActive) return;
+                            updateModelMutation.mutate(m.id);
+                            setPhoneModelQuery("");
+                          }}
+                          disabled={updateModelMutation.isPending}
+                          className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed"
+                        >
+                          <span className="truncate">{m.name}</span>
+                          {isActive && (
+                            <Check className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                          )}
+                        </button>
+                      );
+                    })}
                 </div>
               </div>
               {/* Web search toggle */}

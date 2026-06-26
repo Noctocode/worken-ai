@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams, useRouter } from "next/navigation";
 import {
-  Bot,
   ChevronRight,
   Search,
   Bell,
@@ -28,12 +27,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -54,9 +47,9 @@ import {
   fetchOrgSettings,
   updateProject,
 } from "@/lib/api";
-import { AGENTS } from "@/lib/agents";
 import { useAvailableModels } from "@/lib/hooks/use-available-models";
 import { useUserModels } from "@/lib/hooks/use-user-models";
+import { ModelCombobox } from "@/components/ui/model-combobox";
 import { useAuth } from "@/components/providers";
 import { isPersonalProfile } from "@/lib/hooks/use-is-personal";
 import { useOnlineUsers } from "@/components/realtime-provider";
@@ -77,8 +70,7 @@ export const Appbar = () => {
   const router = useRouter();
   const config = getRouteConfig(pathname);
   const queryClient = useQueryClient();
-  const { models: availableModels, getLabel: getModelLabel } =
-    useAvailableModels();
+  const { getLabel: getModelLabel } = useAvailableModels();
   // The user's configured models (Team → Models) carry admin-set custom
   // names that the catalog doesn't know. Prefer those for header labels so a
   // Custom-model pool entry shows its alias name, falling back to the catalog
@@ -143,39 +135,21 @@ export const Appbar = () => {
       ),
   });
 
-  // Resolve a pool entry to its model slug. A pool entry is either an agent
-  // preset id (resolve its preferred model against the catalog) or a
-  // configured-model id (already a slug — use it directly).
-  const resolveSelectionModel = (id: string): string => {
-    const preset = AGENTS.find((a) => a.id === id);
-    if (!preset) return id;
-    const inCatalog = availableModels.find((m) => m.id === preset.model);
-    // Catalog-empty (transient fetch failure) must NOT overwrite the
-    // project's model with a maybe-unavailable slug — keep the current
-    // model in that case; preset.model is only a last resort.
-    return (
-      inCatalog?.id ??
-      availableModels[0]?.id ??
-      _project?.model ??
-      preset.model
-    );
-  };
-
-  // Switch the project's active selection from the header dropdown. Persists
-  // both the active id and its resolved model (the chat path reads
-  // project.model), then refetches so the label + chat pick it up.
-  const switchAgentMutation = useMutation({
-    mutationFn: (id: string) =>
-      updateProject(projectId, {
-        agent: id,
-        model: resolveSelectionModel(id),
-      }),
-    onSuccess: (_data, id) => {
+  // Change the project's model straight from the header — the user picks any
+  // of their available models (same dynamic list as New Project), not a fixed
+  // agent pool. Persists project.model (the chat path reads it), then refetches
+  // so the label + chat pick it up.
+  const switchModelMutation = useMutation({
+    // Keep `agent` (the documented "active selection that maps to model") in
+    // sync — a model id is itself a valid pool/active entry — so other
+    // surfaces that read project.agent don't go stale.
+    mutationFn: (model: string) =>
+      updateProject(projectId, { agent: model, model }),
+    onSuccess: (_data, model) => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });
-      const preset = AGENTS.find((a) => a.id === id);
       toast.success(
-        `${t("projDetail.switchedTo1")} ${preset?.label ?? labelForModel(id)} ${t("projDetail.switchedTo2")}`,
+        `${t("projDetail.switchedTo1")} ${labelForModel(model)} ${t("projDetail.switchedTo2")}`,
       );
     },
     onError: (err) => {
@@ -184,16 +158,6 @@ export const Appbar = () => {
       );
     },
   });
-
-  // The project's agent pool. Falls back to just the active agent for
-  // legacy projects created before multi-agent support.
-  const poolAgentIds =
-    _project && _project.agents.length > 0
-      ? _project.agents
-      : _project?.agent
-        ? [_project.agent]
-        : [];
-  const activeAgent = AGENTS.find((a) => a.id === _project?.agent);
 
   // Team detail team fetch — reuse the page's query so there's only one HTTP
   // round-trip. Data drives the Edit/Delete gate in the team header.
@@ -481,58 +445,33 @@ export const Appbar = () => {
             </div>
           )}
 
-          {poolAgentIds.length === 0 ? (
-            // Direct-model project (no agent pool): show the pinned model name
-            // as a static chip instead of an agent switcher.
-            <div className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4">
-              <span className="text-[16px] text-text-1">
-                {_project ? labelForModel(_project.model) : t("appbar.model")}
-              </span>
-            </div>
-          ) : (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
+          {_project ? (
+            // Change the project's model from any of the user's available
+            // models (dynamic + searchable, like New Project).
+            <ModelCombobox
+              value={_project.model}
+              onChange={(id) => switchModelMutation.mutate(id)}
+              models={effectiveModels}
+              contentClassName="min-w-[260px]"
+              trigger={
                 <button
+                  type="button"
                   className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4 cursor-pointer hover:bg-bg-1 disabled:opacity-60"
-                  disabled={!_project || switchAgentMutation.isPending}
+                  disabled={switchModelMutation.isPending}
                 >
                   <span className="text-[16px] text-text-1">
-                    {activeAgent
-                      ? activeAgent.label
-                      : _project
-                        ? labelForModel(_project.model)
-                        : t("appbar.model")}
+                    {labelForModel(_project.model)}
                   </span>
                   <ChevronDown className="h-4 w-4 text-text-2" />
                 </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="min-w-[220px]">
-                {poolAgentIds.map((entryId) => {
-                  // A pool entry is an agent preset (icon + label) or a
-                  // configured-model id (generic icon + model label).
-                  const preset = AGENTS.find((a) => a.id === entryId);
-                  const Icon = preset?.icon ?? Bot;
-                  const label = preset?.label ?? labelForModel(entryId);
-                  const isActive = entryId === _project?.agent;
-                  return (
-                    <DropdownMenuItem
-                      key={entryId}
-                      className="gap-2.5 cursor-pointer"
-                      disabled={isActive}
-                      onSelect={() => {
-                        if (!isActive) switchAgentMutation.mutate(entryId);
-                      }}
-                    >
-                      <Icon className="h-4 w-4 text-primary-6" />
-                      <span className="flex-1 truncate">{label}</span>
-                      {isActive && (
-                        <CheckCircle className="h-4 w-4 shrink-0 text-success-7" />
-                      )}
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
+              }
+            />
+          ) : (
+            <div className="flex items-center gap-2.5 rounded-lg border border-border-2 bg-bg-white px-6 py-4">
+              <span className="text-[16px] text-text-1">
+                {t("appbar.model")}
+              </span>
+            </div>
           )}
 
           {/* Per-project web search toggle. Always shown on a project so the
