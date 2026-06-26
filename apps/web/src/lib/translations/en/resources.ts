@@ -93,4 +93,71 @@ export const resources = {
   'resources.how.label.data': 'Data + Embeddings',
   'resources.how.label.model': 'Model',
   'resources.how.label.external': 'Your provider (BYOK) or our gateway',
+
+  // System overview — simple diagrams of how the whole app fits together.
+  'resources.overview.heading': 'How the system fits together',
+  'resources.overview.intro':
+    'Simple diagrams of the main building blocks and how they connect.',
+  'resources.overview.tab.nav': 'Navigation',
+  'resources.overview.tab.architecture': 'Architecture',
+  'resources.overview.tab.entities': 'Entities & relationships',
+  'resources.overview.tab.roles': 'Roles & access',
+  'resources.overview.tab.flow': 'Key flow',
+
+  // Tab descriptions
+  'resources.overview.nav.desc':
+    'The left sidebar is the main navigation, grouped into three sections. Admins also see governance settings (Guardrails, company settings).',
+  'resources.overview.architecture.desc':
+    'The browser app talks to a single API. The API stores data in PostgreSQL (with vector search) and uses Redis for limits and caching, and it calls external services for AI and documents.',
+  'resources.overview.entities.desc':
+    'A company contains teams, teams contain projects, and chats (conversations → messages) happen inside a project. Users are members at each level; knowledge files and provider keys attach to projects and teams.',
+  'resources.overview.roles.desc':
+    'An org role (admin / advanced / basic) sets what a user can do globally. Membership roles set access on a team or project. Settings such as web search and budget cascade from company to team to project.',
+  'resources.overview.flow.desc':
+    'Every message passes through safety and context steps before and after the AI model: input checks, knowledge + skills, a budget check, the model (which may call tools), output checks, then saving and analytics.',
+
+  // Navigation diagram — group titles (page names reuse sidebar.nav.*)
+  'resources.overview.nav.core': 'Core',
+  'resources.overview.nav.features': 'Features',
+  'resources.overview.nav.tools': 'Tools & Learning',
+
+  // Architecture diagram
+  'resources.overview.arch.browser': 'Browser (web app)',
+  'resources.overview.arch.api': 'API (server)',
+  'resources.overview.arch.dataLane': 'Data',
+  'resources.overview.arch.db': 'PostgreSQL + vector search',
+  'resources.overview.arch.cache': 'Redis — cache & limits',
+  'resources.overview.arch.externalLane': 'External services',
+  'resources.overview.arch.models': 'AI models / providers',
+  'resources.overview.arch.cloud': 'Cloud sources (Drive, OneDrive, SharePoint, Confluence)',
+  'resources.overview.arch.arso': 'ARSO (weather, air, water)',
+
+  // Entities diagram
+  'resources.overview.ent.company': 'Company',
+  'resources.overview.ent.team': 'Team',
+  'resources.overview.ent.project': 'Project',
+  'resources.overview.ent.conversation': 'Conversation',
+  'resources.overview.ent.message': 'Message',
+  'resources.overview.ent.users': 'Users — members at each level',
+  'resources.overview.ent.attached': 'Knowledge files · Integrations / keys',
+
+  // Roles diagram
+  'resources.overview.roles.orgLane': 'Org roles (global)',
+  'resources.overview.roles.admin': 'admin — full control',
+  'resources.overview.roles.advanced': 'advanced — power user',
+  'resources.overview.roles.basic': 'basic — chat only',
+  'resources.overview.roles.scopeLane': 'Scope & inheritance',
+  'resources.overview.roles.cascade': 'Settings cascade (web search, budget)',
+  'resources.overview.roles.teamRoles': 'Team: owner / editor / viewer',
+  'resources.overview.roles.projectRoles': 'Project: editor / viewer',
+
+  // Flow diagram — pipeline steps
+  'resources.overview.flow.message': 'Message',
+  'resources.overview.flow.inputGuard': 'Input guardrail',
+  'resources.overview.flow.context': 'Context (knowledge + skills)',
+  'resources.overview.flow.budget': 'Budget check',
+  'resources.overview.flow.model': 'AI model (+ tools)',
+  'resources.overview.flow.outputGuard': 'Output guardrail',
+  'resources.overview.flow.save': 'Save + analytics',
+  'resources.overview.flow.answer': 'Answer',
 } as const;

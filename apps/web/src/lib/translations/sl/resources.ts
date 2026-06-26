@@ -91,4 +91,71 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.how.label.data': 'Podatki + embeddingi',
   'resources.how.label.model': 'Model',
   'resources.how.label.external': 'Vaš ponudnik (BYOK) ali naš prehod',
+
+  // Pregled sistema — preproste sheme, kako je celotna aplikacija sestavljena.
+  'resources.overview.heading': 'Kako je sistem sestavljen',
+  'resources.overview.intro':
+    'Preproste sheme glavnih gradnikov in kako so med sabo povezani.',
+  'resources.overview.tab.nav': 'Navigacija',
+  'resources.overview.tab.architecture': 'Arhitektura',
+  'resources.overview.tab.entities': 'Entitete in povezave',
+  'resources.overview.tab.roles': 'Vloge in dostop',
+  'resources.overview.tab.flow': 'Ključni tok',
+
+  // Opisi zavihkov
+  'resources.overview.nav.desc':
+    'Levi meni je glavna navigacija, razdeljena v tri sklope. Admini vidijo še nastavitve nadzora (Guardrails, nastavitve podjetja).',
+  'resources.overview.architecture.desc':
+    'Spletna aplikacija komunicira z enim API-jem. API hrani podatke v PostgreSQL (z vektorskim iskanjem) in uporablja Redis za limite in predpomnjenje, za AI in dokumente pa kliče zunanje storitve.',
+  'resources.overview.entities.desc':
+    'Podjetje vsebuje ekipe, ekipe vsebujejo projekte, pogovori (pogovor → sporočila) pa tečejo znotraj projekta. Uporabniki so člani na vsaki ravni; datoteke znanja in ključi ponudnikov se vežejo na projekte in ekipe.',
+  'resources.overview.roles.desc':
+    'Org vloga (admin / advanced / basic) določa, kaj uporabnik lahko počne globalno. Članske vloge določajo dostop na ekipi ali projektu. Nastavitve, kot sta iskanje po spletu in proračun, se dedujejo od podjetja na ekipo in projekt.',
+  'resources.overview.flow.desc':
+    'Vsako sporočilo gre skozi varnostne in kontekstne korake pred in po AI modelu: vhodne preverbe, znanje + veščine, preverbo proračuna, model (ki lahko kliče orodja), izhodne preverbe ter shranjevanje in analitiko.',
+
+  // Diagram navigacije — naslovi skupin (imena strani uporabijo sidebar.nav.*)
+  'resources.overview.nav.core': 'Jedro',
+  'resources.overview.nav.features': 'Funkcije',
+  'resources.overview.nav.tools': 'Orodja in učenje',
+
+  // Diagram arhitekture
+  'resources.overview.arch.browser': 'Brskalnik (spletna aplikacija)',
+  'resources.overview.arch.api': 'API (strežnik)',
+  'resources.overview.arch.dataLane': 'Podatki',
+  'resources.overview.arch.db': 'PostgreSQL + vektorsko iskanje',
+  'resources.overview.arch.cache': 'Redis — predpomnilnik in limiti',
+  'resources.overview.arch.externalLane': 'Zunanje storitve',
+  'resources.overview.arch.models': 'AI modeli / ponudniki',
+  'resources.overview.arch.cloud': 'Cloud viri (Drive, OneDrive, SharePoint, Confluence)',
+  'resources.overview.arch.arso': 'ARSO (vreme, zrak, voda)',
+
+  // Diagram entitet
+  'resources.overview.ent.company': 'Podjetje',
+  'resources.overview.ent.team': 'Ekipa',
+  'resources.overview.ent.project': 'Projekt',
+  'resources.overview.ent.conversation': 'Pogovor',
+  'resources.overview.ent.message': 'Sporočilo',
+  'resources.overview.ent.users': 'Uporabniki — člani na vsaki ravni',
+  'resources.overview.ent.attached': 'Datoteke znanja · Integracije / ključi',
+
+  // Diagram vlog
+  'resources.overview.roles.orgLane': 'Org vloge (globalno)',
+  'resources.overview.roles.admin': 'admin — polni nadzor',
+  'resources.overview.roles.advanced': 'advanced — napredni uporabnik',
+  'resources.overview.roles.basic': 'basic — samo klepet',
+  'resources.overview.roles.scopeLane': 'Obseg in dedovanje',
+  'resources.overview.roles.cascade': 'Kaskada nastavitev (iskanje po spletu, proračun)',
+  'resources.overview.roles.teamRoles': 'Ekipa: owner / editor / viewer',
+  'resources.overview.roles.projectRoles': 'Projekt: editor / viewer',
+
+  // Diagram toka — koraki
+  'resources.overview.flow.message': 'Sporočilo',
+  'resources.overview.flow.inputGuard': 'Vhodni guardrail',
+  'resources.overview.flow.context': 'Kontekst (znanje + veščine)',
+  'resources.overview.flow.budget': 'Preverba proračuna',
+  'resources.overview.flow.model': 'AI model (+ orodja)',
+  'resources.overview.flow.outputGuard': 'Izhodni guardrail',
+  'resources.overview.flow.save': 'Shrani + analitika',
+  'resources.overview.flow.answer': 'Odgovor',
 };
