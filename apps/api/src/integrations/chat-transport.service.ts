@@ -17,6 +17,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { EncryptionService } from '../openrouter/encryption.service.js';
 import { KeyResolverService } from '../openrouter/key-resolver.service.js';
 import { isAnthropicNativeSupported } from './anthropic-client.service.js';
+import { isGeminiNativeSupported } from './gemini-client.service.js';
 import { NATIVE_ENDPOINTS, providerOfModel } from './native-endpoints.js';
 import {
   ownerStillOnTeam,
@@ -212,7 +213,21 @@ export type ChatRoutingSource = 'openrouter' | 'byok' | 'custom';
  * LLMs alike. `anthropic-sdk` triggers AnthropicClientService for
  * Anthropic BYOK (their native API isn't OpenAI-compatible).
  */
-export type ChatTransportKind = 'openai-sdk' | 'anthropic-sdk' | 'azure-sdk';
+export type ChatTransportKind =
+  | 'openai-sdk'
+  | 'anthropic-sdk'
+  | 'gemini-sdk'
+  | 'azure-sdk';
+
+/**
+ * Provider id → the native-SDK transport kind that serves its BYOK calls.
+ * Only providers with a dedicated client shim appear here; everything else
+ * is either OpenAI-compatible ('openai-sdk') or falls back to OpenRouter.
+ */
+const NATIVE_SDK_KIND: Record<string, ChatTransportKind | undefined> = {
+  anthropic: 'anthropic-sdk',
+  google: 'gemini-sdk',
+};
 
 export interface ChatTransport {
   /** baseURL for the OpenAI SDK client. Unused when kind is 'anthropic-sdk'
@@ -244,14 +259,16 @@ export interface ChatTransport {
 /**
  * Whether a resolved transport can do web search.
  *
- * Two mutually-exclusive mechanisms, by route:
+ * Mechanisms, by route:
  *   - `openrouter`: the OpenRouter `plugins: [{ id: 'web' }]` extension.
  *   - `byok` + `anthropic-sdk`: Anthropic's native server-side `web_search`
- *     tool (their API isn't OpenAI-compatible, so the OpenRouter plugin
- *     never applies — the Anthropic adapter injects the tool instead).
- *     `kind === 'anthropic-sdk'` already implies the model is supported on
- *     Anthropic's native API (chat-transport falls through to OpenRouter
- *     otherwise), so no extra model check is needed here.
+ *     tool.
+ *   - `byok` + `gemini-sdk`: Gemini's native `googleSearch` grounding tool.
+ * The native APIs aren't OpenAI-compatible, so the OpenRouter plugin never
+ * applies — each adapter injects its own tool instead. A native `kind`
+ * already implies the model is supported on that provider's native API
+ * (chat-transport falls through to OpenRouter otherwise), so no extra
+ * model check is needed here.
  *
  * Other BYOK routes (OpenAI-compatible, Azure) and Custom LLMs have no
  * web-search path yet, so they return false.
@@ -265,7 +282,8 @@ export function transportSupportsWebSearch(
   kind: ChatTransportKind,
 ): boolean {
   return (
-    source === 'openrouter' || (source === 'byok' && kind === 'anthropic-sdk')
+    source === 'openrouter' ||
+    (source === 'byok' && (kind === 'anthropic-sdk' || kind === 'gemini-sdk'))
   );
 }
 
@@ -781,34 +799,37 @@ export class ChatTransportService {
           };
         }
 
-        // 2b. Providers we have a dedicated SDK shim for (currently
-        // Anthropic). The chat layer recognises kind === 'anthropic-sdk'
-        // and routes to AnthropicClientService instead of OpenAI SDK.
+        // 2b. Providers we have a dedicated native SDK shim for (Anthropic,
+        // Google). The chat layer routes kind 'anthropic-sdk' / 'gemini-sdk'
+        // to the matching client instead of the OpenAI SDK.
         //
-        // Guard for Anthropic: some OpenRouter slugs (`-fast`, Opus 4.6,
-        // bare family ids) don't exist on Anthropic native — sending
-        // them to api.anthropic.com 404s. We skip native routing for
-        // those and fall through to OpenRouter (where the slug still
-        // works), so a BYOK Anthropic key doesn't break unrelated
-        // Claude variants the user might want to try.
-        if (
-          native?.nativeSdkAvailable &&
-          (provider !== 'anthropic' ||
-            isAnthropicNativeSupported(modelIdentifier))
-        ) {
-          return {
-            baseURL: native.baseURL, // unused by the SDK path
-            apiKey,
-            model: bareModel,
-            provider,
-            source: 'byok',
-            kind: 'anthropic-sdk',
-            integrationId: byokIntegrationId,
-          };
-        }
-        if (native?.nativeSdkAvailable && provider === 'anthropic') {
+        // Per-provider guard: some OpenRouter slugs don't exist on the
+        // provider's native API (Anthropic `-fast` / Opus 4.6 / bare family
+        // ids; Gemini 1.x reorders the name). Sending those to the native
+        // endpoint 404s, so we skip native routing for them and fall
+        // through to OpenRouter (where the slug still works) rather than
+        // breaking unrelated variants the user might try.
+        if (native?.nativeSdkAvailable) {
+          const nativeKind = NATIVE_SDK_KIND[provider];
+          const nativeSupported =
+            provider === 'anthropic'
+              ? isAnthropicNativeSupported(modelIdentifier)
+              : provider === 'google'
+                ? isGeminiNativeSupported(modelIdentifier)
+                : false;
+          if (nativeKind && nativeSupported) {
+            return {
+              baseURL: native.baseURL, // unused by the SDK path
+              apiKey,
+              model: bareModel,
+              provider,
+              source: 'byok',
+              kind: nativeKind,
+              integrationId: byokIntegrationId,
+            };
+          }
           this.logger.warn(
-            `BYOK Anthropic key set but ${modelIdentifier} is not exposed on Anthropic native — falling back to OpenRouter for this call.`,
+            `BYOK ${provider} key set but ${modelIdentifier} is not exposed on ${provider} native — falling back to OpenRouter for this call.`,
           );
         }
 

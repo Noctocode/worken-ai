@@ -76,9 +76,15 @@ export const NATIVE_ENDPOINTS: Record<string, NativeEndpoint> = {
     openAICompatible: false,
     nativeSdkAvailable: true,
   },
+  // Native Gemini API (not OpenAI-compatible). Honored as BYOK via the
+  // GeminiClientService shim — chat-transport routes these to kind
+  // 'gemini-sdk'. The OpenAI-compatible endpoint (/v1beta/openai/) is
+  // deliberately NOT used: it can't do Google Search grounding for chat,
+  // which is the reason we route Gemini natively.
   google: {
     baseURL: 'https://generativelanguage.googleapis.com/v1beta',
     openAICompatible: false,
+    nativeSdkAvailable: true,
   },
   qwen: {
     baseURL: 'https://dashscope.aliyuncs.com/api/v1',

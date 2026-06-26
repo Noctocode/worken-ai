@@ -14,6 +14,7 @@ import {
 } from '@worken/database/schema';
 import { DATABASE, type Database } from '../database/database.module.js';
 import { isAnthropicNativeSupported } from '../integrations/anthropic-client.service.js';
+import { isGeminiNativeSupported } from '../integrations/gemini-client.service.js';
 import { providerOfModel } from '../integrations/native-endpoints.js';
 import {
   ownerStillOnTeam,
@@ -549,22 +550,34 @@ export class ModelsService {
       if (hasCustomIntegration) return 'custom';
       const provider = providerOfModel(modelId);
       if (!provider || !enabledProviders.has(provider)) return 'workenai';
+      // Native shims only cover specific slugs; the rest fall back to
+      // OpenRouter, so the picker marker must mirror that (else it
+      // promises "(BYOK)" for a slug we'd route via OpenRouter).
       if (provider === 'anthropic' && !isAnthropicNativeSupported(modelId)) {
+        return 'workenai';
+      }
+      if (provider === 'google' && !isGeminiNativeSupported(modelId)) {
         return 'workenai';
       }
       return 'byok';
     };
 
     // Web search is supported on the managed (OpenRouter plugin) route and
-    // on Anthropic-native BYOK (server-side web_search tool). Other BYOK
+    // on the native-BYOK routes that inject a provider tool: Anthropic
+    // (web_search) and Gemini (Google Search grounding). Other BYOK
     // providers (OpenAI-compatible, Azure) and Custom LLMs have no path.
     // Mirrors transportSupportsWebSearch on the chat side.
     const computeWebSearchCapable = (
       modelId: string,
       routing: EffectiveModel['routing'],
-    ): boolean =>
-      routing === 'workenai' ||
-      (routing === 'byok' && providerOfModel(modelId) === 'anthropic');
+    ): boolean => {
+      if (routing === 'workenai') return true;
+      const provider = providerOfModel(modelId);
+      return (
+        routing === 'byok' &&
+        (provider === 'anthropic' || provider === 'google')
+      );
+    };
 
     const out: EffectiveModel[] = [];
     const seen = new Set<string>();
