@@ -828,14 +828,20 @@ export class ChatTransportService {
               integrationId: byokIntegrationId,
             };
           }
+          // A native transport DOES exist for this provider; the model
+          // just isn't on it. The model-specific warning above is the
+          // whole story — don't also emit the generic "no native
+          // transport" line below (it would be duplicate + misleading).
           this.logger.warn(
             `BYOK ${provider} key set but ${modelIdentifier} is not exposed on ${provider} native — falling back to OpenRouter for this call.`,
           );
+        } else {
+          // Neither OpenAI-compatible (handled above) nor a native shim —
+          // e.g. Qwen. The key is stored but unusable end-to-end.
+          this.logger.warn(
+            `${provider} has a BYOK key set but no native transport available — falling back to OpenRouter for ${modelIdentifier}.`,
+          );
         }
-
-        this.logger.warn(
-          `${provider} has a BYOK key set but no native transport available — falling back to OpenRouter for ${modelIdentifier}.`,
-        );
       }
     }
 

@@ -8,6 +8,24 @@ interface ChatMessage {
   content: string;
 }
 
+export interface GeminiChatResponse {
+  content: string;
+  totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+}
+
+/** Map ChatMessages → Gemini `contents` (assistant → role 'model'), with
+ *  leading non-user messages dropped defensively (Gemini starts on user). */
+function toGeminiContents(messages: ChatMessage[]): Content[] {
+  const filtered = [...messages];
+  while (filtered.length > 0 && filtered[0].role !== 'user') filtered.shift();
+  return filtered.map((m) => ({
+    role: m.role === 'assistant' ? 'model' : 'user',
+    parts: [{ text: m.content }],
+  }));
+}
+
 /**
  * Google Search grounding tool — Gemini's native web search. The model
  * decides when to search; results come back as `groundingMetadata` (web
@@ -55,6 +73,36 @@ export function isGeminiNativeSupported(modelId: string): boolean {
 @Injectable()
 export class GeminiClientService {
   /**
+   * Non-streaming chat — used by compare-models (one-shot answer / judge),
+   * which doesn't stream. No web search here: the comparison flow doesn't
+   * expose grounding. System prompt is lifted to `systemInstruction`.
+   */
+  async sendMessage(
+    messages: ChatMessage[],
+    model: string,
+    apiKey: string,
+    context?: string,
+  ): Promise<GeminiChatResponse> {
+    if (!apiKey) {
+      throw new Error('Google API key is required for native routing');
+    }
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model,
+      contents: toGeminiContents(messages),
+      ...(context ? { config: { systemInstruction: context } } : {}),
+    });
+    const promptTokens = response.usageMetadata?.promptTokenCount ?? 0;
+    const completionTokens = response.usageMetadata?.candidatesTokenCount ?? 0;
+    return {
+      content: response.text ?? '',
+      promptTokens,
+      completionTokens,
+      totalTokens: promptTokens + completionTokens,
+    };
+  }
+
+  /**
    * Streaming chat mapped onto the transport-neutral `ChatStreamEvent`
    * union owned by `chat.service`:
    *   - text parts → `content`
@@ -80,16 +128,8 @@ export class GeminiClientService {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-
-    // Gemini takes the system prompt as a top-level `systemInstruction`
-    // and uses role 'model' for the assistant. Drop leading non-user
-    // messages defensively, like the Anthropic adapter.
-    const filtered = [...messages];
-    while (filtered.length > 0 && filtered[0].role !== 'user') filtered.shift();
-    const contents: Content[] = filtered.map((m) => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }],
-    }));
+    // Gemini lifts the system prompt to a top-level `systemInstruction`.
+    const contents = toGeminiContents(messages);
 
     // Citations dedup by URL — the same source can ground multiple spans.
     const citationsByUrl = new Map<string, { url: string; title?: string }>();

@@ -6,6 +6,7 @@ import type {
   ChatCompletionMessageParam,
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import { GeminiClientService } from '../integrations/gemini-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 
 interface QuestionResponse {
@@ -64,7 +65,10 @@ function describeUpstreamError(
 
 @Injectable()
 export class CompareModelsService {
-  constructor(private readonly anthropic: AnthropicClientService) {}
+  constructor(
+    private readonly anthropic: AnthropicClientService,
+    private readonly gemini: GeminiClientService,
+  ) {}
 
   private makeClient(
     apiKey?: string,
@@ -108,9 +112,11 @@ export class CompareModelsService {
     baseURL?: string,
     kind: ChatTransportKind = 'openai-sdk',
   ): Promise<QuestionResponse> {
-    // Native Anthropic path for BYOK on Claude.
-    if (kind === 'anthropic-sdk') {
-      const r = await this.anthropic.sendMessage(
+    // Native BYOK paths whose APIs aren't OpenAI-compatible (Claude,
+    // Gemini) — answer via their own client instead of the OpenAI SDK.
+    if (kind === 'anthropic-sdk' || kind === 'gemini-sdk') {
+      const client = kind === 'gemini-sdk' ? this.gemini : this.anthropic;
+      const r = await client.sendMessage(
         [{ role: 'user', content: question }],
         model,
         apiKey ?? '',
@@ -223,11 +229,11 @@ export class CompareModelsService {
       content: prompt,
     });
 
-    // Native Anthropic path for a BYOK Claude model picked as the
-    // judge — the prompt is folded into the system slot, the answers
-    // JSON into the user turn, matching sendQuestion's BYOK branch.
-    if (kind === 'anthropic-sdk') {
-      const r = await this.anthropic.sendMessage(
+    // Native BYOK judge (Claude / Gemini) — prompt folded into the system
+    // slot, answers JSON into the user turn, matching sendQuestion's branch.
+    if (kind === 'anthropic-sdk' || kind === 'gemini-sdk') {
+      const client = kind === 'gemini-sdk' ? this.gemini : this.anthropic;
+      const r = await client.sendMessage(
         [{ role: 'user', content: JSON.stringify(answers) }],
         model,
         apiKey ?? '',
