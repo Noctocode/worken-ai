@@ -63,15 +63,17 @@ const OVERVIEW_TABS: Array<{
  * Hand-built boxes (no diagram lib) so they follow the theme tokens and
  * dark/light mode. */
 
-/* A labeled box node. `accent` highlights the primary path, `muted` is
- * for secondary/attached items. */
+/* A labeled box node. Optional `sub` adds a small second line of detail;
+ * `accent` highlights the primary path, `muted` is for secondary items. */
 function Node({
   icon: Icon,
   label,
+  sub,
   tone = "default",
 }: {
   icon?: typeof Server;
   label: string;
+  sub?: string;
   tone?: "default" | "accent" | "muted";
 }) {
   const styles =
@@ -87,18 +89,29 @@ function Node({
       {Icon ? (
         <Icon className="h-4 w-4 shrink-0 text-primary-7" strokeWidth={2} />
       ) : null}
-      <span className="text-[13px] font-medium leading-snug">{label}</span>
+      <div className="flex flex-col">
+        <span className="text-[13px] font-medium leading-snug">{label}</span>
+        {sub ? (
+          <span className="text-[11px] leading-snug text-text-3">{sub}</span>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-/* Flow connector. Points down when nodes stack (mobile), right on sm+. */
-function Arrow() {
+/* Flow connector. Points down when nodes stack (mobile), right on sm+.
+ * Optional `label` shows a tiny note (e.g. cardinality) by the arrow. */
+function Arrow({ label }: { label?: string }) {
   return (
-    <ArrowRight
-      className="mx-auto h-5 w-5 shrink-0 rotate-90 text-text-3 sm:rotate-0"
-      strokeWidth={2}
-    />
+    <div className="flex shrink-0 flex-col items-center justify-center">
+      <ArrowRight
+        className="h-5 w-5 rotate-90 text-text-3 sm:rotate-0"
+        strokeWidth={2}
+      />
+      {label ? (
+        <span className="text-[10px] leading-none text-text-3">{label}</span>
+      ) : null}
+    </div>
   );
 }
 
@@ -122,11 +135,12 @@ function Lane({
 
 export default function SystemOverview() {
   const { t } = useLanguage();
+  const many = t("resources.overview.ent.cardMany");
 
   // System-overview diagrams, one per tab value.
   const diagrams: Record<string, React.ReactNode> = {
-    // 1. Navigation — the three sidebar groups (page names reuse the
-    //    real sidebar labels so this matches the live menu).
+    // 1. Navigation — the sidebar groups (page names reuse the real
+    //    sidebar labels) plus the admin-only section.
     nav: (
       <div className="flex flex-col gap-3 sm:flex-row">
         <Lane label={t("resources.overview.nav.core")}>
@@ -144,6 +158,13 @@ export default function SystemOverview() {
           <Node label={t("sidebar.nav.toolkit")} />
           <Node label={t("sidebar.nav.learning")} />
         </Lane>
+        <Lane label={t("resources.overview.nav.adminLane")}>
+          <Node label={t("resources.overview.nav.guardrails")} tone="muted" />
+          <Node
+            label={t("resources.overview.nav.companySettings")}
+            tone="muted"
+          />
+        </Lane>
       </div>
     ),
 
@@ -153,57 +174,95 @@ export default function SystemOverview() {
         <Node
           icon={Monitor}
           label={t("resources.overview.arch.browser")}
+          sub={t("resources.overview.arch.browserSub")}
           tone="accent"
         />
         <Arrow />
         <Node
           icon={Server}
           label={t("resources.overview.arch.api")}
+          sub={t("resources.overview.arch.apiSub")}
           tone="accent"
         />
         <Arrow />
         <div className="flex flex-1 flex-col gap-3">
           <Lane label={t("resources.overview.arch.dataLane")}>
-            <Node icon={Database} label={t("resources.overview.arch.db")} />
-            <Node icon={Gauge} label={t("resources.overview.arch.cache")} />
+            <Node
+              icon={Database}
+              label={t("resources.overview.arch.db")}
+              sub={t("resources.overview.arch.dbSub")}
+            />
+            <Node
+              icon={Gauge}
+              label={t("resources.overview.arch.cache")}
+              sub={t("resources.overview.arch.cacheSub")}
+            />
           </Lane>
           <Lane label={t("resources.overview.arch.externalLane")}>
-            <Node icon={Cpu} label={t("resources.overview.arch.models")} />
+            <Node
+              icon={Cpu}
+              label={t("resources.overview.arch.models")}
+              sub={t("resources.overview.arch.modelsSub")}
+            />
             <Node icon={Cloud} label={t("resources.overview.arch.cloud")} />
-            <Node icon={CloudSun} label={t("resources.overview.arch.arso")} />
+            <Node
+              icon={CloudSun}
+              label={t("resources.overview.arch.arso")}
+              sub={t("resources.overview.arch.arsoSub")}
+            />
           </Lane>
         </div>
       </div>
     ),
 
-    // 3. Entities — the company → … → message chain + linked resources.
+    // 3. Entities — the company → … → message chain (1→many) + resources.
     entities: (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
           <Node label={t("resources.overview.ent.company")} tone="accent" />
-          <Arrow />
+          <Arrow label={many} />
           <Node label={t("resources.overview.ent.team")} tone="accent" />
-          <Arrow />
-          <Node label={t("resources.overview.ent.project")} tone="accent" />
-          <Arrow />
-          <Node label={t("resources.overview.ent.conversation")} />
-          <Arrow />
+          <Arrow label={many} />
+          <Node
+            label={t("resources.overview.ent.project")}
+            sub={t("resources.overview.ent.projectSub")}
+            tone="accent"
+          />
+          <Arrow label={many} />
+          <Node
+            label={t("resources.overview.ent.conversation")}
+            sub={t("resources.overview.ent.conversationSub")}
+          />
+          <Arrow label={many} />
           <Node label={t("resources.overview.ent.message")} />
         </div>
-        <div className="flex flex-col gap-2 sm:flex-row">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <Node label={t("resources.overview.ent.users")} tone="muted" />
-          <Node label={t("resources.overview.ent.attached")} tone="muted" />
+          <Node label={t("resources.overview.ent.knowledge")} tone="muted" />
+          <Node label={t("resources.overview.ent.integrations")} tone="muted" />
+          <Node label={t("resources.overview.ent.docs")} tone="muted" />
         </div>
       </div>
     ),
 
-    // 4. Roles — global org roles + the company→team→project scope.
+    // 4. Roles — org roles (with what each can do) + the scope cascade.
     roles: (
       <div className="flex flex-col gap-3 sm:flex-row">
         <Lane label={t("resources.overview.roles.orgLane")}>
-          <Node label={t("resources.overview.roles.admin")} tone="accent" />
-          <Node label={t("resources.overview.roles.advanced")} />
-          <Node label={t("resources.overview.roles.basic")} tone="muted" />
+          <Node
+            label={t("resources.overview.roles.admin")}
+            sub={t("resources.overview.roles.adminSub")}
+            tone="accent"
+          />
+          <Node
+            label={t("resources.overview.roles.advanced")}
+            sub={t("resources.overview.roles.advancedSub")}
+          />
+          <Node
+            label={t("resources.overview.roles.basic")}
+            sub={t("resources.overview.roles.basicSub")}
+            tone="muted"
+          />
         </Lane>
         <Lane label={t("resources.overview.roles.scopeLane")}>
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
@@ -214,6 +273,10 @@ export default function SystemOverview() {
             <Node label={t("resources.overview.ent.project")} />
           </div>
           <Node label={t("resources.overview.roles.cascade")} tone="muted" />
+          <Node
+            label={t("resources.overview.roles.budgetCascade")}
+            tone="muted"
+          />
           <Node label={t("resources.overview.roles.teamRoles")} tone="muted" />
           <Node
             label={t("resources.overview.roles.projectRoles")}
@@ -223,22 +286,38 @@ export default function SystemOverview() {
       </div>
     ),
 
-    // 5. Key flow — the chat message pipeline.
+    // 5. Key flow — the chat message pipeline, with a note on key steps.
     flow: (
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
         <Node label={t("resources.overview.flow.message")} tone="accent" />
         <Arrow />
-        <Node label={t("resources.overview.flow.inputGuard")} />
+        <Node
+          label={t("resources.overview.flow.inputGuard")}
+          sub={t("resources.overview.flow.inputGuardSub")}
+        />
         <Arrow />
-        <Node label={t("resources.overview.flow.context")} />
+        <Node
+          label={t("resources.overview.flow.context")}
+          sub={t("resources.overview.flow.contextSub")}
+        />
         <Arrow />
         <Node label={t("resources.overview.flow.budget")} />
         <Arrow />
-        <Node label={t("resources.overview.flow.model")} tone="accent" />
+        <Node
+          label={t("resources.overview.flow.model")}
+          sub={t("resources.overview.flow.modelSub")}
+          tone="accent"
+        />
         <Arrow />
-        <Node label={t("resources.overview.flow.outputGuard")} />
+        <Node
+          label={t("resources.overview.flow.outputGuard")}
+          sub={t("resources.overview.flow.outputGuardSub")}
+        />
         <Arrow />
-        <Node label={t("resources.overview.flow.save")} />
+        <Node
+          label={t("resources.overview.flow.save")}
+          sub={t("resources.overview.flow.saveSub")}
+        />
         <Arrow />
         <Node label={t("resources.overview.flow.answer")} tone="accent" />
       </div>

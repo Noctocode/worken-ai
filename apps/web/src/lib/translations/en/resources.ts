@@ -145,11 +145,11 @@ export const resources = {
 
   // Roles diagram
   'resources.overview.roles.orgLane': 'Org roles (global)',
-  'resources.overview.roles.admin': 'admin — full control',
-  'resources.overview.roles.advanced': 'advanced — power user',
-  'resources.overview.roles.basic': 'basic — chat only',
+  'resources.overview.roles.admin': 'admin',
+  'resources.overview.roles.advanced': 'advanced',
+  'resources.overview.roles.basic': 'basic',
   'resources.overview.roles.scopeLane': 'Scope & inheritance',
-  'resources.overview.roles.cascade': 'Settings cascade (web search, budget)',
+  'resources.overview.roles.cascade': 'Settings cascade (web search)',
   'resources.overview.roles.teamRoles': 'Team: owner / editor / viewer',
   'resources.overview.roles.projectRoles': 'Project: editor / viewer',
 
@@ -162,4 +162,37 @@ export const resources = {
   'resources.overview.flow.outputGuard': 'Output guardrail',
   'resources.overview.flow.save': 'Save + analytics',
   'resources.overview.flow.answer': 'Answer',
+
+  // Enriched detail — node sub-captions, cardinality & extra nodes
+  'resources.overview.nav.coreSub': 'day-to-day work',
+  'resources.overview.nav.featuresSub': 'workflows',
+  'resources.overview.nav.toolsSub': 'helpers & docs',
+  'resources.overview.nav.adminLane': 'Admin only',
+  'resources.overview.nav.guardrails': 'Guardrails',
+  'resources.overview.nav.companySettings': 'Company settings',
+
+  'resources.overview.arch.browserSub': 'Next.js, SSE streaming',
+  'resources.overview.arch.apiSub': 'auth · guardrails · RAG · orchestration',
+  'resources.overview.arch.dbSub': 'documents + embeddings',
+  'resources.overview.arch.cacheSub': 'rate limits, reservations',
+  'resources.overview.arch.modelsSub': 'BYOK or managed gateway',
+  'resources.overview.arch.arsoSub': 'public environmental data',
+
+  'resources.overview.ent.cardMany': '1 → many',
+  'resources.overview.ent.projectSub': 'model, members',
+  'resources.overview.ent.conversationSub': 'personal / team',
+  'resources.overview.ent.knowledge': 'Knowledge files',
+  'resources.overview.ent.integrations': 'Integrations / keys',
+  'resources.overview.ent.docs': 'Documents + embeddings',
+
+  'resources.overview.roles.adminSub': 'company, teams, guardrails',
+  'resources.overview.roles.advancedSub': 'create projects, invite',
+  'resources.overview.roles.basicSub': 'chat in assigned projects',
+  'resources.overview.roles.budgetCascade': 'Budget cascade (company → team → member)',
+
+  'resources.overview.flow.inputGuardSub': 'block / redact',
+  'resources.overview.flow.contextSub': 'project · KC · skills',
+  'resources.overview.flow.modelSub': 'tools: web · ARSO',
+  'resources.overview.flow.outputGuardSub': 'block / fix',
+  'resources.overview.flow.saveSub': 'message · cost · analytics',
 } as const;

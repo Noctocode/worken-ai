@@ -143,11 +143,11 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
 
   // Diagram vlog
   'resources.overview.roles.orgLane': 'Org vloge (globalno)',
-  'resources.overview.roles.admin': 'admin — polni nadzor',
-  'resources.overview.roles.advanced': 'advanced — napredni uporabnik',
-  'resources.overview.roles.basic': 'basic — samo klepet',
+  'resources.overview.roles.admin': 'admin',
+  'resources.overview.roles.advanced': 'advanced',
+  'resources.overview.roles.basic': 'basic',
   'resources.overview.roles.scopeLane': 'Obseg in dedovanje',
-  'resources.overview.roles.cascade': 'Kaskada nastavitev (iskanje po spletu, proračun)',
+  'resources.overview.roles.cascade': 'Kaskada nastavitev (iskanje po spletu)',
   'resources.overview.roles.teamRoles': 'Ekipa: owner / editor / viewer',
   'resources.overview.roles.projectRoles': 'Projekt: editor / viewer',
 
@@ -160,4 +160,37 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.overview.flow.outputGuard': 'Izhodni guardrail',
   'resources.overview.flow.save': 'Shrani + analitika',
   'resources.overview.flow.answer': 'Odgovor',
+
+  // Razširjen detajl — podnapisi vozlišč, števnost in dodatna vozlišča
+  'resources.overview.nav.coreSub': 'vsakodnevno delo',
+  'resources.overview.nav.featuresSub': 'delovni tokovi',
+  'resources.overview.nav.toolsSub': 'pripomočki in dokumentacija',
+  'resources.overview.nav.adminLane': 'Samo admin',
+  'resources.overview.nav.guardrails': 'Guardrails',
+  'resources.overview.nav.companySettings': 'Nastavitve podjetja',
+
+  'resources.overview.arch.browserSub': 'Next.js, SSE pretok',
+  'resources.overview.arch.apiSub': 'avtentikacija · guardraili · RAG · orkestracija',
+  'resources.overview.arch.dbSub': 'dokumenti + embeddingi',
+  'resources.overview.arch.cacheSub': 'limiti, rezervacije',
+  'resources.overview.arch.modelsSub': 'BYOK ali upravljani prehod',
+  'resources.overview.arch.arsoSub': 'javni okoljski podatki',
+
+  'resources.overview.ent.cardMany': '1 → več',
+  'resources.overview.ent.projectSub': 'model, člani',
+  'resources.overview.ent.conversationSub': 'osebni / ekipni',
+  'resources.overview.ent.knowledge': 'Datoteke znanja',
+  'resources.overview.ent.integrations': 'Integracije / ključi',
+  'resources.overview.ent.docs': 'Dokumenti + embeddingi',
+
+  'resources.overview.roles.adminSub': 'podjetje, ekipe, guardrails',
+  'resources.overview.roles.advancedSub': 'ustvari projekte, vabi',
+  'resources.overview.roles.basicSub': 'klepet v dodeljenih projektih',
+  'resources.overview.roles.budgetCascade': 'Kaskada proračuna (podjetje → ekipa → član)',
+
+  'resources.overview.flow.inputGuardSub': 'blokira / cenzurira',
+  'resources.overview.flow.contextSub': 'projekt · KC · veščine',
+  'resources.overview.flow.modelSub': 'orodja: splet · ARSO',
+  'resources.overview.flow.outputGuardSub': 'blokira / popravi',
+  'resources.overview.flow.saveSub': 'sporočilo · strošek · analitika',
 };
