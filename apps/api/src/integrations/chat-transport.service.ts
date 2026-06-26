@@ -242,6 +242,34 @@ export interface ChatTransport {
 }
 
 /**
+ * Whether a resolved transport can do web search.
+ *
+ * Two mutually-exclusive mechanisms, by route:
+ *   - `openrouter`: the OpenRouter `plugins: [{ id: 'web' }]` extension.
+ *   - `byok` + `anthropic-sdk`: Anthropic's native server-side `web_search`
+ *     tool (their API isn't OpenAI-compatible, so the OpenRouter plugin
+ *     never applies — the Anthropic adapter injects the tool instead).
+ *     `kind === 'anthropic-sdk'` already implies the model is supported on
+ *     Anthropic's native API (chat-transport falls through to OpenRouter
+ *     otherwise), so no extra model check is needed here.
+ *
+ * Other BYOK routes (OpenAI-compatible, Azure) and Custom LLMs have no
+ * web-search path yet, so they return false.
+ *
+ * Pure so the same rule can gate the chat hot-path, the per-candidate
+ * fallback re-gate, the cron runner, and the FE `webSearchSupported`
+ * flag without drifting apart.
+ */
+export function transportSupportsWebSearch(
+  source: ChatRoutingSource,
+  kind: ChatTransportKind,
+): boolean {
+  return (
+    source === 'openrouter' || (source === 'byok' && kind === 'anthropic-sdk')
+  );
+}
+
+/**
  * Resolves which (baseURL, apiKey, model) tuple a chat call should use.
  *
  * Routing rules, in order:

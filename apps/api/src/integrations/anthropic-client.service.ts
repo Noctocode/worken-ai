@@ -18,6 +18,35 @@ export interface AnthropicChatResponse {
 const DEFAULT_MAX_TOKENS = 4096;
 
 /**
+ * Cap on web searches per turn. Anthropic bills $10/1000 searches, so a
+ * bound keeps a single chat turn from running away on a vague query.
+ * Simple factual lookups use 1–3; comparative research can use more.
+ */
+const WEB_SEARCH_MAX_USES = 5;
+
+/**
+ * Safety bound on `pause_turn` continuations. The server-side web_search
+ * loop pauses (`stop_reason: 'pause_turn'`) when it hits its internal
+ * iteration limit; we resume by re-sending the assistant turn. Capped so
+ * a pathological loop can't spin forever.
+ */
+const MAX_PAUSE_CONTINUATIONS = 5;
+
+/**
+ * Basic web search tool — no code-execution dependency (the `_20260209+`
+ * dynamic-filtering variants require the code execution tool to be
+ * enabled). Works on every model that routes to Anthropic native, with
+ * native citations. The owner's Anthropic org must have web search
+ * enabled in the Console (Settings → Privacy); otherwise the API returns
+ * an error, surfaced as a stream `error` event.
+ */
+const WEB_SEARCH_TOOL: Anthropic.Messages.WebSearchTool20250305 = {
+  type: 'web_search_20250305',
+  name: 'web_search',
+  max_uses: WEB_SEARCH_MAX_USES,
+};
+
+/**
  * Native Anthropic SDK wrapper. Used when a user has a BYOK key for the
  * "anthropic" provider — we bypass OpenRouter and call the Messages API
  * directly so the user pays Anthropic rather than the OpenRouter
@@ -149,12 +178,21 @@ export class AnthropicClientService {
    *
    * Anthropic event mapping:
    *   - `content_block_delta` with `text_delta` → ChatStreamEvent.content
-   *   - `message_delta` carries the final `usage` totals when the
-   *     stream concludes (`stop_reason` set on the same event) →
-   *     ChatStreamEvent.usage. Anthropic doesn't return cost, so the
-   *     controller backfills via the OpenRouter catalog estimator.
+   *   - text blocks carry web-search `citations`, collected from the
+   *     final message and emitted once as ChatStreamEvent.citations
+   *     (OpenRouter parity).
+   *   - final `usage` totals → ChatStreamEvent.usage. Anthropic doesn't
+   *     return cost, so the controller backfills via the catalog
+   *     estimator; `web_search_requests` rides along so the caller adds
+   *     the per-search surcharge.
    *   - everything else (message_start, message_stop, ping, content_
    *     block_start/stop) is no-op for our purposes.
+   *
+   * Web search (`options.webSearch`): injects Anthropic's native
+   * server-side `web_search` tool. The server runs the searches inside
+   * its own loop; when that loop hits its iteration limit it pauses
+   * (`stop_reason: 'pause_turn'`) and we resume by appending the
+   * assistant turn and re-streaming, up to MAX_PAUSE_CONTINUATIONS.
    *
    * Extended thinking is not yet surfaced — would map to a separate
    * `reasoning` event once the FE adds a thinking pane.
@@ -184,89 +222,124 @@ export class AnthropicClientService {
       filteredMessages.shift();
     }
 
-    let stream: MessageStream;
-    try {
-      stream = client.messages.stream(
-        {
-          model: nativeModel,
-          max_tokens: maxTokens,
-          ...(systemPiece ? { system: systemPiece } : {}),
-          messages: filteredMessages.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
-        },
-        { signal: options.signal },
-      );
-    } catch (err) {
-      yield {
-        type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-        status:
-          err && typeof err === 'object' && 'status' in err
-            ? (err as { status?: number }).status
-            : undefined,
-      };
-      return;
-    }
+    // Conversation grows only across `pause_turn` continuations — each
+    // resume appends the assistant turn produced so far so the server can
+    // pick up where its web-search loop left off.
+    const convo: Anthropic.MessageParam[] = filteredMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
 
-    // Track running totals so we can emit a single `usage` event at
-    // the end. Anthropic streams send input_tokens once (with
-    // message_start) and incrementally bump output_tokens on
-    // message_delta — we sum them once at stream close.
-    let inputTokens: number | undefined;
+    // Running totals emitted once at the end. Each `pause_turn` resume is
+    // a separately-billed request, so input/output tokens and search
+    // counts are summed across iterations (a no-op for the common
+    // single-pass case).
+    let inputTokens = 0;
     let outputTokens = 0;
+    let webSearchRequests = 0;
+    // Citations dedup by URL — the same source can be cited by multiple
+    // text spans (and across pause_turn resumes).
+    const citationsByUrl = new Map<string, { url: string; title?: string }>();
 
-    try {
-      for await (const event of stream) {
-        if (
-          event.type === 'message_start' &&
-          event.message.usage?.input_tokens != null
-        ) {
-          inputTokens = event.message.usage.input_tokens;
-        }
-        if (
-          event.type === 'content_block_delta' &&
-          event.delta.type === 'text_delta'
-        ) {
-          yield { type: 'content', delta: event.delta.text };
-        }
-        if (event.type === 'message_delta' && event.usage?.output_tokens) {
-          // message_delta usage is cumulative on Anthropic's side —
-          // overwrite rather than sum.
-          outputTokens = event.usage.output_tokens;
-        }
-      }
-    } catch (err) {
-      // Same abort handling as the openai-sdk path in chat.service:
-      // user-initiated Stop arrives as AbortError once the signal
-      // fires. Return cleanly so the controller persists whatever
-      // was buffered with metadata.partial = true.
-      if (
-        options.signal?.aborted ||
-        (err instanceof Error && err.name === 'AbortError')
-      ) {
+    for (let pass = 0; pass <= MAX_PAUSE_CONTINUATIONS; pass++) {
+      let stream: MessageStream;
+      try {
+        stream = client.messages.stream(
+          {
+            model: nativeModel,
+            max_tokens: maxTokens,
+            ...(systemPiece ? { system: systemPiece } : {}),
+            ...(options.webSearch ? { tools: [WEB_SEARCH_TOOL] } : {}),
+            messages: convo,
+          },
+          { signal: options.signal },
+        );
+      } catch (err) {
+        yield this.toErrorEvent(err);
         return;
       }
-      yield {
-        type: 'error',
-        message: err instanceof Error ? err.message : String(err),
-        status:
-          err && typeof err === 'object' && 'status' in err
-            ? (err as { status?: number }).status
-            : undefined,
-      };
-      return;
+
+      try {
+        for await (const event of stream) {
+          if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'text_delta'
+          ) {
+            yield { type: 'content', delta: event.delta.text };
+          }
+        }
+      } catch (err) {
+        // Same abort handling as the openai-sdk path in chat.service:
+        // user-initiated Stop arrives as AbortError once the signal
+        // fires. Return cleanly so the controller persists whatever was
+        // buffered with metadata.partial = true.
+        if (
+          options.signal?.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          return;
+        }
+        yield this.toErrorEvent(err);
+        return;
+      }
+
+      const final = await stream.finalMessage();
+      inputTokens += final.usage.input_tokens ?? 0;
+      outputTokens += final.usage.output_tokens ?? 0;
+      webSearchRequests +=
+        final.usage.server_tool_use?.web_search_requests ?? 0;
+
+      for (const block of final.content) {
+        if (block.type !== 'text' || !block.citations) continue;
+        for (const c of block.citations) {
+          if (c.type !== 'web_search_result_location') continue;
+          if (!citationsByUrl.has(c.url)) {
+            citationsByUrl.set(c.url, {
+              url: c.url,
+              ...(c.title ? { title: c.title } : {}),
+            });
+          }
+        }
+      }
+
+      // `pause_turn` means the server-side loop wants to continue — append
+      // the assistant turn and re-stream. Any other stop reason is final.
+      if (final.stop_reason === 'pause_turn') {
+        convo.push({
+          role: 'assistant',
+          // Response content blocks are accepted back as request params;
+          // the SDK's param/response types diverge only nominally here.
+          content: final.content as unknown as Anthropic.ContentBlockParam[],
+        });
+        continue;
+      }
+      break;
     }
 
-    // One usage event at the very end. OpenRouter parity: the caller
-    // gets totals exactly once per stream after content events.
+    if (citationsByUrl.size > 0) {
+      yield { type: 'citations', citations: [...citationsByUrl.values()] };
+    }
+
+    // One usage event at the very end. OpenRouter parity: the caller gets
+    // totals exactly once per stream after content events.
     yield {
       type: 'usage',
       promptTokens: inputTokens,
       completionTokens: outputTokens,
-      totalTokens:
-        inputTokens != null ? inputTokens + outputTokens : outputTokens,
+      totalTokens: inputTokens + outputTokens,
+      ...(webSearchRequests > 0 ? { webSearchRequests } : {}),
+    };
+  }
+
+  /** Map an upstream throw to a stream `error` event (status when present). */
+  private toErrorEvent(err: unknown): ChatStreamEvent {
+    return {
+      type: 'error',
+      message: err instanceof Error ? err.message : String(err),
+      status:
+        err && typeof err === 'object' && 'status' in err
+          ? (err as { status?: number }).status
+          : undefined,
     };
   }
 }

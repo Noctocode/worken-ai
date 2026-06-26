@@ -6,6 +6,7 @@ import { DATABASE, type Database } from '../database/database.module.js';
 import {
   ChatTransportService,
   ESTIMATED_COMPLETION_TOKENS,
+  transportSupportsWebSearch,
 } from '../integrations/chat-transport.service.js';
 import { KnowledgeIngestionService } from '../knowledge-core/knowledge-ingestion.service.js';
 import { OpenRouterCatalogService } from '../models/openrouter-catalog.service.js';
@@ -184,7 +185,8 @@ export class CronRunnerService {
       // sole authority — it is NOT gated by the org/team capability switch
       // (unlike interactive chat). The form only lets the toggle turn on for
       // models that support web search, and the route check below keeps it
-      // to the managed route where the plugin actually applies.
+      // to routes where web search actually applies (OpenRouter plugin or
+      // Anthropic BYOK native tool).
       const webAllowed = prompt.useWebSearch;
 
       // Candidates (chosen model + enabled fallbacks) were resolved above
@@ -207,7 +209,8 @@ export class CronRunnerService {
                 modelIdentifier: candidates[i],
                 teamId: prompt.teamId,
               });
-        const webSearch = webAllowed && t.source === 'openrouter';
+        const webSearch =
+          webAllowed && transportSupportsWebSearch(t.source, t.kind);
 
         // Budget gate — managed/team OpenRouter spend only (BYOK/Custom is
         // user-paid, so caps don't apply). Same gates the chat path runs. A
