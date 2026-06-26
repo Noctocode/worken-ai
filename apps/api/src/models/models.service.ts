@@ -561,7 +561,11 @@ export class ModelsService {
     // search). Other BYOK providers (OpenAI-compatible, Azure) and Custom
     // LLMs have no path. Mirrors transportSupportsWebSearch on the chat
     // side.
-    const WEB_SEARCH_BYOK_PROVIDERS = new Set(['anthropic', 'perplexity']);
+    const WEB_SEARCH_BYOK_PROVIDERS = new Set([
+      'anthropic',
+      'perplexity',
+      'mistralai',
+    ]);
     const computeWebSearchCapable = (
       modelId: string,
       routing: EffectiveModel['routing'],

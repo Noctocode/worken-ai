@@ -5,6 +5,7 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import { MistralConversationsService } from '../integrations/mistral-conversations.service.js';
 import type {
   ChatRoutingSource,
   ChatTransportKind,
@@ -129,7 +130,10 @@ export interface StreamOptions {
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly anthropic: AnthropicClientService) {}
+  constructor(
+    private readonly anthropic: AnthropicClientService,
+    private readonly mistral: MistralConversationsService,
+  ) {}
 
   private makeClient(
     baseURL: string,
@@ -187,6 +191,26 @@ export class ChatService {
       // event shape (content_block_delta, message_delta, …) and maps
       // each to our ChatStreamEvent union before yielding.
       yield* this.anthropic.sendMessageStream(
+        messages.map((m) => ({ role: m.role, content: m.content })),
+        model,
+        apiKey,
+        context,
+        options,
+      );
+      return;
+    }
+
+    // Mistral web search lives only on the Conversations API, not the
+    // OpenAI-compatible chat-completions endpoint Mistral normally uses.
+    // So divert ONLY when web search is on for a Mistral BYOK call; plain
+    // Mistral chat (toggle off) keeps the fast openai-sdk path below.
+    if (
+      kind === 'openai-sdk' &&
+      options.source === 'byok' &&
+      options.provider === 'mistralai' &&
+      options.webSearch
+    ) {
+      yield* this.mistral.streamWithWebSearch(
         messages.map((m) => ({ role: m.role, content: m.content })),
         model,
         apiKey,
