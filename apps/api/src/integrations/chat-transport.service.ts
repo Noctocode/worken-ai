@@ -253,8 +253,12 @@ export interface ChatTransport {
  *     Anthropic's native API (chat-transport falls through to OpenRouter
  *     otherwise), so no extra model check is needed here.
  *
- * Other BYOK routes (OpenAI-compatible, Azure) and Custom LLMs have no
- * web-search path yet, so they return false.
+ * Provider-native web search covers BYOK Anthropic (server-side web_search
+ * tool) and BYOK direct-OpenAI (Responses API web_search tool). Azure OpenAI
+ * is deliberately excluded: it resolves to `kind === 'azure-sdk'` (and
+ * `provider === 'azure'`), so the `openai-sdk` + `provider === 'openai'`
+ * conjunction never matches it. Other OpenAI-compatible BYOK providers
+ * (deepseek, mistral, qwen, …) and Custom LLMs have no web-search path.
  *
  * Pure so the same rule can gate the chat hot-path, the per-candidate
  * fallback re-gate, the cron runner, and the FE `webSearchSupported`
@@ -263,9 +267,12 @@ export interface ChatTransport {
 export function transportSupportsWebSearch(
   source: ChatRoutingSource,
   kind: ChatTransportKind,
+  provider?: string,
 ): boolean {
   return (
-    source === 'openrouter' || (source === 'byok' && kind === 'anthropic-sdk')
+    source === 'openrouter' ||
+    (source === 'byok' && kind === 'anthropic-sdk') ||
+    (source === 'byok' && kind === 'openai-sdk' && provider === 'openai')
   );
 }
 

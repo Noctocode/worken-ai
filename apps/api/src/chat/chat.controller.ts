@@ -220,7 +220,11 @@ export class ChatController {
     // search on a supported model.
     const webSearch =
       !!proj?.webSearch &&
-      transportSupportsWebSearch(transport.source, transport.kind) &&
+      transportSupportsWebSearch(
+        transport.source,
+        transport.kind,
+        transport.provider,
+      ) &&
       (await resolveWebSearchCapability(this.db, user.id, teamId));
 
     await this.chatTransport.assertManagedBudgetApproved(transport, user.id, {
@@ -482,7 +486,8 @@ export class ChatController {
           // the requested model's pre-flight estimate, and a fallback must not
           // bypass the team-member-cap / team / org budget limits.
           const fbWebSearch =
-            webSearch && transportSupportsWebSearch(t.source, t.kind);
+            webSearch &&
+            transportSupportsWebSearch(t.source, t.kind, t.provider);
           const fbEstUsd = await catalogService.estimateCost(
             candidate,
             promptTokens,
@@ -519,7 +524,7 @@ export class ChatController {
         // the final resolved transport for this candidate, which may route
         // differently from the requested model).
         const candidateWebSearch =
-          webSearch && transportSupportsWebSearch(t.source, t.kind);
+          webSearch && transportSupportsWebSearch(t.source, t.kind, t.provider);
 
         // First-token timeout: abort and fall back if no token arrives in
         // time. Only when a fallback exists — the final candidate is left to

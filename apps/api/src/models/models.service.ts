@@ -555,16 +555,22 @@ export class ModelsService {
       return 'byok';
     };
 
-    // Web search is supported on the managed (OpenRouter plugin) route and
-    // on Anthropic-native BYOK (server-side web_search tool). Other BYOK
-    // providers (OpenAI-compatible, Azure) and Custom LLMs have no path.
-    // Mirrors transportSupportsWebSearch on the chat side.
+    // Web search is supported on the managed (OpenRouter plugin) route, on
+    // Anthropic-native BYOK (server-side web_search tool), and on direct-
+    // OpenAI BYOK (Responses API web_search tool). Mirrors
+    // transportSupportsWebSearch on the chat side. Azure is excluded for free:
+    // computeRouting only returns 'byok' when the model's *own* provider id is
+    // enabled, and Azure keys carry provider id 'azure' (not 'openai'), so an
+    // openai/* model on an Azure-only key resolves to 'workenai', not 'byok'.
+    // Other OpenAI-compatible BYOK providers + Custom LLMs have no path.
     const computeWebSearchCapable = (
       modelId: string,
       routing: EffectiveModel['routing'],
     ): boolean =>
       routing === 'workenai' ||
-      (routing === 'byok' && providerOfModel(modelId) === 'anthropic');
+      (routing === 'byok' &&
+        (providerOfModel(modelId) === 'anthropic' ||
+          providerOfModel(modelId) === 'openai'));
 
     const out: EffectiveModel[] = [];
     const seen = new Set<string>();
