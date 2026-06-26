@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { createProject, fetchTeams, DuplicateProjectNameError } from "@/lib/api";
+import { ModelCombobox } from "@/components/ui/model-combobox";
 import { useUserModels } from "@/lib/hooks/use-user-models";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { cloneElement, isValidElement, useState } from "react";
@@ -138,26 +139,17 @@ export function CreateProjectDialog({
             </div>
             <div className="space-y-2">
               <Label>{t("dlg.createProj.model")}</Label>
-              <Select value={model} onValueChange={setModel} required>
-                <SelectTrigger className="w-full">
-                  <SelectValue
-                    placeholder={
-                      modelsLoading
-                        ? t("dlg.createProj.modelsLoading")
-                        : models.length === 0
-                          ? t("dlg.createProj.noModels")
-                          : t("dlg.createProj.selectModel")
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {models.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>
-                      {m.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ModelCombobox
+                value={model}
+                onChange={setModel}
+                models={models}
+                loading={modelsLoading}
+                placeholder={
+                  models.length === 0
+                    ? t("dlg.createProj.noModels")
+                    : t("dlg.createProj.selectModel")
+                }
+              />
             </div>
             {teams && teams.length > 0 && (
               <div className="space-y-2">

@@ -159,4 +159,9 @@ export const common = {
   'pagination.next': 'Next',
   'pagination.page': 'Page {n}',
   'dashboard.viewTeamMembers': 'View team members',
+  // Reusable searchable model picker (ModelCombobox)
+  'modelSelect.placeholder': 'Select model',
+  'modelSelect.search': 'Search models…',
+  'modelSelect.loading': 'Loading models…',
+  'modelSelect.noMatch': 'No models match',
 } as const;
