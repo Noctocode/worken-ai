@@ -76,7 +76,12 @@ function makeServiceWithChunks(chunks: OpenAIChunk[]) {
     sendMessage: jest.fn(),
     sendMessageStream: jest.fn(),
   };
-  const svc = new ChatService(anthropic as never);
+  const svc = new ChatService(
+    anthropic as never,
+    {
+      streamWithWebSearch: jest.fn(),
+    } as never,
+  );
 
   // Replace the private `makeClient` so we don't depend on a real
   // OpenAI install. The function signature is private but TS lets
@@ -114,10 +119,10 @@ function makeCapturingService(chunks: unknown[]) {
       for (const chunk of chunks) yield chunk;
     },
   });
-  const svc = new ChatService({
-    sendMessage: jest.fn(),
-    sendMessageStream: jest.fn(),
-  } as never);
+  const svc = new ChatService(
+    { sendMessage: jest.fn(), sendMessageStream: jest.fn() } as never,
+    { streamWithWebSearch: jest.fn() } as never,
+  );
   (svc as unknown as { makeClient: () => unknown }).makeClient = () => ({
     chat: { completions: { create } },
   });
@@ -220,6 +225,79 @@ describe('ChatService web search per route (openai-sdk)', () => {
         { url: 'https://b.com', title: undefined },
       ],
     });
+  });
+
+  it('diverts a Mistral BYOK web-search call to the Conversations service', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub
+    async function* fakeMistral(): AsyncIterable<ChatStreamEvent> {
+      yield { type: 'content', delta: 'from mistral' };
+      yield {
+        type: 'citations',
+        citations: [{ url: 'https://m.com', title: 'M' }],
+      };
+    }
+    const create = jest.fn();
+    const mistral = {
+      streamWithWebSearch: jest.fn().mockReturnValue(fakeMistral()),
+    };
+    const svc = new ChatService(
+      { sendMessage: jest.fn(), sendMessageStream: jest.fn() } as never,
+      mistral as never,
+    );
+    (svc as unknown as { makeClient: () => unknown }).makeClient = () => ({
+      chat: { completions: { create } },
+    });
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'mistral-medium-latest',
+        false,
+        undefined,
+        'key',
+        'https://api.mistral.ai/v1',
+        'openai-sdk',
+        { webSearch: true, source: 'byok', provider: 'mistralai' },
+      ),
+    );
+    expect(mistral.streamWithWebSearch).toHaveBeenCalledTimes(1);
+    expect(create).not.toHaveBeenCalled(); // never hits chat completions
+    expect(events).toEqual([
+      { type: 'content', delta: 'from mistral' },
+      { type: 'citations', citations: [{ url: 'https://m.com', title: 'M' }] },
+    ]);
+  });
+
+  it('keeps Mistral on the chat-completions path when web search is off', async () => {
+    const create = jest.fn().mockResolvedValue({
+      // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub
+      [Symbol.asyncIterator]: async function* () {
+        yield { choices: [{ delta: { content: 'plain' } }] };
+      },
+    });
+    const mistral = { streamWithWebSearch: jest.fn() };
+    const svc = new ChatService(
+      { sendMessage: jest.fn(), sendMessageStream: jest.fn() } as never,
+      mistral as never,
+    );
+    (svc as unknown as { makeClient: () => unknown }).makeClient = () => ({
+      chat: { completions: { create } },
+    });
+
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'mistral-medium-latest',
+        false,
+        undefined,
+        'key',
+        'https://api.mistral.ai/v1',
+        'openai-sdk',
+        { webSearch: false, source: 'byok', provider: 'mistralai' },
+      ),
+    );
+    expect(mistral.streamWithWebSearch).not.toHaveBeenCalled();
+    expect(create).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -340,7 +418,12 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn(),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(
+      anthropic as never,
+      {
+        streamWithWebSearch: jest.fn(),
+      } as never,
+    );
     // Reject the pre-stream `create` call to simulate auth / model-
     // not-found. The production code is supposed to yield one
     // `error` event and return — we shouldn't see anything else.
@@ -376,7 +459,12 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn().mockReturnValue(fakeAnthropicStream()),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(
+      anthropic as never,
+      {
+        streamWithWebSearch: jest.fn(),
+      } as never,
+    );
 
     const events = await collect(
       svc.sendMessageStream(
@@ -560,10 +648,10 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
 
   const runAzure = (enableReasoning: boolean) =>
     collect(
-      new ChatService({
-        sendMessage: jest.fn(),
-        sendMessageStream: jest.fn(),
-      } as never).sendMessageStream(
+      new ChatService(
+        { sendMessage: jest.fn(), sendMessageStream: jest.fn() } as never,
+        { streamWithWebSearch: jest.fn() } as never,
+      ).sendMessageStream(
         [{ role: 'user', content: 'hi' }],
         DEPLOYMENT, // model === deployment (transport resolved bareModel)
         enableReasoning,

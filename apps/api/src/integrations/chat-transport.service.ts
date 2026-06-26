@@ -249,11 +249,12 @@ export interface ChatTransport {
  *   - `byok` + `anthropic-sdk`: Anthropic's native server-side `web_search`
  *     tool (their API isn't OpenAI-compatible, so the OpenRouter plugin
  *     never applies — the Anthropic adapter injects the tool instead).
- *   - `byok` + `openai-sdk` + provider `perplexity`: Perplexity's sonar
- *     models search the web by default and return citations, so the
- *     openai-sdk path surfaces those sources (and disables search when the
- *     toggle is off). Provider-gated — other openai-sdk BYOK providers
- *     (OpenAI, DeepSeek, Azure) have no native search and stay false.
+ *   - `byok` + `openai-sdk` + provider `perplexity` / `mistralai`: providers
+ *     whose normal chat is OpenAI-compatible but that have their own web
+ *     search — Perplexity (sonar, on the chat-completions body) and Mistral
+ *     (the `web_search` connector via the Conversations API, which
+ *     chat.service diverts to). Provider-gated — other openai-sdk BYOK
+ *     providers (OpenAI, DeepSeek, Azure) have no native search.
  *
  * Custom LLMs and the remaining BYOK routes have no web-search path yet.
  *
@@ -271,11 +272,18 @@ export function transportSupportsWebSearch(
   if (source !== 'byok') return false;
   // Native non-OpenAI SDK shims that inject their own web-search tool.
   if (kind === 'anthropic-sdk') return true;
-  // OpenAI-compatible BYOK providers with their OWN native web search.
-  // Perplexity's sonar models search the web by default and return
-  // citations — the rest of the openai-sdk BYOK providers don't, so this
-  // is provider-gated rather than kind-gated.
-  if (kind === 'openai-sdk' && provider === 'perplexity') return true;
+  // BYOK providers whose normal chat routes via the OpenAI-compatible
+  // openai-sdk path but that ALSO have their own web search:
+  //   - Perplexity: sonar searches by default (chat-completions body field).
+  //   - Mistral: web_search via the Conversations API (chat.service diverts
+  //     to MistralConversationsService when web search is on).
+  // Provider-gated — other openai-sdk BYOK providers have no native search.
+  if (
+    kind === 'openai-sdk' &&
+    (provider === 'perplexity' || provider === 'mistralai')
+  ) {
+    return true;
+  }
   return false;
 }
 
