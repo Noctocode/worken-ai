@@ -121,6 +121,10 @@ export interface User {
   profileType: "company" | "personal" | null;
   companyName: string | null;
   onboardingCompleted: boolean;
+  /** Server-computed flag: the signed-in user is a Noctocode (@noctocode.com)
+   *  member. Gates internal-only developer UI. The domain rule lives on the
+   *  API, not here. */
+  isInternal: boolean;
   canCreateProject: boolean;
   /** Cap in cents enforced on the user's OpenRouter sub-account.
    *  0 = no key provisioned yet (personal users self-set in

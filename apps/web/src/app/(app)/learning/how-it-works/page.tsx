@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import {
   ArrowRight,
   Cloud,
@@ -8,22 +9,27 @@ import {
   Server,
   ShieldCheck,
 } from "lucide-react";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
+/* The internal system-overview diagrams render only when the server-computed
+ * `user.isInternal` flag is set (the @noctocode.com rule lives on the API, in
+ * /auth/me). Loaded via next/dynamic so the chunk is only requested when the
+ * component is actually rendered — this reduces incidental exposure for
+ * non-internal users, but it is NOT a security boundary: the built chunk is
+ * still part of the public bundle and can be fetched directly. Keep anything
+ * truly sensitive on the server, not in here. */
+const SystemOverview = dynamic(() => import("./system-overview"), {
+  ssr: false,
+});
+
 /* ─── Diagram primitives ─────────────────────────────────────────────
- * Hand-built box + boundary diagrams (no diagram lib) so they follow
- * the theme tokens and dark/light mode. Three deployment models, each
- * shown as components inside or outside the "customer boundary".
+ * Hand-built box + boundary diagrams (no diagram lib) so they follow the
+ * theme tokens and dark/light mode. Used by the three deployment cards.
  */
 
-function Chip({
-  icon: Icon,
-  label,
-}: {
-  icon: typeof Server;
-  label: string;
-}) {
+function Chip({ icon: Icon, label }: { icon: typeof Server; label: string }) {
   return (
     <div className="flex items-center gap-2 rounded-md border border-border-2 bg-bg-white px-3 py-2">
       <Icon className="h-4 w-4 shrink-0 text-primary-7" strokeWidth={2} />
@@ -58,6 +64,10 @@ function Boundary({
 
 export default function HowItWorksPage() {
   const { t } = useLanguage();
+
+  // Internal (developer) system-overview is gated on a server-computed flag
+  // from /auth/me — the @noctocode.com rule lives on the API, not here.
+  const { user } = useAuth();
 
   const L = {
     infra: t("resources.how.label.infra"),
@@ -150,6 +160,10 @@ export default function HowItWorksPage() {
           </div>
         ))}
       </div>
+
+      {/* Internal developer documentation — only rendered (and only
+          downloaded) for @noctocode.com members. */}
+      {user?.isInternal ? <SystemOverview /> : null}
     </div>
   );
 }
