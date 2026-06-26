@@ -425,17 +425,19 @@ export default function SystemOverview() {
         {/* All panels are force-mounted Radix tabpanels sharing one grid
             cell, so the box is always sized to the TALLEST tab and Radix
             still wires the trigger↔panel ARIA (role=tabpanel, aria-
-            labelledby, the trigger's aria-controls). Inactive panels keep
-            their `hidden` attribute (so AT only sees the active one); the
-            `flex` class beats the UA `[hidden]{display:none}` so they stay
-            in layout, and `data-[state=inactive]:invisible` hides them
-            visually — switching tabs never changes the box height. */}
+            labelledby, the trigger's aria-controls). The `flex` class beats
+            the UA `[hidden]{display:none}` so inactive panels stay in
+            layout (fixed height); since that defeats `hidden` as the AT-
+            hiding mechanism, inactive panels are hidden from assistive tech
+            EXPLICITLY via `aria-hidden`, and visually via
+            `data-[state=inactive]:invisible`. */}
         <div className="grid">
           {OVERVIEW_TABS.map((tb) => (
             <PageTabsContent
               key={tb.value}
               value={tb.value}
               forceMount
+              aria-hidden={tb.value !== active}
               className="col-start-1 row-start-1 flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6 data-[state=inactive]:invisible"
             >
               <div className="overflow-x-auto">{diagrams[tb.value]}</div>
