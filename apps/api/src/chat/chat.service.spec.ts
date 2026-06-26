@@ -47,6 +47,12 @@ interface OpenAIChunk {
     delta?: {
       content?: string;
       reasoning?: string;
+      tool_calls?: Array<{
+        index: number;
+        id?: string;
+        type?: string;
+        function?: { name?: string; arguments?: string };
+      }>;
       annotations?: Array<{
         type?: string;
         url_citation?: { url?: string; title?: string };
@@ -100,6 +106,34 @@ async function collect(stream: AsyncIterable<ChatStreamEvent>) {
   const out: ChatStreamEvent[] = [];
   for await (const event of stream) out.push(event);
   return out;
+}
+
+/**
+ * Like {@link makeServiceWithChunks} but the OpenAI client returns a fresh
+ * stream of chunks per `create()` call — round 0 for the first model call,
+ * round 1 for the re-call after tools ran, etc. Also records every `create`
+ * body so the tool-loop tests can assert what was re-sent. Used to exercise
+ * the tool_calls accumulator + agentic loop.
+ */
+function makeServiceWithRounds(rounds: OpenAIChunk[][]) {
+  const anthropic = { sendMessage: jest.fn(), sendMessageStream: jest.fn() };
+  const svc = new ChatService(anthropic as never);
+  const create = jest
+    .fn()
+    // eslint-disable-next-line @typescript-eslint/require-await -- stub
+    .mockImplementation(async () => {
+      const chunks = rounds.shift() ?? [];
+      return {
+        // eslint-disable-next-line @typescript-eslint/require-await -- stub
+        [Symbol.asyncIterator]: async function* () {
+          for (const chunk of chunks) yield chunk;
+        },
+      };
+    });
+  (svc as unknown as { makeClient: () => unknown }).makeClient = () => ({
+    chat: { completions: { create } },
+  });
+  return { svc, create };
 }
 
 describe('ChatService.sendMessageStream (openai-sdk path)', () => {
@@ -483,5 +517,385 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
     const body = mockAzureCreate.mock.calls[0][0];
     expect(body.reasoning).toBeUndefined();
     expect(body.plugins).toBeUndefined();
+  });
+
+  // ── Tool-loop (function calling) ──────────────────────────────────────────
+  const WEATHER_TOOL = {
+    name: 'arso_weather_forecast',
+    description: 'weather',
+    parameters: {
+      type: 'object',
+      properties: { location: { type: 'string' } },
+    },
+  };
+
+  it('accumulates streamed tool_calls, runs the tool, re-calls with the result', async () => {
+    const { svc, create } = makeServiceWithRounds([
+      // Round 0: id+name on the first delta, arguments split across deltas.
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_1',
+                    function: { name: 'arso_weather_forecast' },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '{"loca' } }],
+              },
+            },
+          ],
+        },
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  { index: 0, function: { arguments: 'tion":"Ljubljana"}' } },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      // Round 1: the model answers using the tool result.
+      [
+        { choices: [{ delta: { content: 'It is 25°C.' } }] },
+        {
+          choices: [{ delta: {}, finish_reason: 'stop' }],
+          usage: { total_tokens: 12, prompt_tokens: 8, completion_tokens: 4 },
+        },
+      ],
+    ]);
+    const runTool = jest.fn().mockResolvedValue({ tempC: 25 });
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'vreme?' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool, maxToolIters: 5 },
+      ),
+    );
+
+    // Tool dispatched with the fully-accumulated, parsed arguments.
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(runTool).toHaveBeenCalledWith('arso_weather_forecast', {
+      location: 'Ljubljana',
+    });
+
+    // Re-called once; the 2nd request carries the assistant tool_calls turn +
+    // a tool-role message with the result.
+    expect(create).toHaveBeenCalledTimes(2);
+    const secondMessages = create.mock.calls[1][0].messages;
+    const toolMsg = secondMessages.find(
+      (m: { role: string }) => m.role === 'tool',
+    );
+    expect(toolMsg).toMatchObject({ tool_call_id: 'call_1' });
+    expect(JSON.parse(toolMsg.content)).toEqual({ tempC: 25 });
+
+    expect(events.find((e) => e.type === 'tool_call')).toMatchObject({
+      id: 'call_1',
+      name: 'arso_weather_forecast',
+      arguments: { location: 'Ljubljana' },
+    });
+    expect(events.find((e) => e.type === 'tool_result')).toMatchObject({
+      id: 'call_1',
+      ok: true,
+    });
+    expect(
+      events
+        .filter((e) => e.type === 'content')
+        .map((e) => (e as { delta: string }).delta)
+        .join(''),
+    ).toBe('It is 25°C.');
+    expect(events.filter((e) => e.type === 'usage')).toHaveLength(1);
+  });
+
+  it('summarizes an ARSO weather result into a human-readable tool_result', async () => {
+    const { svc } = makeServiceWithRounds([
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_w',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{"location":"Ljubljana"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      [{ choices: [{ delta: { content: 'done' }, finish_reason: 'stop' }] }],
+    ]);
+    // Realistic normalized ArsoWeatherResult shape (location + forecast[]).
+    const runTool = jest.fn().mockResolvedValue({
+      source: 'arso',
+      location: 'Ljubljana',
+      forecast: [{ tempC: 18, weather: 'pretežno jasno' }],
+    });
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'vreme?' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool },
+      ),
+    );
+
+    expect(events.find((e) => e.type === 'tool_result')).toMatchObject({
+      id: 'call_w',
+      ok: true,
+      summary: 'Ljubljana: 18 °C, pretežno jasno',
+    });
+  });
+
+  it('handles two tool calls in one turn (by index)', async () => {
+    const { svc, create } = makeServiceWithRounds([
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c0',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{"location":"LJ"}',
+                    },
+                  },
+                  {
+                    index: 1,
+                    id: 'c1',
+                    function: {
+                      name: 'arso_air_quality',
+                      arguments: '{"location":"LJ"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      [{ choices: [{ delta: { content: 'done' }, finish_reason: 'stop' }] }],
+    ]);
+    const runTool = jest.fn().mockResolvedValue({ ok: true });
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'vreme + zrak?' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool },
+      ),
+    );
+
+    expect(runTool).toHaveBeenCalledTimes(2);
+    expect(events.filter((e) => e.type === 'tool_call')).toHaveLength(2);
+    expect(events.filter((e) => e.type === 'tool_result')).toHaveLength(2);
+    // Two tool-role messages appended for the re-call.
+    const toolMsgs = create.mock.calls[1][0].messages.filter(
+      (m: { role: string }) => m.role === 'tool',
+    );
+    expect(toolMsgs).toHaveLength(2);
+  });
+
+  it('caps the loop at maxToolIters so a tool-happy model cannot run away', async () => {
+    // Every round asks for another tool — without the cap this never ends.
+    const toolRound: OpenAIChunk[] = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'c',
+                  function: { name: 'arso_weather_forecast', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+      { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+    ];
+    const { svc, create } = makeServiceWithRounds([
+      [...toolRound],
+      [...toolRound],
+      [...toolRound],
+    ]);
+    const runTool = jest.fn().mockResolvedValue({});
+
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'loop?' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool, maxToolIters: 2 },
+      ),
+    );
+
+    // maxToolIters=2 → at most 2 model calls; the loop stops instead of
+    // re-calling indefinitely.
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the loop with an error when onBeforeToolIteration rejects (budget gate)', async () => {
+    const { svc, create } = makeServiceWithRounds([
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      [
+        {
+          choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }],
+        },
+      ],
+    ]);
+    const runTool = jest.fn().mockResolvedValue({});
+    const onBeforeToolIteration = jest
+      .fn()
+      .mockRejectedValue(new Error('Budget exceeded'));
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'x' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool, onBeforeToolIteration },
+      ),
+    );
+
+    // The re-call is gated out; the tools that already ran are reported, then
+    // the loop ends with the budget error.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(onBeforeToolIteration).toHaveBeenCalledTimes(1);
+    expect(events.find((e) => e.type === 'error')).toMatchObject({
+      message: 'Budget exceeded',
+    });
+  });
+
+  it('returns cleanly without a re-call when the signal aborts mid-loop', async () => {
+    const ctrl = new AbortController();
+    const { svc, create } = makeServiceWithRounds([
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      [
+        {
+          choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }],
+        },
+      ],
+    ]);
+    // The user hits Stop while the tool runs.
+    const runTool = jest.fn().mockImplementation(
+      // eslint-disable-next-line @typescript-eslint/require-await -- stub
+      async () => {
+        ctrl.abort();
+        return {};
+      },
+    );
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'x' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool, signal: ctrl.signal },
+      ),
+    );
+
+    // No re-call after the abort, and it's a clean cancellation (no error event)
+    // so the controller persists the partial reply.
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(events.some((e) => e.type === 'error')).toBe(false);
   });
 });

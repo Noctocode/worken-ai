@@ -1181,12 +1181,52 @@ export function parseCitations(value: unknown): WebCitation[] {
     }));
 }
 
+/** A tool (ARSO) invocation the model made mid-turn. `tool_call` arrives when
+ *  the model decides to call a tool; the matching `tool_result` (same `id`)
+ *  arrives once the backend has run it. The FE renders these as inline steps
+ *  ("Calling ARSO weather…" → done) under the assistant bubble. */
+export interface ChatToolCall {
+  id: string;
+  /** Backend tool name, e.g. "arso_weather_forecast". */
+  name: string;
+  /** "running" until the result arrives, then "ok" / "error". */
+  status: "running" | "ok" | "error";
+  /** Short human summary from the tool result (e.g. the place resolved). */
+  summary?: string;
+}
+
+/**
+ * Validate an untrusted tool-calls array from persisted message metadata into
+ * safe ChatToolCall objects for reload rendering. Keeps only entries with a
+ * string `name`; coerces `ok` to a boolean status and `summary` to a string or
+ * undefined. The `id` is synthesised from the index (reloaded calls are all
+ * complete, so a stable per-message id is enough for React keys).
+ */
+export function parseToolCalls(value: unknown): ChatToolCall[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter(
+      (c): c is { name: string; ok?: unknown; summary?: unknown } =>
+        !!c &&
+        typeof c === "object" &&
+        typeof (c as { name?: unknown }).name === "string",
+    )
+    .map((c, i) => ({
+      id: `persisted-${i}`,
+      name: c.name,
+      status: c.ok === false ? ("error" as const) : ("ok" as const),
+      summary: typeof c.summary === "string" ? c.summary : undefined,
+    }));
+}
+
 export type ChatStreamEvent =
   | { type: "delta"; text: string }
   | { type: "reasoning"; text: string }
   | { type: "replace"; text: string }
   | { type: "blocked"; rule: string; validator: string }
   | { type: "citations"; citations: WebCitation[] }
+  | { type: "tool_call"; id: string; name: string }
+  | { type: "tool_result"; id: string; name: string; ok: boolean; summary?: string }
   | { type: "error"; message: string; status?: number }
   | {
       type: "done";
@@ -1332,6 +1372,25 @@ export async function* streamChatMessage(
         } else if (frame.event === "citations") {
           const citations = parseCitations(data.citations);
           if (citations.length > 0) yield { type: "citations", citations };
+        } else if (
+          frame.event === "tool_call" &&
+          typeof data.id === "string" &&
+          typeof data.name === "string"
+        ) {
+          yield { type: "tool_call", id: data.id, name: data.name };
+        } else if (
+          frame.event === "tool_result" &&
+          typeof data.id === "string" &&
+          typeof data.name === "string"
+        ) {
+          yield {
+            type: "tool_result",
+            id: data.id,
+            name: data.name,
+            ok: data.ok === true,
+            summary:
+              typeof data.summary === "string" ? data.summary : undefined,
+          };
         } else if (frame.event === "error") {
           yield {
             type: "error",
@@ -3097,6 +3156,9 @@ export interface OrgSettings {
   monthlyBudgetCents: number | null;
   /** Org-wide default for whether projects may use web search. */
   webSearchEnabled: boolean;
+  /** Org-wide toggle for the ARSO environmental-data AI tools. Keyless;
+   *  off by default. Company-wide (no team/project override). */
+  arsoEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -3116,6 +3178,8 @@ export async function updateOrgSettings(input: {
   monthlyBudgetCents?: number | null;
   /** Org-wide web-search capability toggle. */
   webSearchEnabled?: boolean;
+  /** Org-wide ARSO tools toggle. */
+  arsoEnabled?: boolean;
 }): Promise<OrgSettings> {
   const res = await apiFetch("/org-settings", {
     method: "PATCH",

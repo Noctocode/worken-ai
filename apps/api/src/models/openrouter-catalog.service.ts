@@ -14,6 +14,9 @@ export interface CatalogModel {
     prompt?: string;
     completion?: string;
   };
+  /** OpenRouter lists which request params a model accepts; "tools" here
+   *  means the model can do function calling. */
+  supported_parameters?: string[];
 }
 
 /**
@@ -62,6 +65,22 @@ export class OpenRouterCatalogService {
   async refresh(): Promise<CatalogModel[]> {
     await this.redis.del(CACHE_KEY);
     return this.list();
+  }
+
+  /**
+   * Whether a model supports function calling (tools), per the OpenRouter
+   * catalog's `supported_parameters`. Used to decide if we may offer ARSO
+   * tools for a given model. Unknown / not-in-catalog → false (conservative,
+   * so we never send `tools` to a model that would 400 on them).
+   */
+  async supportsTools(modelId: string): Promise<boolean> {
+    const catalog = await this.list();
+    const model =
+      catalog.find((m) => m.id === modelId) ??
+      (modelId.includes('/')
+        ? undefined
+        : catalog.find((m) => m.id.endsWith(`/${modelId}`)));
+    return !!model?.supported_parameters?.includes('tools');
   }
 
   /**

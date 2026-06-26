@@ -305,6 +305,15 @@ export function CompanyTab() {
     onError: (err: Error) =>
       toast.error(err.message || t("mgmt.company.webSearchFailed")),
   });
+  const arsoMutation = useMutation({
+    mutationFn: (enabled: boolean) => updateOrgSettings({ arsoEnabled: enabled }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["org-settings"] });
+      toast.success(t("mgmt.company.arsoSaved"));
+    },
+    onError: (err: Error) =>
+      toast.error(err.message || t("mgmt.company.arsoFailed")),
+  });
   const removeUserMutation = useMutation({
     mutationFn: (userId: string) => removeOrgUser(userId),
     onSuccess: () => {
@@ -598,6 +607,38 @@ export function CompanyTab() {
             <span
               className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
                 orgSettings?.webSearchEnabled ? "left-[22px]" : "left-0.5"
+              }`}
+            />
+          </button>
+        </section>
+      )}
+
+      {/* Org-wide ARSO environmental-data tools. Admin-only, keyless,
+          company-wide (no team/project override). When on, the chat AI can
+          call ARSO weather / air-quality / water-level tools. */}
+      {isAdmin && (
+        <section className="flex items-center justify-between gap-4 rounded-lg border border-border-2 bg-bg-white p-4">
+          <div className="flex flex-col gap-0.5">
+            <h3 className="text-[14px] font-semibold text-text-1">
+              {t("mgmt.company.arsoTitle")}
+            </h3>
+            <p className="text-[12px] text-text-3">
+              {t("mgmt.company.arsoDesc")}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!orgSettings?.arsoEnabled}
+            disabled={arsoMutation.isPending}
+            onClick={() => arsoMutation.mutate(!orgSettings?.arsoEnabled)}
+            className={`relative h-6 w-11 shrink-0 cursor-pointer rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              orgSettings?.arsoEnabled ? "bg-primary-6" : "bg-border-3"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${
+                orgSettings?.arsoEnabled ? "left-[22px]" : "left-0.5"
               }`}
             />
           </button>

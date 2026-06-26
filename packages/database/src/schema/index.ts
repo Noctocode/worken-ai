@@ -113,6 +113,10 @@ export const companies = pgTable("companies", {
   // Teams override via `teams.web_search_enabled`; effective capability
   // is `team.webSearchEnabled ?? company.webSearchEnabled`.
   webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
+  // Org-wide toggle for the ARSO (Slovenian environmental data) AI tools.
+  // Keyless integration; off by default — an admin opts in from the Company
+  // tab. The chat tool-loop offers ARSO tools only when this is true.
+  arsoEnabled: boolean("arso_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -332,6 +336,37 @@ export const messages = pgTable("messages", {
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
+
+// Tool (function) calls the assistant made while producing a message — e.g.
+// the ARSO weather/air/water tools. One row per call, linked to the assistant
+// message it produced (and the conversation), so reopening a chat can show
+// "called ARSO weather". Arguments are stored redacted of any secrets (ARSO
+// tools carry none, but the column keeps that contract for future tools).
+export const chatToolCalls = pgTable(
+  "chat_tool_calls",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    messageId: uuid("message_id")
+      .references(() => messages.id, { onDelete: "cascade" })
+      .notNull(),
+    conversationId: uuid("conversation_id")
+      .references(() => conversations.id, { onDelete: "cascade" })
+      .notNull(),
+    toolName: text("tool_name").notNull(),
+    arguments: jsonb("arguments")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    ok: boolean("ok").notNull(),
+    summary: text("summary"),
+    latencyMs: integer("latency_ms"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("chat_tool_calls_message_idx").on(table.messageId),
+    index("chat_tool_calls_conversation_idx").on(table.conversationId),
+  ],
+);
 
 /**
  * Per-message 👍 / 👎 feedback from a chat participant.

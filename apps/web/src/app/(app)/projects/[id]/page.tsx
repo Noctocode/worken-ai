@@ -11,6 +11,7 @@ import {
   Sparkles,
   Bot,
   Check,
+  CloudSun,
   Download,
   EllipsisVertical,
   FileText,
@@ -33,6 +34,7 @@ import {
   fetchConversation,
   createConversation,
   parseCitations,
+  parseToolCalls,
   streamChatMessage,
   submitMessageFeedback,
   updateProject,
@@ -40,6 +42,7 @@ import {
   downloadKnowledgeFile,
   type AlternativeModelSuggestion,
   type ChatAttachment,
+  type ChatToolCall,
   type ConversationMessage,
   type WebCitation,
 } from "@/lib/api";
@@ -110,6 +113,30 @@ interface LocalMessage {
    *  metadata.skills; renders a "Skill applied" chip so the user
    *  understands why the response follows a particular format. */
   skills?: { id: string; name: string }[];
+  /** ARSO (and future) tool calls the model made this turn. Streamed via the
+   *  `tool_call` / `tool_result` SSE events during the stream and hydrated from
+   *  metadata.toolCalls on reload; renders inline "Calling ARSO …" steps and a
+   *  "Vir: ARSO" attribution line under the bubble. */
+  toolCalls?: ChatToolCall[];
+}
+
+/** Map a backend ARSO tool name to a short, localized noun for the inline
+ *  "Calling ARSO {tool}…" step. Unknown names fall back to the raw name so a
+ *  newly-added tool still renders something legible. */
+function arsoToolLabel(
+  name: string,
+  t: ReturnType<typeof useLanguage>["t"],
+): string {
+  switch (name) {
+    case "arso_weather_forecast":
+      return t("projDetail.arsoToolWeather");
+    case "arso_air_quality":
+      return t("projDetail.arsoToolAir");
+    case "arso_river_level":
+      return t("projDetail.arsoToolRiver");
+    default:
+      return name;
+  }
 }
 
 function getTimestamp() {
@@ -362,6 +389,12 @@ export default function ProjectChatPage() {
                 (s) => s && typeof s.name === "string",
               )
             : undefined,
+          // Validate persisted tool calls (name/ok/summary) into safe render
+          // objects — a reopened chat shows "called ARSO weather".
+          toolCalls: (() => {
+            const tc = parseToolCalls(meta?.toolCalls);
+            return tc.length > 0 ? tc : undefined;
+          })(),
           userId: m.userId,
           userName: m.userName,
           userPicture: m.userPicture,
@@ -639,6 +672,47 @@ export default function ProjectChatPage() {
           setMessages((prev) =>
             prev.map((m) =>
               m.id === assistantId ? { ...m, citations: event.citations } : m,
+            ),
+          );
+        } else if (event.type === "tool_call") {
+          // Model called an ARSO tool — append a "running" step so the
+          // user sees "Calling ARSO weather…" while the BE fetches.
+          const { id, name } = event;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    toolCalls: [
+                      ...(m.toolCalls ?? []),
+                      { id, name, status: "running" as const },
+                    ],
+                  }
+                : m,
+            ),
+          );
+        } else if (event.type === "tool_result") {
+          // Matching result arrived — flip the step to ok/error and
+          // attach the summary.
+          const { id, ok, summary } = event;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    toolCalls: (m.toolCalls ?? []).map((c) =>
+                      c.id === id
+                        ? {
+                            ...c,
+                            status: ok
+                              ? ("ok" as const)
+                              : ("error" as const),
+                            summary,
+                          }
+                        : c,
+                    ),
+                  }
+                : m,
             ),
           );
         } else if (event.type === "blocked") {
@@ -1293,6 +1367,47 @@ export default function ProjectChatPage() {
                           {msg.reasoning}
                         </div>
                       </details>
+                    ) : null}
+                    {/* ARSO tool calls — streamed via `tool_call` /
+                        `tool_result` SSE events or hydrated from
+                        metadata.toolCalls on reload. Compact inline steps
+                        ("Calling ARSO weather…" → done) plus a "Vir: ARSO"
+                        attribution line. */}
+                    {msg.role === "assistant" &&
+                    msg.toolCalls &&
+                    msg.toolCalls.length > 0 ? (
+                      <div className="mt-2 rounded-md border border-border-2 bg-bg-1/40 px-3 py-2 text-[12px]">
+                        <ul className="flex flex-col gap-1">
+                          {msg.toolCalls.map((c) => (
+                            <li
+                              key={c.id}
+                              className="flex items-center gap-1.5 text-text-3"
+                            >
+                              {c.status === "running" ? (
+                                <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary-6" />
+                              ) : c.status === "error" ? (
+                                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                              ) : (
+                                <CloudSun className="h-3.5 w-3.5 shrink-0 text-primary-6" />
+                              )}
+                              <span className="text-text-2">
+                                {(c.status === "running"
+                                  ? t("projDetail.arsoCalling")
+                                  : t("projDetail.arsoCalled")
+                                ).replace("{tool}", arsoToolLabel(c.name, t))}
+                              </span>
+                              {c.summary ? (
+                                <span className="truncate text-text-3">
+                                  — {c.summary}
+                                </span>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-1.5 text-[11px] text-text-3">
+                          {t("projDetail.arsoSource")}
+                        </div>
+                      </div>
                     ) : null}
                     {/* Web-search sources — streamed via the `citations`
                         SSE event or hydrated from metadata.citations on

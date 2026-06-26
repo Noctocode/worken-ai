@@ -23,6 +23,10 @@ export interface OrgSettingsView {
   /** Org-wide default for the web-search capability. Teams can override
    *  per-team; projects switch it on within whatever is allowed here. */
   webSearchEnabled: boolean;
+  /** Org-wide toggle for the ARSO environmental-data AI tools. Keyless;
+   *  off by default — an admin opts in. Company-wide (no team/project
+   *  override). */
+  arsoEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,6 +64,8 @@ export class OrgSettingsService {
       monthlyBudgetCents?: number | null;
       /** Org-wide web-search capability toggle. undefined → leave as-is. */
       webSearchEnabled?: boolean;
+      /** Org-wide ARSO tools toggle. undefined → leave as-is. */
+      arsoEnabled?: boolean;
     },
     /** Caller user id. Resolves the tenant whose budget is being
      *  updated and feeds the threshold / announcement notification
@@ -85,6 +91,12 @@ export class OrgSettingsService {
         throw new BadRequestException('`webSearchEnabled` must be a boolean.');
       }
       updates.webSearchEnabled = input.webSearchEnabled;
+    }
+    if (input.arsoEnabled !== undefined) {
+      if (typeof input.arsoEnabled !== 'boolean') {
+        throw new BadRequestException('`arsoEnabled` must be a boolean.');
+      }
+      updates.arsoEnabled = input.arsoEnabled;
     }
 
     const current = await this.fetchTenantCompany(callerUserId);
@@ -321,6 +333,7 @@ function toView(row: typeof companies.$inferSelect): OrgSettingsView {
     id: row.id,
     monthlyBudgetCents: row.monthlyBudgetCents,
     webSearchEnabled: row.webSearchEnabled,
+    arsoEnabled: row.arsoEnabled,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -336,6 +349,7 @@ function emptyView(): OrgSettingsView {
     id: '',
     monthlyBudgetCents: null,
     webSearchEnabled: false,
+    arsoEnabled: false,
     createdAt: epoch,
     updatedAt: epoch,
   };

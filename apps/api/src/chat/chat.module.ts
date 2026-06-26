@@ -4,6 +4,7 @@ import { ChatService } from './chat.service.js';
 import { ChatController } from './chat.controller.js';
 import { ModelSuggestionService } from './model-suggestion.service.js';
 import { DocumentsModule } from '../documents/documents.module.js';
+import { ArsoModule } from '../arso/arso.module.js';
 import { ConversationsModule } from '../conversations/conversations.module.js';
 import { GuardrailsSectionModule } from '../guardrails/guardrails-section.module.js';
 import { IntegrationsModule } from '../integrations/integrations.module.js';
@@ -17,6 +18,7 @@ import { SkillsModule } from '../skills/skills.module.js';
 @Module({
   imports: [
     ConfigModule,
+    ArsoModule, // ArsoToolsService for the chat tool-loop (ARSO function calling)
     DocumentsModule,
     ConversationsModule,
     RealtimeModule, // ChatGateway for presence + live message sync
