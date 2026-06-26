@@ -572,6 +572,15 @@ export class AuthService {
       // can patch their own via PATCH /users/:id/budget; company-
       // profile users see this as read-only until admin updates it.
       monthlyBudgetCents: user.monthlyBudgetCents ?? 0,
+      // Internal (Noctocode) member flag — the @noctocode.com rule lives
+      // here on the server, not in the web bundle, so internal-only UI
+      // (e.g. the developer system-overview diagrams) can be gated on a
+      // trusted, server-computed boolean rather than a client-side email
+      // parse. Derived from the authenticated session's email.
+      isInternal: (user.email ?? '')
+        .trim()
+        .toLowerCase()
+        .endsWith('@noctocode.com'),
     };
   }
 
