@@ -27,7 +27,10 @@ import {
 import { DATABASE, type Database } from '../database/database.module.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { TeamsService } from '../teams/teams.service.js';
-import { ChatTransportService } from '../integrations/chat-transport.service.js';
+import {
+  ChatTransportService,
+  transportSupportsWebSearch,
+} from '../integrations/chat-transport.service.js';
 import { resolveWebSearchCapability } from '../integrations/web-search-capability.resolver.js';
 
 /** Compact preview shape for the avatar stack on team project cards. */
@@ -376,13 +379,13 @@ export class ProjectsService {
       project.teamId,
     );
 
-    // Web search rides on the OpenRouter web plugin, which is
-    // OpenRouter-specific — it does NOT work on BYOK / custom
-    // OpenAI-compatible routes even though those also use the openai-sdk
-    // transport kind. Resolve the transport so the FE can disable the toggle
-    // instead of silently no-op-ing. Only computed when allowed (the toggle
-    // is hidden otherwise) to avoid the extra lookup on every project open.
-    // Fail open to the OpenRouter assumption on any resolve error.
+    // Web search runs over the OpenRouter web plugin (managed route) or
+    // Anthropic's native server-side web_search tool (Anthropic BYOK) — it
+    // does NOT work on other BYOK / custom OpenAI-compatible routes even
+    // though those share the openai-sdk transport kind. Resolve the transport
+    // so the FE can disable the toggle instead of silently no-op-ing. Only
+    // computed when allowed (the toggle is hidden otherwise) to avoid the
+    // extra lookup on every project open. Fail open on any resolve error.
     let webSearchSupported = false;
     if (webSearchAllowed) {
       try {
@@ -391,7 +394,10 @@ export class ProjectsService {
           modelIdentifier: project.model,
           projectId: project.id,
         });
-        webSearchSupported = transport.source === 'openrouter';
+        webSearchSupported = transportSupportsWebSearch(
+          transport.source,
+          transport.kind,
+        );
       } catch {
         webSearchSupported = true;
       }

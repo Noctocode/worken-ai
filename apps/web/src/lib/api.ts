@@ -1606,6 +1606,9 @@ export interface EffectiveModel extends AvailableModel {
    *  "(BYOK)" / "(Custom)" marker in pickers so users can tell whose
    *  tokens get billed. */
   routing: "workenai" | "byok" | "custom";
+  /** Whether web search applies on this model's route (OpenRouter plugin
+   *  or Anthropic-native BYOK tool). Gates the AI Cron web-search toggle. */
+  webSearchCapable: boolean;
   aliasId?: string;
 }
 
