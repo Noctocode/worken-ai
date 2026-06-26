@@ -353,8 +353,10 @@ export default function SystemOverview() {
   return (
     <section className="flex flex-col gap-4 border-t border-border-2 pt-6">
       <div className="flex flex-col items-start gap-2">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-5 bg-warning-1 px-2.5 py-0.5 text-[11px] font-medium text-warning-7">
-          <Lock className="h-3 w-3" strokeWidth={2} />
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary-6/25 bg-primary-1/70 py-1 pl-1.5 pr-3 text-[11px] font-semibold tracking-wide text-primary-7 shadow-sm">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-6/15 text-primary-6">
+            <Lock className="h-3 w-3" strokeWidth={2.5} />
+          </span>
           {t("resources.overview.devOnly")}
         </span>
         <div className="flex flex-col gap-1">
