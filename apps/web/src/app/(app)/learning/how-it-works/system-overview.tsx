@@ -85,6 +85,43 @@ const OVERVIEW_TABS: Array<{
   },
 ];
 
+/* Glossary terms shown below the tabs — shorthand used across the
+ * diagrams and the product. Term + definition are both translation keys. */
+const GLOSSARY: Array<{ term: TranslationKey; def: TranslationKey }> = [
+  {
+    term: "resources.overview.glossary.byok",
+    def: "resources.overview.glossary.byokDef",
+  },
+  {
+    term: "resources.overview.glossary.gateway",
+    def: "resources.overview.glossary.gatewayDef",
+  },
+  {
+    term: "resources.overview.glossary.rag",
+    def: "resources.overview.glossary.ragDef",
+  },
+  {
+    term: "resources.overview.glossary.guardrail",
+    def: "resources.overview.glossary.guardrailDef",
+  },
+  {
+    term: "resources.overview.glossary.kc",
+    def: "resources.overview.glossary.kcDef",
+  },
+  {
+    term: "resources.overview.glossary.skill",
+    def: "resources.overview.glossary.skillDef",
+  },
+  {
+    term: "resources.overview.glossary.scope",
+    def: "resources.overview.glossary.scopeDef",
+  },
+  {
+    term: "resources.overview.glossary.observability",
+    def: "resources.overview.glossary.observabilityDef",
+  },
+];
+
 /* ─── Diagram primitives ─────────────────────────────────────────────
  * Hand-built boxes (no diagram lib) so they follow the theme tokens and
  * dark/light mode. */
@@ -418,6 +455,70 @@ export default function SystemOverview() {
           })}
         </div>
       </PageTabs>
+
+      {/* ── Extra reference, below the tabs ───────────────────────────
+          Static sections (no tab state) that round out the diagrams: the
+          stack the platform runs on, and a glossary of the shorthand used
+          throughout. */}
+      <div className="flex flex-col gap-8 border-t border-border-2 pt-6">
+        {/* Tech stack */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[16px] font-bold leading-[1.4] text-text-1">
+              {t("resources.overview.stack.heading")}
+            </h3>
+            <p className="text-[13px] leading-[1.6] text-text-2">
+              {t("resources.overview.stack.intro")}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <Lane label={t("resources.overview.stack.frontend")}>
+                <Node label="Next.js (App Router)" />
+                <Node label="React + Tailwind CSS" />
+                <Node label="shadcn/ui" />
+              </Lane>
+              <Lane label={t("resources.overview.stack.backend")}>
+                <Node label="NestJS" />
+                <Node label="SSE streaming" />
+                <Node label="Drizzle ORM" />
+              </Lane>
+              <Lane label={t("resources.overview.stack.data")}>
+                <Node label="PostgreSQL 16 + pgvector" />
+                <Node label="Redis" />
+              </Lane>
+              <Lane label={t("resources.overview.stack.tooling")}>
+                <Node label="TypeScript" />
+                <Node label="pnpm monorepo" />
+              </Lane>
+            </div>
+          </div>
+        </div>
+
+        {/* Glossary */}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-[16px] font-bold leading-[1.4] text-text-1">
+              {t("resources.overview.glossary.heading")}
+            </h3>
+            <p className="text-[13px] leading-[1.6] text-text-2">
+              {t("resources.overview.glossary.intro")}
+            </p>
+          </div>
+          <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
+            {GLOSSARY.map((g) => (
+              <div key={g.term} className="flex flex-col gap-0.5">
+                <dt className="text-[13px] font-semibold leading-snug text-text-1">
+                  {t(g.term)}
+                </dt>
+                <dd className="text-[13px] leading-[1.5] text-text-2">
+                  {t(g.def)}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
     </section>
   );
 }

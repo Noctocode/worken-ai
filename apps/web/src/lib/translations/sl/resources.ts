@@ -225,4 +225,43 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
     'Kontekst se sestavi iz projektnih dokumentov, Knowledge Core in veščin.',
   'resources.overview.flow.p3':
     'Proračun se preveri pred vsakim klicem orodja; vse se beleži.',
+
+  // ── Dodatne referenčne sekcije, prikazane pod zavihki ─────────
+  // Tehnološki sklad
+  'resources.overview.stack.heading': 'Tehnološki sklad',
+  'resources.overview.stack.intro':
+    'Glavne knjižnice in storitve, na katerih teče platforma.',
+  'resources.overview.stack.frontend': 'Frontend',
+  'resources.overview.stack.backend': 'Backend',
+  'resources.overview.stack.data': 'Podatki in predpomnilnik',
+  'resources.overview.stack.tooling': 'Orodja',
+
+  // Slovarček
+  'resources.overview.glossary.heading': 'Slovarček',
+  'resources.overview.glossary.intro':
+    'Kratice in izrazi, uporabljeni v teh diagramih in izdelku.',
+  'resources.overview.glossary.byok': 'BYOK',
+  'resources.overview.glossary.byokDef':
+    'Lasten ključ — klici AI se zaračunajo na tvoj račun pri ponudniku.',
+  'resources.overview.glossary.gateway': 'Upravljani prehod',
+  'resources.overview.glossary.gatewayDef':
+    'Vgrajen dostop do AI, ki se uporabi, kadar model nima lastnega (BYOK) ključa.',
+  'resources.overview.glossary.rag': 'RAG',
+  'resources.overview.glossary.ragDef':
+    'Generiranje z iskanjem — relevantne datoteke znanja se vključijo v kontekst.',
+  'resources.overview.glossary.guardrail': 'Guardrail',
+  'resources.overview.glossary.guardrailDef':
+    'Administratorsko pravilo, ki blokira ali prikrije vhod ali izhod sporočila.',
+  'resources.overview.glossary.kc': 'Knowledge Core',
+  'resources.overview.glossary.kcDef':
+    'Naloženi in iz oblaka uvoženi dokumenti, vdelani za pomensko iskanje.',
+  'resources.overview.glossary.skill': 'Veščina',
+  'resources.overview.glossary.skillDef':
+    'Opravilu prilagojena navodila, samodejno uporabljena v klepetu, ko so relevantna.',
+  'resources.overview.glossary.scope': 'Kaskada obsega',
+  'resources.overview.glossary.scopeDef':
+    'Nastavitve in proračuni se dedujejo od podjetja na ekipo na projekt.',
+  'resources.overview.glossary.observability': 'Opazljivost',
+  'resources.overview.glossary.observabilityDef':
+    'Beleženje žetonov, stroška in zakasnitve za vsak klic, za analitiko.',
 };

@@ -227,4 +227,43 @@ export const resources = {
     'Context is built from project docs, Knowledge Core and skills.',
   'resources.overview.flow.p3':
     'The budget is re-checked before each tool call; everything is logged.',
+
+  // ── Extra reference sections, shown below the tabs ────────────
+  // Tech stack
+  'resources.overview.stack.heading': 'Tech stack',
+  'resources.overview.stack.intro':
+    'The main libraries and services the platform runs on.',
+  'resources.overview.stack.frontend': 'Frontend',
+  'resources.overview.stack.backend': 'Backend',
+  'resources.overview.stack.data': 'Data & cache',
+  'resources.overview.stack.tooling': 'Tooling',
+
+  // Glossary
+  'resources.overview.glossary.heading': 'Glossary',
+  'resources.overview.glossary.intro':
+    'Shorthand used across these diagrams and the product.',
+  'resources.overview.glossary.byok': 'BYOK',
+  'resources.overview.glossary.byokDef':
+    'Bring your own key — AI calls are billed to your own provider account.',
+  'resources.overview.glossary.gateway': 'Managed gateway',
+  'resources.overview.glossary.gatewayDef':
+    'Built-in AI access used when a model has no BYOK key.',
+  'resources.overview.glossary.rag': 'RAG',
+  'resources.overview.glossary.ragDef':
+    'Retrieval-augmented generation — relevant knowledge files are pulled in as context.',
+  'resources.overview.glossary.guardrail': 'Guardrail',
+  'resources.overview.glossary.guardrailDef':
+    'An admin rule that blocks or redacts message input or output.',
+  'resources.overview.glossary.kc': 'Knowledge Core',
+  'resources.overview.glossary.kcDef':
+    'Uploaded and cloud-imported documents, embedded for semantic search.',
+  'resources.overview.glossary.skill': 'Skill',
+  'resources.overview.glossary.skillDef':
+    'Task-specific instructions automatically applied to a chat when relevant.',
+  'resources.overview.glossary.scope': 'Scope cascade',
+  'resources.overview.glossary.scopeDef':
+    'Settings and budgets inherited from company to team to project.',
+  'resources.overview.glossary.observability': 'Observability',
+  'resources.overview.glossary.observabilityDef':
+    'Per-call logging of tokens, cost and latency for analytics.',
 } as const;
