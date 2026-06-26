@@ -193,4 +193,36 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.overview.flow.modelSub': 'orodja: splet · ARSO',
   'resources.overview.flow.outputGuardSub': 'blokira / popravi',
   'resources.overview.flow.saveSub': 'sporočilo · strošek · analitika',
+
+  // Točke "dobro je vedeti" za vsak zavihek (pod diagramom)
+  'resources.overview.keyPoints': 'Dobro je vedeti',
+  'resources.overview.nav.p1': 'Levi meni je edina glavna navigacija.',
+  'resources.overview.nav.p2':
+    "Osebni profili vidijo 'Upravljanje' namesto 'Upravljanje ekip'.",
+  'resources.overview.nav.p3':
+    'Guardrails in nastavitve podjetja so samo za admine.',
+  'resources.overview.architecture.p1':
+    'En sam API streže spletni aplikaciji (in morebitnim prihodnjim odjemalcem).',
+  'resources.overview.architecture.p2':
+    'Postgres + pgvector poganja semantično iskanje po vašem znanju.',
+  'resources.overview.architecture.p3':
+    'AI klici uporabljajo vaše ključe (BYOK) ali upravljani prehod.',
+  'resources.overview.entities.p1':
+    'Eno podjetje ima več ekip; ekipa ima več projektov.',
+  'resources.overview.entities.p2':
+    'Pogovor je obsegan na vas ali na ekipo.',
+  'resources.overview.entities.p3':
+    'Datoteke znanja in ključi se lahko delijo po ekipi ali projektu.',
+  'resources.overview.roles.p1':
+    'Org vloga je globalna; vloge na ekipi in projektu so po članstvu.',
+  'resources.overview.roles.p2':
+    'Iskanje po spletu in proračun se dedujejo podjetje → ekipa → projekt.',
+  'resources.overview.roles.p3':
+    'Guardrails veljajo za celo podjetje ali le za izbrane ekipe.',
+  'resources.overview.flow.p1':
+    'Vhodni in izhodni guardrail ovijata vsako sporočilo.',
+  'resources.overview.flow.p2':
+    'Kontekst se sestavi iz projektnih dokumentov, Knowledge Core in veščin.',
+  'resources.overview.flow.p3':
+    'Proračun se preveri pred vsakim klicem orodja; vse se beleži.',
 };

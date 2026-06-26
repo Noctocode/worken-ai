@@ -195,4 +195,36 @@ export const resources = {
   'resources.overview.flow.modelSub': 'tools: web · ARSO',
   'resources.overview.flow.outputGuardSub': 'block / fix',
   'resources.overview.flow.saveSub': 'message · cost · analytics',
+
+  // Per-tab "good to know" bullet points (shown under each diagram)
+  'resources.overview.keyPoints': 'Good to know',
+  'resources.overview.nav.p1': 'The left sidebar is the only top-level navigation.',
+  'resources.overview.nav.p2':
+    "Personal profiles see 'Management' instead of 'Team Management'.",
+  'resources.overview.nav.p3':
+    'Guardrails and company settings are admin-only.',
+  'resources.overview.architecture.p1':
+    'A single API backs the web app (and any future clients).',
+  'resources.overview.architecture.p2':
+    'Postgres + pgvector powers semantic search over your knowledge.',
+  'resources.overview.architecture.p3':
+    'AI calls use your own keys (BYOK) or a managed gateway.',
+  'resources.overview.entities.p1':
+    'One company has many teams; a team has many projects.',
+  'resources.overview.entities.p2':
+    'A conversation is scoped either to you or to a team.',
+  'resources.overview.entities.p3':
+    'Knowledge files and provider keys can be shared per team or project.',
+  'resources.overview.roles.p1':
+    'The org role is global; team and project roles are per membership.',
+  'resources.overview.roles.p2':
+    'Web search and budget limits inherit company → team → project.',
+  'resources.overview.roles.p3':
+    'Guardrails apply org-wide or only to selected teams.',
+  'resources.overview.flow.p1':
+    'Input and output guardrails wrap every message.',
+  'resources.overview.flow.p2':
+    'Context is built from project docs, Knowledge Core and skills.',
+  'resources.overview.flow.p3':
+    'The budget is re-checked before each tool call; everything is logged.',
 } as const;

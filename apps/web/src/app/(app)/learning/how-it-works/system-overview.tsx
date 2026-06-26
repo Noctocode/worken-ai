@@ -31,31 +31,57 @@ const OVERVIEW_TABS: Array<{
   value: string;
   labelKey: TranslationKey;
   descKey: TranslationKey;
+  pointsKeys: TranslationKey[];
 }> = [
   {
     value: "nav",
     labelKey: "resources.overview.tab.nav",
     descKey: "resources.overview.nav.desc",
+    pointsKeys: [
+      "resources.overview.nav.p1",
+      "resources.overview.nav.p2",
+      "resources.overview.nav.p3",
+    ],
   },
   {
     value: "architecture",
     labelKey: "resources.overview.tab.architecture",
     descKey: "resources.overview.architecture.desc",
+    pointsKeys: [
+      "resources.overview.architecture.p1",
+      "resources.overview.architecture.p2",
+      "resources.overview.architecture.p3",
+    ],
   },
   {
     value: "entities",
     labelKey: "resources.overview.tab.entities",
     descKey: "resources.overview.entities.desc",
+    pointsKeys: [
+      "resources.overview.entities.p1",
+      "resources.overview.entities.p2",
+      "resources.overview.entities.p3",
+    ],
   },
   {
     value: "roles",
     labelKey: "resources.overview.tab.roles",
     descKey: "resources.overview.roles.desc",
+    pointsKeys: [
+      "resources.overview.roles.p1",
+      "resources.overview.roles.p2",
+      "resources.overview.roles.p3",
+    ],
   },
   {
     value: "flow",
     labelKey: "resources.overview.tab.flow",
     descKey: "resources.overview.flow.desc",
+    pointsKeys: [
+      "resources.overview.flow.p1",
+      "resources.overview.flow.p2",
+      "resources.overview.flow.p3",
+    ],
   },
 ];
 
@@ -351,11 +377,30 @@ export default function SystemOverview() {
         </PageTabsList>
         {OVERVIEW_TABS.map((tb) => (
           <PageTabsContent key={tb.value} value={tb.value}>
-            <div className="flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6">
+            {/* Fixed min-height keeps every tab the same size so the page
+                doesn't jump when switching, and leaves some breathing room
+                below shorter tabs. */}
+            <div className="flex min-h-[460px] flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6">
               <div className="overflow-x-auto">{diagrams[tb.value]}</div>
               <p className="text-[13px] leading-[1.6] text-text-2">
                 {t(tb.descKey)}
               </p>
+              <div className="flex flex-col gap-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                  {t("resources.overview.keyPoints")}
+                </div>
+                <ul className="flex flex-col gap-1">
+                  {tb.pointsKeys.map((pk) => (
+                    <li
+                      key={pk}
+                      className="flex gap-2 text-[13px] leading-[1.5] text-text-2"
+                    >
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary-6" />
+                      {t(pk)}
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </PageTabsContent>
         ))}
