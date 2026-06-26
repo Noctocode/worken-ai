@@ -557,11 +557,15 @@ export class ModelsService {
 
     // Web search is supported on the managed (OpenRouter plugin) route and
     // on the native-BYOK routes that have their own search: Anthropic
-    // (server-side web_search tool) and Perplexity (sonar built-in
-    // search). Other BYOK providers (OpenAI-compatible, Azure) and Custom
-    // LLMs have no path. Mirrors transportSupportsWebSearch on the chat
-    // side.
-    const WEB_SEARCH_BYOK_PROVIDERS = new Set(['anthropic', 'perplexity']);
+    // (server-side web_search tool), Perplexity (sonar built-in search),
+    // and Grok (x-ai Live Search). Other BYOK providers (OpenAI-compatible,
+    // Azure) and Custom LLMs have no path. Mirrors transportSupportsWebSearch
+    // on the chat side.
+    const WEB_SEARCH_BYOK_PROVIDERS = new Set([
+      'anthropic',
+      'perplexity',
+      'x-ai',
+    ]);
     const computeWebSearchCapable = (
       modelId: string,
       routing: EffectiveModel['routing'],

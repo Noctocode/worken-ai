@@ -29,7 +29,17 @@ interface OpenRouterStreamingParams extends ChatCompletionCreateParamsStreaming 
   plugins?: { id: string }[];
   /** Perplexity extension: turn OFF sonar's default web search. */
   disable_search?: boolean;
+  /** xAI Grok Live Search extension. `mode: 'auto'` lets the model decide
+   *  when to search; `return_citations` surfaces sources on the response. */
+  search_parameters?: {
+    mode: 'auto' | 'on' | 'off';
+    return_citations: boolean;
+  };
 }
+
+/** OpenAI-compatible BYOK providers that return web-search sources at the
+ *  chunk top level (not in `delta.annotations`): Perplexity + Grok. */
+const TOP_LEVEL_CITATION_PROVIDERS = new Set(['perplexity', 'x-ai']);
 
 /** OpenRouter streams a `reasoning` delta + `annotations` the OpenAI chunk
  *  type doesn't model. Narrowed shape we read those extension fields from. */
@@ -253,6 +263,13 @@ export class ChatService {
       ...(options.source === 'byok' &&
         options.provider === 'perplexity' &&
         !options.webSearch && { disable_search: true }),
+      // Grok (x-ai) Live Search is OFF unless requested. When the toggle is
+      // ON, enable it with `mode: 'auto'` so Grok decides when to search.
+      ...(options.source === 'byok' &&
+        options.provider === 'x-ai' &&
+        options.webSearch && {
+          search_parameters: { mode: 'auto', return_citations: true },
+        }),
     };
 
     let stream;
@@ -413,11 +430,14 @@ export class ChatService {
           const title = ann.url_citation?.title;
           citations.set(url, typeof title === 'string' ? title : undefined);
         }
-        // Perplexity sonar sources ride at the chunk top level, not in
+        // Perplexity / Grok sources ride at the chunk top level, not in
         // `delta.annotations`. Collect them into the same deduped map so
         // they surface through the one `citations` event below. Prefer
         // `search_results` (has titles); fall back to `citations` (urls).
-        if (options.provider === 'perplexity') {
+        if (
+          options.provider &&
+          TOP_LEVEL_CITATION_PROVIDERS.has(options.provider)
+        ) {
           const pplx = chunk as unknown as PerplexityChunk;
           for (const r of pplx.search_results ?? []) {
             if (typeof r.url !== 'string' || r.url.length === 0) continue;

@@ -221,6 +221,76 @@ describe('ChatService web search per route (openai-sdk)', () => {
       ],
     });
   });
+
+  it('enables Grok Live Search via search_parameters when the toggle is on', async () => {
+    const { svc, getBody } = makeCapturingService([
+      { choices: [{ delta: { content: 'hi' } }] },
+    ]);
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'grok-4',
+        false,
+        undefined,
+        'key',
+        'https://api.x.ai/v1',
+        'openai-sdk',
+        { webSearch: true, source: 'byok', provider: 'x-ai' },
+      ),
+    );
+    expect(getBody().search_parameters).toEqual({
+      mode: 'auto',
+      return_citations: true,
+    });
+    expect(getBody().plugins).toBeUndefined();
+  });
+
+  it('leaves Grok search off (no search_parameters) when the toggle is off', async () => {
+    const { svc, getBody } = makeCapturingService([
+      { choices: [{ delta: { content: 'hi' } }] },
+    ]);
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'grok-4',
+        false,
+        undefined,
+        'key',
+        'https://api.x.ai/v1',
+        'openai-sdk',
+        { webSearch: false, source: 'byok', provider: 'x-ai' },
+      ),
+    );
+    expect(getBody().search_parameters).toBeUndefined();
+  });
+
+  it('surfaces Grok citations from the chunk top level', async () => {
+    const { svc } = makeCapturingService([
+      {
+        choices: [{ delta: { content: 'answer' } }],
+        citations: ['https://x.com/post', 'https://news.com'],
+      },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'grok-4',
+        false,
+        undefined,
+        'key',
+        'https://api.x.ai/v1',
+        'openai-sdk',
+        { webSearch: true, source: 'byok', provider: 'x-ai' },
+      ),
+    );
+    expect(events.find((e) => e.type === 'citations')).toEqual({
+      type: 'citations',
+      citations: [
+        { url: 'https://x.com/post', title: undefined },
+        { url: 'https://news.com', title: undefined },
+      ],
+    });
+  });
 });
 
 describe('ChatService.sendMessageStream (openai-sdk path)', () => {

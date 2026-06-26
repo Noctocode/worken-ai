@@ -249,10 +249,11 @@ export interface ChatTransport {
  *   - `byok` + `anthropic-sdk`: Anthropic's native server-side `web_search`
  *     tool (their API isn't OpenAI-compatible, so the OpenRouter plugin
  *     never applies — the Anthropic adapter injects the tool instead).
- *   - `byok` + `openai-sdk` + provider `perplexity`: Perplexity's sonar
- *     models search the web by default and return citations, so the
- *     openai-sdk path surfaces those sources (and disables search when the
- *     toggle is off). Provider-gated — other openai-sdk BYOK providers
+ *   - `byok` + `openai-sdk` + provider `perplexity` / `x-ai`: providers
+ *     with their own web search on the chat-completions wire — Perplexity
+ *     sonar (search-by-default) and Grok Live Search (`search_parameters`).
+ *     The openai-sdk path injects the right body field and surfaces the
+ *     response citations. Provider-gated — other openai-sdk BYOK providers
  *     (OpenAI, DeepSeek, Azure) have no native search and stay false.
  *
  * Custom LLMs and the remaining BYOK routes have no web-search path yet.
@@ -271,11 +272,18 @@ export function transportSupportsWebSearch(
   if (source !== 'byok') return false;
   // Native non-OpenAI SDK shims that inject their own web-search tool.
   if (kind === 'anthropic-sdk') return true;
-  // OpenAI-compatible BYOK providers with their OWN native web search.
-  // Perplexity's sonar models search the web by default and return
-  // citations — the rest of the openai-sdk BYOK providers don't, so this
-  // is provider-gated rather than kind-gated.
-  if (kind === 'openai-sdk' && provider === 'perplexity') return true;
+  // OpenAI-compatible BYOK providers with their OWN native web search:
+  //   - Perplexity: sonar models search by default, return citations.
+  //   - Grok (x-ai): Live Search via the `search_parameters` body field,
+  //     citations on the response.
+  // The rest of the openai-sdk BYOK providers have none, so this is
+  // provider-gated rather than kind-gated.
+  if (
+    kind === 'openai-sdk' &&
+    (provider === 'perplexity' || provider === 'x-ai')
+  ) {
+    return true;
+  }
   return false;
 }
 
