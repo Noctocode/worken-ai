@@ -348,7 +348,15 @@ export function AiCronForm({ initial }: { initial?: ScheduledPrompt }) {
             setModelIdentifier(v);
             clearErr("model");
           }}
-          models={effective}
+          // Keep the BYOK/Custom signal the old Select showed — `useUserModels`
+          // preserves `routing` for exactly this.
+          models={effective.map((m) => ({
+            id: m.id,
+            name:
+              m.routing === "byok" || m.routing === "custom"
+                ? `${m.name} (${t("aiCron.model.custom")})`
+                : m.name,
+          }))}
           placeholder={t("aiCron.model.placeholder")}
         />
         <FieldError msg={errors.model} />

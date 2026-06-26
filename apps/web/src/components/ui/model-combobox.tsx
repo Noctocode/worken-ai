@@ -65,6 +65,9 @@ export function ModelCombobox({
     <Popover
       open={open}
       onOpenChange={(o) => {
+        // Guard here too so a custom `trigger` (which the parent styles and
+        // may not wire `disabled` onto) still can't open the popover.
+        if (disabled) return;
         setOpen(o);
         if (!o) setQuery("");
       }}
@@ -74,6 +77,8 @@ export function ModelCombobox({
           <button
             type="button"
             disabled={disabled}
+            aria-haspopup="listbox"
+            aria-expanded={open}
             className={`flex h-10 w-full items-center justify-between gap-2 rounded-md border border-border-3 bg-bg-white px-3 text-[14px] text-text-1 outline-none focus:border-primary-6 disabled:cursor-not-allowed disabled:opacity-60 ${className ?? ""}`}
           >
             <span className={`truncate ${selected ? "" : "text-text-3"}`}>

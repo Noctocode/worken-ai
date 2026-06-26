@@ -390,9 +390,11 @@ export function AddModelDialog({
                   models={models}
                   loading={modelsLoading}
                   placeholder={
-                    models.length === 0
-                      ? t("addModel.noModels")
-                      : t("addModel.selectModel")
+                    modelsLoading
+                      ? t("addModel.loadingModels")
+                      : models.length === 0
+                        ? t("addModel.noModels")
+                        : t("addModel.selectModel")
                   }
                 />
               ) : (

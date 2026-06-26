@@ -140,7 +140,11 @@ export const Appbar = () => {
   // agent pool. Persists project.model (the chat path reads it), then refetches
   // so the label + chat pick it up.
   const switchModelMutation = useMutation({
-    mutationFn: (model: string) => updateProject(projectId, { model }),
+    // Keep `agent` (the documented "active selection that maps to model") in
+    // sync — a model id is itself a valid pool/active entry — so other
+    // surfaces that read project.agent don't go stale.
+    mutationFn: (model: string) =>
+      updateProject(projectId, { agent: model, model }),
     onSuccess: (_data, model) => {
       queryClient.invalidateQueries({ queryKey: ["project", projectId] });
       queryClient.invalidateQueries({ queryKey: ["projects"] });

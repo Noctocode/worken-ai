@@ -145,9 +145,11 @@ export function CreateProjectDialog({
                 models={models}
                 loading={modelsLoading}
                 placeholder={
-                  models.length === 0
-                    ? t("dlg.createProj.noModels")
-                    : t("dlg.createProj.selectModel")
+                  modelsLoading
+                    ? t("dlg.createProj.modelsLoading")
+                    : models.length === 0
+                      ? t("dlg.createProj.noModels")
+                      : t("dlg.createProj.selectModel")
                 }
               />
             </div>

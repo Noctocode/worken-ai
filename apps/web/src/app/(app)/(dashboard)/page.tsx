@@ -210,17 +210,24 @@ function ProjectCard({ project }: { project: Project }) {
   // preset maps to that model. Used to highlight a card when the
   // Change model dialog opens. Returns null when no agent matches
   // (custom slug, deprecated default, ...). */
-  const agentIdForModel = (modelId: string): string | null =>
-    AGENTS.find((a) => a.model === modelId)?.id ?? null;
-
   // The project's saved agent pool, with a fallback for legacy projects
   // created before multi-agent support (empty `agents`): use the active
   // `agent`, else the single agent matching the stored model.
   const seedAgentIds = (): string[] => {
-    if (project.agents && project.agents.length > 0) return project.agents;
-    if (project.agent) return [project.agent];
-    const fromModel = agentIdForModel(project.model);
-    return fromModel ? [fromModel] : [];
+    // The dialog only renders configured models now, so seed only entries that
+    // are actually shown — legacy agent-preset ids in the pool aren't rendered
+    // and would otherwise stay selected (and re-saved) invisibly. Fall back to
+    // the project's active model id.
+    const modelIds = new Set(configuredModels.map((m) => m.id));
+    const pool =
+      project.agents && project.agents.length > 0
+        ? project.agents
+        : project.agent
+          ? [project.agent]
+          : [];
+    const seeded = pool.filter((id) => modelIds.has(id));
+    if (seeded.length > 0) return seeded;
+    return modelIds.has(project.model) ? [project.model] : [];
   };
 
   return (

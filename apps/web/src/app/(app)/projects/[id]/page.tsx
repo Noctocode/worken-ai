@@ -175,7 +175,11 @@ export default function ProjectChatPage() {
       : null;
 
   const updateModelMutation = useMutation({
-    mutationFn: (model: string) => updateProject(projectId, { model }),
+    // Set `agent` alongside `model` (a model id is a valid active entry) so
+    // project.agent — read by other surfaces as the active selection — stays
+    // consistent after a direct model switch.
+    mutationFn: (model: string) =>
+      updateProject(projectId, { agent: model, model }),
     onSuccess: (updated) => {
       // Refetch so the cached project (and `project.model` used by
       // streamChatMessage on the next send) reflects the switch
@@ -898,9 +902,11 @@ export default function ProjectChatPage() {
                         <button
                           key={m.id}
                           type="button"
-                          onClick={() =>
-                            !isActive && updateModelMutation.mutate(m.id)
-                          }
+                          onClick={() => {
+                            if (isActive) return;
+                            updateModelMutation.mutate(m.id);
+                            setPhoneModelQuery("");
+                          }}
                           disabled={updateModelMutation.isPending}
                           className="flex cursor-pointer items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-[13px] text-text-1 hover:bg-bg-1 disabled:cursor-not-allowed"
                         >
