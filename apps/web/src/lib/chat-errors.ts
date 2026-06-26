@@ -151,6 +151,21 @@ export function humanizeChatError(err: unknown): string {
     );
   }
 
+  // Web search rejected by the provider because it isn't enabled on the
+  // BYOK account. Anthropic gates web search behind an org-level setting
+  // (Console → Settings → Privacy) that we can't toggle for the user, so
+  // point the key owner there. Requires BOTH a web-search mention and a
+  // not-enabled/permission token so a normal answer that merely talks
+  // about web search can't trip this branch.
+  if (
+    /web[\s_-]?search/i.test(raw) &&
+    /(not enabled|isn'?t enabled|not allowed|not permitted|disabled|permission|enable web search)/i.test(
+      raw,
+    )
+  ) {
+    return "Web search isn't enabled on this Anthropic account. The key owner needs to turn it on in the Anthropic Console (Settings → Privacy), then try again — or pick a different model.";
+  }
+
   // 402 — OpenRouter's body for budget-exhausted hits is full of
   // "max_tokens" and "total limit" wording that would otherwise false-
   // positive into the context-length branch below. The HTTP status code

@@ -57,6 +57,12 @@ export interface EffectiveModel {
    *  "(BYOK)" / "(Custom)" marker in pickers so users can tell whose
    *  tokens get billed. */
   routing: 'workenai' | 'byok' | 'custom';
+  /** Whether this model can do web search on whatever route it resolves
+   *  to: the OpenRouter web plugin ('workenai') or Anthropic's native
+   *  server-side tool ('byok' on the anthropic provider). Mirrors the
+   *  chat-path gate so a picker/toggle (e.g. AI Cron) can enable web
+   *  search exactly when a chat call would honour it. */
+  webSearchCapable: boolean;
   /** Set when source === "alias" or "custom". Lets the FE deep-link to
    *  Models tab edit. */
   aliasId?: string;
@@ -549,6 +555,17 @@ export class ModelsService {
       return 'byok';
     };
 
+    // Web search is supported on the managed (OpenRouter plugin) route and
+    // on Anthropic-native BYOK (server-side web_search tool). Other BYOK
+    // providers (OpenAI-compatible, Azure) and Custom LLMs have no path.
+    // Mirrors transportSupportsWebSearch on the chat side.
+    const computeWebSearchCapable = (
+      modelId: string,
+      routing: EffectiveModel['routing'],
+    ): boolean =>
+      routing === 'workenai' ||
+      (routing === 'byok' && providerOfModel(modelId) === 'anthropic');
+
     const out: EffectiveModel[] = [];
     const seen = new Set<string>();
 
@@ -565,11 +582,13 @@ export class ModelsService {
       }
       if (seen.has(a.modelIdentifier)) continue;
       seen.add(a.modelIdentifier);
+      const routing = computeRouting(a.modelIdentifier, !!a.integrationId);
       out.push({
         id: a.modelIdentifier,
         name: a.customName,
         source: a.integrationId ? 'custom' : 'alias',
-        routing: computeRouting(a.modelIdentifier, !!a.integrationId),
+        routing,
+        webSearchCapable: computeWebSearchCapable(a.modelIdentifier, routing),
         aliasId: a.id,
       });
     }
@@ -593,11 +612,13 @@ export class ModelsService {
         const id = `azure/${name}`;
         if (seen.has(id)) continue;
         seen.add(id);
+        const routing = computeRouting(id, false);
         out.push({
           id,
           name: dep.label?.trim() || name,
           source: 'byok',
-          routing: computeRouting(id, false),
+          routing,
+          webSearchCapable: computeWebSearchCapable(id, routing),
         });
       }
     }
