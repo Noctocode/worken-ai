@@ -5,7 +5,10 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
-import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
+import type {
+  ChatRoutingSource,
+  ChatTransportKind,
+} from '../integrations/chat-transport.service.js';
 import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 
 interface ChatMessage {
@@ -24,6 +27,8 @@ interface ChatMessage {
 interface OpenRouterStreamingParams extends ChatCompletionCreateParamsStreaming {
   reasoning?: { enabled: boolean };
   plugins?: { id: string }[];
+  /** Perplexity extension: turn OFF sonar's default web search. */
+  disable_search?: boolean;
 }
 
 /** OpenRouter streams a `reasoning` delta + `annotations` the OpenAI chunk
@@ -44,6 +49,14 @@ interface OpenRouterUsage {
   total_tokens?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+}
+
+/** Perplexity returns its web-search sources at the TOP of the chunk (not
+ *  in `delta`): `search_results` (title + url) and/or `citations` (url
+ *  strings). Loose shape so we can read them off the standard chunk. */
+interface PerplexityChunk {
+  search_results?: { url?: string; title?: string }[];
+  citations?: string[];
 }
 
 /**
@@ -93,12 +106,19 @@ export interface StreamOptions {
    *  aborts the underlying HTTP call instead of running it to
    *  completion and discarding the bytes. */
   signal?: AbortSignal;
-  /** When true, lets the model browse the live web. Two mechanisms by
-   *  route: the OpenRouter web plugin (`plugins: [{ id: "web" }]`) on the
-   *  openai-sdk path, or Anthropic's native server-side `web_search` tool
-   *  on the anthropic-sdk path. The controller only sets it for routes
-   *  that support one of these (see `transportSupportsWebSearch`). */
+  /** When true, lets the model browse the live web. Mechanism depends on
+   *  the route (see `transportSupportsWebSearch`): the OpenRouter web
+   *  plugin (openrouter), Anthropic's native `web_search` tool
+   *  (anthropic-sdk), or Perplexity sonar's built-in search (byok +
+   *  provider 'perplexity'). The controller only sets it for routes that
+   *  support one of these. */
   webSearch?: boolean;
+  /** Routing source + provider, so the openai-sdk path can pick the right
+   *  per-route web-search mechanism: the OpenRouter plugin only on
+   *  `source === 'openrouter'`, Perplexity's built-in search only on
+   *  `source === 'byok'` with `provider === 'perplexity'`. */
+  source?: ChatRoutingSource;
+  provider?: string;
   /** Azure OpenAI ('azure-sdk') only: per-resource endpoint
    *  (https://{resource}.openai.azure.com). Carried here so the call
    *  signature stays stable. */
@@ -220,10 +240,19 @@ export class ChatService {
       // unknown body args, so never send it on the azure-sdk route.
       ...(enableReasoning &&
         kind !== 'azure-sdk' && { reasoning: { enabled: true } }),
-      // OpenRouter web search plugin — lets the model browse the live
-      // web. Kept off the model id (no `:online` suffix) so catalog
-      // pricing / observability lookups still match the base model.
-      ...(options.webSearch && { plugins: [{ id: 'web' }] }),
+      // OpenRouter web search plugin — managed route only. Kept off the
+      // model id (no `:online` suffix) so catalog pricing / observability
+      // lookups still match the base model. NOT sent on BYOK openai-sdk
+      // routes (e.g. Perplexity) — those providers 400 on the unknown
+      // `plugins` arg and use their own mechanism below.
+      ...(options.webSearch &&
+        options.source === 'openrouter' && { plugins: [{ id: 'web' }] }),
+      // Perplexity (sonar) searches the web by DEFAULT, so there's nothing
+      // to add to turn it on. When the toggle is OFF we explicitly disable
+      // it; the gate sets webSearch=false in that case.
+      ...(options.source === 'byok' &&
+        options.provider === 'perplexity' &&
+        !options.webSearch && { disable_search: true }),
     };
 
     let stream;
@@ -383,6 +412,25 @@ export class ChatService {
           if (citations.has(url)) continue;
           const title = ann.url_citation?.title;
           citations.set(url, typeof title === 'string' ? title : undefined);
+        }
+        // Perplexity sonar sources ride at the chunk top level, not in
+        // `delta.annotations`. Collect them into the same deduped map so
+        // they surface through the one `citations` event below. Prefer
+        // `search_results` (has titles); fall back to `citations` (urls).
+        if (options.provider === 'perplexity') {
+          const pplx = chunk as unknown as PerplexityChunk;
+          for (const r of pplx.search_results ?? []) {
+            if (typeof r.url !== 'string' || r.url.length === 0) continue;
+            if (citations.has(r.url)) continue;
+            citations.set(
+              r.url,
+              typeof r.title === 'string' ? r.title : undefined,
+            );
+          }
+          for (const url of pplx.citations ?? []) {
+            if (typeof url !== 'string' || url.length === 0) continue;
+            if (!citations.has(url)) citations.set(url, undefined);
+          }
         }
         if (delta?.content) {
           for (const ev of sanitize(delta.content)) {

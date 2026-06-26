@@ -58,10 +58,10 @@ export interface EffectiveModel {
    *  tokens get billed. */
   routing: 'workenai' | 'byok' | 'custom';
   /** Whether this model can do web search on whatever route it resolves
-   *  to: the OpenRouter web plugin ('workenai') or Anthropic's native
-   *  server-side tool ('byok' on the anthropic provider). Mirrors the
-   *  chat-path gate so a picker/toggle (e.g. AI Cron) can enable web
-   *  search exactly when a chat call would honour it. */
+   *  to: the OpenRouter web plugin ('workenai'), Anthropic's native tool,
+   *  or Perplexity sonar's built-in search ('byok' on those providers).
+   *  Mirrors the chat-path gate so a picker/toggle (e.g. AI Cron) can
+   *  enable web search exactly when a chat call would honour it. */
   webSearchCapable: boolean;
   /** Set when source === "alias" or "custom". Lets the FE deep-link to
    *  Models tab edit. */
@@ -556,15 +556,24 @@ export class ModelsService {
     };
 
     // Web search is supported on the managed (OpenRouter plugin) route and
-    // on Anthropic-native BYOK (server-side web_search tool). Other BYOK
-    // providers (OpenAI-compatible, Azure) and Custom LLMs have no path.
-    // Mirrors transportSupportsWebSearch on the chat side.
+    // on the native-BYOK routes that have their own search: Anthropic
+    // (server-side web_search tool) and Perplexity (sonar built-in
+    // search). Other BYOK providers (OpenAI-compatible, Azure) and Custom
+    // LLMs have no path. Mirrors transportSupportsWebSearch on the chat
+    // side.
+    const WEB_SEARCH_BYOK_PROVIDERS = new Set(['anthropic', 'perplexity']);
     const computeWebSearchCapable = (
       modelId: string,
       routing: EffectiveModel['routing'],
-    ): boolean =>
-      routing === 'workenai' ||
-      (routing === 'byok' && providerOfModel(modelId) === 'anthropic');
+    ): boolean => {
+      if (routing === 'workenai') return true;
+      const provider = providerOfModel(modelId);
+      return (
+        routing === 'byok' &&
+        !!provider &&
+        WEB_SEARCH_BYOK_PROVIDERS.has(provider)
+      );
+    };
 
     const out: EffectiveModel[] = [];
     const seen = new Set<string>();

@@ -397,6 +397,7 @@ export class ProjectsService {
         webSearchSupported = transportSupportsWebSearch(
           transport.source,
           transport.kind,
+          transport.provider,
         );
       } catch {
         webSearchSupported = true;

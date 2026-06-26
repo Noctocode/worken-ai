@@ -102,6 +102,127 @@ async function collect(stream: AsyncIterable<ChatStreamEvent>) {
   return out;
 }
 
+/**
+ * Variant of makeServiceWithChunks that ALSO captures the request body
+ * passed to `chat.completions.create`, so per-route web-search wiring
+ * (plugins / disable_search) can be asserted.
+ */
+function makeCapturingService(chunks: unknown[]) {
+  const create = jest.fn().mockResolvedValue({
+    // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub
+    [Symbol.asyncIterator]: async function* () {
+      for (const chunk of chunks) yield chunk;
+    },
+  });
+  const svc = new ChatService({
+    sendMessage: jest.fn(),
+    sendMessageStream: jest.fn(),
+  } as never);
+  (svc as unknown as { makeClient: () => unknown }).makeClient = () => ({
+    chat: { completions: { create } },
+  });
+  return {
+    svc,
+    getBody: () => create.mock.calls[0][0] as Record<string, unknown>,
+  };
+}
+
+describe('ChatService web search per route (openai-sdk)', () => {
+  it('sends the OpenRouter web plugin only on the openrouter source', async () => {
+    const { svc, getBody } = makeCapturingService([
+      { choices: [{ delta: { content: 'hi' } }] },
+    ]);
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'perplexity/sonar',
+        false,
+        undefined,
+        'key',
+        'https://openrouter.ai/api/v1',
+        'openai-sdk',
+        { webSearch: true, source: 'openrouter', provider: 'perplexity' },
+      ),
+    );
+    expect(getBody().plugins).toEqual([{ id: 'web' }]);
+    expect(getBody().disable_search).toBeUndefined();
+  });
+
+  it('does NOT send the plugin for a Perplexity BYOK call; leaves search on', async () => {
+    const { svc, getBody } = makeCapturingService([
+      { choices: [{ delta: { content: 'hi' } }] },
+    ]);
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'sonar',
+        false,
+        undefined,
+        'key',
+        'https://api.perplexity.ai',
+        'openai-sdk',
+        { webSearch: true, source: 'byok', provider: 'perplexity' },
+      ),
+    );
+    // No OpenRouter plugin (Perplexity 400s on it), and search stays on
+    // by default — so no disable_search either.
+    expect(getBody().plugins).toBeUndefined();
+    expect(getBody().disable_search).toBeUndefined();
+  });
+
+  it('disables Perplexity search when the toggle is off', async () => {
+    const { svc, getBody } = makeCapturingService([
+      { choices: [{ delta: { content: 'hi' } }] },
+    ]);
+    await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'sonar',
+        false,
+        undefined,
+        'key',
+        'https://api.perplexity.ai',
+        'openai-sdk',
+        { webSearch: false, source: 'byok', provider: 'perplexity' },
+      ),
+    );
+    expect(getBody().disable_search).toBe(true);
+  });
+
+  it('surfaces Perplexity sonar sources as one deduped citations event', async () => {
+    const { svc } = makeCapturingService([
+      {
+        choices: [{ delta: { content: 'answer' } }],
+        search_results: [
+          { url: 'https://a.com', title: 'A' },
+          { url: 'https://a.com', title: 'A dup' },
+        ],
+        citations: ['https://b.com'],
+      },
+    ]);
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'q' }],
+        'sonar',
+        false,
+        undefined,
+        'key',
+        'https://api.perplexity.ai',
+        'openai-sdk',
+        { webSearch: true, source: 'byok', provider: 'perplexity' },
+      ),
+    );
+    const citations = events.find((e) => e.type === 'citations');
+    expect(citations).toEqual({
+      type: 'citations',
+      citations: [
+        { url: 'https://a.com', title: 'A' },
+        { url: 'https://b.com', title: undefined },
+      ],
+    });
+  });
+});
+
 describe('ChatService.sendMessageStream (openai-sdk path)', () => {
   it('yields content deltas in order', async () => {
     const svc = makeServiceWithChunks([

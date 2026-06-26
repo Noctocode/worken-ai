@@ -210,7 +210,8 @@ export class CronRunnerService {
                 teamId: prompt.teamId,
               });
         const webSearch =
-          webAllowed && transportSupportsWebSearch(t.source, t.kind);
+          webAllowed &&
+          transportSupportsWebSearch(t.source, t.kind, t.provider);
 
         // Budget gate — managed/team OpenRouter spend only (BYOK/Custom is
         // user-paid, so caps don't apply). Same gates the chat path runs. A
@@ -294,6 +295,8 @@ export class CronRunnerService {
           t.kind,
           {
             webSearch,
+            source: t.source,
+            provider: t.provider,
             azureEndpoint: t.azureEndpoint,
             azureApiVersion: t.azureApiVersion,
           },
