@@ -249,7 +249,20 @@ export class AnthropicClientService {
             model: nativeModel,
             max_tokens: maxTokens,
             ...(systemPiece ? { system: systemPiece } : {}),
-            ...(options.webSearch ? { tools: [WEB_SEARCH_TOOL] } : {}),
+            // `max_uses` is per request, so cap it to the turn's *remaining*
+            // search budget — otherwise each pause_turn resume would reset the
+            // allowance and a single turn could exceed WEB_SEARCH_MAX_USES.
+            // Once the budget is spent the tool is dropped entirely.
+            ...(options.webSearch && webSearchRequests < WEB_SEARCH_MAX_USES
+              ? {
+                  tools: [
+                    {
+                      ...WEB_SEARCH_TOOL,
+                      max_uses: WEB_SEARCH_MAX_USES - webSearchRequests,
+                    },
+                  ],
+                }
+              : {}),
             messages: convo,
           },
           { signal: options.signal },
@@ -283,7 +296,22 @@ export class AnthropicClientService {
         return;
       }
 
-      const final = await stream.finalMessage();
+      // finalMessage() can still reject (network/protocol error after the
+      // stream completes). Map it through the same error/abort paths so the
+      // generator emits a structured event instead of throwing.
+      let final: Anthropic.Message;
+      try {
+        final = await stream.finalMessage();
+      } catch (err) {
+        if (
+          options.signal?.aborted ||
+          (err instanceof Error && err.name === 'AbortError')
+        ) {
+          return;
+        }
+        yield this.toErrorEvent(err);
+        return;
+      }
       inputTokens += final.usage.input_tokens ?? 0;
       outputTokens += final.usage.output_tokens ?? 0;
       webSearchRequests +=
