@@ -7,6 +7,7 @@ import {
   Cpu,
   Database,
   Gauge,
+  Lock,
   Monitor,
   Server,
   ShieldCheck,
@@ -17,6 +18,7 @@ import {
   PageTabsList,
   PageTabsTrigger,
 } from "@/components/ui/page-tabs";
+import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
@@ -145,6 +147,14 @@ function Lane({ label, children }: { label: string; children: React.ReactNode })
 
 export default function HowItWorksPage() {
   const { t } = useLanguage();
+
+  // The system-overview section is internal developer documentation — only
+  // signed-in @noctocode.com members may see it. Client-side visibility gate:
+  // the content is non-sensitive docs (diagrams), not protected data.
+  const { user } = useAuth();
+  const isNoctocodeMember =
+    !!user?.email &&
+    user.email.trim().toLowerCase().endsWith("@noctocode.com");
 
   const L = {
     infra: t("resources.how.label.infra"),
@@ -349,17 +359,26 @@ export default function HowItWorksPage() {
         ))}
       </div>
 
-      {/* ── System overview ───────────────────────────────────────────
-          New section BELOW the existing deployment cards. Subheading +
-          tabs; each tab is one simple diagram + a short description. */}
+      {/* ── System overview (internal, @noctocode.com only) ────────────
+          New section BELOW the existing deployment cards. Gated to
+          signed-in @noctocode.com members; a badge makes the dev-only
+          visibility explicit. Subheading + tabs; each tab is one simple
+          diagram + a short description. */}
+      {isNoctocodeMember && (
       <section className="flex flex-col gap-4 border-t border-border-2 pt-6">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-[20px] font-bold leading-[1.4] text-text-1">
-            {t("resources.overview.heading")}
-          </h2>
-          <p className="text-[14px] leading-[1.6] text-text-2">
-            {t("resources.overview.intro")}
-          </p>
+        <div className="flex flex-col items-start gap-2">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-warning-5 bg-warning-1 px-2.5 py-0.5 text-[11px] font-medium text-warning-7">
+            <Lock className="h-3 w-3" strokeWidth={2} />
+            {t("resources.overview.devOnly")}
+          </span>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-[20px] font-bold leading-[1.4] text-text-1">
+              {t("resources.overview.heading")}
+            </h2>
+            <p className="text-[14px] leading-[1.6] text-text-2">
+              {t("resources.overview.intro")}
+            </p>
+          </div>
         </div>
 
         <PageTabs defaultValue={OVERVIEW_TABS[0].value} className="gap-5">
@@ -382,6 +401,7 @@ export default function HowItWorksPage() {
           ))}
         </PageTabs>
       </section>
+      )}
     </div>
   );
 }

@@ -98,6 +98,8 @@ export const resources = {
   'resources.overview.heading': 'How the system fits together',
   'resources.overview.intro':
     'Simple diagrams of the main building blocks and how they connect.',
+  'resources.overview.devOnly':
+    'Internal — visible only to @noctocode.com members (developers).',
   'resources.overview.tab.nav': 'Navigation',
   'resources.overview.tab.architecture': 'Architecture',
   'resources.overview.tab.entities': 'Entities & relationships',

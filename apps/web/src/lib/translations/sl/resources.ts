@@ -96,6 +96,8 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.overview.heading': 'Kako je sistem sestavljen',
   'resources.overview.intro':
     'Preproste sheme glavnih gradnikov in kako so med sabo povezani.',
+  'resources.overview.devOnly':
+    'Interno — vidno samo članom @noctocode.com (razvijalci).',
   'resources.overview.tab.nav': 'Navigacija',
   'resources.overview.tab.architecture': 'Arhitektura',
   'resources.overview.tab.entities': 'Entitete in povezave',
