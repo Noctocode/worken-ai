@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   ArrowRight,
   Cloud,
@@ -13,7 +14,6 @@ import {
 } from "lucide-react";
 import {
   PageTabs,
-  PageTabsContent,
   PageTabsList,
   PageTabsTrigger,
 } from "@/components/ui/page-tabs";
@@ -162,6 +162,7 @@ function Lane({
 export default function SystemOverview() {
   const { t } = useLanguage();
   const many = t("resources.overview.ent.cardMany");
+  const [active, setActive] = useState<string>(OVERVIEW_TABS[0].value);
 
   // System-overview diagrams, one per tab value.
   const diagrams: Record<string, React.ReactNode> = {
@@ -369,7 +370,7 @@ export default function SystemOverview() {
         </div>
       </div>
 
-      <PageTabs defaultValue={OVERVIEW_TABS[0].value} className="gap-5">
+      <PageTabs value={active} onValueChange={setActive} className="gap-5">
         <PageTabsList>
           {OVERVIEW_TABS.map((tb) => (
             <PageTabsTrigger key={tb.value} value={tb.value}>
@@ -377,35 +378,45 @@ export default function SystemOverview() {
             </PageTabsTrigger>
           ))}
         </PageTabsList>
-        {OVERVIEW_TABS.map((tb) => (
-          <PageTabsContent key={tb.value} value={tb.value}>
-            {/* Fixed min-height keeps every tab the same size so the page
-                doesn't jump when switching, and leaves some breathing room
-                below shorter tabs. */}
-            <div className="flex min-h-[460px] flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6">
-              <div className="overflow-x-auto">{diagrams[tb.value]}</div>
-              <p className="text-[13px] leading-[1.6] text-text-2">
-                {t(tb.descKey)}
-              </p>
-              <div className="flex flex-col gap-1.5">
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
-                  {t("resources.overview.keyPoints")}
+
+        {/* All panels share one grid cell, so the box is always sized to
+            the TALLEST tab. Inactive panels stay in layout (only
+            `invisible`), so switching tabs never changes the box height. */}
+        <div className="grid">
+          {OVERVIEW_TABS.map((tb) => {
+            const isActive = tb.value === active;
+            return (
+              <div
+                key={tb.value}
+                aria-hidden={!isActive}
+                className={`col-start-1 row-start-1 flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6 ${
+                  isActive ? "" : "invisible"
+                }`}
+              >
+                <div className="overflow-x-auto">{diagrams[tb.value]}</div>
+                <p className="text-[13px] leading-[1.6] text-text-2">
+                  {t(tb.descKey)}
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                    {t("resources.overview.keyPoints")}
+                  </div>
+                  <ul className="flex flex-col gap-1">
+                    {tb.pointsKeys.map((pk) => (
+                      <li
+                        key={pk}
+                        className="flex gap-2 text-[13px] leading-[1.5] text-text-2"
+                      >
+                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary-6" />
+                        {t(pk)}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-                <ul className="flex flex-col gap-1">
-                  {tb.pointsKeys.map((pk) => (
-                    <li
-                      key={pk}
-                      className="flex gap-2 text-[13px] leading-[1.5] text-text-2"
-                    >
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary-6" />
-                      {t(pk)}
-                    </li>
-                  ))}
-                </ul>
               </div>
-            </div>
-          </PageTabsContent>
-        ))}
+            );
+          })}
+        </div>
       </PageTabs>
     </section>
   );
