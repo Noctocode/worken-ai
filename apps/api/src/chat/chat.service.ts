@@ -5,6 +5,7 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import { OpenAiResponsesClientService } from '../integrations/openai-responses-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 
@@ -97,8 +98,15 @@ export interface StreamOptions {
    *  route: the OpenRouter web plugin (`plugins: [{ id: "web" }]`) on the
    *  openai-sdk path, or Anthropic's native server-side `web_search` tool
    *  on the anthropic-sdk path. The controller only sets it for routes
-   *  that support one of these (see `transportSupportsWebSearch`). */
+   *  that support one of these (see `transportSupportsWebSearch`). A third
+   *  mechanism — direct-OpenAI BYOK via the Responses API — is selected by
+   *  `openaiWebSearch` below, not by this flag alone. */
   webSearch?: boolean;
+  /** Direct-OpenAI BYOK web search via the Responses API. Set by the
+   *  controller only when source=byok + kind=openai-sdk + provider=openai and
+   *  web search is on. Routes to OpenAiResponsesClientService instead of the
+   *  chat.completions path (whose `plugins:[{id:'web'}]` is OpenRouter-only). */
+  openaiWebSearch?: boolean;
   /** Azure OpenAI ('azure-sdk') only: per-resource endpoint
    *  (https://{resource}.openai.azure.com). Carried here so the call
    *  signature stays stable. */
@@ -109,7 +117,10 @@ export interface StreamOptions {
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly anthropic: AnthropicClientService) {}
+  constructor(
+    private readonly anthropic: AnthropicClientService,
+    private readonly openaiResponses: OpenAiResponsesClientService,
+  ) {}
 
   private makeClient(
     baseURL: string,
@@ -170,6 +181,21 @@ export class ChatService {
         messages.map((m) => ({ role: m.role, content: m.content })),
         model,
         apiKey,
+        context,
+        options,
+      );
+      return;
+    }
+
+    if (options.openaiWebSearch) {
+      // Direct-OpenAI BYOK with web search → the Responses API adapter (the
+      // server-side web_search tool works on normal models; chat.completions
+      // web search only works on the deprecated *-search-preview models).
+      yield* this.openaiResponses.sendMessageStream(
+        messages.map((m) => ({ role: m.role, content: m.content })),
+        model,
+        apiKey,
+        baseURL,
         context,
         options,
       );

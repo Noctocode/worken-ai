@@ -525,6 +525,15 @@ export class ChatController {
         // differently from the requested model).
         const candidateWebSearch =
           webSearch && transportSupportsWebSearch(t.source, t.kind, t.provider);
+        // Direct-OpenAI BYOK uses the Responses API web_search tool (a
+        // separate code path); every other web-search route (OpenRouter
+        // plugin, Anthropic native) is handled inside sendMessageStream off
+        // `webSearch` alone.
+        const candidateOpenaiWebSearch =
+          candidateWebSearch &&
+          t.source === 'byok' &&
+          t.kind === 'openai-sdk' &&
+          t.provider === 'openai';
 
         // First-token timeout: abort and fall back if no token arrives in
         // time. Only when a fallback exists — the final candidate is left to
@@ -557,6 +566,7 @@ export class ChatController {
             {
               signal,
               webSearch: candidateWebSearch,
+              openaiWebSearch: candidateOpenaiWebSearch,
               azureEndpoint: t.azureEndpoint,
               azureApiVersion: t.azureApiVersion,
             },
@@ -821,13 +831,15 @@ export class ChatController {
         costEstimated = true;
       }
     }
-    // Anthropic bills the native web_search tool at $10 / 1,000 searches on
-    // top of token cost (OpenRouter already folds web cost into `costUsd`,
-    // and leaves the count at 0). Add it to whatever token cost we have.
+    // Native web search (Anthropic web_search tool AND OpenAI Responses
+    // web_search) bills $10 / 1,000 searches on top of token cost — same rate
+    // for both. OpenRouter already folds web cost into `costUsd` and leaves
+    // the count at 0, so this only fires on the BYOK native routes. Retrieved
+    // search content is billed as input tokens by the provider and is already
+    // in the usage totals, so we add ONLY the per-search surcharge here.
     if (usageWebSearchRequests > 0) {
-      const ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST = 0.01;
-      const webCost =
-        usageWebSearchRequests * ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST;
+      const WEB_SEARCH_USD_PER_REQUEST = 0.01;
+      const webCost = usageWebSearchRequests * WEB_SEARCH_USD_PER_REQUEST;
       costUsd = (costUsd ?? 0) + webCost;
       costEstimated = true;
     }
