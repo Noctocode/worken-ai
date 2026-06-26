@@ -5,6 +5,7 @@ import type {
   ChatCompletionCreateParamsStreaming,
 } from 'openai/resources/chat/completions';
 import { AnthropicClientService } from '../integrations/anthropic-client.service.js';
+import { GeminiClientService } from '../integrations/gemini-client.service.js';
 import type { ChatTransportKind } from '../integrations/chat-transport.service.js';
 import { DEFAULT_CHAT_MODEL } from './chat.constants.js';
 
@@ -109,7 +110,10 @@ export interface StreamOptions {
 
 @Injectable()
 export class ChatService {
-  constructor(private readonly anthropic: AnthropicClientService) {}
+  constructor(
+    private readonly anthropic: AnthropicClientService,
+    private readonly gemini: GeminiClientService,
+  ) {}
 
   private makeClient(
     baseURL: string,
@@ -148,9 +152,10 @@ export class ChatService {
    * `sendMessage` has been removed — the SSE controller above wraps
    * these events into the wire SSE frames.
    *
-   * Routing: Anthropic native SDK when `kind === 'anthropic-sdk'`,
-   * OpenAI-compatible path otherwise. Both implementations forward
-   * `signal` so a FE disconnect aborts the upstream call.
+   * Routing: Anthropic native SDK when `kind === 'anthropic-sdk'`, Gemini
+   * native SDK when `kind === 'gemini-sdk'`, OpenAI-compatible path
+   * otherwise. All implementations forward `signal` so a FE disconnect
+   * aborts the upstream call.
    */
   async *sendMessageStream(
     messages: ChatMessage[],
@@ -167,6 +172,20 @@ export class ChatService {
       // event shape (content_block_delta, message_delta, …) and maps
       // each to our ChatStreamEvent union before yielding.
       yield* this.anthropic.sendMessageStream(
+        messages.map((m) => ({ role: m.role, content: m.content })),
+        model,
+        apiKey,
+        context,
+        options,
+      );
+      return;
+    }
+
+    if (kind === 'gemini-sdk') {
+      // Native Gemini adapter — maps generateContentStream chunks
+      // (text parts, groundingMetadata, usageMetadata) onto the same
+      // ChatStreamEvent union.
+      yield* this.gemini.sendMessageStream(
         messages.map((m) => ({ role: m.role, content: m.content })),
         model,
         apiKey,

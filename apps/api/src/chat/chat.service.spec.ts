@@ -76,7 +76,12 @@ function makeServiceWithChunks(chunks: OpenAIChunk[]) {
     sendMessage: jest.fn(),
     sendMessageStream: jest.fn(),
   };
-  const svc = new ChatService(anthropic as never);
+  const svc = new ChatService(
+    anthropic as never,
+    {
+      sendMessageStream: jest.fn(),
+    } as never,
+  );
 
   // Replace the private `makeClient` so we don't depend on a real
   // OpenAI install. The function signature is private but TS lets
@@ -219,7 +224,12 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn(),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(
+      anthropic as never,
+      {
+        sendMessageStream: jest.fn(),
+      } as never,
+    );
     // Reject the pre-stream `create` call to simulate auth / model-
     // not-found. The production code is supposed to yield one
     // `error` event and return — we shouldn't see anything else.
@@ -255,7 +265,12 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn().mockReturnValue(fakeAnthropicStream()),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(
+      anthropic as never,
+      {
+        sendMessageStream: jest.fn(),
+      } as never,
+    );
 
     const events = await collect(
       svc.sendMessageStream(
@@ -276,6 +291,55 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
         promptTokens: 1,
         completionTokens: 2,
         totalTokens: 3,
+      },
+    ]);
+  });
+
+  it('delegates gemini-sdk transport to the GeminiClientService', async () => {
+    // eslint-disable-next-line @typescript-eslint/require-await -- async generator stub; consumers await each yield, not the generator body
+    async function* fakeGeminiStream(): AsyncIterable<ChatStreamEvent> {
+      yield { type: 'content', delta: 'hi from gemini' };
+      yield {
+        type: 'citations',
+        citations: [{ url: 'https://x', title: 'X' }],
+      };
+      yield {
+        type: 'usage',
+        promptTokens: 4,
+        completionTokens: 5,
+        totalTokens: 9,
+        webSearchRequests: 1,
+      };
+    }
+    const anthropic = { sendMessage: jest.fn(), sendMessageStream: jest.fn() };
+    const gemini = {
+      sendMessageStream: jest.fn().mockReturnValue(fakeGeminiStream()),
+    };
+    const svc = new ChatService(anthropic as never, gemini as never);
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'hi' }],
+        'google/gemini-2.5-pro',
+        false,
+        undefined,
+        'AIza-…',
+        undefined,
+        'gemini-sdk',
+        { webSearch: true },
+      ),
+    );
+    expect(gemini.sendMessageStream).toHaveBeenCalledTimes(1);
+    expect(anthropic.sendMessageStream).not.toHaveBeenCalled();
+    expect(events).toEqual([
+      { type: 'content', delta: 'hi from gemini' },
+      { type: 'citations', citations: [{ url: 'https://x', title: 'X' }] },
+      {
+        type: 'usage',
+        promptTokens: 4,
+        completionTokens: 5,
+        totalTokens: 9,
+        webSearchRequests: 1,
       },
     ]);
   });
@@ -439,10 +503,12 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
 
   const runAzure = (enableReasoning: boolean) =>
     collect(
-      new ChatService({
-        sendMessage: jest.fn(),
-        sendMessageStream: jest.fn(),
-      } as never).sendMessageStream(
+      new ChatService(
+        { sendMessage: jest.fn(), sendMessageStream: jest.fn() } as never,
+        {
+          sendMessageStream: jest.fn(),
+        } as never,
+      ).sendMessageStream(
         [{ role: 'user', content: 'hi' }],
         DEPLOYMENT, // model === deployment (transport resolved bareModel)
         enableReasoning,

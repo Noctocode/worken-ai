@@ -816,13 +816,15 @@ export class ChatController {
         costEstimated = true;
       }
     }
-    // Anthropic bills the native web_search tool at $10 / 1,000 searches on
-    // top of token cost (OpenRouter already folds web cost into `costUsd`,
-    // and leaves the count at 0). Add it to whatever token cost we have.
+    // Native web search bills on top of token cost (OpenRouter folds web
+    // cost into `costUsd` and leaves the count at 0, so this only fires on
+    // native BYOK routes). The per-request rate differs by provider:
+    //   - Anthropic web_search: $10 / 1,000 searches.
+    //   - Gemini Google Search grounding: $35 / 1,000 grounded requests.
     if (usageWebSearchRequests > 0) {
-      const ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST = 0.01;
-      const webCost =
-        usageWebSearchRequests * ANTHROPIC_WEB_SEARCH_USD_PER_REQUEST;
+      const WEB_SEARCH_USD_PER_REQUEST =
+        transport.kind === 'gemini-sdk' ? 0.035 : 0.01;
+      const webCost = usageWebSearchRequests * WEB_SEARCH_USD_PER_REQUEST;
       costUsd = (costUsd ?? 0) + webCost;
       costEstimated = true;
     }

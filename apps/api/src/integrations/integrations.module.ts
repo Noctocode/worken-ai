@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AnthropicClientService } from './anthropic-client.service.js';
+import { GeminiClientService } from './gemini-client.service.js';
 import { ChatTransportService } from './chat-transport.service.js';
 import { IntegrationsController } from './integrations.controller.js';
 import { IntegrationsService } from './integrations.service.js';
@@ -19,7 +20,13 @@ import { ModelsModule } from '../models/models.module.js';
     IntegrationsService,
     ChatTransportService,
     AnthropicClientService,
+    GeminiClientService,
   ],
-  exports: [IntegrationsService, ChatTransportService, AnthropicClientService],
+  exports: [
+    IntegrationsService,
+    ChatTransportService,
+    AnthropicClientService,
+    GeminiClientService,
+  ],
 })
 export class IntegrationsModule {}
