@@ -14,11 +14,12 @@ import {
 } from "lucide-react";
 import {
   PageTabs,
+  PageTabsContent,
   PageTabsList,
   PageTabsTrigger,
 } from "@/components/ui/page-tabs";
 import { useLanguage } from "@/lib/i18n";
-import type { TranslationKey } from "@/lib/translations/en";
+import { OVERVIEW_TEXT, type OverviewKey } from "./system-overview.i18n";
 
 /* Internal developer documentation — "How the system fits together".
  *
@@ -29,9 +30,9 @@ import type { TranslationKey } from "@/lib/translations/en";
 
 const OVERVIEW_TABS: Array<{
   value: string;
-  labelKey: TranslationKey;
-  descKey: TranslationKey;
-  pointsKeys: TranslationKey[];
+  labelKey: OverviewKey;
+  descKey: OverviewKey;
+  pointsKeys: OverviewKey[];
 }> = [
   {
     value: "nav",
@@ -87,7 +88,7 @@ const OVERVIEW_TABS: Array<{
 
 /* Glossary terms shown below the tabs — shorthand used across the
  * diagrams and the product. Term + definition are both translation keys. */
-const GLOSSARY: Array<{ term: TranslationKey; def: TranslationKey }> = [
+const GLOSSARY: Array<{ term: OverviewKey; def: OverviewKey }> = [
   {
     term: "resources.overview.glossary.byok",
     def: "resources.overview.glossary.byokDef",
@@ -197,8 +198,13 @@ function Lane({
 }
 
 export default function SystemOverview() {
-  const { t } = useLanguage();
-  const many = t("resources.overview.ent.cardMany");
+  const { t, language } = useLanguage();
+  // Overview copy lives in a local, lazily-loaded module (not the global
+  // translation bundle) so it never ships to non-internal users. `to` is
+  // the local equivalent of `t` for those keys, with per-key en fallback.
+  const to = (k: OverviewKey): string =>
+    OVERVIEW_TEXT[language]?.[k] ?? OVERVIEW_TEXT.en[k];
+  const many = to("resources.overview.ent.cardMany");
   const [active, setActive] = useState<string>(OVERVIEW_TABS[0].value);
 
   // System-overview diagrams, one per tab value.
@@ -207,25 +213,25 @@ export default function SystemOverview() {
     //    sidebar labels) plus the admin-only section.
     nav: (
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Lane label={t("resources.overview.nav.core")}>
+        <Lane label={to("resources.overview.nav.core")}>
           <Node label={t("sidebar.nav.ongoingProjects")} />
           <Node label={t("sidebar.nav.modelArena")} />
           <Node label={t("sidebar.nav.observability")} />
           <Node label={t("sidebar.nav.teamManagement")} />
         </Lane>
-        <Lane label={t("resources.overview.nav.features")}>
+        <Lane label={to("resources.overview.nav.features")}>
           <Node label={t("sidebar.nav.tenderAI")} />
           <Node label={t("sidebar.nav.aiCron")} />
           <Node label={t("sidebar.nav.knowledgeCore")} />
         </Lane>
-        <Lane label={t("resources.overview.nav.tools")}>
+        <Lane label={to("resources.overview.nav.tools")}>
           <Node label={t("sidebar.nav.toolkit")} />
           <Node label={t("sidebar.nav.learning")} />
         </Lane>
-        <Lane label={t("resources.overview.nav.adminLane")}>
-          <Node label={t("resources.overview.nav.guardrails")} tone="muted" />
+        <Lane label={to("resources.overview.nav.adminLane")}>
+          <Node label={to("resources.overview.nav.guardrails")} tone="muted" />
           <Node
-            label={t("resources.overview.nav.companySettings")}
+            label={to("resources.overview.nav.companySettings")}
             tone="muted"
           />
         </Lane>
@@ -237,42 +243,42 @@ export default function SystemOverview() {
       <div className="flex flex-col items-stretch gap-3 lg:flex-row lg:items-center">
         <Node
           icon={Monitor}
-          label={t("resources.overview.arch.browser")}
-          sub={t("resources.overview.arch.browserSub")}
+          label={to("resources.overview.arch.browser")}
+          sub={to("resources.overview.arch.browserSub")}
           tone="accent"
         />
         <Arrow />
         <Node
           icon={Server}
-          label={t("resources.overview.arch.api")}
-          sub={t("resources.overview.arch.apiSub")}
+          label={to("resources.overview.arch.api")}
+          sub={to("resources.overview.arch.apiSub")}
           tone="accent"
         />
         <Arrow />
         <div className="flex flex-1 flex-col gap-3">
-          <Lane label={t("resources.overview.arch.dataLane")}>
+          <Lane label={to("resources.overview.arch.dataLane")}>
             <Node
               icon={Database}
-              label={t("resources.overview.arch.db")}
-              sub={t("resources.overview.arch.dbSub")}
+              label={to("resources.overview.arch.db")}
+              sub={to("resources.overview.arch.dbSub")}
             />
             <Node
               icon={Gauge}
-              label={t("resources.overview.arch.cache")}
-              sub={t("resources.overview.arch.cacheSub")}
+              label={to("resources.overview.arch.cache")}
+              sub={to("resources.overview.arch.cacheSub")}
             />
           </Lane>
-          <Lane label={t("resources.overview.arch.externalLane")}>
+          <Lane label={to("resources.overview.arch.externalLane")}>
             <Node
               icon={Cpu}
-              label={t("resources.overview.arch.models")}
-              sub={t("resources.overview.arch.modelsSub")}
+              label={to("resources.overview.arch.models")}
+              sub={to("resources.overview.arch.modelsSub")}
             />
-            <Node icon={Cloud} label={t("resources.overview.arch.cloud")} />
+            <Node icon={Cloud} label={to("resources.overview.arch.cloud")} />
             <Node
               icon={CloudSun}
-              label={t("resources.overview.arch.arso")}
-              sub={t("resources.overview.arch.arsoSub")}
+              label={to("resources.overview.arch.arso")}
+              sub={to("resources.overview.arch.arsoSub")}
             />
           </Lane>
         </div>
@@ -283,28 +289,28 @@ export default function SystemOverview() {
     entities: (
       <div className="flex flex-col gap-4">
         <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-          <Node label={t("resources.overview.ent.company")} tone="accent" />
+          <Node label={to("resources.overview.ent.company")} tone="accent" />
           <Arrow label={many} />
-          <Node label={t("resources.overview.ent.team")} tone="accent" />
+          <Node label={to("resources.overview.ent.team")} tone="accent" />
           <Arrow label={many} />
           <Node
-            label={t("resources.overview.ent.project")}
-            sub={t("resources.overview.ent.projectSub")}
+            label={to("resources.overview.ent.project")}
+            sub={to("resources.overview.ent.projectSub")}
             tone="accent"
           />
           <Arrow label={many} />
           <Node
-            label={t("resources.overview.ent.conversation")}
-            sub={t("resources.overview.ent.conversationSub")}
+            label={to("resources.overview.ent.conversation")}
+            sub={to("resources.overview.ent.conversationSub")}
           />
           <Arrow label={many} />
-          <Node label={t("resources.overview.ent.message")} />
+          <Node label={to("resources.overview.ent.message")} />
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-          <Node label={t("resources.overview.ent.users")} tone="muted" />
-          <Node label={t("resources.overview.ent.knowledge")} tone="muted" />
-          <Node label={t("resources.overview.ent.integrations")} tone="muted" />
-          <Node label={t("resources.overview.ent.docs")} tone="muted" />
+          <Node label={to("resources.overview.ent.users")} tone="muted" />
+          <Node label={to("resources.overview.ent.knowledge")} tone="muted" />
+          <Node label={to("resources.overview.ent.integrations")} tone="muted" />
+          <Node label={to("resources.overview.ent.docs")} tone="muted" />
         </div>
       </div>
     ),
@@ -312,38 +318,38 @@ export default function SystemOverview() {
     // 4. Roles — org roles (with what each can do) + the scope cascade.
     roles: (
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Lane label={t("resources.overview.roles.orgLane")}>
+        <Lane label={to("resources.overview.roles.orgLane")}>
           <Node
-            label={t("resources.overview.roles.admin")}
-            sub={t("resources.overview.roles.adminSub")}
+            label={to("resources.overview.roles.admin")}
+            sub={to("resources.overview.roles.adminSub")}
             tone="accent"
           />
           <Node
-            label={t("resources.overview.roles.advanced")}
-            sub={t("resources.overview.roles.advancedSub")}
+            label={to("resources.overview.roles.advanced")}
+            sub={to("resources.overview.roles.advancedSub")}
           />
           <Node
-            label={t("resources.overview.roles.basic")}
-            sub={t("resources.overview.roles.basicSub")}
+            label={to("resources.overview.roles.basic")}
+            sub={to("resources.overview.roles.basicSub")}
             tone="muted"
           />
         </Lane>
-        <Lane label={t("resources.overview.roles.scopeLane")}>
+        <Lane label={to("resources.overview.roles.scopeLane")}>
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <Node label={t("resources.overview.ent.company")} />
+            <Node label={to("resources.overview.ent.company")} />
             <Arrow />
-            <Node label={t("resources.overview.ent.team")} />
+            <Node label={to("resources.overview.ent.team")} />
             <Arrow />
-            <Node label={t("resources.overview.ent.project")} />
+            <Node label={to("resources.overview.ent.project")} />
           </div>
-          <Node label={t("resources.overview.roles.cascade")} tone="muted" />
+          <Node label={to("resources.overview.roles.cascade")} tone="muted" />
           <Node
-            label={t("resources.overview.roles.budgetCascade")}
+            label={to("resources.overview.roles.budgetCascade")}
             tone="muted"
           />
-          <Node label={t("resources.overview.roles.teamRoles")} tone="muted" />
+          <Node label={to("resources.overview.roles.teamRoles")} tone="muted" />
           <Node
-            label={t("resources.overview.roles.projectRoles")}
+            label={to("resources.overview.roles.projectRoles")}
             tone="muted"
           />
         </Lane>
@@ -353,37 +359,37 @@ export default function SystemOverview() {
     // 5. Key flow — the chat message pipeline, with a note on key steps.
     flow: (
       <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <Node label={t("resources.overview.flow.message")} tone="accent" />
+        <Node label={to("resources.overview.flow.message")} tone="accent" />
         <Arrow />
         <Node
-          label={t("resources.overview.flow.inputGuard")}
-          sub={t("resources.overview.flow.inputGuardSub")}
+          label={to("resources.overview.flow.inputGuard")}
+          sub={to("resources.overview.flow.inputGuardSub")}
         />
         <Arrow />
         <Node
-          label={t("resources.overview.flow.context")}
-          sub={t("resources.overview.flow.contextSub")}
+          label={to("resources.overview.flow.context")}
+          sub={to("resources.overview.flow.contextSub")}
         />
         <Arrow />
-        <Node label={t("resources.overview.flow.budget")} />
+        <Node label={to("resources.overview.flow.budget")} />
         <Arrow />
         <Node
-          label={t("resources.overview.flow.model")}
-          sub={t("resources.overview.flow.modelSub")}
+          label={to("resources.overview.flow.model")}
+          sub={to("resources.overview.flow.modelSub")}
           tone="accent"
         />
         <Arrow />
         <Node
-          label={t("resources.overview.flow.outputGuard")}
-          sub={t("resources.overview.flow.outputGuardSub")}
+          label={to("resources.overview.flow.outputGuard")}
+          sub={to("resources.overview.flow.outputGuardSub")}
         />
         <Arrow />
         <Node
-          label={t("resources.overview.flow.save")}
-          sub={t("resources.overview.flow.saveSub")}
+          label={to("resources.overview.flow.save")}
+          sub={to("resources.overview.flow.saveSub")}
         />
         <Arrow />
-        <Node label={t("resources.overview.flow.answer")} tone="accent" />
+        <Node label={to("resources.overview.flow.answer")} tone="accent" />
       </div>
     ),
   };
@@ -395,14 +401,14 @@ export default function SystemOverview() {
           <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary-6/15 text-primary-6">
             <Lock className="h-3 w-3" strokeWidth={2.5} />
           </span>
-          {t("resources.overview.devOnly")}
+          {to("resources.overview.devOnly")}
         </span>
         <div className="flex flex-col gap-1">
           <h2 className="text-[20px] font-bold leading-[1.4] text-text-1">
-            {t("resources.overview.heading")}
+            {to("resources.overview.heading")}
           </h2>
           <p className="text-[14px] leading-[1.6] text-text-2">
-            {t("resources.overview.intro")}
+            {to("resources.overview.intro")}
           </p>
         </div>
       </div>
@@ -411,48 +417,49 @@ export default function SystemOverview() {
         <PageTabsList>
           {OVERVIEW_TABS.map((tb) => (
             <PageTabsTrigger key={tb.value} value={tb.value}>
-              {t(tb.labelKey)}
+              {to(tb.labelKey)}
             </PageTabsTrigger>
           ))}
         </PageTabsList>
 
-        {/* All panels share one grid cell, so the box is always sized to
-            the TALLEST tab. Inactive panels stay in layout (only
-            `invisible`), so switching tabs never changes the box height. */}
+        {/* All panels are force-mounted Radix tabpanels sharing one grid
+            cell, so the box is always sized to the TALLEST tab and Radix
+            still wires the trigger↔panel ARIA (role=tabpanel, aria-
+            labelledby, the trigger's aria-controls). Inactive panels keep
+            their `hidden` attribute (so AT only sees the active one); the
+            `flex` class beats the UA `[hidden]{display:none}` so they stay
+            in layout, and `data-[state=inactive]:invisible` hides them
+            visually — switching tabs never changes the box height. */}
         <div className="grid">
-          {OVERVIEW_TABS.map((tb) => {
-            const isActive = tb.value === active;
-            return (
-              <div
-                key={tb.value}
-                aria-hidden={!isActive}
-                className={`col-start-1 row-start-1 flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6 ${
-                  isActive ? "" : "invisible"
-                }`}
-              >
-                <div className="overflow-x-auto">{diagrams[tb.value]}</div>
-                <p className="text-[13px] leading-[1.6] text-text-2">
-                  {t(tb.descKey)}
-                </p>
-                <div className="flex flex-col gap-1.5">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
-                    {t("resources.overview.keyPoints")}
-                  </div>
-                  <ul className="flex flex-col gap-1">
-                    {tb.pointsKeys.map((pk) => (
-                      <li
-                        key={pk}
-                        className="flex gap-2 text-[13px] leading-[1.5] text-text-2"
-                      >
-                        <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary-6" />
-                        {t(pk)}
-                      </li>
-                    ))}
-                  </ul>
+          {OVERVIEW_TABS.map((tb) => (
+            <PageTabsContent
+              key={tb.value}
+              value={tb.value}
+              forceMount
+              className="col-start-1 row-start-1 flex flex-col gap-5 rounded-lg border border-border-2 bg-bg-white p-6 data-[state=inactive]:invisible"
+            >
+              <div className="overflow-x-auto">{diagrams[tb.value]}</div>
+              <p className="text-[13px] leading-[1.6] text-text-2">
+                {to(tb.descKey)}
+              </p>
+              <div className="flex flex-col gap-1.5">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-text-3">
+                  {to("resources.overview.keyPoints")}
                 </div>
+                <ul className="flex flex-col gap-1">
+                  {tb.pointsKeys.map((pk) => (
+                    <li
+                      key={pk}
+                      className="flex gap-2 text-[13px] leading-[1.5] text-text-2"
+                    >
+                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-primary-6" />
+                      {to(pk)}
+                    </li>
+                  ))}
+                </ul>
               </div>
-            );
-          })}
+            </PageTabsContent>
+          ))}
         </div>
       </PageTabs>
 
@@ -465,29 +472,29 @@ export default function SystemOverview() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <h3 className="text-[16px] font-bold leading-[1.4] text-text-1">
-              {t("resources.overview.stack.heading")}
+              {to("resources.overview.stack.heading")}
             </h3>
             <p className="text-[13px] leading-[1.6] text-text-2">
-              {t("resources.overview.stack.intro")}
+              {to("resources.overview.stack.intro")}
             </p>
           </div>
           <div className="overflow-x-auto">
             <div className="flex flex-col gap-3 sm:flex-row">
-              <Lane label={t("resources.overview.stack.frontend")}>
+              <Lane label={to("resources.overview.stack.frontend")}>
                 <Node label="Next.js (App Router)" />
                 <Node label="React + Tailwind CSS" />
                 <Node label="shadcn/ui" />
               </Lane>
-              <Lane label={t("resources.overview.stack.backend")}>
+              <Lane label={to("resources.overview.stack.backend")}>
                 <Node label="NestJS" />
                 <Node label="SSE streaming" />
                 <Node label="Drizzle ORM" />
               </Lane>
-              <Lane label={t("resources.overview.stack.data")}>
+              <Lane label={to("resources.overview.stack.data")}>
                 <Node label="PostgreSQL 16 + pgvector" />
                 <Node label="Redis" />
               </Lane>
-              <Lane label={t("resources.overview.stack.tooling")}>
+              <Lane label={to("resources.overview.stack.tooling")}>
                 <Node label="TypeScript" />
                 <Node label="pnpm monorepo" />
               </Lane>
@@ -499,20 +506,20 @@ export default function SystemOverview() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1">
             <h3 className="text-[16px] font-bold leading-[1.4] text-text-1">
-              {t("resources.overview.glossary.heading")}
+              {to("resources.overview.glossary.heading")}
             </h3>
             <p className="text-[13px] leading-[1.6] text-text-2">
-              {t("resources.overview.glossary.intro")}
+              {to("resources.overview.glossary.intro")}
             </p>
           </div>
           <dl className="grid gap-x-8 gap-y-3 sm:grid-cols-2">
             {GLOSSARY.map((g) => (
               <div key={g.term} className="flex flex-col gap-0.5">
                 <dt className="text-[13px] font-semibold leading-snug text-text-1">
-                  {t(g.term)}
+                  {to(g.term)}
                 </dt>
                 <dd className="text-[13px] leading-[1.5] text-text-2">
-                  {t(g.def)}
+                  {to(g.def)}
                 </dd>
               </div>
             ))}
