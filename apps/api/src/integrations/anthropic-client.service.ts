@@ -305,11 +305,28 @@ export class AnthropicClientService {
       // `pause_turn` means the server-side loop wants to continue — append
       // the assistant turn and re-stream. Any other stop reason is final.
       if (final.stop_reason === 'pause_turn') {
+        if (pass === MAX_PAUSE_CONTINUATIONS) {
+          // Hit the continuation cap while the server loop still wanted to
+          // keep going. Surface an error instead of returning a truncated
+          // answer that looks complete to the client.
+          yield this.toErrorEvent(
+            new Error(
+              'Web search exceeded the maximum number of continuations.',
+            ),
+          );
+          return;
+        }
         convo.push({
           role: 'assistant',
-          // Response content blocks are accepted back as request params;
-          // the SDK's param/response types diverge only nominally here.
-          content: final.content as unknown as Anthropic.ContentBlockParam[],
+          // Echo the assistant turn back as request params so the server
+          // loop resumes. Strip response-only fields the request schema
+          // rejects (e.g. `citations` on text blocks); keep tool-use and
+          // web-search-result blocks intact for the resume.
+          content: final.content.map((block) =>
+            block.type === 'text'
+              ? { type: 'text' as const, text: block.text }
+              : block,
+          ) as unknown as Anthropic.ContentBlockParam[],
         });
         continue;
       }

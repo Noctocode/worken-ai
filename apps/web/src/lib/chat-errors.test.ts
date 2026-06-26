@@ -1,10 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { humanizeChatError } from "./chat-errors";
 
 // humanizeChatError logs the raw breadcrumb via console.warn — silence it
 // so expected error states don't spam the test output.
 beforeEach(() => {
   vi.spyOn(console, "warn").mockImplementation(() => {});
+});
+
+// Restore the console spy so the mock doesn't leak into other test files
+// sharing this worker.
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 describe("humanizeChatError — web search not enabled", () => {
