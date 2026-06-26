@@ -22,8 +22,9 @@ describe('transportSupportsWebSearch', () => {
     ['openrouter', 'openai-sdk', 'perplexity', true],
     // Anthropic BYOK native web_search tool.
     ['byok', 'anthropic-sdk', 'anthropic', true],
-    // Perplexity BYOK — sonar searches by default.
+    // Perplexity BYOK — sonar searches by default; Grok — Live Search.
     ['byok', 'openai-sdk', 'perplexity', true],
+    ['byok', 'openai-sdk', 'x-ai', true],
     // Other openai-sdk BYOK providers have no native search.
     ['byok', 'openai-sdk', 'openai', false],
     ['byok', 'openai-sdk', 'deepseek', false],
