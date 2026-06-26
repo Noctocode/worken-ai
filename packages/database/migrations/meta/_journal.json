@@ -218,6 +218,13 @@
       "when": 1780170000000,
       "tag": "0030_chat_tool_calls",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1780180000000,
+      "tag": "0031_arso_enabled",
+      "breakpoints": true
     }
   ]
 }

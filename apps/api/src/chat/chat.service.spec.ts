@@ -550,14 +550,20 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
         },
         {
           choices: [
-            { delta: { tool_calls: [{ index: 0, function: { arguments: '{"loca' } }] } },
+            {
+              delta: {
+                tool_calls: [{ index: 0, function: { arguments: '{"loca' } }],
+              },
+            },
           ],
         },
         {
           choices: [
             {
               delta: {
-                tool_calls: [{ index: 0, function: { arguments: 'tion":"Ljubljana"}' } }],
+                tool_calls: [
+                  { index: 0, function: { arguments: 'tion":"Ljubljana"}' } },
+                ],
               },
             },
           ],
@@ -622,6 +628,58 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
     expect(events.filter((e) => e.type === 'usage')).toHaveLength(1);
   });
 
+  it('summarizes an ARSO weather result into a human-readable tool_result', async () => {
+    const { svc } = makeServiceWithRounds([
+      [
+        {
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_w',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{"location":"Ljubljana"}',
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
+      ],
+      [{ choices: [{ delta: { content: 'done' }, finish_reason: 'stop' }] }],
+    ]);
+    // Realistic normalized ArsoWeatherResult shape (location + forecast[]).
+    const runTool = jest.fn().mockResolvedValue({
+      source: 'arso',
+      location: 'Ljubljana',
+      forecast: [{ tempC: 18, weather: 'pretežno jasno' }],
+    });
+
+    const events = await collect(
+      svc.sendMessageStream(
+        [{ role: 'user', content: 'vreme?' }],
+        'gpt-4o-mini',
+        false,
+        undefined,
+        'key',
+        'url',
+        'openai-sdk',
+        { tools: [WEATHER_TOOL], runTool },
+      ),
+    );
+
+    expect(events.find((e) => e.type === 'tool_result')).toMatchObject({
+      id: 'call_w',
+      ok: true,
+      summary: 'Ljubljana: 18 °C, pretežno jasno',
+    });
+  });
+
   it('handles two tool calls in one turn (by index)', async () => {
     const { svc, create } = makeServiceWithRounds([
       [
@@ -630,8 +688,22 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
             {
               delta: {
                 tool_calls: [
-                  { index: 0, id: 'c0', function: { name: 'arso_weather_forecast', arguments: '{"location":"LJ"}' } },
-                  { index: 1, id: 'c1', function: { name: 'arso_air_quality', arguments: '{"location":"LJ"}' } },
+                  {
+                    index: 0,
+                    id: 'c0',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{"location":"LJ"}',
+                    },
+                  },
+                  {
+                    index: 1,
+                    id: 'c1',
+                    function: {
+                      name: 'arso_air_quality',
+                      arguments: '{"location":"LJ"}',
+                    },
+                  },
                 ],
               },
             },
@@ -674,7 +746,11 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
           {
             delta: {
               tool_calls: [
-                { index: 0, id: 'c', function: { name: 'arso_weather_forecast', arguments: '{}' } },
+                {
+                  index: 0,
+                  id: 'c',
+                  function: { name: 'arso_weather_forecast', arguments: '{}' },
+                },
               ],
             },
           },
@@ -713,12 +789,29 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
       [
         {
           choices: [
-            { delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'arso_weather_forecast', arguments: '{}' } }] } },
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
           ],
         },
         { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       ],
-      [{ choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }] }],
+      [
+        {
+          choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }],
+        },
+      ],
     ]);
     const runTool = jest.fn().mockResolvedValue({});
     const onBeforeToolIteration = jest
@@ -754,12 +847,29 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
       [
         {
           choices: [
-            { delta: { tool_calls: [{ index: 0, id: 'c', function: { name: 'arso_weather_forecast', arguments: '{}' } }] } },
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'c',
+                    function: {
+                      name: 'arso_weather_forecast',
+                      arguments: '{}',
+                    },
+                  },
+                ],
+              },
+            },
           ],
         },
         { choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
       ],
-      [{ choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }] }],
+      [
+        {
+          choices: [{ delta: { content: 'unreached' }, finish_reason: 'stop' }],
+        },
+      ],
     ]);
     // The user hits Stop while the tool runs.
     const runTool = jest.fn().mockImplementation(

@@ -78,7 +78,7 @@ const AIR_STATION_BY_PLACE: Record<string, string> = {
   trbovlje: 'Trbovlje',
   zagorje: 'Zagorje',
   hrastnik: 'Hrastnik',
-  'velenje': 'Velenje',
+  velenje: 'Velenje',
   iskrba: 'Iskrba',
 };
 

@@ -134,10 +134,7 @@ export interface StreamOptions {
   /** Executes a tool the model called; returns the (JSON-serializable)
    *  result. Injected by the controller (e.g. ARSO dispatch) so this
    *  service stays decoupled from any specific tool module. */
-  runTool?: (
-    name: string,
-    args: Record<string, unknown>,
-  ) => Promise<unknown>;
+  runTool?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
   /** Safety cap on tool-loop round-trips. Default 5. */
   maxToolIters?: number;
   /** Run before every tool-loop *re-call* (not the first model call). Throws
@@ -274,8 +271,16 @@ export class ChatService {
     };
   }
 
-  /** Short, human-ish one-liner about a tool result for the UI / transcript. */
-  private summarizeToolResult(ok: boolean, result: unknown): string {
+  /**
+   * Short, human-readable one-liner about a tool result for the inline UI step
+   * and the persisted transcript ("Ljubljana: 18 °C, pretežno jasno"). Falls
+   * back to a trimmed JSON slice for unknown shapes so nothing is ever blank.
+   */
+  private summarizeToolResult(
+    ok: boolean,
+    name: string,
+    result: unknown,
+  ): string {
     if (!ok) {
       const msg =
         result && typeof result === 'object' && 'error' in result
@@ -283,7 +288,46 @@ export class ChatService {
           : 'failed';
       return msg.slice(0, 160);
     }
+    const r = (result ?? {}) as Record<string, unknown>;
+    const num = (v: unknown): string | null =>
+      typeof v === 'number' && Number.isFinite(v) ? String(v) : null;
     try {
+      if (name === 'arso_weather_forecast' && Array.isArray(r.forecast)) {
+        const loc = typeof r.location === 'string' ? r.location : '';
+        const p0 = r.forecast[0] as Record<string, unknown> | undefined;
+        const temp = p0 ? num(p0.tempC) : null;
+        const sky = p0 && typeof p0.weather === 'string' ? p0.weather : null;
+        const tail = [temp ? `${temp} °C` : null, sky]
+          .filter(Boolean)
+          .join(', ');
+        return [loc, tail].filter(Boolean).join(': ').slice(0, 160) || 'ok';
+      }
+      if (name === 'arso_air_quality' && Array.isArray(r.readings)) {
+        const a0 = r.readings[0] as Record<string, unknown> | undefined;
+        const station =
+          a0 && typeof a0.station === 'string' ? a0.station : null;
+        const pm10 = a0 ? num(a0.pm10) : null;
+        const parts = [station, pm10 ? `PM10 ${pm10} µg/m³` : null].filter(
+          Boolean,
+        );
+        return (parts.join(': ') || `${r.readings.length} postaj`).slice(
+          0,
+          160,
+        );
+      }
+      if (name === 'arso_river_level' && Array.isArray(r.readings)) {
+        const h0 = r.readings[0] as Record<string, unknown> | undefined;
+        const river = h0 && typeof h0.river === 'string' ? h0.river : null;
+        const station =
+          h0 && typeof h0.station === 'string' ? h0.station : null;
+        const level = h0 ? num(h0.waterLevelCm) : null;
+        const where = [river, station].filter(Boolean).join(' @ ');
+        const parts = [where, level ? `${level} cm` : null].filter(Boolean);
+        return (parts.join(': ') || `${r.readings.length} postaj`).slice(
+          0,
+          160,
+        );
+      }
       return JSON.stringify(result).slice(0, 160);
     } catch {
       return 'ok';
@@ -427,13 +471,11 @@ export class ChatService {
         number,
         { id: string; name: string; args: string }
       > = {};
-      let finishReason: string | null = null;
 
       try {
         for await (const chunk of stream as AsyncIterable<ChatCompletionChunk>) {
           const choice = chunk.choices?.[0];
           const delta: OpenRouterDelta | undefined = choice?.delta;
-          if (choice?.finish_reason) finishReason = choice.finish_reason;
 
           // tool_calls stream incrementally: id + name arrive on the first
           // delta for an index, arguments accumulate over subsequent ones.
@@ -536,7 +578,7 @@ export class ChatService {
           id: c.id,
           name: c.name,
           ok,
-          summary: this.summarizeToolResult(ok, result),
+          summary: this.summarizeToolResult(ok, c.name, result),
           latencyMs: Date.now() - t0,
         };
 

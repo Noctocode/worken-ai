@@ -23,10 +23,13 @@ function fakeStream(deltas: string[], final: unknown) {
     // eslint-disable-next-line @typescript-eslint/require-await -- generator stub
     [Symbol.asyncIterator]: async function* () {
       for (const text of deltas) {
-        yield { type: 'content_block_delta', delta: { type: 'text_delta', text } };
+        yield {
+          type: 'content_block_delta',
+          delta: { type: 'text_delta', text },
+        };
       }
     },
-    finalMessage: async () => final,
+    finalMessage: () => Promise.resolve(final),
   };
 }
 
@@ -186,9 +189,12 @@ describe('AnthropicClientService.sendMessageStream — native tool_use loop', ()
 
     expect(mockStream).toHaveBeenCalledTimes(1);
     expect(events.filter((e) => e.type === 'tool_call')).toHaveLength(0);
-    expect(events.filter((e) => e.type === 'content').map((e) => (e as { delta: string }).delta).join('')).toBe(
-      'Hi there',
-    );
+    expect(
+      events
+        .filter((e) => e.type === 'content')
+        .map((e) => (e as { delta: string }).delta)
+        .join(''),
+    ).toBe('Hi there');
     expect(events.filter((e) => e.type === 'usage')).toHaveLength(1);
   });
 });

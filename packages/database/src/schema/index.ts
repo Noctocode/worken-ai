@@ -113,6 +113,10 @@ export const companies = pgTable("companies", {
   // Teams override via `teams.web_search_enabled`; effective capability
   // is `team.webSearchEnabled ?? company.webSearchEnabled`.
   webSearchEnabled: boolean("web_search_enabled").notNull().default(false),
+  // Org-wide toggle for the ARSO (Slovenian environmental data) AI tools.
+  // Keyless integration; off by default — an admin opts in from the Company
+  // tab. The chat tool-loop offers ARSO tools only when this is true.
+  arsoEnabled: boolean("arso_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

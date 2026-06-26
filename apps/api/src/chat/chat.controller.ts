@@ -10,7 +10,12 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
-import { chatToolCalls, projects } from '@worken/database/schema';
+import {
+  chatToolCalls,
+  companies,
+  projects,
+  users,
+} from '@worken/database/schema';
 import { ArsoToolsService } from '../arso/arso-tools.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { AuthenticatedUser } from '../auth/types.js';
@@ -85,21 +90,46 @@ export class ChatController {
 
   /**
    * The ARSO function-calling tools to offer, or undefined to offer none.
-   * Gated on (a) a temporary env flag (ARSO toggle UI lands in Phase D) and
-   * (b) the resolved model actually supporting tools per the catalog. The
-   * native Anthropic route is excluded until Phase C2.
+   * Gated on (a) the caller's company having ARSO enabled (admin opt-in on the
+   * Company tab) and (b) the resolved model actually supporting tools per the
+   * catalog. Both routes (openai-sdk + native Anthropic) are supported.
    */
-  private async arsoToolsFor(t: {
-    model: string;
-    kind: string;
-  }): Promise<ChatTool[] | undefined> {
-    if (process.env['ARSO_TOOLS_ENABLED'] === 'false') return undefined;
+  private async arsoToolsFor(
+    t: { model: string; kind: string },
+    arsoEnabled: boolean,
+  ): Promise<ChatTool[] | undefined> {
+    if (!arsoEnabled) return undefined;
     // Anthropic native (Claude) all support tool_use; the openai-sdk route is
     // gated on the catalog's tools capability (Azure is excluded in
     // chat.service since it 400s on unknown body args).
     if (t.kind === 'anthropic-sdk') return this.arsoTools.definitions();
     const supports = await this.catalogService.supportsTools(t.model);
     return supports ? this.arsoTools.definitions() : undefined;
+  }
+
+  /**
+   * Whether ARSO tools are enabled for this caller — gated on their company's
+   * `arso_enabled` flag (company-wide, off by default). Personal-profile users
+   * have no company tenant, so ARSO stays off for them. Best-effort: a lookup
+   * failure resolves to false (tools simply not offered), never breaks chat.
+   */
+  private async isArsoEnabledFor(userId: string): Promise<boolean> {
+    try {
+      const [row] = await this.db
+        .select({ arsoEnabled: companies.arsoEnabled })
+        .from(users)
+        .innerJoin(companies, eq(companies.id, users.companyId))
+        .where(eq(users.id, userId))
+        .limit(1);
+      return row?.arsoEnabled === true;
+    } catch (err) {
+      this.logger.warn(
+        `ARSO gate lookup failed for user ${userId}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return false;
+    }
   }
 
   /**
@@ -492,6 +522,9 @@ export class ChatController {
     const catalogService = this.catalogService;
     const arsoTools = this.arsoTools;
     const arsoToolsFor = this.arsoToolsFor.bind(this);
+    // Resolve the ARSO company gate once per request — the per-candidate loop
+    // below reuses it (the flag is company-wide, independent of the model).
+    const arsoEnabled = await this.isArsoEnabledFor(user.id);
     async function* streamWithFallback() {
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
@@ -574,7 +607,7 @@ export class ChatController {
         // ARSO is enabled). Undefined ⇒ the call is byte-for-byte the no-tools
         // path. The maxToolIters cap bounds cost; onBeforeToolIteration below
         // re-gates the managed budget on every re-call.
-        const arsoToolDefs = await arsoToolsFor(t);
+        const arsoToolDefs = await arsoToolsFor(t, arsoEnabled);
         try {
           for await (const ev of chatService.sendMessageStream(
             apiMessages,
@@ -903,6 +936,16 @@ export class ChatController {
     // Record which skills the router applied so the FE can show a
     // "Skill applied" chip and the user understands why the style shifted.
     if (appliedSkills.length > 0) metadata.skills = appliedSkills;
+    // Compact, redacted tool-call summary (no raw args) so a reopened chat can
+    // render the "called ARSO weather" steps without a join. The full record
+    // (with args) lives in the chat_tool_calls table below.
+    if (toolCallsLog.length > 0) {
+      metadata.toolCalls = toolCallsLog.map((c) => ({
+        name: c.name,
+        ok: c.ok,
+        summary: c.summary,
+      }));
+    }
 
     const assistantMessage = await this.conversationsService.addMessage(
       body.conversationId,

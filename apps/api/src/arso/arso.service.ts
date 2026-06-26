@@ -84,6 +84,16 @@ export class ArsoService {
 
   private str(v: unknown): string | null {
     if (v === null || v === undefined) return null;
+    // Only flatten primitives — an object here means a nested XML element,
+    // which we must not coerce to "[object Object]" (and satisfies
+    // @typescript-eslint/no-base-to-string).
+    if (
+      typeof v !== 'string' &&
+      typeof v !== 'number' &&
+      typeof v !== 'boolean'
+    ) {
+      return null;
+    }
     let s = String(v).trim();
     if (s === '') return null;
     // Some ARSO feeds (hydrology) write č/š/ž as numeric XML entities
