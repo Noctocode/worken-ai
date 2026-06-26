@@ -76,7 +76,7 @@ function makeServiceWithChunks(chunks: OpenAIChunk[]) {
     sendMessage: jest.fn(),
     sendMessageStream: jest.fn(),
   };
-  const svc = new ChatService(anthropic as never);
+  const svc = new ChatService(anthropic as never, {} as never);
 
   // Replace the private `makeClient` so we don't depend on a real
   // OpenAI install. The function signature is private but TS lets
@@ -219,7 +219,7 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn(),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(anthropic as never, {} as never);
     // Reject the pre-stream `create` call to simulate auth / model-
     // not-found. The production code is supposed to yield one
     // `error` event and return — we shouldn't see anything else.
@@ -255,7 +255,7 @@ describe('ChatService.sendMessageStream (openai-sdk path)', () => {
       sendMessage: jest.fn(),
       sendMessageStream: jest.fn().mockReturnValue(fakeAnthropicStream()),
     };
-    const svc = new ChatService(anthropic as never);
+    const svc = new ChatService(anthropic as never, {} as never);
 
     const events = await collect(
       svc.sendMessageStream(
@@ -439,10 +439,13 @@ describe('ChatService.sendMessageStream (azure-sdk path)', () => {
 
   const runAzure = (enableReasoning: boolean) =>
     collect(
-      new ChatService({
-        sendMessage: jest.fn(),
-        sendMessageStream: jest.fn(),
-      } as never).sendMessageStream(
+      new ChatService(
+        {
+          sendMessage: jest.fn(),
+          sendMessageStream: jest.fn(),
+        } as never,
+        {} as never,
+      ).sendMessageStream(
         [{ role: 'user', content: 'hi' }],
         DEPLOYMENT, // model === deployment (transport resolved bareModel)
         enableReasoning,
