@@ -93,5 +93,4 @@ export const resources = {
   'resources.how.label.data': 'Data + Embeddings',
   'resources.how.label.model': 'Model',
   'resources.how.label.external': 'Your provider (BYOK) or our gateway',
-
 } as const;

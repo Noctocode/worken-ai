@@ -13,10 +13,13 @@ import { useAuth } from "@/components/providers";
 import { useLanguage } from "@/lib/i18n";
 import type { TranslationKey } from "@/lib/translations/en";
 
-/* The internal system-overview diagrams are gated to @noctocode.com members
- * (see `user.isInternal`, computed server-side in /auth/me). Loaded via
- * next/dynamic so the chunk is only fetched when actually rendered — a
- * non-internal user never downloads the diagram markup. */
+/* The internal system-overview diagrams render only when the server-computed
+ * `user.isInternal` flag is set (the @noctocode.com rule lives on the API, in
+ * /auth/me). Loaded via next/dynamic so the chunk is only requested when the
+ * component is actually rendered — this reduces incidental exposure for
+ * non-internal users, but it is NOT a security boundary: the built chunk is
+ * still part of the public bundle and can be fetched directly. Keep anything
+ * truly sensitive on the server, not in here. */
 const SystemOverview = dynamic(() => import("./system-overview"), {
   ssr: false,
 });

@@ -23,10 +23,13 @@ import { OVERVIEW_TEXT, type OverviewKey } from "./system-overview.i18n";
 
 /* Internal developer documentation — "How the system fits together".
  *
- * This whole component is gated server-side: the parent page only renders it
- * when /auth/me reports `user.isInternal` (the @noctocode.com rule lives on
- * the API). It is pulled in via `next/dynamic`, so its JS chunk is never
- * fetched for non-internal users — the diagrams are not shipped to them. */
+ * Rendering is gated by a server-computed flag: the parent page only includes
+ * this component when /auth/me reports `user.isInternal` (the @noctocode.com
+ * rule lives on the API). It is loaded via `next/dynamic`, so its JS chunk is
+ * only requested when actually rendered — which keeps it out of the default
+ * download for non-internal users. That is incidental-exposure reduction, not
+ * a security boundary: the built chunk can still be fetched directly, so this
+ * holds only non-sensitive architecture docs. */
 
 const OVERVIEW_TABS: Array<{
   value: string;

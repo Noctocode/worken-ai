@@ -1,9 +1,11 @@
-// Internal-only system-overview copy. Lives in this module — which is
-// imported solely by system-overview.tsx (loaded via next/dynamic and
-// gated on user.isInternal) — so it ships ONLY in that lazy chunk and is
-// never downloaded by non-internal users. Do NOT move these strings into
-// the global en/sl translation bundles (those are eagerly imported and
-// would leak the internal docs to every client).
+// Internal-only system-overview copy. Lives in this module — imported solely
+// by system-overview.tsx (loaded via next/dynamic, gated on user.isInternal)
+// — so it ships ONLY in that lazy chunk, kept out of the default download for
+// non-internal users. Do NOT move these strings into the global en/sl
+// translation bundles: those are eagerly imported, so the internal docs would
+// be downloaded by every client on every page. (The lazy chunk is still
+// publicly fetchable — this is incidental-exposure reduction, not a security
+// boundary; keep only non-sensitive copy here.)
 import type { Language } from "@/lib/i18n";
 
 const OVERVIEW_EN = {

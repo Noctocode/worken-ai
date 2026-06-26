@@ -91,5 +91,4 @@ export const resources: Record<keyof typeof resourcesEn, string> = {
   'resources.how.label.data': 'Podatki + embeddingi',
   'resources.how.label.model': 'Model',
   'resources.how.label.external': 'Vaš ponudnik (BYOK) ali naš prehod',
-
 };
